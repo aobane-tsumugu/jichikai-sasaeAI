@@ -245,8 +245,14 @@ describe("読みの流れ", () => {
     await env.DB.prepare("UPDATE jobs SET status = 'reading', attempt = 1, lease_until = ? WHERE ward_id = ? AND job_id = ?")
       .bind(new Date(Date.now() - 1000).toISOString(), ward.wardId, jobId)
       .run();
+    // 止められた読みの実行の記録が running のまま残っている
+    await env.DB.prepare("INSERT INTO job_runs (run_id, ward_id, job_id, kind, attempt, status, started_at) VALUES ('r-stale', ?, ?, 'read', 1, 'running', ?)")
+      .bind(ward.wardId, jobId, new Date(Date.now() - 600_000).toISOString())
+      .run();
     await sweepReads(env, fakeDeps(okRead()));
     expect(await getJob(env.DB, ward.wardId, jobId)).toMatchObject({ status: "read", attempt: 2 });
+    const runs = await env.DB.prepare("SELECT run_id, status FROM job_runs WHERE ward_id = ? AND job_id = ? ORDER BY started_at").bind(ward.wardId, jobId).all();
+    expect(runs.results.map((r) => r.status)).toEqual(["error", "ok"]);
   });
 
   it("再試行できない失敗と、試行の上限は failed になり、もう一度で最初からやり直せる", async () => {

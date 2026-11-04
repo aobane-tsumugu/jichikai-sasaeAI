@@ -172,6 +172,17 @@ export async function setJobProject(
   return (res.meta.changes ?? 0) > 0;
 }
 
+/** waitUntil の時間切れなどで終わりの記録が付かなかった読みの実行を、中断として閉じる（次の読みを始める時に呼ぶ）。 */
+export async function closeAbandonedRuns(db: D1Database, wardId: string, jobId: string): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE job_runs SET status = 'error', error = '中断（応答の後の時間切れなど）', ended_at = ?
+        WHERE ward_id = ? AND job_id = ? AND kind = 'read' AND status = 'running'`,
+    )
+    .bind(nowIso(), wardId, jobId)
+    .run();
+}
+
 export interface RunStart {
   runId: string;
   startedAtMs: number;

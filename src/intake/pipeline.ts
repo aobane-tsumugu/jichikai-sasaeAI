@@ -10,6 +10,7 @@ import { createAnthropic, MODEL } from "../ai/anthropic";
 import { ReadError, readOriginals, type ReadableOriginal } from "../ai/read";
 import {
   claimRead,
+  closeAbandonedRuns,
   endRun,
   failExhaustedReads,
   failJob,
@@ -60,6 +61,7 @@ export async function runRead(
 
   const job = await getJob(env.DB, wardId, jobId);
   if (!job) return "skipped";
+  await closeAbandonedRuns(env.DB, wardId, jobId);
   const run = await startRun(env.DB, { wardId, jobId, kind: "read", attempt, model: MODEL.main });
 
   try {
