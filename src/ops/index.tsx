@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { baseUrl, wardUrl } from "../core/ward";
-import { Layout, Notice } from "../core/ui";
+import { Credentials, Layout, Notice } from "../core/ui";
 import type { AppEnv } from "../env";
 import { CutLine, PrintDocument, PrintQr, Sheet, qrSvg } from "../print";
 import { addAccount, listAccounts, resetPassword } from "../settings/accounts";
@@ -159,16 +159,6 @@ opsRoutes.get("/", async (c) => {
     </OpsPage>,
   );
 });
-
-const Credentials = (props: { name: string; password: string }) => (
-  <div class="panel">
-    <p>役員に渡す名前とパスワードです。パスワードはこの画面でしか見られません。</p>
-    <p>
-      名前: <strong>{props.name}</strong>
-    </p>
-    <p class="secret">{props.password}</p>
-  </div>
-);
 
 opsRoutes.post("/wards", async (c) => {
   const form = await c.req.parseBody();

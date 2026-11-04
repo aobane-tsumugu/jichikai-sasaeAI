@@ -215,19 +215,22 @@ export async function resetPassword(
   return { ok: true, name: account.name, password };
 }
 
-/** 端末の締め出し: なくした端末の記憶を消す。deviceId を渡せばその一台、渡さなければそのアカウントの全部。 */
+/**
+ * 端末の締め出し: なくした端末の記憶を消す。deviceId を渡せばその一台、渡さなければそのアカウントの全部。
+ * exceptDeviceId の端末は残す（自分の使っている端末を残して、ほかを締め出す時）。
+ */
 export async function lockOutDevices(
   db: D1Database,
   wardId: string,
   accountId: string,
-  deviceId?: string,
-): Promise<{ ok: true; count: number } | Failure> {
-  const result = deviceId
-    ? await db
-        .prepare("DELETE FROM devices WHERE ward_id = ? AND account_id = ? AND device_id = ?")
-        .bind(wardId, accountId, deviceId)
-        .run()
-    : await db.prepare("DELETE FROM devices WHERE ward_id = ? AND account_id = ?").bind(wardId, accountId).run();
+  options: { deviceId?: string; exceptDeviceId?: string } = {},
+): Promise<{ ok: true; count: number }> {
+  const result = await db
+    .prepare(
+      `DELETE FROM devices WHERE ward_id = ? AND account_id = ? AND (? IS NULL OR device_id = ?) AND device_id <> ?`,
+    )
+    .bind(wardId, accountId, options.deviceId ?? null, options.deviceId ?? null, options.exceptDeviceId ?? "")
+    .run();
   return { ok: true, count: result.meta.changes };
 }
 

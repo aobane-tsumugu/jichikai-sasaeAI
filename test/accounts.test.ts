@@ -148,7 +148,7 @@ describe("アカウント", () => {
 
     const before = (await listAccounts(db, ward.wardId)).find((a) => a.name === "端末の人");
     expect(before?.devices.length).toBe(2);
-    const one = await lockOutDevices(db, ward.wardId, person.accountId, before?.devices[0]?.deviceId);
+    const one = await lockOutDevices(db, ward.wardId, person.accountId, { deviceId: before?.devices[0]?.deviceId });
     expect(one).toEqual({ ok: true, count: 1 });
     const all = await lockOutDevices(db, ward.wardId, person.accountId);
     expect(all).toEqual({ ok: true, count: 1 });
