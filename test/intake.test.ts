@@ -163,6 +163,34 @@ describe("受付", () => {
     expect(await getJob(env.DB, a.wardId, y.jobId as string)).toBeNull();
   });
 
+  it("同じ写真は同じプロジェクト内で束ね、別のプロジェクトでは受ける", async () => {
+    const ward = await seedWard(env.DB);
+    setPipelineDeps(fakeDeps(okRead()));
+    const bytes = jpeg();
+    const send = async (projectId: string) => {
+      const { ctx, settle } = ctxOf();
+      const result = await receiveOriginal(env, ctx, {
+        wardId: ward.wardId,
+        via: "admin",
+        projectId,
+        parts: [photo("同じ写真.jpg", bytes)],
+      });
+      await settle();
+      return result;
+    };
+
+    const first = await send("project-a");
+    const sameProject = await send("project-a");
+    const otherProject = await send("project-b");
+
+    expect(first.jobId).toBeTruthy();
+    expect(sameProject.jobId).toBeNull();
+    expect(sameProject.duplicates).toHaveLength(1);
+    expect(otherProject.jobId).toBeTruthy();
+    expect(otherProject.duplicates).toEqual([]);
+    expect(await getJob(env.DB, ward.wardId, otherProject.jobId as string)).toMatchObject({ project_id: "project-b", status: "read" });
+  });
+
   it("一行の文と文字のファイルと Word は、モデルを通さずにそのまま読み取りになる", async () => {
     const ward = await seedWard(env.DB);
     const { ctx } = ctxOf();
