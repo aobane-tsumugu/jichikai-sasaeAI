@@ -11,7 +11,7 @@ import { intake } from "../src/intake";
 import { receiveOriginal, ReceiveError, retryJob, withdrawJob } from "../src/intake/api";
 import { receive } from "../src/intake/receive";
 import { runRead, setPipelineDeps, sweepReads, type PipelineDeps } from "../src/intake/pipeline";
-import { setProjectDirectory } from "../src/intake/project-port";
+import { setProjectDirectory, type ProjectDirectory } from "../src/intake/project-port";
 import { getJob, getReadings, listOriginals, MAX_READ_ATTEMPTS } from "../src/intake/store";
 import type { ReceivePart } from "../src/intake/receive";
 import { bundles } from "../src/index";
@@ -62,8 +62,13 @@ const fakeDeps = (readImpl: PipelineDeps["readImpl"]): PipelineDeps => ({
   readImpl,
 });
 
+
+/** 繋げる仕組みの試験は、プロジェクトの実在を問わない（実在の検査は別の試験で束 3 の実物を使う）。 */
+const permissive: ProjectDirectory = { listOpen: async () => [], isOpen: async () => true };
+
 // 本物の Anthropic を呼ばないための安全弁。読みを動かす試験は、自分で readImpl を差し替える
 beforeEach(() => {
+  setProjectDirectory(permissive);
   setClientFactory(() => {
     throw new Error("試験から本物の Anthropic は呼べません");
   });
@@ -325,8 +330,9 @@ describe("読みの流れ", () => {
   });
 });
 
+const app = createApp([...Object.values(bundles)]);
+
 describe("画面", () => {
-  const app = createApp([...Object.values(bundles)]);
 
   function request(path: string, init: RequestInit, ctx: ExecutionContext) {
     return app.request(path, init, env, ctx);
@@ -481,6 +487,37 @@ describe("画面", () => {
     const body = (await good.json()) as { jobId: string };
     await settle();
     expect(await getJob(env.DB, ward.wardId, body.jobId)).toMatchObject({ project_id: "p-1" });
+  });
+});
+
+describe("送る先のプロジェクトの検査", () => {
+  it("実在しない、「undefined」のような、閉じたプロジェクトには送れない（束 3 の実物で確かめる）", async () => {
+    setProjectDirectory(null);
+    const { createProject } = await import("../src/project/api");
+    const ward = await seedWard(env.DB);
+    const open = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026 });
+    const otherWard = await seedWard(env.DB);
+    const foreign = await createProject(env.DB, otherWard.wardId, { kind: "event", title: "別の区（架空）", year: 2026 });
+    const send = (projectId: string) =>
+      receive(env, { wardId: ward.wardId, via: "admin", projectId, parts: [{ kind: "text", filename: "", mediaType: "", bytes: new TextEncoder().encode(crypto.randomUUID()) }] }).catch((e: unknown) => e as ReceiveError);
+    expect(await send("undefined")).toMatchObject({ code: "no_project" });
+    expect(await send(foreign.projectId)).toMatchObject({ code: "no_project" });
+    expect((await send(open.projectId)) as { jobId: string }).toHaveProperty("jobId");
+    // 閉じたら送れない
+    await env.DB.prepare("UPDATE projects SET closed_at = ? WHERE ward_id = ? AND project_id = ?").bind(new Date().toISOString(), ward.wardId, open.projectId).run();
+    expect(await send(open.projectId)).toMatchObject({ code: "no_project" });
+  });
+
+  it("画面からも、実在しないプロジェクトの ID は断る", async () => {
+    setProjectDirectory(null);
+    const { ward, cookie } = await seedAdmin(env.DB);
+    const { ctx } = ctxOf();
+    const form = new FormData();
+    form.append("project_id", "undefined");
+    form.append("text", "あ");
+    const res = await app.request(`/${ward.slug}/admin/intake`, { method: "POST", headers: { cookie, origin: "http://localhost", accept: "application/json" }, body: form }, env, ctx);
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { message: string }).message).toContain("プロジェクト");
   });
 });
 
