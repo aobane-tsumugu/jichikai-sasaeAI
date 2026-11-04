@@ -1,0 +1,6 @@
+Pillow
+numpy
+openpyxl
+reportlab
+python-docx
+fonttools
