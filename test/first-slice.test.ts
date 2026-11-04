@@ -120,8 +120,9 @@ describe("秋の収穫祭の最初の一片", () => {
     await env.DB.prepare("DELETE FROM jobs WHERE ward_id = ? AND job_id = ?").bind(ward.wardId, queuedDraftId).run();
 
     // 公開の検査用の名簿と、公開してはいけない協賛額を役員だけの状態に置く。
-    await env.DB.prepare("INSERT INTO check_roster (ward_id, entry_id, name, phone, created_at) VALUES (?, ?, ?, ?, ?)")
-      .bind(ward.wardId, crypto.randomUUID(), FIRST_SLICE.rosterName, "09000000000", new Date().toISOString()).run();
+    await replaceRoster(env.DB, ward.wardId, [
+      { household: FIRST_SLICE.rosterName, district: FIRST_SLICE.district },
+    ], { household: 0, district: 1 });
     await applyChange(env.DB, ward.wardId, projectId as string, {
       kind: "row", table: "sponsors", data: { name: FIRST_SLICE.sponsorName, amount: FIRST_SLICE.sponsorAmount },
       source: { kind: "person", accountId: account.accountId }, confidence: "high", packVersion: "first-slice@1",

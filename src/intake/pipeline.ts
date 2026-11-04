@@ -5,9 +5,12 @@
 // Cron は一回 15 分まで動ける。試行は MAX_READ_ATTEMPTS 回まで。
 import type Anthropic from "@anthropic-ai/sdk";
 import { WardBucket } from "../core/storage";
+import { nowIso } from "../core/ids";
 import type { Env } from "../env";
 import { createAnthropic, MODEL } from "../ai/anthropic";
 import { dispatchProject } from "../ai/session";
+import { matchProject, MATCH_NEW, MATCH_MULTIPLE, MATCH_UNRELATED } from "../ai/match";
+import { projectApi } from "../ai/project-binding";
 import { ReadError, readOriginals, type ReadableOriginal } from "../ai/read";
 import {
   claimRead,
@@ -17,11 +20,13 @@ import {
   failJob,
   finishRead,
   getJob,
+  getReadings,
   listOriginals,
   listStuckReads,
   MAX_READ_ATTEMPTS,
   releaseRead,
   startRun,
+  setJobProject,
 } from "./store";
 import type { Waitable } from "./types";
 
@@ -132,6 +137,7 @@ async function performRead(
     // 読みの間に当て先が付いた場合も、最新の入った物から当て先を拾う。
     const latest = placed && job.read_kind !== "answer_sheet" ? await getJob(env.DB, wardId, jobId) : null;
     if (latest?.project_id) await dispatchProject(env, wardId, latest.project_id).catch((e) => console.error("繋げるの起動に失敗しました", describe(e)));
+    else if (latest?.via === "admin") await matchUnassignedAdminJob(env, wardId, jobId, client).catch((e) => console.error("受け箱の当てに失敗しました", describe(e)));
     return placed ? "read" : "skipped";
   } catch (err) {
     const read = err instanceof ReadError ? err : null;
@@ -147,6 +153,32 @@ async function performRead(
     }
     await releaseRead(env.DB, wardId, jobId, attempt);
     return "retry";
+  }
+}
+
+/** 役員画面から受け箱へ送られた写真を、読み終わってから自動で当てる。 */
+async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, client: Anthropic): Promise<void> {
+  const current = await getJob(env.DB, wardId, jobId);
+  if (!current || current.project_id || current.via !== "admin" || current.status !== "read") return;
+  const candidates = (await projectApi().listOpenProjects(env, wardId)).map((project) => ({
+    id: project.projectId,
+    title: project.title,
+    detail: `${project.kind} ${project.year ?? ""}`.trim(),
+  }));
+  const readings = await getReadings(env.DB, wardId, jobId);
+  const summary = readings.map((reading) => "summary" in reading.body ? reading.body.summary : "").filter(Boolean).join("\n").slice(0, 2000);
+  if (!summary) return;
+  const result = await matchProject(client, { candidates, summary });
+  const selected = candidates.find((candidate) => candidate.id === result.choice);
+  if (selected) {
+    const changed = await setJobProject(env.DB, wardId, jobId, selected.id);
+    if (!changed) return;
+    await env.DB.prepare("UPDATE jobs SET ai_matched_at = ?, ai_match_reason = ? WHERE ward_id = ? AND job_id = ? AND project_id = ?")
+      .bind(nowIso(), result.reason, wardId, jobId, selected.id).run();
+    await dispatchProject(env, wardId, selected.id);
+  } else if (result.choice === MATCH_NEW || result.choice === MATCH_MULTIPLE || result.choice === MATCH_UNRELATED) {
+    await env.DB.prepare("UPDATE jobs SET ai_match_reason = ? WHERE ward_id = ? AND job_id = ? AND project_id IS NULL")
+      .bind(result.reason, wardId, jobId).run();
   }
 }
 

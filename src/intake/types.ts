@@ -41,6 +41,8 @@ export interface JobRow {
   discards: string;
   session_deleted_at: string | null;
   sender_label: string;
+  ai_matched_at?: string | null;
+  ai_match_reason?: string | null;
   account_id: string | null;
   status: JobStatus;
   attempt: number;

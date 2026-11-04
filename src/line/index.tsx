@@ -37,7 +37,7 @@ admin.get("/inbox", async (c) => {
   const { wardId, slug, name } = c.var.ward;
   const db = c.env.DB;
   const items = await listInboxItems(db, wardId);
-  const cityJobs = (await listJobs(db, wardId, { limit: 100 })).filter((job) => job.via === "admin" && job.project_id === null && job.withdrawn_at === null);
+  const cityJobs = (await listJobs(db, wardId, { limit: 100 })).filter((job) => job.via === "admin" && job.withdrawn_at === null && (job.project_id === null || job.ai_matched_at !== null));
   const projects = await db.prepare(`
     SELECT project_id, title AS name FROM projects WHERE ward_id = ? AND closed_at IS NULL ORDER BY created_at DESC
   `).bind(wardId).all<{ project_id: string; name: string }>();
@@ -57,15 +57,15 @@ admin.get("/inbox", async (c) => {
         return <section class="panel">
           <strong>{job.first_filename || "撮った写真"}</strong>
           <p>{new Date(job.created_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}</p>
-          <p>{job.status === "failed" ? "読めませんでした" : job.status === "done" ? "読み取り済み" : "読み取り中または確認中"}</p>
+          <p>{job.ai_matched_at ? "AI が当てました" : job.status === "failed" ? "読めませんでした" : job.status === "done" ? "読み取り済み" : "読み取り中または確認中"}</p>
+          {job.ai_match_reason ? <p>{job.ai_match_reason}</p> : null}
           {originals.map((original) => <p><a href={`/${slug}/admin/intake/originals/${encodeURIComponent(original.original_id)}`}>届いた物を開く: {original.filename || "写真"}</a></p>)}
           <form method="post" action={`/${slug}/admin/inbox/city/${encodeURIComponent(job.job_id)}`}>
-            <label for={`city-project-${job.job_id}`}>プロジェクトに当てる</label>
+            <label for={`city-project-${job.job_id}`}>当て先を選び直す</label>
             <select id={`city-project-${job.job_id}`} name="projectId" required>
-              <option value="">選んでください</option>
-              {projects.results.map((project) => <option value={project.project_id}>{project.name}</option>)}
+              {projects.results.map((project) => <option value={project.project_id} selected={project.project_id === job.project_id}>{project.name}</option>)}
             </select>
-            <button type="submit">このプロジェクトに当てる</button>
+            <button type="submit">このプロジェクトに付け替える</button>
           </form>
           <form method="post" action={`/${slug}/admin/inbox/city/${encodeURIComponent(job.job_id)}`}>
             <label for={`city-title-${job.job_id}`}>新しいプロジェクトを開く</label>
@@ -116,9 +116,9 @@ admin.post("/inbox/city/:jobId", async (c) => {
   const jobId = c.req.param("jobId");
   const form = await c.req.formData();
   const operation = String(form.get("operation") ?? "assign");
-  const job = await c.env.DB.prepare("SELECT via, project_id, withdrawn_at FROM jobs WHERE ward_id = ? AND job_id = ?")
-    .bind(ward.wardId, jobId).first<{ via: string; project_id: string | null; withdrawn_at: string | null }>();
-  if (!job || job.via !== "admin" || job.project_id !== null || job.withdrawn_at !== null) return c.notFound();
+  const job = await c.env.DB.prepare("SELECT via, project_id, ai_matched_at, withdrawn_at FROM jobs WHERE ward_id = ? AND job_id = ?")
+    .bind(ward.wardId, jobId).first<{ via: string; project_id: string | null; ai_matched_at: string | null; withdrawn_at: string | null }>();
+  if (!job || job.via !== "admin" || (job.project_id !== null && job.ai_matched_at === null) || job.withdrawn_at !== null) return c.notFound();
   let projectId = String(form.get("projectId") ?? "");
   if (operation === "new-project") {
     const title = String(form.get("projectName") ?? "").trim();

@@ -46,6 +46,21 @@ interface PublicationRow {
   distribution: string;
 }
 
+interface DraftHistoryRow { document_id: string; version_no: number; body: string; created_at: string; }
+
+function bodyLines(body: string): string[] {
+  try {
+    const value: unknown = JSON.parse(body);
+    const flatten = (input: unknown): string[] => {
+      if (typeof input === "string") return input.trim() ? [input.trim()] : [];
+      if (Array.isArray(input)) return input.flatMap(flatten);
+      if (typeof input !== "object" || input === null) return [];
+      return Object.entries(input as Record<string, unknown>).filter(([key]) => !["format", "kind", "scope", "source", "version"].includes(key)).flatMap(([, child]) => flatten(child));
+    };
+    return flatten(value);
+  } catch { return [body]; }
+}
+
 async function getProject(db: D1Database, wardId: string, projectId: string): Promise<ProjectRow | null> {
   return db.prepare(`SELECT project_id, title, state_version, closed_at FROM projects
     WHERE ward_id = ? AND project_id = ?`).bind(wardId, projectId).first<ProjectRow>();
@@ -72,6 +87,10 @@ admin.get("/publish/:projectId", async (c) => {
   const project = await getProject(c.env.DB, ward.wardId, projectId);
   if (!project) return c.notFound();
   const drafts = await getDrafts(c.env.DB, ward.wardId, projectId);
+  const history = await c.env.DB.prepare(`SELECT document_id, version_no, body, created_at FROM document_versions
+    WHERE ward_id = ? AND project_id = ? ORDER BY document_id, version_no`).bind(ward.wardId, projectId).all<DraftHistoryRow>();
+  const historyByDocument = new Map<string, DraftHistoryRow[]>();
+  for (const row of history.results) historyByDocument.set(row.document_id, [...(historyByDocument.get(row.document_id) ?? []), row]);
   const districtCopies = await getDistrictCopies(c.env.DB, ward.wardId);
   const records = await c.env.DB.prepare(`SELECT publication_id, document_id, version_no, published_at, unpublished_at,
       line_status, line_recipients, line_sent_at, line_error, recipient_scope, distribution
@@ -101,6 +120,12 @@ admin.get("/publish/:projectId", async (c) => {
             ? <Notice error>新しい物が入っています。案を直すか、このまま配るか選んでください。</Notice>
             : null}
           <p><a href={adminPath(ward, `/publish/${projectId}/preview/${draft.document_id}/${draft.version_no}`)}>見た内容を確認する</a></p>
+          {(historyByDocument.get(draft.document_id) ?? []).length > 1 ? <details><summary>これまでの案と前の案との違い</summary>{(historyByDocument.get(draft.document_id) ?? []).slice(0, -1).reverse().map((old, index, rows) => {
+            const next = rows[index - 1] ?? draft;
+            const before = bodyLines(old.body); const after = bodyLines(next.body);
+            const removed = before.filter((line) => !after.includes(line)); const added = after.filter((line) => !before.includes(line));
+            return <section><h3>作成 {new Date(old.created_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}</h3><p>次の案に変わった所</p>{removed.length ? <p>前にあった内容: {removed.join(" / ")}</p> : null}{added.length ? <p>加わった内容: {added.join(" / ")}</p> : null}{!removed.length && !added.length ? <p>文章に違いはありません。</p> : null}</section>;
+          })}</details> : null}
           {draft.scope === "space" ? <>
             <p>実行委員と班長に見せる物です。公開ページには出ません。</p>
             {!project.closed_at && draft.stale_since_version === null && !draft.published_at ? <form method="post" action={adminPath(ward, `/publish/${projectId}/space`)}>
@@ -176,6 +201,8 @@ admin.get("/publish/:projectId/preview/:documentId/:versionNo", async (c) => {
   if (!row) return c.notFound();
   return c.html(<AdminPage ward={ward} account={account} title={row.title} back={{ href: adminPath(ward, `/publish/${c.req.param("projectId")}`), label: "配る画面へ戻る" }}>
     <h1>{row.title}</h1><ArticleBody body={row.body} />
+    <p><a href={adminPath(ward, `/print/${c.req.param("projectId")}/${c.req.param("documentId")}/${row.version_no}/preview`)}>印刷用ページで見る</a></p>
+    <p>見せるだけの確認用ページです。配る操作をするまで、出した内容にはなりません。</p>
     {row.scope === "public" ? <form method="post" action={adminPath(ward, `/publish/${c.req.param("projectId")}/confirm`)}>
       <input type="hidden" name="documentId" value={c.req.param("documentId")} />
       <input type="hidden" name="versionNo" value={row.version_no} />
