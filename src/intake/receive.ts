@@ -133,6 +133,7 @@ async function prepare(parts: ReceivePart[], projectId: string | null): Promise<
 async function findExistingHashes(
   db: D1Database,
   wardId: string,
+  dedupeScope: string,
   hashes: string[],
 ): Promise<Map<string, DuplicateOriginal>> {
   const found = new Map<string, DuplicateOriginal>();
@@ -141,9 +142,9 @@ async function findExistingHashes(
   const res = await db
     .prepare(
       `SELECT content_hash, original_id, filename FROM originals
-        WHERE ward_id = ? AND withdrawn_at IS NULL AND content_hash IN (${placeholders})`,
+        WHERE ward_id = ? AND dedupe_scope = ? AND withdrawn_at IS NULL AND content_hash IN (${placeholders})`,
     )
-    .bind(wardId, ...hashes)
+    .bind(wardId, dedupeScope, ...hashes)
     .all<{ content_hash: string; original_id: string; filename: string }>();
   for (const row of res.results) found.set(row.content_hash, { originalId: row.original_id, filename: row.filename });
   return found;
@@ -167,6 +168,7 @@ export async function receive(
   const existing = await findExistingHashes(
     env.DB,
     input.wardId,
+    projectId ?? "",
     prepared.map((p) => p.hash),
   );
   const seen = new Set<string>();
@@ -237,8 +239,8 @@ export async function receive(
   for (const r of rows) {
     statements.push(
       env.DB.prepare(
-        `INSERT INTO originals (original_id, ward_id, job_id, position, kind, content_hash, media_type, filename, byte_size, r2_path, received_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO originals (original_id, ward_id, job_id, position, kind, content_hash, dedupe_scope, media_type, filename, byte_size, r2_path, received_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).bind(
         r.originalId,
         input.wardId,
@@ -246,6 +248,7 @@ export async function receive(
         r.position,
         r.p.part.kind,
         r.p.hash,
+        projectId ?? "",
         r.p.mediaType,
         r.p.part.filename.slice(0, 255),
         r.p.bytes.length,
