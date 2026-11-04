@@ -74,7 +74,7 @@ admin.get("/projects/:projectId/check", async (c) => {
   if (!project) return c.notFound();
   const selected = c.req.query("document"); const kind = DOCUMENT_KINDS.includes(selected as DocumentKind) ? selected as DocumentKind : "announcement";
   const [findings, selectedDocument] = await Promise.all([scanDraft(c.env.DB, ward.wardId, id, kind), getEditableDocument(c.env.DB, ward.wardId, id, kind)]);
-  return c.html(<Layout title="公開の下書きを確かめる" siteName={ward.name} noindex headerRight={<a href={adminPath(ward, `/projects/${id}`)}>プロジェクトへ</a>}>
+  return c.html(<Layout title="公開の下書きを確かめる" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, `/projects/${id}`)}>プロジェクトへ</a>}>
     <h1>公開の下書きを確かめる</h1>
     {c.req.query("saved") === "1" ? <Notice>名簿を受け取りました。公開の下書きをもう一度確かめてください。</Notice> : null}
     {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}

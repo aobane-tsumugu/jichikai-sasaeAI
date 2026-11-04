@@ -75,7 +75,7 @@ intakeAdmin.get("/intake", async (c) => {
   ]);
   const notice = c.req.query("n");
   return c.html(
-    <Layout title="送る" siteName={ward.name} noindex headerRight={<a href={adminPath(ward, "/")}>役員画面へ</a>}>
+    <Layout title="送る" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
       <h1>送る</h1>
       <p class="muted">持っている形のまま送ってください。分類も名前付けも要りません。</p>
       {notice === "withdrawn" ? <Notice>取り下げました。</Notice> : null}
@@ -86,6 +86,7 @@ intakeAdmin.get("/intake", async (c) => {
           <>
             <label for="project_id">どのプロジェクトか</label>
             <select id="project_id" name="project_id">
+              <option value="" selected={!projectId}>プロジェクトに当てず受け箱へ</option>
               {choices.map((p) => (
                 <option value={p.projectId} selected={p.projectId === projectId}>
                   {p.title}
@@ -195,6 +196,7 @@ intakeAdmin.post("/intake", async (c) => {
       accountId: account.accountId,
       parts,
     });
+    if (!projectId && !wantsJson) return c.redirect(adminPath(ward, "/inbox"), 303);
     if (!outcome.jobId) {
       return reply(true, "同じ物でした。", { jobId: null, duplicates: outcome.duplicates.length });
     }

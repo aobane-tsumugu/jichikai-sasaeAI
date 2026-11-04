@@ -18,7 +18,7 @@ admin.get("/space/:projectId", async (c) => {
   if (!project) return c.notFound();
   const space = await getSpace(c.env.DB, c.var.ward.wardId, projectId);
   return c.html(
-    <Layout title={`プロジェクトの空間 - ${project.title}`} siteName={c.var.ward.name} noindex>
+    <Layout title={`プロジェクトの空間 - ${project.title}`} siteName={c.var.ward.name} noindex adminHomeHref={adminPath(c.var.ward.slug, "/")}>
       <h1>{project.title} の空間</h1>
       <p>状態: {space?.closed_at ? "閉じています" : space ? "開いています" : "まだ開いていません"}</p>
       <form method="post" action={adminPath(c.var.ward.slug, `/space/${encodeURIComponent(projectId)}/open`)} class="panel">

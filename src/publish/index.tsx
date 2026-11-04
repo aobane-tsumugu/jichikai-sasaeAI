@@ -89,18 +89,28 @@ admin.get("/publish/:projectId", async (c) => {
     <AdminPage ward={ward} account={account} title="配る" back={{ href: adminPath(ward, "/projects"), label: "プロジェクト一覧へ" }}>
       <h1>{project.title} を配る</h1>
       {project.closed_at ? <Notice error>このプロジェクトは閉じています。</Notice> : null}
+      {c.req.query("space") === "sent" ? <Notice>プロジェクトの空間に出しました。</Notice> : null}
       {allowance ? <p>公式 LINE の友だち {allowance.friends ?? "確認中"} 人、今月の残り {allowance.remaining ?? "制限なし"} 通です。</p> : null}
       {allowanceError ? <Notice error>{allowanceError}</Notice> : null}
       {drafts.length === 0 ? <Notice>配れる案内はありません。案内の下書きを先に用意してください。</Notice> : null}
       {drafts.map((draft) => (
         <section class="panel" key={draft.document_id}>
           <h2>{draft.title}</h2>
-          <p>案内 {draft.version_no}。{draft.published_at ? "すでに配っています。差し替える時は下の一覧から新しい案を開いてください。" : ""}</p>
+          <p>{draft.published_at ? "すでに出しています。" : "まだ出していません。"}</p>
           {draft.stale_since_version !== null
             ? <Notice error>新しい物が入っています。案を直すか、このまま配るか選んでください。</Notice>
             : null}
           <p><a href={adminPath(ward, `/publish/${projectId}/preview/${draft.document_id}/${draft.version_no}`)}>見た内容を確認する</a></p>
-          {!project.closed_at ? <form method="post" action={adminPath(ward, `/publish/${projectId}/confirm`)}>
+          {draft.scope === "space" ? <>
+            <p>実行委員と班長に見せる物です。公開ページには出ません。</p>
+            {!project.closed_at && draft.stale_since_version === null && !draft.published_at ? <form method="post" action={adminPath(ward, `/publish/${projectId}/space`)}>
+              <input type="hidden" name="documentId" value={draft.document_id} />
+              <input type="hidden" name="versionId" value={draft.version_id} />
+              <input type="hidden" name="versionNo" value={draft.version_no} />
+              <button type="submit">空間に配る</button>
+            </form> : null}
+          </> : null}
+          {draft.scope === "public" && !project.closed_at ? <form method="post" action={adminPath(ward, `/publish/${projectId}/confirm`)}>
             <input type="hidden" name="documentId" value={draft.document_id} />
             <input type="hidden" name="versionId" value={draft.version_id} />
             <input type="hidden" name="versionNo" value={draft.version_no} />
@@ -115,7 +125,7 @@ admin.get("/publish/:projectId", async (c) => {
       <h2>これまでに配った案内</h2>
       {records.results.length === 0 ? <p>まだ配っていません。</p> : records.results.map((record) => (
         <section class="panel" key={record.publication_id}>
-          <p>{new Date(record.published_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}、案内 {record.version_no}</p>
+          <p>{new Date(record.published_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}に配りました。</p>
           <p>配布先: {record.recipient_scope === "all_households" ? "全戸" : "加入世帯"}</p>
           <p>公式 LINE: {record.line_status === "sent" ? `${record.line_recipients ?? 0} 人に送信済み` : record.line_status === "failed" ? "送信できませんでした" : record.line_status === "not_configured" ? "接続設定なし" : "送信待ち"}</p>
           {record.line_error ? <p>{record.line_error}</p> : null}
@@ -128,22 +138,48 @@ admin.get("/publish/:projectId", async (c) => {
   );
 });
 
+admin.post("/publish/:projectId/space", async (c) => {
+  const { ward, account } = c.var;
+  const projectId = c.req.param("projectId");
+  const form = await c.req.formData();
+  const documentId = String(form.get("documentId") ?? "");
+  const versionId = String(form.get("versionId") ?? "");
+  const versionNo = Number(form.get("versionNo"));
+  const project = await getProject(c.env.DB, ward.wardId, projectId);
+  if (!project || project.closed_at) return c.notFound();
+  const row = await c.env.DB.prepare(`SELECT d.kind, d.scope, d.stale_since_version, v.version_id, v.version_no, v.published_at
+    FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
+    WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_id = ? AND v.version_no = ?`)
+    .bind(ward.wardId, projectId, documentId, versionId, versionNo)
+    .first<{ kind: string; scope: string; stale_since_version: number | null; version_id: string; version_no: number; published_at: string | null }>();
+  if (!row || row.scope !== "space" || !["duty_roster", "procedure"].includes(row.kind) || row.published_at || row.stale_since_version !== null) return c.notFound();
+  const now = nowIso();
+  const result = await c.env.DB.prepare(`UPDATE document_versions SET published_at = ?, published_by_account_id = ?
+    WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_id = ? AND version_no = ? AND published_at IS NULL
+      AND EXISTS (SELECT 1 FROM documents d WHERE d.ward_id = ? AND d.document_id = ? AND d.scope = 'space' AND d.stale_since_version IS NULL)
+      AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL)`)
+    .bind(now, account.accountId, ward.wardId, projectId, documentId, versionId, versionNo,
+      ward.wardId, documentId, ward.wardId, projectId).run();
+  if ((result.meta.changes ?? 0) !== 1) return c.text("新しい物が入っています。案を見直してください。", 409);
+  return c.redirect(adminPath(ward, `/publish/${projectId}?space=sent`), 303);
+});
+
 admin.get("/publish/:projectId/preview/:documentId/:versionNo", async (c) => {
   const { ward, account } = c.var;
-  const row = await c.env.DB.prepare(`SELECT d.title, v.body, v.version_no FROM documents d
+  const row = await c.env.DB.prepare(`SELECT d.title, d.scope, v.body, v.version_no FROM documents d
     JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
     WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_no = ?`)
     .bind(ward.wardId, c.req.param("projectId"), c.req.param("documentId"), Number(c.req.param("versionNo")))
-    .first<{ title: string; body: string; version_no: number }>();
+    .first<{ title: string; scope: string; body: string; version_no: number }>();
   if (!row) return c.notFound();
   return c.html(<AdminPage ward={ward} account={account} title={row.title} back={{ href: adminPath(ward, `/publish/${c.req.param("projectId")}`), label: "配る画面へ戻る" }}>
     <h1>{row.title}</h1><ArticleBody body={row.body} />
-    <form method="post" action={adminPath(ward, `/publish/${c.req.param("projectId")}/confirm`)}>
+    {row.scope === "public" ? <form method="post" action={adminPath(ward, `/publish/${c.req.param("projectId")}/confirm`)}>
       <input type="hidden" name="documentId" value={c.req.param("documentId")} />
       <input type="hidden" name="versionNo" value={row.version_no} />
       <p>この内容を見た上で、公開と公式 LINE の送信に進みます。</p>
       <button type="submit">配る内容を確認する</button>
-    </form>
+    </form> : <p>この物は実行委員と班長に配る内容です。</p>}
   </AdminPage>);
 });
 
@@ -163,6 +199,7 @@ admin.post("/publish/:projectId/confirm", async (c) => {
     .first<DraftRow>();
   if (!draft || (requestedVersionId && requestedVersionId !== draft.version_id)) return c.notFound();
   if (draft.scope !== "public") return c.text("公開する案内は公開の範囲にしてください。", 400);
+  if (draft.kind === "duty_roster") return c.text("当番表は公開せず、プロジェクトの空間に配ってください。", 400);
   if (!(DOCUMENT_KINDS as readonly string[]).includes(draft.kind)) return c.text("文書の種類を確認できません。", 400);
   const warnings = await checkPublicDraft(c.env.DB, ward.wardId, project.project_id, draft.kind as DocumentKind, draft.body);
   if (warnings.length > 0) return c.text(warnings.join("\n"), 400);
@@ -204,6 +241,7 @@ admin.post("/publish/:projectId/send", async (c) => {
       WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_id = ? AND v.version_no = ?`)
     .bind(ward.wardId, projectId, documentId, versionId, versionNo).first<DraftRow>();
   if (!row || row.scope !== "public" || row.published_at) return c.notFound();
+  if (row.kind === "duty_roster") return c.text("当番表は公開せず、プロジェクトの空間に配ってください。", 400);
   if (row.stale_since_version !== null) {
     return c.html(<AdminPage ward={ward} account={account} title="新しい物が入りました" back={{ href: adminPath(ward, `/publish/${projectId}`), label: "案に戻る" }}>
       <h1>新しい物が入りました</h1><p>案を直すか、このまま配るか選び直してください。</p>

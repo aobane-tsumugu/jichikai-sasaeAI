@@ -10,6 +10,8 @@ import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, ITEMS_BY_KIND, SCOPES,
 import { getDraftPack, listDraftPacks } from "./packs";
 import type { DraftBody } from "./packs/types";
 import { getDutyDraftHelpers } from "../answers/api";
+import { getTemplates } from "../settings/store";
+import { renderTemplate } from "../settings/keys";
 
 const admin = new Hono<AdminEnv>();
 const isKind = (value: string): value is DocumentKind => (DOCUMENT_KINDS as readonly string[]).includes(value);
@@ -24,10 +26,11 @@ function parseBody(raw: string): DraftBody {
 admin.get("/projects/:projectId/draft", async (c) => {
   const { ward } = c.var; const id = c.req.param("projectId"); const project = await getProjectSummary(c.env.DB, ward.wardId, id);
   if (!project) return c.notFound();
-  return c.html(<Layout title={`案: ${project.title}`} siteName={ward.name} noindex headerRight={<a href={adminPath(ward, `/projects/${id}`)}>プロジェクトへ</a>}>
+  return c.html(<Layout title={`案: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, `/projects/${id}`)}>プロジェクトへ</a>}>
     <h1>{project.title} の案</h1><p>文書を選び、必要ならAIに案を起こさせます。AIが止まっている時も、ここで書いて保存できます。</p>
     {c.req.query("notice") === "saved" ? <Notice>保存しました。今年の中身にも反映しました。</Notice> : null}
     {c.req.query("notice") === "started" ? <Notice>案を起こす依頼を受けました。画面を閉じても処理は続きます。</Notice> : null}
+    {c.req.query("notice") === "restored" ? <Notice>前の案を戻して、新しい案として保存しました。</Notice> : null}
     {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}
     {listDraftPacks().map((pack) => <section class="panel"><h2><a href={adminPath(ward, `/projects/${id}/draft/${pack.kind}`)}>{pack.title}</a></h2><p>範囲: {SCOPE_LABEL[pack.scope]}</p>
       <form method="post" action={adminPath(ward, `/projects/${id}/draft/${pack.kind}/start`)}><button class="secondary">AIに案を起こしてもらう</button></form>
@@ -43,14 +46,15 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
   if (!project || !state) return c.notFound();
   const pack = getDraftPack(kindRaw); const body = document ? parseBody(document.body) : { text: "", items: state.items.map((item) => ({ key: item.key, content: item.current?.content ?? "" })) };
   const scope = document?.scope ?? pack.scope; const baseVersion = document?.stateVersion ?? project.stateVersion;
+  const templates = kindRaw === "notice" ? await getTemplates(c.env.DB, ward.wardId) : [];
   const versions = document ? await c.env.DB.prepare("SELECT version_no, body, created_at, origin FROM document_versions WHERE ward_id = ? AND project_id = ? AND document_id = ? ORDER BY version_no DESC LIMIT 8").bind(ward.wardId, id, document.documentId).all<{ version_no: number; body: string; created_at: string; origin: string }>() : { results: [] };
-  return c.html(<Layout title={`${pack.title}を直す`} siteName={ward.name} noindex headerRight={<a href={adminPath(ward, `/projects/${id}/draft`)}>案の一覧</a>}>
+  return c.html(<Layout title={`${pack.title}を直す`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, `/projects/${id}/draft`)}>案の一覧</a>}>
     <h1>{pack.title}を直す</h1>
     {document?.stale ? <Notice>新しい物が入りました。<a href={adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}>案を直す</a> / このまま</Notice> : null}
     <form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/save`)}>
       <input type="hidden" name="based_on" value={baseVersion} />
       <label for="title">文書の題</label><input id="title" name="title" value={document?.title ?? pack.title} maxlength={100} required />
-      <label for="scope">見られる範囲</label><select id="scope" name="scope">{SCOPES.map((v) => <option value={v} selected={v === scope}>{SCOPE_LABEL[v]}</option>)}</select>
+      {kindRaw === "duty_roster" ? <><input type="hidden" name="scope" value="space" /><p>当番表は実行委員と班長にだけ見えます。</p></> : <><label for="scope">見られる範囲</label><select id="scope" name="scope">{SCOPES.map((v) => <option value={v} selected={v === scope}>{SCOPE_LABEL[v]}</option>)}</select></>}
       <label for="text">文</label><textarea id="text" name="text" rows={12} maxlength={20000} style="width:100%;font:inherit;padding:.65rem">{body.text}</textarea>
       <h2>今年の中身</h2>
       {ITEMS_BY_KIND[project.kind].map((key) => { const value = body.items.find((x) => x.key === key)?.content ?? ""; const item = state.items.find((x) => x.key === key); return <div>
@@ -59,11 +63,73 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
       </div>; })}
       <p><button type="submit">直した中身を保存</button></p>
     </form>
+    {kindRaw === "notice" && !project.closedAt ? <section class="panel">
+      <h2>雨天の知らせをすぐ用意</h2>
+      <p>定型文に会場と日時を入れて、配る画面へ進みます。AIは使いません。</p>
+      <form method="post" action={adminPath(ward, `/projects/${id}/draft/rain-notice`)}>
+        <label for="rain-template">定型文</label><select id="rain-template" name="templateId" required>{templates.map((template) => <option value={template.id}>{template.name}</option>)}</select>
+        <label for="rain-event">行事名</label><input id="rain-event" name="eventName" value={project.title} maxlength={100} required />
+        <label for="rain-place">変更後の会場</label><input id="rain-place" name="place" value={state.items.find((item) => item.key === "place")?.current?.content ?? ""} maxlength={200} required />
+        <label for="rain-date">日時</label><input id="rain-date" name="dateTime" value={state.items.find((item) => item.key === "date_time")?.current?.content ?? ""} maxlength={200} required />
+        <p><button type="submit">定型文で知らせを作る</button></p>
+      </form>
+    </section> : null}
     {document ? <h2>前の案</h2> : null}
-    {versions.results.map((v) => { const old = parseBody(v.body); return <details><summary>{v.version_no} / {v.origin === "ai" ? "AIの案" : "役員が直した案"}</summary><pre style="white-space:pre-wrap">{old.text}</pre></details>; })}
+    {versions.results.map((v) => { const old = parseBody(v.body); return <details><summary>{v.origin === "ai" ? "AIの案" : "役員が直した案"}</summary><pre style="white-space:pre-wrap">{old.text}</pre>
+      {!project.closedAt ? <form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/restore/${v.version_no}`}><button class="secondary">この案に戻す</button></form> : null}
+    </details>; })}
     <form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/start`)}><button class="secondary">AIに案を起こしてもらう</button></form>
     <p><a href={adminPath(ward, `/publish/${id}`)}>配る</a></p>
   </Layout>);
+});
+
+admin.post("/projects/:projectId/draft/:kind/restore/:versionNo", async (c) => {
+  const { ward, account } = c.var; const id = c.req.param("projectId"); const kindRaw = c.req.param("kind");
+  if (!isKind(kindRaw)) return c.notFound();
+  const versionNo = Number(c.req.param("versionNo"));
+  if (!Number.isInteger(versionNo) || versionNo < 1) return c.notFound();
+  const [project, current, prior] = await Promise.all([
+    getProjectSummary(c.env.DB, ward.wardId, id),
+    getProjectState(c.env.DB, ward.wardId, id),
+    c.env.DB.prepare(`SELECT v.body, v.scope FROM documents d JOIN document_versions v
+      ON v.ward_id = d.ward_id AND v.document_id = d.document_id
+      WHERE d.ward_id = ? AND d.project_id = ? AND d.kind = ? AND v.version_no = ?`)
+      .bind(ward.wardId, id, kindRaw, versionNo).first<{ body: string; scope: Scope }>(),
+  ]);
+  if (!project || !current || project.closedAt || !prior) return c.notFound();
+  const restored = parseBody(prior.body);
+  const ok = await saveDocument(c.env.DB, ward.wardId, id, account.accountId, {
+    kind: kindRaw,
+    title: DOCUMENT_KIND_LABEL[kindRaw],
+    scope: kindRaw === "duty_roster" ? "space" : prior.scope,
+    body: JSON.stringify(restored),
+    basedOn: project.stateVersion,
+  });
+  return c.redirect(`${adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}?${ok ? "notice=restored" : "error=" + encodeURIComponent("前の案を戻せませんでした")}`, 303);
+});
+
+admin.post("/projects/:projectId/draft/rain-notice", async (c) => {
+  const { ward, account } = c.var; const id = c.req.param("projectId"); const form = await c.req.formData();
+  const [project, templates] = await Promise.all([
+    getProjectSummary(c.env.DB, ward.wardId, id),
+    getTemplates(c.env.DB, ward.wardId),
+  ]);
+  if (!project || project.closedAt) return c.notFound();
+  const template = templates.find((item) => item.id === String(form.get("templateId") ?? ""));
+  const eventName = String(form.get("eventName") ?? "").trim();
+  const place = String(form.get("place") ?? "").trim();
+  const dateTime = String(form.get("dateTime") ?? "").trim();
+  if (!template || !eventName || !place || !dateTime) return c.redirect(`${adminPath(ward, `/projects/${id}/draft/notice`)}?error=${encodeURIComponent("定型文と会場、日時を入力してください")}`, 303);
+  const text = renderTemplate(template.body, { 行事名: eventName, 会場: place, 日時: dateTime });
+  if (/\{[^{}]+\}/.test(text)) return c.redirect(`${adminPath(ward, `/projects/${id}/draft/notice`)}?error=${encodeURIComponent("定型文に置き換えられない項目があります")}`, 303);
+  const state = await getProjectState(c.env.DB, ward.wardId, id);
+  if (!state) return c.notFound();
+  const ok = await saveDocument(c.env.DB, ward.wardId, id, account.accountId, {
+    kind: "notice", title: "雨天の変更のお知らせ", scope: "public",
+    body: JSON.stringify({ text, items: [] }), basedOn: state.project.stateVersion,
+  });
+  if (!ok) return c.redirect(`${adminPath(ward, `/projects/${id}/draft/notice`)}?error=${encodeURIComponent("知らせを保存できませんでした")}`, 303);
+  return c.redirect(`${adminPath(ward, `/publish/${id}`)}`, 303);
 });
 
 admin.post("/projects/:projectId/draft/:kind/save", async (c) => {
@@ -71,7 +137,7 @@ admin.post("/projects/:projectId/draft/:kind/save", async (c) => {
   if (!isKind(kindRaw)) return c.notFound();
   const form = await c.req.formData(); const state = await getProjectState(c.env.DB, ward.wardId, id);
   if (!state) return c.notFound();
-  const scopeRaw = String(form.get("scope")); if (!(SCOPES as readonly string[]).includes(scopeRaw)) return c.notFound();
+  const scopeRaw = String(form.get("scope")); if (!(SCOPES as readonly string[]).includes(scopeRaw) || (kindRaw === "duty_roster" && scopeRaw !== "space")) return c.notFound();
   const body: DraftBody = { text: String(form.get("text") ?? ""), items: ITEMS_BY_KIND[state.project.kind].map((key) => ({ key, content: String(form.get(`item_${key}`) ?? "").trim() })).filter((i) => i.content !== "") };
   const ok = await saveDocument(c.env.DB, ward.wardId, id, account.accountId, { kind: kindRaw, title: String(form.get("title") ?? ""), scope: scopeRaw as Scope, body: JSON.stringify(body), basedOn: Number(form.get("based_on")) });
   return c.redirect(`${adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}?${ok ? "notice=saved" : "error=" + encodeURIComponent("保存できませんでした。入力を確かめてください")}`, 303);

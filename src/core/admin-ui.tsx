@@ -16,14 +16,18 @@ export const AdminPage: FC<
   <Layout
     title={`${title} ${ward.name}`}
     siteName={ward.name}
+    adminHomeHref={adminPath(ward, "/")}
     noindex
     headerRight={
-      <form class="inline" method="post" action={adminPath(ward, "/logout")}>
-        <span class="muted">{account.name} </span>
-        <button type="submit" class="secondary">
-          ログアウト
-        </button>
-      </form>
+      <>
+        <a href={adminPath(ward, "/")}>役員画面</a>{" "}
+        <form class="inline" method="post" action={adminPath(ward, "/logout")}>
+          <span class="muted">{account.name} </span>
+          <button type="submit" class="secondary">
+            ログアウト
+          </button>
+        </form>
+      </>
     }
   >
     {back ? (

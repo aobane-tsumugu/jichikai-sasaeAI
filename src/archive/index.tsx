@@ -20,7 +20,7 @@ admin.get("/archive", async (c) => {
     const month = project.closedAt?.slice(0, 7) ?? "日付不明";
     byMonth.set(month, [...(byMonth.get(month) ?? []), project]);
   }
-  return c.html(<Layout title="記録" siteName={ward.name} noindex headerRight={<a href={adminPath(ward, "/projects")}>プロジェクト一覧</a>}>
+  return c.html(<Layout title="記録" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/projects")}>プロジェクト一覧</a>}>
     <h1>記録</h1>
     {[...byMonth.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([month, entries]) => <section><h2>{month}</h2>{entries.map((p) => <article class="panel">
       <h3><a href={adminPath(ward, `/archive/${p.projectId}`)}>{p.title}</a></h3><p>{p.year}年 / {PROJECT_KIND_LABEL[p.kind]}</p>
@@ -40,7 +40,7 @@ admin.get("/archive/:projectId", async (c) => {
     c.env.DB.prepare(`SELECT o.original_id, o.filename, o.kind FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
       WHERE o.ward_id = ? AND j.project_id = ? AND o.withdrawn_at IS NULL ORDER BY o.received_at`).bind(ward.wardId, id).all<{ original_id: string; filename: string; kind: string }>(),
   ]);
-  return c.html(<Layout title={`記録: ${project.title}`} siteName={ward.name} noindex>
+  return c.html(<Layout title={`記録: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>{project.title}</h1><p>{project.year}年に閉じたプロジェクト</p>
     <h2>地図</h2>{map.results?.map((task) => <section class="panel"><h3>{task.name}</h3><p>{task.period} / {task.progress === "done" ? "済み" : task.progress === "started" ? "進行中" : "これから"}</p>
       {task.requested_by ? <p>頼んだ人: {task.requested_by}</p> : null}{task.difficulty ? <p>困ったこと: {task.difficulty}</p> : null}{task.next_year ? <p>来年変えること: {task.next_year}</p> : null}</section>)}

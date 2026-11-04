@@ -8,6 +8,7 @@ import { markInboxItemUnrelated } from "./intake";
 import { acceptLineWebhook } from "./webhook";
 import { createProject } from "../project/api";
 import { assignProject, withdrawJob } from "../intake/api";
+import { listJobs, listOriginals } from "../intake/store";
 
 interface InboxRow {
   item_id: string;
@@ -36,6 +37,7 @@ admin.get("/inbox", async (c) => {
   const { wardId, slug, name } = c.var.ward;
   const db = c.env.DB;
   const items = await listInboxItems(db, wardId);
+  const cityJobs = (await listJobs(db, wardId, { limit: 100 })).filter((job) => job.via === "admin" && job.project_id === null && job.withdrawn_at === null);
   const projects = await db.prepare(`
     SELECT project_id, title AS name FROM projects WHERE ward_id = ? AND closed_at IS NULL ORDER BY created_at DESC
   `).bind(wardId).all<{ project_id: string; name: string }>();
@@ -43,10 +45,37 @@ admin.get("/inbox", async (c) => {
     SELECT day, item_count FROM line_unrelated_daily_counts WHERE ward_id = ? ORDER BY day DESC LIMIT 30
   `).bind(wardId).all<{ day: string; item_count: number }>();
   return c.html(
-    <Layout title="受け箱" siteName={name} noindex>
+    <Layout title="受け箱" siteName={name} noindex adminHomeHref={`/${slug}/admin/`}>
       <h1>受け箱</h1>
       <p>公式 LINE に届いた文と写真です。仕分けをしなくてもかまいません。</p>
       {items.length === 0 ? <p>入った物はありません。</p> : null}
+      <h2>市の通知など、プロジェクト未定の写真</h2>
+      <p><a class="button secondary" href={`/${slug}/admin/intake`}>通知を撮って送る</a></p>
+      {cityJobs.length === 0 ? <p>プロジェクト未定の写真はありません。</p> : null}
+      {await Promise.all(cityJobs.map(async (job) => {
+        const originals = await listOriginals(db, wardId, job.job_id);
+        return <section class="panel">
+          <strong>{job.first_filename || "撮った写真"}</strong>
+          <p>{new Date(job.created_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}</p>
+          <p>{job.status === "failed" ? "読めませんでした" : job.status === "done" ? "読み取り済み" : "読み取り中または確認中"}</p>
+          {originals.map((original) => <p><a href={`/${slug}/admin/intake/originals/${encodeURIComponent(original.original_id)}`}>届いた物を開く: {original.filename || "写真"}</a></p>)}
+          <form method="post" action={`/${slug}/admin/inbox/city/${encodeURIComponent(job.job_id)}`}>
+            <label for={`city-project-${job.job_id}`}>プロジェクトに当てる</label>
+            <select id={`city-project-${job.job_id}`} name="projectId" required>
+              <option value="">選んでください</option>
+              {projects.results.map((project) => <option value={project.project_id}>{project.name}</option>)}
+            </select>
+            <button type="submit">このプロジェクトに当てる</button>
+          </form>
+          <form method="post" action={`/${slug}/admin/inbox/city/${encodeURIComponent(job.job_id)}`}>
+            <label for={`city-title-${job.job_id}`}>新しいプロジェクトを開く</label>
+            <input id={`city-title-${job.job_id}`} name="projectName" type="text" maxlength={100} required />
+            <input type="hidden" name="kind" value="city_request" />
+            <input type="hidden" name="year" value={new Date().getFullYear()} />
+            <button class="secondary" name="operation" value="new-project">市の依頼として開く</button>
+          </form>
+        </section>;
+      }))}
       {items.map((item) => (
         <section class="panel" key={item.item_id}>
           <p><strong>{item.disposition === "matched" ? "AI が当てました" : "プロジェクト未定"}</strong></p>
@@ -80,6 +109,28 @@ admin.get("/inbox", async (c) => {
       <p><a href={`/${slug}/admin/`}>役員画面へ戻る</a></p>
     </Layout>,
   );
+});
+
+admin.post("/inbox/city/:jobId", async (c) => {
+  const { ward, account } = c.var;
+  const jobId = c.req.param("jobId");
+  const form = await c.req.formData();
+  const operation = String(form.get("operation") ?? "assign");
+  const job = await c.env.DB.prepare("SELECT via, project_id, withdrawn_at FROM jobs WHERE ward_id = ? AND job_id = ?")
+    .bind(ward.wardId, jobId).first<{ via: string; project_id: string | null; withdrawn_at: string | null }>();
+  if (!job || job.via !== "admin" || job.project_id !== null || job.withdrawn_at !== null) return c.notFound();
+  let projectId = String(form.get("projectId") ?? "");
+  if (operation === "new-project") {
+    const title = String(form.get("projectName") ?? "").trim();
+    const year = Number(form.get("year"));
+    if (!title || title.length > 100 || !Number.isInteger(year) || year < 2000 || year > 2100) return c.text("入力を確かめてください。", 400);
+    const created = await createProject(c.env.DB, ward.wardId, { kind: "city_request", title, year, accountId: account.accountId });
+    projectId = created.projectId;
+  }
+  if (!projectId || !(await c.env.DB.prepare("SELECT 1 AS ok FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL")
+    .bind(ward.wardId, projectId).first())) return c.text("開いているプロジェクトを選んでください。", 400);
+  await assignProject(c.env, c.executionCtx, ward.wardId, jobId, projectId);
+  return c.redirect(`/${ward.slug}/admin/projects/${encodeURIComponent(projectId)}/map`, 303);
 });
 
 admin.get("/inbox/:itemId/original", async (c) => {
