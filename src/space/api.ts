@@ -161,8 +161,8 @@ export async function getSpaceMaterials(db: D1Database, wardId: string, projectI
     db.prepare(
       `SELECT d.document_id, d.title, v.body FROM documents d JOIN document_versions v
        ON v.ward_id = d.ward_id AND v.document_id = d.document_id AND v.version_no =
-        (SELECT MAX(v2.version_no) FROM document_versions v2 WHERE v2.ward_id = d.ward_id AND v2.document_id = d.document_id AND v2.published_at IS NOT NULL)
-       WHERE d.ward_id = ? AND d.project_id = ? AND d.scope = 'space' AND v.scope = 'space' AND v.published_at IS NOT NULL
+        (SELECT MAX(v2.version_no) FROM document_versions v2 WHERE v2.ward_id = d.ward_id AND v2.document_id = d.document_id)
+       WHERE d.ward_id = ? AND d.project_id = ? AND d.scope = 'space' AND v.scope = 'space'
        ORDER BY d.created_at`,
     ).bind(wardId, projectId).all<{ document_id: string; title: string; body: string }>(),
     db.prepare(

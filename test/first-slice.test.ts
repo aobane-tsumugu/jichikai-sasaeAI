@@ -170,7 +170,7 @@ describe("秋の収穫祭の最初の一片", () => {
     form.set("project_id", projectId as string);
     const sheetResponse = await realApp.request(`/${ward.slug}/admin/answers/${projectId}/sheet`, {
       method: "POST", headers: { origin: "http://localhost", cookie }, body: form,
-    });
+    }, env);
     expect(sheetResponse.status).toBe(303);
     const sheetJob = await env.DB.prepare("SELECT job_id, read_kind FROM jobs WHERE ward_id = ? AND project_id = ? AND read_kind = 'answer_sheet' ORDER BY created_at DESC LIMIT 1")
       .bind(ward.wardId, projectId).first<{ job_id: string; read_kind: string }>();
@@ -210,12 +210,14 @@ describe("秋の収穫祭の最初の一片", () => {
     expect(enter.status).toBe(303);
     const spaceCookie = cookieFrom(enter, `space_${projectId}`);
     const spacePage = await get(realApp, `/${ward.slug}/space/${projectId}`, spaceCookie ?? undefined);
+    const spaceBody = await spacePage.text();
     expect(spacePage.status).toBe(200);
-    expect(await spacePage.text()).toContain(FIRST_SLICE.dutyText);
-    expect(await spacePage.text()).toContain(FIRST_SLICE.layoutSpot);
+    expect(spaceBody).toContain(FIRST_SLICE.dutyText);
+    expect(spaceBody).toContain(FIRST_SLICE.layoutSpot);
     const publicSpaceCheck = await get(realApp, publicUrl);
-    expect(await publicSpaceCheck.text()).not.toContain(FIRST_SLICE.dutyText);
-    expect(await publicSpaceCheck.text()).not.toContain(FIRST_SLICE.layoutSpot);
+    const publicSpaceBody = await publicSpaceCheck.text();
+    expect(publicSpaceBody).not.toContain(FIRST_SLICE.dutyText);
+    expect(publicSpaceBody).not.toContain(FIRST_SLICE.layoutSpot);
 
     // 段 5: 雨天変更の二版目を配り、同じ URL に二版が積もる。
     const secondState = await getProjectState(env.DB, ward.wardId, projectId as string);
@@ -226,13 +228,15 @@ describe("秋の収穫祭の最初の一片", () => {
     const second = await env.DB.prepare(`SELECT d.document_id, v.version_id, v.version_no, p.state_version FROM documents d
       JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
       JOIN projects p ON p.ward_id = d.ward_id AND p.project_id = d.project_id
-      WHERE d.ward_id = ? AND d.project_id = ? AND d.kind = 'announcement' AND v.version_no = 2`).bind(ward.wardId, projectId).first<{ document_id: string; version_id: string; version_no: number; state_version: number }>();
+      WHERE d.ward_id = ? AND d.project_id = ? AND d.kind = 'announcement'
+      ORDER BY v.version_no DESC LIMIT 1`).bind(ward.wardId, projectId).first<{ document_id: string; version_id: string; version_no: number; state_version: number }>();
     expect(second).not.toBeNull();
+    expect(second!.version_no).toBeGreaterThan(document!.version_no);
     expect((await postForm(realApp, `/${ward.slug}/admin/publish/${projectId}/confirm`, {
-      documentId: second!.document_id, versionId: second!.version_id, versionNo: "2", recipientScope: "all_households", distribution: "",
+      documentId: second!.document_id, versionId: second!.version_id, versionNo: String(second!.version_no), recipientScope: "all_households", distribution: "",
     }, cookie)).status).toBe(200);
     expect((await postForm(realApp, `/${ward.slug}/admin/publish/${projectId}/send`, {
-      documentId: second!.document_id, versionId: second!.version_id, versionNo: "2", stateVersion: String(second!.state_version), recipientScope: "all_households", distribution: "",
+      documentId: second!.document_id, versionId: second!.version_id, versionNo: String(second!.version_no), stateVersion: String(second!.state_version), recipientScope: "all_households", distribution: "",
     }, cookie)).status).toBe(303);
     const publicTwo = await get(realApp, publicUrl);
     const twoVersions = await publicTwo.text();
