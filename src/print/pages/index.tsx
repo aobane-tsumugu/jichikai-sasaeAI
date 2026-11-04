@@ -24,6 +24,19 @@ interface PrintData {
 
 const admin = new Hono<AdminEnv>();
 
+admin.get("/print/:projectId/:documentId/:versionNo/preview", async (c) => {
+  const { ward } = c.var;
+  const row = await c.env.DB.prepare(`SELECT d.title, v.body, v.version_no FROM documents d
+    JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
+    WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_no = ?`)
+    .bind(ward.wardId, c.req.param("projectId"), c.req.param("documentId"), Number(c.req.param("versionNo")))
+    .first<{ title: string; body: string; version_no: number }>();
+  if (!row) return c.notFound();
+  return c.html(<PrintDocument title={`${row.title} 印刷の見え方`}>
+    <Sheet footer={<><span>{ward.name}</span><span>確認用</span></>}><h1>{row.title}</h1><ArticleBody body={row.body} /></Sheet>
+  </PrintDocument>);
+});
+
 admin.get("/print/:projectId/:documentId/:versionNo/:kind", async (c) => {
   const { ward } = c.var;
   const projectId = c.req.param("projectId");

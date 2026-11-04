@@ -6,59 +6,55 @@ import type { AdminEnv } from "../env";
 import { getProjectState, getProjectSummary } from "../project/api";
 import { getEditableDocument } from "../project/actions";
 import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, type DocumentKind } from "../project/model";
-import { newId, nowIso } from "../core/ids";
+import { getRoster } from "../answers/api";
 
-interface Finding { kind: "名簿の名前" | "名簿の電話" | "協賛の額" | "個人の連絡先"; value: string; }
-interface RosterRow { name: string; phone: string; }
+interface Finding { kind: "名簿の名前" | "協賛の額" | "個人の連絡先"; value: string; }
+interface PrivateRow { person_fields: string | null; data: string; }
 const normalizePhone = (s: string) => s.replace(/[^0-9]/g, "");
 
-async function saveRoster(db: D1Database, wardId: string, text: string): Promise<number> {
-  if (text.length > 100000) throw new Error("名簿が大きすぎます");
-  const rows: RosterRow[] = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
-    const [name = "", phone = ""] = line.split(/[\t,、]/, 2);
-    return { name: name.trim(), phone: phone.trim() };
-  }).filter((r) => r.name.length > 0 && r.name.length <= 100 && r.phone.length <= 40);
-  if (rows.length > 5000) throw new Error("名簿が大きすぎます");
-  await db.prepare("DELETE FROM check_roster WHERE ward_id = ?").bind(wardId).run();
-  if (rows.length) await db.batch(rows.map((r) => db.prepare("INSERT INTO check_roster (ward_id, entry_id, name, phone, created_at) VALUES (?, ?, ?, ?, ?)").bind(wardId, newId(), r.name, normalizePhone(r.phone), nowIso())));
-  return rows.length;
-}
-
-export async function checkPublicDraft(db: D1Database, wardId: string, projectId: string, kind: DocumentKind, raw: unknown): Promise<string[]> {
+export async function checkPublicDraft(db: D1Database, wardId: string, projectId: string, _kind: DocumentKind, raw: unknown): Promise<string[]> {
   let body: { text?: string; items?: Array<{ key?: string; content?: string }> };
   if (typeof raw === "string") {
-    try { body = JSON.parse(raw) as typeof body; } catch { return ["公開する文書の形を読めません"] ; }
+    try { body = JSON.parse(raw) as typeof body; } catch { return ["公開する文書の形を読めません"]; }
   } else if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) body = raw as typeof body;
   else return ["公開する文書の形を読み取れません"];
   const text = [body.text ?? "", ...(body.items ?? []).map((i) => i.content ?? "")].join("\n");
   const found: Finding[] = [];
-  const roster = await db.prepare("SELECT name, phone FROM check_roster WHERE ward_id = ? ORDER BY name").bind(wardId).all<RosterRow>();
+  const roster = await getRoster(db, wardId);
+  for (const entry of roster) if (entry.household.length >= 2 && text.includes(entry.household)) found.push({ kind: "名簿の名前", value: entry.household });
+
+  const state = await getProjectState(db, wardId, projectId);
+  const privateAmounts = state ? state.tables.sponsors.flatMap((r) => [r.data.amount, r.data.lastYearAmount]).filter((v): v is string | number => v !== undefined).map(String) : [];
+  const visibleAmounts = (text.match(/\d[\d,]*/g) ?? []).map((v) => Number(v.replace(/,/g, ""))).filter(Number.isFinite);
+  for (const amount of privateAmounts) if (Number.isFinite(Number(amount)) && visibleAmounts.includes(Number(amount))) found.push({ kind: "協賛の額", value: amount });
+
+  const privateRows = await db.prepare(`SELECT person_fields, data FROM project_rows WHERE ward_id = ? AND project_id = ?`).bind(wardId, projectId).all<PrivateRow>();
+  const privateValues = privateRows.results.flatMap((row) => {
+    const values: string[] = [];
+    for (const source of [row.person_fields, row.data]) {
+      if (!source) continue;
+      try {
+        const value: unknown = JSON.parse(source);
+        if (typeof value === "object" && value !== null) for (const item of Object.values(value)) {
+          if (typeof item === "string" && item.trim()) values.push(item.trim());
+        }
+      } catch { /* 読めない補助情報は照合対象にしない */ }
+    }
+    return values;
+  });
+  const publicContact = state?.items.find((i) => i.key === "public_contact")?.current?.content ?? "";
+  const isAllowed = (value: string) => publicContact.includes(value) || (normalizePhone(value).length >= 8 && normalizePhone(publicContact).includes(normalizePhone(value)));
   const email = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
   const phone = /(?:\+?81[- ]?)?0\d{1,4}[- ]?\d{1,4}[- ]?\d{3,4}/g;
-  const draftPhones = (text.match(phone) ?? []).map(normalizePhone);
-  for (const entry of roster.results) {
-    if (entry.name.length >= 2 && text.includes(entry.name)) found.push({ kind: "名簿の名前", value: entry.name });
-    if (entry.phone.length >= 8 && draftPhones.includes(entry.phone)) found.push({ kind: "名簿の電話", value: entry.phone });
-  }
-  const state = await getProjectState(db, wardId, projectId);
-  const privateRows = state ? state.tables.sponsors.flatMap((r) => [r.data.amount, r.data.lastYearAmount]).filter((v): v is string | number => v !== undefined).map(String) : [];
-  const visibleAmounts = (text.match(/\d[\d,]*/g) ?? []).map((v) => Number(v.replace(/,/g, ""))).filter(Number.isFinite);
-  for (const amount of privateRows.filter((v) => Number.isFinite(Number(v)))) {
-    if (visibleAmounts.includes(Number(amount))) found.push({ kind: "協賛の額", value: amount });
-  }
-  const publicContact = state?.items.find((i) => i.key === "public_contact")?.current?.content ?? "";
-  const allowed = (v: string) => publicContact.includes(v) || publicContact.replace(/\D/g, "").includes(v.replace(/\D/g, ""));
-  for (const value of text.match(email) ?? []) if (!allowed(value)) found.push({ kind: "個人の連絡先", value });
-  for (const value of text.match(phone) ?? []) if (normalizePhone(value).length >= 10 && !allowed(value)) found.push({ kind: "個人の連絡先", value });
-  const unique = new Map(found.map((f) => [`${f.kind}:${f.value}`, f]));
-  return [...unique.values()].map((finding) => `${finding.kind}: ${finding.value}`);
+  const contacts = [...privateValues.filter((v) => /@|\d{8,}/.test(v)), ...(text.match(email) ?? []), ...(text.match(phone) ?? []).filter((v) => normalizePhone(v).length >= 10)];
+  for (const value of contacts) if (!isAllowed(value) && text.includes(value)) found.push({ kind: "個人の連絡先", value });
+  return [...new Map(found.map((f) => [`${f.kind}:${f.value}`, f])).values()].map((f) => `${f.kind}: ${f.value}`);
 }
 
 async function scanDraft(db: D1Database, wardId: string, projectId: string, kind: DocumentKind): Promise<Finding[]> {
   const doc = await getEditableDocument(db, wardId, projectId, kind);
   if (!doc || doc.scope !== "public") return [];
-  const messages = await checkPublicDraft(db, wardId, projectId, kind, doc.body);
-  return messages.map((message) => {
+  return (await checkPublicDraft(db, wardId, projectId, kind, doc.body)).map((message) => {
     const [kindText, ...valueParts] = message.split(": ");
     return { kind: kindText as Finding["kind"], value: valueParts.join(": ") };
   });
@@ -67,31 +63,21 @@ async function scanDraft(db: D1Database, wardId: string, projectId: string, kind
 const admin = new Hono<AdminEnv>();
 admin.get("/projects/:projectId/check", async (c) => {
   const { ward } = c.var; const id = c.req.param("projectId");
-  const [project, rosterCount] = await Promise.all([
-    getProjectSummary(c.env.DB, ward.wardId, id),
-    c.env.DB.prepare("SELECT COUNT(*) AS count FROM check_roster WHERE ward_id = ?").bind(ward.wardId).first<{ count: number }>(),
-  ]);
+  const project = await getProjectSummary(c.env.DB, ward.wardId, id);
   if (!project) return c.notFound();
   const selected = c.req.query("document"); const kind = DOCUMENT_KINDS.includes(selected as DocumentKind) ? selected as DocumentKind : "announcement";
-  const [findings, selectedDocument] = await Promise.all([scanDraft(c.env.DB, ward.wardId, id, kind), getEditableDocument(c.env.DB, ward.wardId, id, kind)]);
+  const [findings, selectedDocument, roster] = await Promise.all([
+    scanDraft(c.env.DB, ward.wardId, id, kind), getEditableDocument(c.env.DB, ward.wardId, id, kind), getRoster(c.env.DB, ward.wardId),
+  ]);
   return c.html(<Layout title="公開の下書きを確かめる" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, `/projects/${id}`)}>プロジェクトへ</a>}>
     <h1>公開の下書きを確かめる</h1>
-    {c.req.query("saved") === "1" ? <Notice>名簿を受け取りました。公開の下書きをもう一度確かめてください。</Notice> : null}
-    {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}
-    <p>公開の下書きに、名簿の名前や電話、協賛の額、個人の連絡先が混ざっていないかを照合します。名簿は照合のために受け取ります。</p>
-    <h2>名簿を受け取る</h2><p>{rosterCount?.count ?? 0} 件を照合に使います。1 行に「名前,電話番号」の形で入れてください。電話番号は省略できます。</p>
-    <form method="post" action={adminPath(ward, `/projects/${id}/check/roster`)}><label for="roster">名簿の内容</label><textarea id="roster" name="roster" rows={8} style="width:100%;font:inherit;padding:.65rem"></textarea><button>受け取る</button></form>
+    <p>登録済みの名簿、協賛先、個人の連絡先と照合します。公開してよい連絡先は通します。</p>
+    <p>名簿: {roster.length} 世帯</p>
     <h2>確かめる文書</h2><form method="get" action={adminPath(ward, `/projects/${id}/check`)}><label for="document">文書</label><select id="document" name="document">{DOCUMENT_KINDS.map((k) => <option value={k} selected={k === kind}>{DOCUMENT_KIND_LABEL[k]}</option>)}</select><button class="secondary">開く</button></form>
     <h2>照合結果</h2>
-    {selectedDocument && selectedDocument.scope !== "public" ? <Notice>この文書の範囲は公開ではありません。公開にする時に照合してください。</Notice> : findings.length ? <><p>公開する前に、次の箇所を確認してください。</p>{findings.map((f) => <p class="notice error">{f.kind}: {f.value}</p>)}</> : <Notice>{rosterCount?.count ? "照合で見つかった物はありません。" : "名簿は未登録です。名前と電話の照合は名簿を受け取ると行えます。"}</Notice>}
+    {selectedDocument && selectedDocument.scope !== "public" ? <Notice>この文書の範囲は公開ではありません。公開にする時に照合してください。</Notice> : findings.length ? <><p>公開する前に、次の箇所を確認してください。</p>{findings.map((f) => <p class="notice error">{f.kind}: {f.value}</p>)}</> : <Notice>照合で見つかった物はありません。</Notice>}
     <p><a href={adminPath(ward, `/projects/${id}/draft/${kind}`)}>案を直す</a> / <a href={adminPath(ward, `/publish/${id}`)}>配る</a></p>
   </Layout>);
-});
-
-admin.post("/projects/:projectId/check/roster", async (c) => {
-  const { ward } = c.var; const form = await c.req.formData(); const id = c.req.param("projectId");
-  try { await saveRoster(c.env.DB, ward.wardId, String(form.get("roster") ?? "")); return c.redirect(`${adminPath(ward, `/projects/${id}/check`)}?saved=1`, 303); }
-  catch (e) { return c.redirect(`${adminPath(ward, `/projects/${id}/check`)}?error=${encodeURIComponent(e instanceof Error ? e.message : "名簿を受け取れませんでした")}`, 303); }
 });
 
 export { admin as checkAdmin };

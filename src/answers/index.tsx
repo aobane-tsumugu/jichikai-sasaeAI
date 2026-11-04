@@ -3,8 +3,9 @@ import type { Bundle } from "../core/bundle";
 import { Layout } from "../core/ui";
 import type { AdminEnv, WardEnv } from "../env";
 import type { AnswerSheetReading } from "../ai/schema";
+import type { Reading } from "../ai/schema";
 import type { Waitable } from "../intake/types";
-import { receiveOriginal } from "../intake/api";
+import { receiveOriginal, getReadings } from "../intake/api";
 import { SEND_SCRIPT } from "../intake/browser-script";
 import { getSquads } from "../settings/store";
 import {
@@ -66,6 +67,11 @@ admin.get("/answers/roster", async (c) => {
     <Layout title="名簿" siteName={c.var.ward.name} noindex adminHomeHref={adminPath(c.var.ward.slug, "/")}>
       <h1>名簿</h1>
       <p>CSV または Excel の一覧を選んでください。先頭の行から世帯名と班を見つけます。見つからない時だけ項目を選びます。</p>
+      <form method="post" action={adminPath(c.var.ward.slug, "/answers/roster/photo")} enctype="multipart/form-data">
+        <label for="roster-photo">見出しのない紙の名簿</label><input id="roster-photo" name="photo" type="file" accept="image/*,.pdf" capture="environment" required />
+        <button type="submit">写真を読み取る</button>
+      </form>
+      {c.req.query("job") ? <RosterPhotoResult wardSlug={c.var.ward.slug} wardId={c.var.ward.wardId} db={c.env.DB} jobId={c.req.query("job") ?? ""} /> : null}
       <form id="send-form" method="post" action={adminPath(c.var.ward.slug, "/answers/roster")} enctype="multipart/form-data">
         <label for="files">名簿ファイル</label>
         <input id="files" name="part" type="file" accept=".csv,.xlsx" required />
@@ -80,6 +86,51 @@ admin.get("/answers/roster", async (c) => {
       {entries.length ? <div class="panel"><h2>世帯と班</h2><div style="overflow-x:auto"><table><thead><tr><th>世帯</th><th>班</th></tr></thead><tbody>{entries.map((entry) => <tr><td>{entry.household}</td><td>{entry.district}</td></tr>)}</tbody></table></div></div> : null}
     </Layout>,
   );
+});
+
+async function RosterPhotoResult({ wardSlug, wardId, db, jobId }: { wardSlug: string; wardId: string; db: D1Database; jobId: string }) {
+  const readings = await getReadings(db, wardId, jobId);
+  const reading = readings.find((row) => "tables" in row.body)?.body;
+  if (!reading || !("tables" in reading)) return <p class="notice">読み取りが終わると、ここに名簿が表示されます。ページを開き直してください。</p>;
+  const tables = reading.tables.filter((table) => table.rows.length > 0);
+  return <section class="panel"><h2>読み取った名簿</h2>{tables.map((table, index) => <form method="post" action={adminPath(wardSlug, "/answers/roster/photo/import")}>
+    <p>{table.name}（{table.rows.length} 行）</p><div style="overflow-x:auto"><table><tbody>{table.rows.slice(0, 12).map((row) => <tr>{row.cells.map((cell) => <td>{cell}</td>)}</tr>)}</tbody></table></div>
+    <input type="hidden" name="jobId" value={jobId} /><input type="hidden" name="tableIndex" value={index} /><button type="submit">この名簿を使う</button>
+  </form>)}</section>;
+}
+
+admin.post("/answers/roster/photo", async (c) => {
+  const form = await c.req.formData();
+  const photo = form.get("photo");
+  if (!(photo instanceof File)) return c.text("名簿の写真を選んでください。", 400);
+  const outcome = await receiveOriginal(c.env, waitableContext(c), {
+    wardId: c.var.ward.wardId, via: "system", readKind: "general",
+    parts: [{ kind: "photo", filename: photo.name || "名簿の写真", mediaType: photo.type, bytes: new Uint8Array(await photo.arrayBuffer()) }],
+  });
+  if (!outcome.jobId) return c.redirect(adminPath(c.var.ward.slug, "/answers/roster"), 303);
+  return c.redirect(`${adminPath(c.var.ward.slug, "/answers/roster")}?job=${encodeURIComponent(outcome.jobId)}`, 303);
+});
+
+admin.post("/answers/roster/photo/import", async (c) => {
+  const form = await c.req.formData();
+  const jobId = String(form.get("jobId") ?? "");
+  const index = Number(form.get("tableIndex"));
+  const readings = await getReadings(c.env.DB, c.var.ward.wardId, jobId);
+  const reading = readings.find((row) => "tables" in row.body)?.body;
+  if (!reading || !("tables" in reading) || !Number.isInteger(index) || !reading.tables[index]) return c.text("読み取った名簿を確認できません。", 400);
+  const table = reading.tables[index];
+  const districts = await getDistricts(c.env.DB, c.var.ward.wardId);
+  let householdColumn = table.columns.findIndex((column) => /世帯|氏名|名前/.test(column));
+  let districtColumn = table.columns.findIndex((column) => /班|組/.test(column));
+  if (householdColumn < 0 || districtColumn < 0) {
+    const second = table.rows.length > 0 ? table.rows[0]?.cells.findIndex((cell, cellIndex) => cellIndex > 0 && districts.includes(cell.trim())) ?? -1 : -1;
+    if (second >= 0) { householdColumn = 0; districtColumn = second; }
+  }
+  if (householdColumn < 0 || districtColumn < 0 || householdColumn === districtColumn) return c.text("世帯名と班の列を読み取れませんでした。名簿ファイルから読み込んでください。", 400);
+  const rows = [table.columns, ...table.rows.map((row) => row.cells)];
+  const entries = rowsToRoster(rows, { household: householdColumn, district: districtColumn });
+  await replaceRoster(c.env.DB, c.var.ward.wardId, entries, { household: householdColumn, district: districtColumn });
+  return c.redirect(adminPath(c.var.ward.slug, "/answers/roster"), 303);
 });
 
 admin.post("/answers/roster", async (c) => {
