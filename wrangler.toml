@@ -16,8 +16,8 @@ PUBLIC_BASE_URL = ""
 [[d1_databases]]
 binding = "DB"
 database_name = "jichikai-sasae-staging"
-# ローカルと試験では仮の値で動く。配備の時に wrangler d1 create の結果へ置き換える
-database_id = "00000000-0000-0000-0000-000000000000"
+# staging の D1（wrangler d1 create の結果）。ローカルと試験は、この id によらず手元の D1 で動く
+database_id = "2f199b1c-5802-4276-97e0-ef4b2c719764"
 migrations_dir = "migrations"
 
 # 物置。原本、出した物、写し。キーは必ず区の ID で始める（src/core/storage.ts）
