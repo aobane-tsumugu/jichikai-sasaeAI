@@ -4,7 +4,7 @@
 import { Hono } from "hono";
 import type { Env, WardEnv } from "../env";
 import { sha256Hex } from "../intake/media";
-import { getReadings } from "../intake/store";
+import { getReadings, originalInProject } from "../intake/store";
 import type { JobRow } from "../intake/types";
 import { PACK_VERSION } from "./pack";
 import { projectApi } from "./project-binding";
@@ -35,13 +35,14 @@ export const TOOLS = [
   {
     name: "write_change",
     description:
-      "差分を一つ書く。kind は item（項目の中身）、row（表の行）、decision（決めたこと）、map_task（地図の仕事の済み、進み）、draft（文書の下書き）、map_draft（地図の下書き）。" +
-      "item、row、decision、map_task は original_id と locator（get_reading にある物）が要る。実在しない出どころの差分は捨てられる。",
+      "差分を一つ書く。kind は item（項目の中身）、row（表の行）、decision（決めたこと）、conflict（状態の中身との食い違い）、map_task（地図の仕事の済み、進み）、draft（文書の下書き）、map_draft（地図の下書き）。" +
+      "item、row、decision、conflict、map_task は original_id と locator（get_reading にある物）が要る。実在しない出どころの差分は捨てられる。",
     inputSchema: {
       type: "object",
       properties: {
         ticket: ticketProp,
-        kind: { type: "string", enum: ["item", "row", "decision", "map_task", "draft", "map_draft"] },
+        kind: { type: "string", enum: ["item", "row", "decision", "conflict", "map_task", "draft", "map_draft"] },
+        year: { type: "integer", description: "資料の年（get_reading の document_year）。資料に年が無ければ書かない" },
         original_id: { type: "string", description: "出どころの原本の ID（get_reading の original_id）" },
         locator: { type: "string", description: "元の箇所（get_reading の locator）" },
         target: { type: "string", description: "書く対象。項目の名前、表と相手、地図の仕事の名前、文書の種類など" },
@@ -59,6 +60,8 @@ export const TOOLS = [
       type: "object",
       properties: {
         ticket: ticketProp,
+        kind: { type: "string", enum: ["unreadable", "decide", "map_gap"], description: "unreadable は読めなかった所、decide は決めてほしい物、map_gap は地図に足りない物" },
+        target: { type: "string", description: "何についての問いか（項目の名前、「表の名前:相手」など）" },
         text: { type: "string", description: "役員への問い（一文）" },
         original_id: { type: "string" },
         locator: { type: "string" },
@@ -84,17 +87,8 @@ function asString(v: unknown, max = 4000): string {
   return typeof v === "string" ? v.slice(0, max) : "";
 }
 
-/** 出どころの原本が、この区のこのプロジェクトに実在するか（取り下げた物は数えない）。 */
-async function sourceExists(db: D1Database, job: JobRow, originalId: string): Promise<boolean> {
-  if (!originalId) return false;
-  const row = await db
-    .prepare(
-      `SELECT 1 AS x FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
-        WHERE o.ward_id = ? AND o.original_id = ? AND o.withdrawn_at IS NULL AND j.project_id = ?`,
-    )
-    .bind(job.ward_id, originalId, job.project_id)
-    .first();
-  return !!row;
+function sourceExists(db: D1Database, job: JobRow, originalId: string): Promise<boolean> {
+  return originalInProject(db, job.ward_id, job.project_id as string, originalId);
 }
 
 async function recordDiscard(db: D1Database, job: JobRow, reason: string): Promise<void> {
@@ -130,9 +124,9 @@ export async function callTool(env: Env, wardId: string, name: string, args: Rec
     }
     case "write_change": {
       const kind = asString(args.kind, 20) as ChangeKind;
-      if (!["item", "row", "decision", "map_task", "draft", "map_draft"].includes(kind)) return fail("kind が違います。");
+      if (!["item", "row", "decision", "conflict", "map_task", "draft", "map_draft"].includes(kind)) return fail("kind が違います。");
       const confidence = (["high", "medium", "low"].includes(asString(args.confidence, 10)) ? args.confidence : "low") as Confidence;
-      const needsSource = kind === "item" || kind === "row" || kind === "decision" || kind === "map_task";
+      const needsSource = kind !== "draft" && kind !== "map_draft";
       const originalId = asString(args.original_id, 100);
       if (needsSource && !(await sourceExists(env.DB, job, originalId))) {
         await recordDiscard(env.DB, job, `出どころの原本が見つからない差分を捨てました（${kind}: ${asString(args.target, 60)}）`);
@@ -142,6 +136,7 @@ export async function callTool(env: Env, wardId: string, name: string, args: Rec
         kind,
         originalId: originalId || null,
         locator: asString(args.locator, 200),
+        year: Number.isInteger(args.year) ? (args.year as number) : null,
         target: asString(args.target, 200),
         data: args.data ?? {},
         confidence,
@@ -153,7 +148,12 @@ export async function callTool(env: Env, wardId: string, name: string, args: Rec
       if (!text) return fail("問いの文が空です。");
       const originalId = asString(args.original_id, 100);
       const options = Array.isArray(args.options) ? args.options.filter((o): o is string => typeof o === "string").slice(0, 8) : [];
+      const questionKind = ["unreadable", "decide", "map_gap"].includes(asString(args.kind, 20))
+        ? (args.kind as "unreadable" | "decide" | "map_gap")
+        : "decide";
       const result = await api.addQuestion(env, ctx, {
+        kind: questionKind,
+        target: asString(args.target, 200),
         text,
         originalId: originalId && (await sourceExists(env.DB, job, originalId)) ? originalId : null,
         locator: asString(args.locator, 200),
