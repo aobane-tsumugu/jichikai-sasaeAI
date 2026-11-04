@@ -3,6 +3,7 @@ import type { Bundle } from "../core/bundle";
 import { Layout } from "../core/ui";
 import type { AdminEnv, WardEnv } from "../env";
 import type { AnswerSheetReading } from "../ai/schema";
+import type { Waitable } from "../intake/types";
 import { receiveOriginal } from "../intake/api";
 import { SEND_SCRIPT } from "../intake/browser-script";
 import { getSquads } from "../settings/store";
@@ -27,6 +28,17 @@ import {
 
 const admin = new Hono<AdminEnv>();
 const pub = new Hono<WardEnv>();
+
+/** Hono のテスト用 request には ExecutionContext が無い場合がある。 */
+function waitableContext(context: { executionCtx: Waitable }): Waitable {
+  try {
+    return context.executionCtx;
+  } catch {
+    // Hono の単体リクエストには背景処理の実行枠がない。そこで promise を
+    // fire-and-forget すると、試験側で明示的に処理する前に同じジョブを競合させる。
+    return { waitUntil: () => undefined };
+  }
+}
 
 admin.get("/answers", async (c) => {
   const rows = await c.env.DB.prepare("SELECT project_id, title, year FROM projects WHERE ward_id = ? ORDER BY year DESC, created_at DESC")
@@ -184,7 +196,7 @@ admin.post("/answers/:projectId/sheet", async (c) => {
   const extractedRaw = form.get("part_extracted");
   let extracted: unknown;
   if (typeof extractedRaw === "string" && extractedRaw) extracted = JSON.parse(extractedRaw);
-  await receiveOriginal(c.env, c.executionCtx, {
+  await receiveOriginal(c.env, waitableContext(c), {
     wardId: c.var.ward.wardId,
     projectId: c.req.param("projectId"),
     via: "admin",

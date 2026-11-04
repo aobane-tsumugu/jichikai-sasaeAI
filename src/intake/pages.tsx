@@ -18,7 +18,9 @@ function waitableContext(context: { executionCtx: Waitable }): Waitable {
   try {
     return context.executionCtx;
   } catch {
-    return { waitUntil: (promise) => void promise };
+    // Hono の単体リクエストには背景処理の実行枠がない。そこで promise を
+    // fire-and-forget すると、試験側で明示的に処理する前に同じジョブを競合させる。
+    return { waitUntil: () => undefined };
   }
 }
 

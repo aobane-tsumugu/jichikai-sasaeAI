@@ -4,6 +4,7 @@ import { adminPath } from "../core/auth";
 import { Layout, Notice } from "../core/ui";
 import { nowIso } from "../core/ids";
 import type { AdminEnv } from "../env";
+import type { Waitable } from "../intake/types";
 import { startTask } from "../ai/api";
 import { getProjectSummary } from "../project/api";
 import { saveDocument } from "../project/actions";
@@ -12,6 +13,15 @@ import { MAP_PROGRESS_LABEL, type MapProgress } from "../project/model";
 interface CloseTask { task_id: string; name: string; period_start: string | null; period_end: string | null; progress: MapProgress; }
 interface CloseEntry extends CloseTask { period: string; requested_by: string; difficulty: string; next_year: string; }
 const admin = new Hono<AdminEnv>();
+
+/** Hono のテスト用 request には ExecutionContext が無い場合がある。 */
+function waitableContext(context: { executionCtx: Waitable }): Waitable {
+  try {
+    return context.executionCtx;
+  } catch {
+    return { waitUntil: (promise) => void promise };
+  }
+}
 
 async function prepareDrafts(db: D1Database, wardId: string, projectId: string, accountId: string) {
   const project = await getProjectSummary(db, wardId, projectId);
@@ -88,9 +98,9 @@ admin.post("/close/:projectId/prepare", async (c) => {
   if (!(await prepareDrafts(c.env.DB, ward.wardId, id, account.accountId))) return c.notFound();
   try {
     await Promise.all([
-      startTask(c.env, c.executionCtx, { wardId: ward.wardId, projectId: id, task: "report", accountId: account.accountId,
+      startTask(c.env, waitableContext(c), { wardId: ward.wardId, projectId: id, task: "report", accountId: account.accountId,
         instruction: "報告の下書きを起こす。公開する部分と役員だけの部分を分け、状態に無い事実は作らない。公開部分は人数や出来事のうち確認できる内容だけにする。配る操作はしない。文書: report。" }),
-      startTask(c.env, c.executionCtx, { wardId: ward.wardId, projectId: id, task: "map_draft", accountId: account.accountId,
+      startTask(c.env, waitableContext(c), { wardId: ward.wardId, projectId: id, task: "map_draft", accountId: account.accountId,
         instruction: "閉じる時の地図の下書きを状態から作る。原本は読まない。地図の仕事ごとに、状態の taskId を task_id として、period、name、progress（open/started/done）、requested_by、difficulty、next_year をまとめる。write_change で kind=map_draft、target=map、data={tasks:[...] } を一度書く。" }),
     ]);
   } catch (error) { console.error("閉じる下書きを起こせませんでした", error instanceof Error ? error.name : ""); }

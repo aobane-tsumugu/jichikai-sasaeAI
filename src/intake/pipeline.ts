@@ -34,6 +34,10 @@ export interface PipelineDeps {
 export type ReadOutcome = "read" | "failed" | "retry" | "skipped";
 
 let defaultDeps: PipelineDeps | undefined;
+// 同じ isolate で waitUntil と明示呼び出しが重なった場合、先に貸し出しを取った
+// 呼び出しの結果を共有する。二つ目が単に "skipped" で返ると、呼び出し元が
+// 読み取り完了前の状態を見てしまう。
+const activeReads = new Map<string, Promise<ReadOutcome>>();
 
 /** 試験で本物の Anthropic を呼ばないための差し替え口。null で戻す。 */
 export function setPipelineDeps(deps: PipelineDeps | null): void {
@@ -50,11 +54,30 @@ function describe(err: unknown): string {
 }
 
 /** 一つの入った物を読む。取れた時だけ動き、結果を D1 に置く。 */
-export async function runRead(
+export function runRead(
   env: Env,
   wardId: string,
   jobId: string,
   options: { leaseMs?: number; deps?: PipelineDeps } = {},
+): Promise<ReadOutcome> {
+  const key = `${wardId}\0${jobId}`;
+  const active = activeReads.get(key);
+  if (active) return active;
+
+  const run = performRead(env, wardId, jobId, options);
+  activeReads.set(key, run);
+  const clear = () => {
+    if (activeReads.get(key) === run) activeReads.delete(key);
+  };
+  void run.then(clear, clear);
+  return run;
+}
+
+async function performRead(
+  env: Env,
+  wardId: string,
+  jobId: string,
+  options: { leaseMs?: number; deps?: PipelineDeps },
 ): Promise<ReadOutcome> {
   const deps = options.deps ?? defaultDeps;
   const attempt = await claimRead(env.DB, wardId, jobId, options.leaseMs ?? LEASE_AFTER_RESPONSE_MS);
@@ -107,7 +130,7 @@ export async function runRead(
     await endRun(env.DB, run, wardId, { ok: true, usage: result.usage, error: placed ? "" : "置く前に取り下げられました" });
     // 読み終わった。プロジェクトが決まっていれば、繋げる順番に入る（同じプロジェクトでは一つずつ）
     // 読みの間に当て先が付いた場合も、最新の入った物から当て先を拾う。
-    const latest = placed ? await getJob(env.DB, wardId, jobId) : null;
+    const latest = placed && job.read_kind !== "answer_sheet" ? await getJob(env.DB, wardId, jobId) : null;
     if (latest?.project_id) await dispatchProject(env, wardId, latest.project_id).catch((e) => console.error("繋げるの起動に失敗しました", describe(e)));
     return placed ? "read" : "skipped";
   } catch (err) {
