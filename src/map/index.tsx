@@ -10,9 +10,9 @@ import { opensOf, type MapOpens } from "./template";
 
 const admin = new Hono<AdminEnv>();
 const targetPath: Record<MapOpens, (projectId: string, taskId: string) => string> = {
-  materials: (projectId) => `/intake?project=${encodeURIComponent(projectId)}`,
+  materials: (projectId) => `/projects/${projectId}#materials`,
   draft: (projectId) => `/projects/${projectId}/draft`,
-  answers: (projectId) => `/answers/${encodeURIComponent(projectId)}`,
+  answers: (projectId) => `/answers?project=${encodeURIComponent(projectId)}`,
   ledger: (projectId) => `/projects/${projectId}#ledger`,
 };
 

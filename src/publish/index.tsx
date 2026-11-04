@@ -118,6 +118,8 @@ admin.get("/publish/:projectId", async (c) => {
             <select id={`recipient-${draft.document_id}`} name="recipientScope"><option value="member_households">加入世帯</option><option value="all_households">全戸</option></select>
             <label for={`copies-${draft.document_id}`}>班ごとの部数（班名と部数を一行ずつ）</label>
             <textarea id={`copies-${draft.document_id}`} name="distribution" rows={4} style="width:100%;font:inherit;padding:0.5rem">{districtCopies.map((row) => `${row.district} ${row.copies}`).join("\n")}</textarea>
+            <label for={`line-${draft.document_id}`}>公式 LINE</label>
+            <select id={`line-${draft.document_id}`} name="lineDelivery"><option value="send">題と URL を送る</option><option value="skip">今回は送らない</option></select>
             <p><button type="submit">配る内容を確認する</button></p>
           </form> : null}
         </section>
@@ -127,7 +129,7 @@ admin.get("/publish/:projectId", async (c) => {
         <section class="panel" key={record.publication_id}>
           <p>{new Date(record.published_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}に配りました。</p>
           <p>配布先: {record.recipient_scope === "all_households" ? "全戸" : "加入世帯"}</p>
-          <p>公式 LINE: {record.line_status === "sent" ? `${record.line_recipients ?? 0} 人に送信済み` : record.line_status === "failed" ? "送信できませんでした" : record.line_status === "not_configured" ? "接続設定なし" : "送信待ち"}</p>
+          <p>公式 LINE: {record.line_status === "sent" ? `${record.line_recipients ?? 0} 人に送信済み` : record.line_status === "failed" ? "送信できませんでした" : record.line_status === "not_sent" ? "今回は送っていません" : record.line_status === "not_configured" ? "接続設定なし" : "送信待ち"}</p>
           {record.line_error ? <p>{record.line_error}</p> : null}
           {record.unpublished_at ? <p>現在は公開を下げています。</p> : <form class="inline" method="post" action={adminPath(ward, `/publish/${projectId}/lower/${record.publication_id}`)}><button class="danger" type="submit">公開を下げる</button></form>}
           <p><a href={adminPath(ward, `/print/${projectId}/${record.document_id}/${record.version_no}`)}>印刷用ページを開く</a></p>
@@ -205,13 +207,14 @@ admin.post("/publish/:projectId/confirm", async (c) => {
   if (warnings.length > 0) return c.text(warnings.join("\n"), 400);
   const distribution = typeof form.distribution === "string" ? form.distribution.slice(0, 5000) : "";
   const recipientScope = form.recipientScope === "all_households" ? "all_households" : "member_households";
+  const lineDelivery = form.lineDelivery === "skip" ? "skip" : "send";
   const contacts = await getPublicContact(c.env.DB, ward.wardId);
   let allowance = null;
   try { allowance = await getLineAllowance(lineAccessToken(c.env)); } catch { /* 送信結果として記録する */ }
   return c.html(<AdminPage ward={ward} account={account} title="配る内容の確認" back={{ href: adminPath(ward, `/publish/${project.project_id}`), label: "案に戻る" }}>
     <h1>配る内容の確認</h1>
     <ArticleBody body={draft.body} />
-    <p>配ります。区のページに載り、{allowance?.friends === null || allowance === null ? "人数確認後" : `${allowance.friends} 人`}に届きます。</p>
+    <p>配ります。区のページに載ります。{lineDelivery === "skip" ? "今回は公式 LINE に送りません。" : `公式 LINE は${allowance?.friends === null || allowance === null ? "人数確認後" : `${allowance.friends} 人`}に届きます。`}</p>
     <p>紙の配布先: {recipientScope === "all_households" ? "全戸" : "加入世帯"}</p>
     <p>公開用の連絡先: {contacts || "未設定"}</p>
     <form method="post" action={adminPath(ward, `/publish/${project.project_id}/send`)}>
@@ -220,6 +223,7 @@ admin.post("/publish/:projectId/confirm", async (c) => {
       <input type="hidden" name="versionNo" value={draft.version_no} />
       <input type="hidden" name="distribution" value={distribution} />
       <input type="hidden" name="recipientScope" value={typeof form.recipientScope === "string" ? form.recipientScope : "member_households"} />
+      <input type="hidden" name="lineDelivery" value={lineDelivery} />
       <button type="submit">配る</button>
     </form>
   </AdminPage>);
@@ -277,19 +281,21 @@ admin.post("/publish/:projectId/send", async (c) => {
     </AdminPage>, 409);
   }
   const publicUrl = `${(c.env.PUBLIC_BASE_URL || new URL(c.req.url).origin).replace(/\/+$/, "")}/${ward.slug}/p/${encodeURIComponent(projectId)}`;
-  let lineStatus: PublicationRow["line_status"] = "not_configured";
+  let lineStatus: PublicationRow["line_status"] = form.lineDelivery === "skip" ? "not_sent" : "not_configured";
   let lineRecipients: number | null = null;
   let lineSentAt: string | null = null;
   let lineError: string | null = null;
-  try {
-    const allowance = await getLineAllowance(lineAccessToken(c.env));
-    lineRecipients = allowance.friends;
-    await sendLineTitleAndUrl(c.env.LINE_CHANNEL_ACCESS_TOKEN, row.title, publicUrl);
-    lineStatus = "sent";
-    lineSentAt = nowIso();
-  } catch (error) {
-    lineStatus = "failed";
-    lineError = error instanceof Error ? error.message : "送信に失敗しました";
+  if (form.lineDelivery !== "skip") {
+    try {
+      const allowance = await getLineAllowance(lineAccessToken(c.env));
+      lineRecipients = allowance.friends;
+      await sendLineTitleAndUrl(c.env.LINE_CHANNEL_ACCESS_TOKEN, row.title, publicUrl);
+      lineStatus = "sent";
+      lineSentAt = nowIso();
+    } catch (error) {
+      lineStatus = "failed";
+      lineError = error instanceof Error ? error.message : "送信に失敗しました";
+    }
   }
   await c.env.DB.prepare(`UPDATE publication_records SET line_status = ?, line_recipients = ?, line_sent_at = ?, line_error = ?
     WHERE ward_id = ? AND publication_id = ?`).bind(lineStatus, lineRecipients, lineSentAt, lineError, ward.wardId, publicationId).run();

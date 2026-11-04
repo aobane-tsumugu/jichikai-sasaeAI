@@ -67,7 +67,7 @@ admin.get("/projects/:projectId", async (c) => {
       </form>
     </section>)}
     {state.questions.length === 0 ? <p>今、問いはありません。</p> : null}
-    <h2>材料とその影響</h2>
+    <h2 id="materials">材料とその影響</h2>
     {await Promise.all(jobs.map(async (job) => {
       const originals = await listOriginals(c.env.DB, ward.wardId, job.job_id);
       const readings = await getReadings(c.env.DB, ward.wardId, job.job_id);
