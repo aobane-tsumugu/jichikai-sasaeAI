@@ -27,6 +27,24 @@ export async function getOriginal(db: D1Database, wardId: string, originalId: st
     .first<OriginalRow>();
 }
 
+/** 出どころの原本が、この区のこのプロジェクトに実在するか（取り下げた物は数えない）。 */
+export async function originalInProject(
+  db: D1Database,
+  wardId: string,
+  projectId: string,
+  originalId: string,
+): Promise<boolean> {
+  if (!originalId) return false;
+  const row = await db
+    .prepare(
+      `SELECT 1 AS x FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
+        WHERE o.ward_id = ? AND o.original_id = ? AND o.withdrawn_at IS NULL AND j.project_id = ?`,
+    )
+    .bind(wardId, originalId, projectId)
+    .first();
+  return !!row;
+}
+
 /** 読みの順番を取る。received か、貸し出しの切れた reading だけが取れる。取れたら試行の回数を返す。 */
 export async function claimRead(
   db: D1Database,

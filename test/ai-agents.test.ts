@@ -11,6 +11,8 @@ import { PACK_VERSION } from "../src/ai/pack";
 import { setProjectApi } from "../src/ai/project-binding";
 import type { ProjectApi } from "../src/ai/project-contract";
 import { dispatchProject, ensureWardAi } from "../src/ai/session";
+import { callTool } from "../src/ai/mcp";
+import { createProject, getProjectState } from "../src/project/api";
 import { realApp } from "./helpers";
 import { receive } from "../src/intake/receive";
 import { getJob } from "../src/intake/store";
@@ -410,5 +412,47 @@ describe("webhook の受け口", () => {
     // 同じ知らせがもう一度来ても何も起きない
     expect((await post({ type: "event", id: "whe_3", data: { type: "session.status_idled", id: fake.sid(1) } })).status).toBe(204);
     expect(fake.calls.deleted).toEqual([fake.sid(1)]);
+  });
+});
+
+describe("束 3 の API との繋ぎ", () => {
+  it("札から割り出したプロジェクトに、項目、表の行、決めたこと、問いを書き、実在しない出どころと不正な鍵は書かない", async () => {
+    const ward = await seedWard(env.DB);
+    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026 });
+    const out = await receive(env, {
+      wardId: ward.wardId,
+      via: "admin",
+      projectId: project.projectId,
+      parts: [{ kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode("公民館前の広場。協賛は商店Aが 6000 円") }],
+    });
+    const originalId = out.received[0]?.originalId as string;
+    await dispatchProject(env, ward.wardId, project.projectId);
+    const message = (fake.calls.sessions[0] as { initial_events: Array<{ content: Array<{ text: string }> }> }).initial_events[0]?.content[0]?.text as string;
+    const ticket = /札: (tk_\S+)/.exec(message)?.[1] as string;
+    const run = async (name: string, args: Record<string, unknown>) => {
+      const r = await callTool(env, ward.wardId, name, { ticket, ...args });
+      return { isError: r.isError, body: r.content[0]?.text ?? "" };
+    };
+    const status = (r: { body: string }) => (JSON.parse(r.body) as { status: string; reason?: string }).status;
+
+    expect(status(await run("write_change", { kind: "item", original_id: originalId, locator: "1 行目", year: 2026, target: "place", data: { value: "公民館前の広場" }, confidence: "high" }))).toBe("applied");
+    expect(status(await run("write_change", { kind: "row", original_id: originalId, locator: "1 行目", year: 2026, target: "sponsors", data: { name: "商店A", reply: "yes", amount: 6000 }, confidence: "high" }))).toBe("applied");
+    expect(status(await run("write_change", { kind: "decision", original_id: originalId, locator: "1 行目", year: 2026, target: "会場", data: { what: "会場は公民館前の広場", decidedOn: "9月12日" }, confidence: "medium" }))).toBe("applied");
+    expect(status(await run("write_question", { kind: "decide", target: "rain_plan", text: "雨天時の会場はどこにしますか", original_id: originalId, locator: "1 行目" }))).toBe("added");
+
+    const state = JSON.stringify(await getProjectState(env.DB, ward.wardId, project.projectId));
+    expect(state).toContain("公民館前の広場");
+    expect(state).toContain("商店A");
+    expect(state).toContain("雨天時の会場はどこにしますか");
+
+    // 実在しない出どころは MCP の手が捨てる。不正な鍵は束 3 に渡さず断る
+    expect((await run("write_change", { kind: "item", original_id: "でたらめ", target: "place", data: { value: "x" }, confidence: "high" })).isError).toBe(true);
+    const badKey = await run("write_change", { kind: "item", original_id: originalId, locator: "1", target: "場所", data: { value: "x" }, confidence: "high" });
+    expect(status(badKey)).toBe("rejected");
+    const draft = await run("write_change", { kind: "draft", target: "announcement", data: { text: "x" }, confidence: "medium" });
+    expect(status(draft)).toBe("rejected");
+    // 同じ差分の二度目は同じ物でした（束 3 の冪等）
+    const again = JSON.parse((await run("write_change", { kind: "item", original_id: originalId, locator: "1 行目", year: 2026, target: "place", data: { value: "公民館前の広場" }, confidence: "high" })).body) as { status: string; duplicate: boolean };
+    expect(again.duplicate || again.status === "same").toBe(true);
   });
 });
