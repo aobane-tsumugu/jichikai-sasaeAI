@@ -6,6 +6,7 @@ import type { Env } from "../env";
 import { READ_PACK_VERSION } from "../ai/schema";
 import { buildDirectReading, MAX_READING_JSON_BYTES, parseExtracted, type DirectPart } from "./direct-reading";
 import { classifyUpload, decodeText, sha256Hex, type MediaClass } from "./media";
+import { projectDirectory } from "./project-port";
 import type { OriginalKind, ReadKind, Via } from "./types";
 
 /** 一回に送れる量。画面の送るで足りる量（六枚前後）より十分大きく、Workers の要求の上限に収まる。 */
@@ -37,7 +38,7 @@ export interface ReceiveInput {
   parts: ReceivePart[];
 }
 
-export type ReceiveErrorCode = "empty" | "too_many" | "too_large" | "unsupported" | "needs_expansion" | "bad_text";
+export type ReceiveErrorCode = "empty" | "too_many" | "too_large" | "unsupported" | "needs_expansion" | "bad_text" | "no_project";
 
 export class ReceiveError extends Error {
   constructor(
@@ -159,6 +160,8 @@ export async function receive(
   attempt = 0,
 ): Promise<ReceiveOutcome> {
   const projectId = input.projectId || null;
+  // 存在しない、閉じたプロジェクトには送れない（繋げても、書く先が無くて全部捨てられる）
+  if (projectId && !(await projectDirectory().isOpen(env.DB, input.wardId, projectId))) throw new ReceiveError("no_project");
   const prepared = await prepare(input.parts, projectId);
 
   const existing = await findExistingHashes(

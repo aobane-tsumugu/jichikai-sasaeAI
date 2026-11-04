@@ -18,6 +18,7 @@ import { receive } from "../src/intake/receive";
 import { getJob } from "../src/intake/store";
 import { seedWard } from "../src/core/testing";
 import { sha256Hex } from "../src/intake/media";
+import { setProjectDirectory, type ProjectDirectory } from "../src/intake/project-port";
 
 const PROJECT = "proj-1";
 
@@ -86,12 +87,18 @@ async function readyJob(wardId: string, text = crypto.randomUUID()) {
   return { jobId: out.jobId as string, originalId: out.received[0]?.originalId as string };
 }
 
+
+/** 繋げる仕組みの試験は、プロジェクトの実在を問わない（実在の検査は別の試験で束 3 の実物を使う）。 */
+const permissive: ProjectDirectory = { listOpen: async () => [], isOpen: async () => true };
+
 let fake: ReturnType<typeof fakeAnthropic>;
 beforeEach(() => {
+  setProjectDirectory(permissive);
   fake = fakeAnthropic();
   setClientFactory(() => fake.client);
 });
 afterEach(() => {
+  setProjectDirectory(null);
   setClientFactory(null);
   setProjectApi(null);
 });
@@ -205,6 +212,38 @@ describe("セッションとプロジェクトの中の直列化", () => {
     fake.state.set(fake.sid(2), { status: "terminated", events: [] });
     expect(await checkSession(env, ward.wardId, b.jobId)).toBe("failed");
     expect(await getJob(env.DB, ward.wardId, b.jobId)).toMatchObject({ status: "failed", failure: "connect" });
+  });
+
+  it("セッションを消す前に、agent 側の呼び出しの数、失敗の数、エラーの文、最後の返事を記録に写す", async () => {
+    const ward = await seedWard(env.DB);
+    const a = await readyJob(ward.wardId);
+    await dispatchProject(env, ward.wardId, PROJECT);
+    fake.state.set(fake.sid(1), {
+      status: "idle",
+      events: [
+        { type: "session.error", error: { message: "MCP 接続の失敗" } },
+        { type: "agent.mcp_tool_use" },
+        { type: "agent.mcp_tool_use" },
+        { type: "agent.mcp_tool_result", is_error: true, content: [{ type: "text", text: "札が使えません" }] },
+        { type: "agent.mcp_tool_result", is_error: false, content: [{ type: "text", text: "ok" }] },
+        { type: "agent.message", content: [{ type: "text", text: "二つ書きました" }] },
+        { type: "session.status_idle", stop_reason: { type: "end_turn" } },
+      ],
+    });
+    expect(await checkSession(env, ward.wardId, a.jobId)).toBe("done");
+    const run = await env.DB.prepare("SELECT agent_tool_calls, agent_tool_errors, agent_errors, agent_summary FROM job_runs WHERE ward_id = ? AND job_id = ? AND kind = 'connect'").bind(ward.wardId, a.jobId).first<{ agent_tool_calls: number; agent_tool_errors: number; agent_errors: string; agent_summary: string }>();
+    expect(run).toMatchObject({ agent_tool_calls: 2, agent_tool_errors: 1, agent_summary: "二つ書きました" });
+    expect(JSON.parse(run?.agent_errors ?? "[]")).toEqual([expect.stringContaining("MCP 接続の失敗"), expect.stringContaining("札が使えません")]);
+  });
+
+  it("実在しないプロジェクトの入力は、繋げずに読み終わりのまま待つ", async () => {
+    const ward = await seedWard(env.DB);
+    const { jobId } = await readyJob(ward.wardId);
+    setProjectDirectory(null);
+    expect(await dispatchProject(env, ward.wardId, "undefined")).toBe("empty");
+    expect(await dispatchProject(env, ward.wardId, PROJECT)).toBe("empty");
+    expect((await getJob(env.DB, ward.wardId, jobId))?.status).toBe("read");
+    expect(fake.calls.sessions).toHaveLength(0);
   });
 
   it("開けなかった入力は read に戻り、試行の上限で failed になる。失敗した物は読み直さず繋げ直せる", async () => {
@@ -417,6 +456,7 @@ describe("webhook の受け口", () => {
 
 describe("束 3 の API との繋ぎ", () => {
   it("札から割り出したプロジェクトに、項目、表の行、決めたこと、問いを書き、実在しない出どころと不正な鍵は書かない", async () => {
+    setProjectDirectory(null);
     const ward = await seedWard(env.DB);
     const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026 });
     const out = await receive(env, {
@@ -452,6 +492,15 @@ describe("束 3 の API との繋ぎ", () => {
     const draft = await run("write_change", { kind: "draft", target: "announcement", data: { text: "x" }, confidence: "medium" });
     expect(status(draft)).toBe("rejected");
     // 同じ差分の二度目は同じ物でした（束 3 の冪等）
+    // 手の呼び出しは全部記録される（札が使えなかった物も、job_id 空で）
+    await callTool(env, ward.wardId, "get_reading", {});
+    const calls = await env.DB.prepare("SELECT tool, outcome, detail, job_id FROM job_tool_calls WHERE ward_id = ? ORDER BY created_at").bind(ward.wardId).all<{ tool: string; outcome: string; detail: string; job_id: string | null }>();
+    const details = calls.results.map((c) => c.detail);
+    expect(details).toContain("write_change item:place -> applied");
+    expect(details).toContain("write_change row:sponsors -> applied");
+    expect(details).toContain("write_question decide -> added");
+    expect(details).toContain("write_change item:場所 -> rejected");
+    expect(calls.results.filter((c) => c.outcome === "error").length).toBeGreaterThanOrEqual(2);
     const again = JSON.parse((await run("write_change", { kind: "item", original_id: originalId, locator: "1 行目", year: 2026, target: "place", data: { value: "公民館前の広場" }, confidence: "high" })).body) as { status: string; duplicate: boolean };
     expect(again.duplicate || again.status === "same").toBe(true);
   });

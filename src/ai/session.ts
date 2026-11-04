@@ -4,6 +4,7 @@
 import { nowIso } from "../core/ids";
 import type { Env } from "../env";
 import { sha256Hex } from "../intake/media";
+import { projectDirectory } from "../intake/project-port";
 import { startRun, getJob } from "../intake/store";
 import type { JobRow } from "../intake/types";
 import { base64urlEncode } from "./anthropic";
@@ -183,6 +184,8 @@ export type DispatchResult = "started" | "busy" | "empty" | "retry" | "failed";
  * 予約は D1 の一つの UPDATE で取るので、競り合っても一つしか開かない。
  */
 export async function dispatchProject(env: Env, wardId: string, projectId: string): Promise<DispatchResult> {
+  // 実在しない、閉じたプロジェクトには繋げない。入った物は読み終わりのまま待つ（付け替えられる）
+  if (!(await projectDirectory().isOpen(env.DB, wardId, projectId))) return "empty";
   const ticket = newTicket();
   const hash = await sha256Hex(ticket);
   const now = nowIso();

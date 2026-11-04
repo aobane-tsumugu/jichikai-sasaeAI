@@ -21,17 +21,35 @@ interface SessionLike {
 interface EventLike {
   type: string;
   stop_reason?: { type?: string } | null;
+  is_error?: boolean;
+  content?: unknown;
+  error?: unknown;
 }
 
-/** events の中の、最新の status_idle の stop_reason と、エラーの有無。 */
-export function summarizeEvents(events: EventLike[]): { stopReason: string | null; errors: number } {
-  let stopReason: string | null = null;
-  let errors = 0;
+/** events の中の、最新の status_idle の stop_reason と、agent 側の呼び出しの数、失敗の数、エラーの文、最後の返事の頭。 */
+export interface EventSummary {
+  stopReason: string | null;
+  toolCalls: number;
+  toolErrors: number;
+  errors: string[];
+  lastMessage: string;
+}
+
+export function summarizeEvents(events: EventLike[]): EventSummary {
+  const out: EventSummary = { stopReason: null, toolCalls: 0, toolErrors: 0, errors: [], lastMessage: "" };
+  const text = (content: unknown): string =>
+    Array.isArray(content) ? content.map((c) => (c as { text?: string }).text ?? "").join("") : "";
   for (const e of events) {
-    if (e.type === "session.status_idle") stopReason = e.stop_reason?.type ?? "";
-    if (e.type === "session.error") errors += 1;
+    if (e.type === "session.status_idle") out.stopReason = e.stop_reason?.type ?? "";
+    else if (e.type === "agent.mcp_tool_use") out.toolCalls += 1;
+    else if (e.type === "agent.mcp_tool_result" && e.is_error) {
+      out.toolErrors += 1;
+      if (out.errors.length < 3) out.errors.push(`tool: ${text(e.content).slice(0, 160)}`);
+    } else if (e.type === "session.error") {
+      if (out.errors.length < 3) out.errors.push(`session: ${JSON.stringify(e.error ?? "").slice(0, 160)}`);
+    } else if (e.type === "agent.message") out.lastMessage = text(e.content).slice(0, 400);
   }
-  return { stopReason, errors };
+  return out;
 }
 
 export function decide(
@@ -61,17 +79,18 @@ export async function checkSession(env: Env, wardId: string, jobId: string): Pro
     const status = (err as { status?: number } | null)?.status;
     if (status !== 404) throw err;
     // セッションが無い（消えた）。失敗にして次へ
-    return settle(env, job, "failed", "connect", "session_missing", null);
+    return settle(env, job, "failed", "connect", "session_missing", null, null);
   }
-  const { stopReason } = summarizeEvents(events);
+  const summary = summarizeEvents(events);
+  const { stopReason } = summary;
   const decided = decide(session.status, stopReason);
   if (decided.outcome === "running") {
     if (Date.now() - Date.parse(job.connect_started_at ?? job.updated_at) > CONNECT_TIMEOUT_MS) {
-      return settle(env, job, "failed", "connect", "timeout", session);
+      return settle(env, job, "failed", "connect", "timeout", session, summary);
     }
     return "running";
   }
-  return settle(env, job, decided.outcome, decided.failure, stopReason ?? "", session);
+  return settle(env, job, decided.outcome, decided.failure, stopReason ?? "", session, summary);
 }
 
 async function settle(
@@ -81,6 +100,7 @@ async function settle(
   failure: "" | "connect",
   stopReason: string,
   session: SessionLike | null,
+  summary: EventSummary | null,
 ): Promise<CheckOutcome> {
   const now = nowIso();
   // 先に状態を変えた方だけが後始末をする（札はここで失効する）
@@ -95,6 +115,7 @@ async function settle(
   const cents = Number.parseInt(session?.usage?.list_cost?.amount ?? "0", 10) || 0;
   await env.DB.prepare(
     `UPDATE job_runs SET status = ?, error = ?, stop_reason = ?, input_tokens = ?, output_tokens = ?, list_cost_cents = ?,
+            agent_tool_calls = ?, agent_tool_errors = ?, agent_errors = ?, agent_summary = ?,
             duration_ms = ?, ended_at = ?
       WHERE ward_id = ? AND job_id = ? AND kind = 'connect' AND session_id = ?`,
   )
@@ -105,6 +126,10 @@ async function settle(
       session?.usage?.input_tokens ?? 0,
       session?.usage?.output_tokens ?? 0,
       cents,
+      summary?.toolCalls ?? 0,
+      summary?.toolErrors ?? 0,
+      JSON.stringify(summary?.errors ?? []),
+      summary?.lastMessage ?? "",
       Date.now() - Date.parse(job.connect_started_at ?? now),
       now,
       job.ward_id,

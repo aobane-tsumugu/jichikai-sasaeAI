@@ -35,6 +35,7 @@ const ERROR_MESSAGE: Record<ReceiveError["code"], (filename: string) => string> 
   needs_expansion: (f) =>
     `${f ? `「${f}」` : "Word や Excel"}は、この画面を開き直してから、ブラウザで送ってください（ブラウザが中身を開いて送ります）。`,
   bad_text: () => "一行の文が長すぎます。2 万文字までです。",
+  no_project: () => "そのプロジェクトには送れません。プロジェクトを選び直してください。",
 };
 
 function isKind(value: string): value is OriginalKind {

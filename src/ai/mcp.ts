@@ -4,6 +4,7 @@
 import { Hono } from "hono";
 import type { Env, WardEnv } from "../env";
 import { sha256Hex } from "../intake/media";
+import { newId, nowIso } from "../core/ids";
 import { getReadings, originalInProject } from "../intake/store";
 import type { JobRow } from "../intake/types";
 import { PACK_VERSION } from "./pack";
@@ -100,8 +101,42 @@ async function recordDiscard(db: D1Database, job: JobRow, reason: string): Promi
     .run();
 }
 
+/** 手の呼び出しを一回ごとに記録する（job_tool_calls）。何が届き、どう返したかを後から見られるようにする。原本の中身は入れない。 */
+async function recordCall(
+  db: D1Database,
+  wardId: string,
+  jobId: string | null,
+  tool: string,
+  args: Record<string, unknown>,
+  result: ToolResult,
+  startedMs: number,
+): Promise<void> {
+  const text = result.content[0]?.text ?? "";
+  let status = "";
+  try {
+    const parsed = JSON.parse(text) as { status?: unknown; reason?: unknown };
+    if (typeof parsed.status === "string") status = parsed.status + (typeof parsed.reason === "string" ? `:${parsed.reason}` : "");
+  } catch {
+    // JSON でない返事（エラーの文）は、頭だけを残す
+  }
+  const what = tool === "write_change" ? ` ${asString(args.kind, 20)}:${asString(args.target, 40)}` : tool === "write_question" ? ` ${asString(args.kind, 20)}` : "";
+  const detail = `${tool}${what} -> ${result.isError ? text.slice(0, 80) : status || "ok"}`.slice(0, 200);
+  await db
+    .prepare("INSERT INTO job_tool_calls (call_id, ward_id, job_id, tool, outcome, detail, duration_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(newId(), wardId, jobId, tool.slice(0, 40), result.isError ? "error" : "ok", detail, Date.now() - startedMs, nowIso())
+    .run()
+    .catch((e) => console.error("手の呼び出しを記録できませんでした", e instanceof Error ? e.name : ""));
+}
+
 export async function callTool(env: Env, wardId: string, name: string, args: Record<string, unknown>): Promise<ToolResult> {
+  const started = Date.now();
   const job = await jobByTicket(env.DB, wardId, asString(args.ticket, 200));
+  const result = await runTool(env, wardId, job, name, args);
+  await recordCall(env.DB, wardId, job?.job_id ?? null, name, args, result, started);
+  return result;
+}
+
+async function runTool(env: Env, wardId: string, job: JobRow | null, name: string, args: Record<string, unknown>): Promise<ToolResult> {
   if (!job) return fail("札が使えません。札を最初のメッセージからそのまま書き写してください（完了した入力の札は使えません）。");
   if (!job.project_id) return fail("この入力はまだプロジェクトが決まっていません。");
   const api = projectApi();
