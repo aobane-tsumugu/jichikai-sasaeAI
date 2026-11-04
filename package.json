@@ -13,7 +13,8 @@
     "db:migrate:staging": "wrangler d1 migrations apply DB --remote",
     "dev-vars": "node scripts/make-dev-vars.ts",
     "put-secrets": "node scripts/put-secrets.ts",
-    "open-ward": "node scripts/open-ward.ts"
+    "open-ward": "node scripts/open-ward.ts",
+    "walkthrough": "node scripts/walkthrough.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.4.0",

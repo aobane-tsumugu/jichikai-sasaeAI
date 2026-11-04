@@ -41,6 +41,8 @@ function waitableContext(context: { executionCtx: Waitable }): Waitable {
 }
 
 admin.get("/answers", async (c) => {
+  const selectedProject = c.req.query("project");
+  if (selectedProject) return c.redirect(adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(selectedProject)}`), 303);
   const rows = await c.env.DB.prepare("SELECT project_id, title, year FROM projects WHERE ward_id = ? ORDER BY year DESC, created_at DESC")
     .bind(c.var.ward.wardId).all<{ project_id: string; title: string; year: number }>();
   return c.html(
