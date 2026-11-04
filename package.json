@@ -16,6 +16,7 @@
     "open-ward": "node scripts/open-ward.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.4.0",
     "hono": "^4.13.16",
     "uqr": "^0.1.3"
   },
