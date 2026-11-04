@@ -136,9 +136,13 @@ async function publish(project: string, html: string, scope: "public" | "space",
   const first = readForm(html, "/publish/" + project + suffix, sectionTitle);
   if (scope === "public") first.fields.lineDelivery = "skip";
   const confirm = await post(first.action, first.fields);
+  if (scope === "space") {
+    // 空間への配布は一度の操作で完了し、成功時は公開範囲画面へ303で戻る。
+    if (confirm.status !== 303) throw new Error("空間への配布で停止 (" + confirm.status + ")");
+    return confirm;
+  }
   if (!confirm.ok) throw new Error("配布内容の確認で停止 (" + confirm.status + ")");
   const page = await confirm.text();
-  if (scope === "space") return confirm;
   if (!page.includes("今回は公式 LINE に送りません")) throw new Error("LINE を送らない選択を確認できません");
   const final = readForm(page, "/publish/" + project + "/send");
   if (final.fields.lineDelivery !== "skip") throw new Error("LINE 送信を止められません");
