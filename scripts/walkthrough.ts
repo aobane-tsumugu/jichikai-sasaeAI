@@ -20,10 +20,13 @@ const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 const evidence = resolve(root, "docs/EVIDENCE/walkthrough-" + stamp + ".md");
 mkdirSync(dirname(evidence), { recursive: true });
 const rows: string[] = [];
-const cookies = new Map<string, string>();
+const cookies = new Map<string, { pair: string; path: string }>();
+const sensitiveValues = new Set<string>();
+let lastResponse = "応答を取得していません";
 let currentStage = "準備";
 let currentStarted = Date.now();
 function record(stage: string, result: string, what: string, start: number) {
+  if (result === "停止" || result === "未完了") what += "（" + lastResponse + "）";
   rows.push("| " + stage + " | " + result + " | " + what.replaceAll("|", "／") + " | " + Math.round((Date.now() - start) / 1000) + " |");
   writeFileSync(evidence, [
     "# staging 通し確認 " + new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }), "",
@@ -43,13 +46,24 @@ function unescapeHtml(s: string) {
 async function req(path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
   headers.set("origin", origin);
-  if (cookies.size) headers.set("cookie", [...cookies.values()].join("; "));
-  const res = await fetch(new URL(path, base + "/"), { ...init, headers, redirect: "manual", signal: AbortSignal.timeout(30_000) });
+  const url = new URL(path, base + "/");
+  const applicableCookies = [...cookies.values()]
+    .filter(cookie => url.pathname === cookie.path || url.pathname.startsWith(cookie.path.endsWith("/") ? cookie.path : cookie.path + "/"))
+    .map(cookie => cookie.pair);
+  if (applicableCookies.length) headers.set("cookie", applicableCookies.join("; "));
+  const res = await fetch(url, { ...init, headers, redirect: "manual", signal: AbortSignal.timeout(30_000) });
+  let body = await res.clone().text().catch(() => "");
+  for (const secret of sensitiveValues) if (secret) body = body.replaceAll(secret, "[伏せ字]");
+  const snippet = body.replace(/\s+/g, " ").slice(0, 200).replaceAll("|", "／");
+  lastResponse = "応答: HTTP " + res.status + (res.statusText ? " " + res.statusText : "") + "; 本文先頭200文字: " + (snippet || "（空）");
   for (const line of res.headers.getSetCookie()) {
     const pair = line.split(";", 1)[0];
     if (pair) {
       const separator = pair.indexOf("=");
-      if (separator > 0) cookies.set(pair.slice(0, separator), pair);
+      if (separator > 0) {
+        const cookiePath = /(?:^|;)\s*path=([^;]+)/i.exec(line)?.[1] ?? url.pathname;
+        cookies.set(pair.slice(0, separator), { pair, path: cookiePath.replace(/\/$/, "") || "/" });
+      }
     }
   }
   return res;
@@ -131,7 +145,7 @@ async function runPublic() {
 }
 async function runFull() {
   let intakeOk = false;
-  let publicOk = false;
+  let publicPublished = false;
   let project = "";
   let draftPath = "";
   let publicPath = "";
@@ -143,6 +157,7 @@ async function runFull() {
     const name = /^(?:名前|氏名)\s*[:：]\s*(.+)$/m.exec(cred)?.[1]?.trim();
     const password = /^パスワード\s*[:：]\s*(.+)$/m.exec(cred)?.[1]?.trim();
     if (!name || !password) throw new Error("資格情報は「名前:」「パスワード:」形式で指定してください");
+    sensitiveValues.add(password);
     const login = await post(admin + "/login", { name, password });
     if (login.status !== 303 || !cookies.has("device") || !(await get(admin + "/")).response.ok) throw new Error("役員画面に入れません");
     record("0", "通過", "資格情報でログイン。値は表示していない。", start);
@@ -235,12 +250,12 @@ async function runFull() {
   const printPage = await get(admin + "/publish/" + project);
   const printPath = unescapeHtml(/href="([^"]*\/print\/[^"]+)"/.exec(printPage.html)?.[1] ?? "");
   if (!printPath || !(await get(printPath)).response.ok) throw new Error("印刷用ページを開けません");
+  publicPublished = true;
   const answer = await post(wardPath + "/answer/" + project, {
     household: "架空 小林", district: "1班", people_count: "2", helper_name: "架空 小林さと", helper_times: "受付 10:30-12:00"
   });
-  if (answer.status !== 303) throw new Error("架空の回答を送れません");
+  if (answer.status !== 200 || !(await answer.text()).includes("回答を受け付けました")) throw new Error("架空の回答を送れません");
   record("3", "通過", "公開ページ、印刷用ページ、架空の回答。公式 LINE は送信なし。", start);
-  publicOk = true;
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";
     record("3", "停止", message, start);
@@ -253,6 +268,7 @@ async function runFull() {
   currentStarted = start;
   try {
   const passphrase = "架空の合言葉-" + stamp.slice(0, 12);
+  sensitiveValues.add(passphrase);
   if ((await post(admin + "/space/" + project + "/open", { passphrase })).status !== 303) throw new Error("空間を開けません");
   if ((await post(admin + "/projects/" + project + "/draft/duty_roster/start", {})).status !== 303) throw new Error("当番表の案を頼めません");
   let dutyPage = await get(admin + "/projects/" + project + "/draft/duty_roster");
@@ -276,7 +292,7 @@ async function runFull() {
     process.exitCode = 1;
   }
 
-  if (publicOk) try {
+  if (publicPublished) try {
   start = Date.now();
   currentStage = "5";
   currentStarted = start;
@@ -294,9 +310,9 @@ async function runFull() {
     record("5", "停止", message, start);
     process.exitCode = 1;
   }
-  else skipStage("5", "段 3 の公開を確認できず、変更版を作れません");
+  else skipStage("5", "公開版を確認できず、変更版を作れません");
 
-  if (publicOk) try {
+  if (publicPublished) try {
   start = Date.now();
   currentStage = "6";
   currentStarted = start;
@@ -329,7 +345,7 @@ async function runFull() {
     record("6", message.startsWith("未完了:") ? "未完了" : "停止", message.replace(/^未完了:\s*/, ""), start);
     process.exitCode = 1;
   }
-  else skipStage("6", "案内の公開を確認できず、閉じる段を進められません");
+  else skipStage("6", "公開版を確認できず、閉じる段を進められません");
 }
 try {
   if (onlyPublic) await runPublic();
@@ -337,7 +353,7 @@ try {
   console.log("記録: " + evidence);
 } catch (error) {
   const message = error instanceof Error ? error.message : "処理に失敗しました";
-  rows.push("| " + currentStage + " | 停止 | " + message + " | " + Math.round((Date.now() - currentStarted) / 1000) + " |");
+  rows.push("| " + currentStage + " | 停止 | " + message.replaceAll("|", "／") + "（" + lastResponse.replaceAll("|", "／") + "） | " + Math.round((Date.now() - currentStarted) / 1000) + " |");
   writeFileSync(evidence, ["# staging 通し確認", "", "- 区: " + ward, "- 資格情報: 値は記録していません", "- 一斉送信: 実送信なし", "", "| 段 | 結果 | 見えた物 | 秒 |", "|---|---|---|---:|", ...rows, ""].join("\n"), "utf8");
   console.error("停止: " + message);
   console.error("記録: " + evidence);
