@@ -222,6 +222,25 @@ describe("セッションとプロジェクトの中の直列化", () => {
     expect(await getJob(env.DB, ward.wardId, jobId)).toMatchObject({ status: "connecting", connect_attempt: 1, failure: "" });
   });
 
+  it("動いているセッションは、中断を送ってから消す", async () => {
+    const ward = await seedWard(env.DB);
+    const a = await readyJob(ward.wardId);
+    await dispatchProject(env, ward.wardId, PROJECT);
+    const sessions = (fake.client.beta as unknown as { sessions: { delete: (id: string) => Promise<unknown>; events: { send?: unknown } } }).sessions;
+    const sent: unknown[] = [];
+    let interrupted = false;
+    const realDelete = sessions.delete;
+    sessions.delete = async (id: string) => {
+      if (!interrupted) throw Object.assign(new Error("Cannot delete session while it is running"), { status: 400 });
+      return realDelete(id);
+    };
+    sessions.events.send = async (_id: string, body: unknown) => (sent.push(body), (interrupted = true));
+    await env.DB.prepare("UPDATE jobs SET connect_started_at = ? WHERE ward_id = ? AND job_id = ?").bind(new Date(Date.now() - 30 * 60_000).toISOString(), ward.wardId, a.jobId).run();
+    expect(await checkSession(env, ward.wardId, a.jobId)).toBe("failed");
+    expect(sent).toEqual([{ events: [{ type: "user.interrupt" }] }]);
+    expect((await getJob(env.DB, ward.wardId, a.jobId))?.session_deleted_at).toBeTruthy();
+  }, 15000);
+
   it("Cron は、動き続ける入力を時間切れで失敗にし、消し損ねを消し、待っている物を送る", async () => {
     const ward = await seedWard(env.DB);
     const a = await readyJob(ward.wardId);

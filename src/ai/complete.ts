@@ -118,16 +118,32 @@ async function settle(
   return outcome;
 }
 
-/** セッションを消す。仕事の場であって記録ではない（設計書 5.6）。消せなければ Cron が拾う。 */
+/**
+ * セッションを消す。仕事の場であって記録ではない（設計書 5.6）。
+ * 動いている間は消せない（400「Cannot delete session while it is running」。実機で確かめた）ので、
+ * 中断（user.interrupt）を送ってから消す。消せなければ Cron が拾う。
+ */
 export async function deleteSession(env: Env, wardId: string, jobId: string, sessionId: string): Promise<boolean> {
-  try {
-    await getClient(env).beta.sessions.delete(sessionId);
-  } catch (err) {
-    if ((err as { status?: number } | null)?.status !== 404) {
-      console.error("セッションを消せませんでした", wardId, jobId, err instanceof Error ? err.name : "");
-      return false;
+  const client = getClient(env);
+  let deleted = false;
+  for (let attempt = 0; attempt < 3 && !deleted; attempt++) {
+    try {
+      await client.beta.sessions.delete(sessionId);
+      deleted = true;
+    } catch (err) {
+      const status = (err as { status?: number } | null)?.status;
+      if (status === 404) {
+        deleted = true;
+      } else if (status === 400 && /running/i.test(err instanceof Error ? err.message : "")) {
+        await client.beta.sessions.events.send(sessionId, { events: [{ type: "user.interrupt" }] }).catch(() => undefined);
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      } else {
+        console.error("セッションを消せませんでした", wardId, jobId, status ?? "");
+        return false;
+      }
     }
   }
+  if (!deleted) return false;
   await env.DB.prepare("UPDATE jobs SET session_deleted_at = ? WHERE ward_id = ? AND job_id = ?")
     .bind(nowIso(), wardId, jobId)
     .run();
