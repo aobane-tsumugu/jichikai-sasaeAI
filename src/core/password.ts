@@ -76,12 +76,12 @@ export function generateDeviceToken(): string {
   return toBase64Url(crypto.getRandomValues(new Uint8Array(32)));
 }
 
-/** 名前の表示用。前後の空白を削り、続く空白を一つにする。 */
+/** 名前の表示用。前後の空白を削り、続く空白（全角を含む）を一つにする。文字の形は変えない。 */
 export function cleanName(input: string): string {
-  return input.normalize("NFKC").trim().replace(/\s+/g, " ");
+  return input.trim().replace(/\s+/g, " ");
 }
 
-/** 名前の照合用。空白を全部除き、小文字にする（「山田 太郎」と「山田太郎」を同じ物にする）。 */
+/** 名前の照合用。全角と半角を揃え、空白を全部除き、小文字にする（「山田 太郎」と「山田太郎」を同じ物にする）。 */
 export function nameKey(input: string): string {
-  return cleanName(input).toLowerCase().replace(/\s/g, "");
+  return cleanName(input).normalize("NFKC").toLowerCase().replace(/\s/g, "");
 }

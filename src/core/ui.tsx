@@ -28,6 +28,10 @@ button.danger { background: transparent; color: var(--danger); border-color: var
 table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
 form.inline { display: inline; }
+details { margin: 0.6rem 0; }
+select { margin-bottom: 0.4rem; }
+.qrbox { width: 12rem; max-width: 100%; margin: 0.5rem 0; }
+.qrbox svg { display: block; width: 100%; height: auto; }
 `;
 
 export const Layout: FC<
@@ -66,4 +70,15 @@ export const Notice: FC<PropsWithChildren<{ error?: boolean }>> = ({ error, chil
   <p class={error ? "notice error" : "notice"} role={error ? "alert" : "status"}>
     {children}
   </p>
+);
+
+/** 作ったばかりのパスワードを一度だけ見せる枠。保存は要約だけなので、後から見ることはできない。 */
+export const Credentials: FC<{ name: string; password: string }> = ({ name, password }) => (
+  <div class="panel">
+    <p>名前とパスワードです。パスワードはこの画面でしか見られません。{name} さんに渡してください。</p>
+    <p>
+      名前: <strong>{name}</strong>
+    </p>
+    <p class="secret">{password}</p>
+  </div>
 );

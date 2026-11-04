@@ -31,7 +31,7 @@ import type { AdminEnv, AppEnv, Env, WardEnv } from "../env";
  *   draft (3)        /projects/:id/draft    -                -
  *   check (3)        /projects/:id/check    -                -
  *   publish (4)      /publish               -                -
- *   ward (4)         -                      / /p             -
+ *   ward (4)         -                      / /p /q          -
  *   print/pages (4)  /print                 -                -
  *   answers (5)      /answers               /answer          -
  *   space (5)        /space                 /space           -
