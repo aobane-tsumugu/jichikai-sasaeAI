@@ -116,8 +116,9 @@ export async function acceptLineWebhook(
   `).bind(wardId, now.toISOString()).run();
 
   // LINE は応答を待たずに接続を切ることがある。AI の当てを待つと処理ごと止まるので、応答を先に返す。
+  const events = payload.events;
   const processEvents = async (): Promise<void> => {
-  for (const event of payload.events) {
+  for (const event of events) {
     const eventId = event.webhookEventId;
     if (!eventId) continue;
     const stored = await db.prepare(`
