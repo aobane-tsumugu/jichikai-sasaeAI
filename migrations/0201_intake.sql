@@ -13,7 +13,7 @@
 --   connecting  繋げている（Managed Agents のセッションが動いている）
 --   done        完了
 --   attention   提供側の対応が要る（予算の上限、鍵の更新の失敗など）。役員には対応を求めない
---   failed      読めなかった、繋げられなかった。役員は「もう一度」を押せる
+--   failed      読めなかった、繋げられなかった。役員は「もう一度」を押せる（failure が connect なら読み直さず繋げ直す）
 --   withdrawn   取り下げた
 CREATE TABLE jobs (
   job_id          TEXT PRIMARY KEY,
@@ -21,7 +21,11 @@ CREATE TABLE jobs (
   -- 当たったプロジェクト。空は未定（公式 LINE の受け箱など）
   project_id      TEXT,
   -- 入ってきた道
-  via             TEXT NOT NULL CHECK (via IN ('admin', 'space', 'line_direct', 'line_group', 'answer')),
+  via             TEXT NOT NULL CHECK (via IN ('admin', 'space', 'line_direct', 'line_group', 'answer', 'system')),
+  -- 仕事の種類。connect は入った物を状態に繋げる。draft、report、map_draft は原本の無い仕事（下書き、報告、地図の下書き）で、
+  -- 指示は instruction に入れる。どれも同じ流れ（プロジェクトの中で一つずつ、セッションを開く）で動く
+  task            TEXT NOT NULL DEFAULT 'connect' CHECK (task IN ('connect', 'draft', 'report', 'map_draft')),
+  instruction     TEXT NOT NULL DEFAULT '',
   -- 読みの種類。general は一般の読み、answer_sheet は回答票、restore は過去の資料の復元
   read_kind       TEXT NOT NULL DEFAULT 'general' CHECK (read_kind IN ('general', 'answer_sheet', 'restore')),
   -- 誰が送ったか（公式 LINE の表示名など）。役員画面から送った時は空でよい
@@ -35,6 +39,16 @@ CREATE TABLE jobs (
   lease_until     TEXT,
   -- failed の理由の種類（unsupported、too_large、unreadable、refused、error）。本文や鍵は入れない
   failure         TEXT NOT NULL DEFAULT '',
+  -- 繋げる（Managed Agents のセッション）の記録。札は推測できない乱数で、要約だけを持つ。完了したら空にする（失効）
+  ticket_hash     TEXT,
+  session_id      TEXT,
+  connect_attempt INTEGER NOT NULL DEFAULT 0,
+  connect_started_at TEXT,
+  stop_reason     TEXT NOT NULL DEFAULT '',
+  -- 出どころが実在せず、書く手が捨てた差分の数と理由（役員に見せる）
+  discard_count   INTEGER NOT NULL DEFAULT 0,
+  discards        TEXT NOT NULL DEFAULT '[]',
+  session_deleted_at TEXT,
   created_at      TEXT NOT NULL,
   updated_at      TEXT NOT NULL,
   read_at         TEXT,
@@ -45,6 +59,8 @@ CREATE TABLE jobs (
 );
 CREATE INDEX jobs_ward_status ON jobs (ward_id, status, created_at);
 CREATE INDEX jobs_project ON jobs (ward_id, project_id, status, created_at);
+CREATE UNIQUE INDEX jobs_ticket ON jobs (ticket_hash) WHERE ticket_hash IS NOT NULL;
+CREATE INDEX jobs_session ON jobs (session_id) WHERE session_id IS NOT NULL;
 
 -- 原本。受けた順に並べ、R2 に置いた実体を指す。同じ物（同じバイト列）は区の中で一度しか置かない。
 -- 一行の文も原本にする（R2 には文字として置く）。取り下げた物は実体を消し、行は残す（過去の記録が指しているため）。
@@ -105,6 +121,10 @@ CREATE TABLE job_runs (
   input_tokens     INTEGER NOT NULL DEFAULT 0,
   output_tokens    INTEGER NOT NULL DEFAULT 0,
   cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+  -- 繋げる実行の記録。セッションを消す前に、結果をここに写す
+  session_id       TEXT NOT NULL DEFAULT '',
+  stop_reason      TEXT NOT NULL DEFAULT '',
+  list_cost_cents  INTEGER NOT NULL DEFAULT 0,
   duration_ms      INTEGER NOT NULL DEFAULT 0,
   started_at       TEXT NOT NULL,
   ended_at         TEXT,

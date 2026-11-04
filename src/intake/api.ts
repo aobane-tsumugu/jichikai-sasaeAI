@@ -3,7 +3,8 @@
 import type { Env } from "../env";
 import { kickRead, type PipelineDeps } from "./pipeline";
 import { receive, type ReceiveInput, type ReceiveOutcome } from "./receive";
-import { resetForRetry, setJobProject, withdrawJob as withdraw } from "./store";
+import { dispatchProject } from "../ai/session";
+import { getJob, resetForRetry, setJobProject, withdrawJob as withdraw } from "./store";
 import type { Waitable } from "./types";
 
 export { ReceiveError } from "./receive";
@@ -23,6 +24,10 @@ export async function receiveOriginal(
 ): Promise<ReceiveOutcome> {
   const outcome = await receive(env, input);
   if (outcome.jobId && outcome.needsModelRead) kickRead(env, ctx, input.wardId, outcome.jobId, deps);
+  // 読みが要らない（文字と Word と Excel だけ）物は、すぐ繋げる順番に入る
+  if (outcome.jobId && !outcome.needsModelRead && input.projectId) {
+    ctx.waitUntil(dispatchProject(env, input.wardId, input.projectId).catch(logDispatchError));
+  }
   return outcome;
 }
 
@@ -39,12 +44,28 @@ export async function retryJob(
   jobId: string,
   deps?: PipelineDeps,
 ): Promise<boolean> {
-  const reset = await resetForRetry(env.DB, wardId, jobId);
-  if (reset) kickRead(env, ctx, wardId, jobId, deps);
-  return reset;
+  const next = await resetForRetry(env.DB, wardId, jobId);
+  if (next === "received") kickRead(env, ctx, wardId, jobId, deps);
+  if (next === "read") {
+    const job = await getJob(env.DB, wardId, jobId);
+    if (job?.project_id) ctx.waitUntil(dispatchProject(env, wardId, job.project_id).catch(logDispatchError));
+  }
+  return next !== null;
 }
 
-/** 受け箱の物にプロジェクトを付ける・付け替える。 */
-export function assignProject(db: D1Database, wardId: string, jobId: string, projectId: string | null): Promise<boolean> {
-  return setJobProject(db, wardId, jobId, projectId);
+function logDispatchError(err: unknown): void {
+  console.error("繋げるの起動に失敗しました", err instanceof Error ? `${err.name}: ${err.message}` : "不明な失敗");
+}
+
+/** 受け箱の物にプロジェクトを付ける・付け替える。読み終わっていれば、繋げる順番に入る。 */
+export async function assignProject(
+  env: Env,
+  ctx: Waitable,
+  wardId: string,
+  jobId: string,
+  projectId: string | null,
+): Promise<boolean> {
+  const changed = await setJobProject(env.DB, wardId, jobId, projectId);
+  if (changed && projectId) ctx.waitUntil(dispatchProject(env, wardId, projectId).catch(logDispatchError));
+  return changed;
 }

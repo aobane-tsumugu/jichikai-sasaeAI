@@ -12,14 +12,17 @@ export type JobStatus =
   | "withdrawn";
 
 /** 入ってきた道。 */
-export type Via = "admin" | "space" | "line_direct" | "line_group" | "answer";
+export type Via = "admin" | "space" | "line_direct" | "line_group" | "answer" | "system";
+
+/** 仕事の種類。connect は入った物を繋げる。他は原本の無い仕事（下書き、報告、地図の下書き）。 */
+export type JobTask = "connect" | "draft" | "report" | "map_draft";
 
 export type OriginalKind = "photo" | "file" | "text";
 
 export type ReadKind = "general" | "answer_sheet" | "restore";
 
 /** 失敗の種類。jobs.failure に入る。 */
-export type FailureKind = "" | "unsupported" | "too_large" | "unreadable" | "refused" | "error";
+export type FailureKind = "" | "unsupported" | "too_large" | "unreadable" | "refused" | "error" | "connect";
 
 export interface JobRow {
   job_id: string;
@@ -27,6 +30,16 @@ export interface JobRow {
   project_id: string | null;
   via: Via;
   read_kind: ReadKind;
+  task: JobTask;
+  instruction: string;
+  ticket_hash: string | null;
+  session_id: string | null;
+  connect_attempt: number;
+  connect_started_at: string | null;
+  stop_reason: string;
+  discard_count: number;
+  discards: string;
+  session_deleted_at: string | null;
   sender_label: string;
   account_id: string | null;
   status: JobStatus;

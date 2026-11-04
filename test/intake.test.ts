@@ -2,6 +2,7 @@
 // Anthropic は呼ばない（readImpl を差し替える）。
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { setClientFactory } from "../src/ai/deps";
 import { readOriginals, ReadError, type ReadResult } from "../src/ai/read";
 import { createApp } from "../src/core/app";
 import { WardBucket } from "../src/core/storage";
@@ -63,6 +64,9 @@ const fakeDeps = (readImpl: PipelineDeps["readImpl"]): PipelineDeps => ({
 
 // 本物の Anthropic を呼ばないための安全弁。読みを動かす試験は、自分で readImpl を差し替える
 beforeEach(() => {
+  setClientFactory(() => {
+    throw new Error("試験から本物の Anthropic は呼べません");
+  });
   setPipelineDeps({
     createClient: () => {
       throw new Error("試験から本物の Anthropic は呼べません");
@@ -71,6 +75,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setClientFactory(null);
   setPipelineDeps(null);
   setProjectDirectory(null);
 });

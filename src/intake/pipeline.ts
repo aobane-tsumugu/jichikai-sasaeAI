@@ -7,6 +7,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { WardBucket } from "../core/storage";
 import type { Env } from "../env";
 import { createAnthropic, MODEL } from "../ai/anthropic";
+import { dispatchProject } from "../ai/session";
 import { ReadError, readOriginals, type ReadableOriginal } from "../ai/read";
 import {
   claimRead,
@@ -104,6 +105,8 @@ export async function runRead(
       body: result.body,
     });
     await endRun(env.DB, run, wardId, { ok: true, usage: result.usage, error: placed ? "" : "置く前に取り下げられました" });
+    // 読み終わった。プロジェクトが決まっていれば、繋げる順番に入る（同じプロジェクトでは一つずつ）
+    if (placed && job.project_id) await dispatchProject(env, wardId, job.project_id).catch((e) => console.error("繋げるの起動に失敗しました", describe(e)));
     return placed ? "read" : "skipped";
   } catch (err) {
     const read = err instanceof ReadError ? err : null;

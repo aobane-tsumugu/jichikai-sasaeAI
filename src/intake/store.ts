@@ -143,16 +143,27 @@ export async function withdrawJob(env: Pick<Env, "DB" | "ORIGINALS">, wardId: st
   return true;
 }
 
-/** 失敗した物をもう一度読む。received に戻して試行の回数を数え直す。 */
-export async function resetForRetry(db: D1Database, wardId: string, jobId: string): Promise<boolean> {
+/**
+ * 失敗した物をもう一度。読めなかった物は received に戻して読み直し、繋げられなかった物（failure が connect）は
+ * 読み取りをそのままに read に戻して繋げ直す。戻した後の状態を返す（戻せなければ null）。
+ */
+export async function resetForRetry(
+  db: D1Database,
+  wardId: string,
+  jobId: string,
+): Promise<"received" | "read" | null> {
+  const job = await getJob(db, wardId, jobId);
+  if (!job || job.status !== "failed") return null;
+  const next = job.failure === "connect" ? "read" : "received";
   const res = await db
     .prepare(
-      `UPDATE jobs SET status = 'received', attempt = 0, failure = '', finished_at = NULL, lease_until = NULL, updated_at = ?
+      `UPDATE jobs SET status = ?, attempt = CASE WHEN ? = 'received' THEN 0 ELSE attempt END, connect_attempt = 0,
+              failure = '', finished_at = NULL, lease_until = NULL, ticket_hash = NULL, updated_at = ?
         WHERE ward_id = ? AND job_id = ? AND status = 'failed'`,
     )
-    .bind(nowIso(), wardId, jobId)
+    .bind(next, next, nowIso(), wardId, jobId)
     .run();
-  return (res.meta.changes ?? 0) > 0;
+  return (res.meta.changes ?? 0) > 0 ? next : null;
 }
 
 /** プロジェクトを付ける・付け替える（公式 LINE の受け箱など）。終わった物と取り下げた物は動かさない。 */
@@ -190,16 +201,16 @@ export interface RunStart {
 
 export async function startRun(
   db: D1Database,
-  args: { wardId: string; jobId: string; kind: "read" | "connect"; attempt: number; model: string },
+  args: { wardId: string; jobId: string; kind: "read" | "connect"; attempt: number; model: string; sessionId?: string },
 ): Promise<RunStart> {
   const runId = newId();
   const startedAtMs = Date.now();
   await db
     .prepare(
-      `INSERT INTO job_runs (run_id, ward_id, job_id, kind, attempt, status, model, started_at)
-       VALUES (?, ?, ?, ?, ?, 'running', ?, ?)`,
+      `INSERT INTO job_runs (run_id, ward_id, job_id, kind, attempt, status, model, session_id, started_at)
+       VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?)`,
     )
-    .bind(runId, args.wardId, args.jobId, args.kind, args.attempt, args.model, new Date(startedAtMs).toISOString())
+    .bind(runId, args.wardId, args.jobId, args.kind, args.attempt, args.model, args.sessionId ?? "", new Date(startedAtMs).toISOString())
     .run();
   return { runId, startedAtMs };
 }
