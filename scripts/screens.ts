@@ -85,9 +85,9 @@ function safeReason(error: unknown): string {
 async function discover() {
   // 開いているプロジェクト一覧は年・作成日の新しい順。
   await openPath(`${admin}/projects`);
-  const projectLinks = await page.locator(`a[href*="${admin}/projects/"]`).evaluateAll((links) =>
+  const projectLinks = await page.locator(`a[href*="/admin/projects/"]`).evaluateAll((links) =>
     links.map((link) => (link as HTMLAnchorElement).getAttribute("href") ?? "")
-      .filter((href) => new RegExp(`${admin}/projects/[^/]+$`).test(href)),
+      .filter((href) => new RegExp(`/admin/projects/[^/]+$`).test(href)),
   );
   projectId = projectLinks[0]?.split("/").at(-1) ?? "";
   if (projectId) return;
