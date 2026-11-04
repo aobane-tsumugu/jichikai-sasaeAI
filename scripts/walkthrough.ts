@@ -3,6 +3,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// 一つの実行上限20分と、5分ごとの見回りが次に来るまでを待てるようにする。
+const DRAFT_WAIT_LIMIT_MS = 25 * 60_000;
 const args = process.argv.slice(2);
 const arg = (key: string) => { const i = args.indexOf(key); return i < 0 ? undefined : args[i + 1]; };
 const onlyPublic = args.includes("--only-public");
@@ -115,6 +117,20 @@ async function waitFor(name: string, project: string): Promise<boolean> {
   }
   return false;
 }
+async function waitForDraft(path: string, timeoutMs = DRAFT_WAIT_LIMIT_MS): Promise<{ ready: boolean; form: ReturnType<typeof readForm> }> {
+  const until = Date.now() + timeoutMs;
+  let page = await get(path);
+  let form = readForm(page.html, "/save");
+  while (Date.now() < until) {
+    const status = /data-ai-status="([^"]+)"/.exec(page.html)?.[1];
+    if (status === "done") return { ready: !!form.fields.text?.trim(), form };
+    if (status === "attention" || status === "failed") return { ready: false, form };
+    await new Promise(r => setTimeout(r, 3000));
+    page = await get(path);
+    form = readForm(page.html, "/save");
+  }
+  return { ready: false, form };
+}
 async function publish(project: string, html: string, scope: "public" | "space", sectionTitle?: string) {
   const suffix = scope === "public" ? "/confirm" : "/space";
   const first = readForm(html, "/publish/" + project + suffix, sectionTitle);
@@ -145,10 +161,12 @@ async function runPublic() {
 }
 async function runFull() {
   let intakeOk = false;
+  const unfinished: string[] = [];
   let publicPublished = false;
   let project = "";
   let draftPath = "";
   let publicPath = "";
+  let canPublish = false;
   let start = Date.now();
   currentStage = "0";
   currentStarted = start;
@@ -191,7 +209,6 @@ async function runFull() {
   currentStage = "2";
   currentStarted = start;
   try {
-  const unfinished: string[] = [];
   const files = [
     "fixtures/last-year/accountant/IMG_2081.jpg",
     "fixtures/last-year/vice-chair/配置のメモ.jpg",
@@ -221,15 +238,16 @@ async function runFull() {
   }
   if ((await post(admin + "/projects/" + project + "/draft/announcement/start", {})).status !== 303) throw new Error("AI に案内を頼めません");
   draftPath = admin + "/projects/" + project + "/draft/announcement";
-  let draftPage = await get(draftPath);
-  let draft = readForm(draftPage.html, "/draft/announcement/save");
-  const end = Date.now() + 600_000;
-  while (!draft.fields.text?.trim() && Date.now() < end) {
-    await new Promise(r => setTimeout(r, 3000));
-    draftPage = await get(draftPath);
-    draft = readForm(draftPage.html, "/draft/announcement/save");
+  const draftResult = await waitForDraft(draftPath);
+  const draft = draftResult.form;
+  if (!draftResult.ready) {
+    unfinished.push("案内の下書き（AI依頼の完了待ちの上限）");
+    if (!draft.fields.text?.trim()) {
+      draft.fields.text = "架空の秋の収穫祭を開催します。日時と会場は今年の中身をご確認ください。";
+      if ((await post(draft.action, draft.fields)).status !== 303) throw new Error("手書きの案内を保存できません");
+    }
   }
-  if (!draft.fields.text?.trim()) unfinished.push("案内の下書き（待ちの上限）");
+  canPublish = !!draft.fields.text?.trim();
   intakeOk = unfinished.length === 0;
   if (!intakeOk) process.exitCode = 1;
   record("2", intakeOk ? "通過" : "未完了", "架空の実ファイル4件を送信。同じ物はそのまま利用。" + (unfinished.length ? " 未完了: " + unfinished.join("、") : " AIの読み取り・反映と案内作成を確認。"), start);
@@ -239,7 +257,7 @@ async function runFull() {
     process.exitCode = 1;
   }
 
-  if (intakeOk) try {
+  if (canPublish) try {
   start = Date.now();
   currentStage = "3";
   currentStarted = start;
@@ -271,21 +289,19 @@ async function runFull() {
   sensitiveValues.add(passphrase);
   if ((await post(admin + "/space/" + project + "/open", { passphrase })).status !== 303) throw new Error("空間を開けません");
   if ((await post(admin + "/projects/" + project + "/draft/duty_roster/start", {})).status !== 303) throw new Error("当番表の案を頼めません");
-  let dutyPage = await get(admin + "/projects/" + project + "/draft/duty_roster");
-  let duty = readForm(dutyPage.html, "/draft/duty_roster/save");
-  const dutyEnd = Date.now() + 600_000;
-  while (!duty.fields.text?.trim() && Date.now() < dutyEnd) {
-    await new Promise(r => setTimeout(r, 3000));
-    dutyPage = await get(admin + "/projects/" + project + "/draft/duty_roster");
-    duty = readForm(dutyPage.html, "/draft/duty_roster/save");
+  const dutyResult = await waitForDraft(admin + "/projects/" + project + "/draft/duty_roster");
+  const duty = dutyResult.form;
+  if (!dutyResult.ready) {
+    unfinished.push("当番表の案（AI依頼の完了待ちの上限）");
+    process.exitCode = 1;
+    if (!duty.fields.text?.trim()) duty.fields.text = "持ち場と時間帯を確認し、担当者を役員で記入してください。";
   }
-  if (!duty.fields.text?.trim()) throw new Error("未完了: 当番表の案が待ちの上限までにできませんでした");
   if ((await post(duty.action, duty.fields)).status !== 303) throw new Error("当番表の案を保存できません");
   if ((await publish(project, (await get(admin + "/publish/" + project)).html, "space")).status !== 303) throw new Error("空間に当番表を出せません");
   if ((await post(wardPath + "/space/" + project + "/enter", { passphrase })).status !== 303) throw new Error("空間に入れません");
   const space = await get(wardPath + "/space/" + project);
   if (!space.response.ok || !space.html.includes("当番表")) throw new Error("空間の当番表を読めません");
-  record("4", "通過", "空間を開き、当番表を配って合言葉で読み取り。", start);
+  record("4", dutyResult.ready ? "通過" : "未完了", dutyResult.ready ? "空間を開き、AIの案を配って合言葉で読み取り。" : "AIの案は完了待ちの上限までに見えず、手書きの当番表を保存・配布して読み取り。", start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";
     record("4", message.startsWith("未完了:") ? "未完了" : "停止", message.replace(/^未完了:\s*/, ""), start);

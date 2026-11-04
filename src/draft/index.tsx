@@ -46,10 +46,24 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
   if (!project || !state) return c.notFound();
   const pack = getDraftPack(kindRaw); const body = document ? parseBody(document.body) : { text: "", items: state.items.map((item) => ({ key: item.key, content: item.current?.content ?? "" })) };
   const scope = document?.scope ?? pack.scope; const baseVersion = document?.stateVersion ?? project.stateVersion;
+  const task = await c.env.DB.prepare(`SELECT status FROM jobs WHERE ward_id = ? AND project_id = ? AND task = 'draft'
+    AND instruction LIKE ? ORDER BY created_at DESC LIMIT 1`).bind(ward.wardId, id, `%対象の文書: ${kindRaw}。%`).first<{ status: string }>();
+  const taskLabel: Record<string, string> = {
+    read: "順番を待っています",
+    connecting: "案を作っています",
+    done: "AIの依頼が終わりました。案の内容を確かめてください",
+    attention: "AIの作業が止まりました。内容を確かめてください",
+    failed: "AIの作業が止まりました。ここで書いて保存できます",
+  };
+  const taskNotice = task ? {
+    status: task.status,
+    message: taskLabel[task.status] ?? "AIの作業状態を確認できません。ここで書いて保存できます",
+  } : null;
   const templates = kindRaw === "notice" ? await getTemplates(c.env.DB, ward.wardId) : [];
   const versions = document ? await c.env.DB.prepare("SELECT version_no, body, created_at, origin FROM document_versions WHERE ward_id = ? AND project_id = ? AND document_id = ? ORDER BY version_no DESC LIMIT 8").bind(ward.wardId, id, document.documentId).all<{ version_no: number; body: string; created_at: string; origin: string }>() : { results: [] };
   return c.html(<Layout title={`${pack.title}を直す`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, `/projects/${id}/draft`)}>案の一覧</a>}>
     <h1>{pack.title}を直す</h1>
+    {taskNotice ? <Notice><span data-ai-status={taskNotice.status}>{taskNotice.message}</span> 画面を閉じても処理は続きます。ここで書いて保存することもできます。</Notice> : null}
     {document?.stale ? <Notice>新しい物が入りました。<a href={adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}>案を直す</a> / このまま</Notice> : null}
     <form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/save`)}>
       <input type="hidden" name="based_on" value={baseVersion} />
