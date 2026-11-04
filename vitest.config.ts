@@ -13,7 +13,7 @@ export default defineConfig(async () => {
     ],
     test: {
       setupFiles: ["./test/apply-migrations.ts"],
-      include: ["test/**/*.test.ts", "src/**/*.test.ts", "src/**/*.test.tsx"],
+      include: ["test/**/*.test.{ts,tsx}", "src/**/*.test.{ts,tsx}"],
     },
   };
 });
