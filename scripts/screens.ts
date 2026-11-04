@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 // 役員画面と公開画面を、状態を変更せずに撮影する。
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -104,7 +105,7 @@ async function discover() {
 async function discoverPublished() {
   try {
     await openPath(`${wardPath}/`);
-    const href = await page.locator(`a[href*="/${encodeURIComponent(ward)}/p/"]`).first().getAttribute("href");
+    const href = await page.locator(`a[href*="/${encodeURIComponent(ward ?? "")}/p/"]`).first().getAttribute("href");
     if (href) publishedProjectId = href.split("/").at(-1) ?? "";
   } catch {
     // 各公開画面の行で失敗を一覧化する。
