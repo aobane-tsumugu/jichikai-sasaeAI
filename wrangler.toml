@@ -8,9 +8,13 @@ compatibility_date = "2026-08-01"
 # @anthropic-ai/sdk（束 2）と vitest-pool-workers が node の互換を要する
 compatibility_flags = ["nodejs_compat"]
 
+# 公開の URL。提供側のドメインの下に置く。workers.dev の URL は開けない
+workers_dev = false
+routes = [{ pattern = "jichikai.aobane-tsumugu.com", custom_domain = true }]
+
 [vars]
-# 区のページの固定 URL の根。空なら要求の origin を使う。ドメインを決めたら入れる
-PUBLIC_BASE_URL = ""
+# 区のページの固定 URL の根。QR に刷る
+PUBLIC_BASE_URL = "https://jichikai.aobane-tsumugu.com"
 
 # 表。区ごとの行は全部 ward_id を持つ。migrations/ は束の番号で置く（束 N は NN01_*.sql から）
 [[d1_databases]]
