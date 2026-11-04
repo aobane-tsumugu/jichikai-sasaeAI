@@ -84,6 +84,13 @@ interface Ctx {
   options: ApplyOptions;
 }
 
+const CHANGE_KINDS: readonly string[] = ["item", "row", "conflict", "stale", "map_task"];
+
+/** MCP から来た物は型を信じない。object でなければ空の object として扱う。 */
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+}
+
 const MAX_VALUE = 2000;
 const MAX_PACK = 100;
 
@@ -209,7 +216,7 @@ function insertChangeStatement(
 ): D1PreparedStatement {
   // 形の合わない差分は、出どころも確かさも信用できないので、記録には入れない
   const [kind, ref, locator, year] = known ? sourceBinds(n.source) : [null, null, null, null];
-  const raw = n.change as unknown as { packVersion?: unknown; ticketId?: unknown };
+  const raw = asRecord(n.change);
   return ctx.db
     .prepare(
       `INSERT INTO project_changes
@@ -222,7 +229,7 @@ function insertChangeStatement(
       ctx.changeId,
       ctx.wardId,
       ctx.projectId,
-      n.change.kind,
+      CHANGE_KINDS.includes(raw.kind as string) ? (raw.kind as string) : "unknown",
       n.target,
       status,
       reason,
@@ -235,7 +242,7 @@ function insertChangeStatement(
       ref,
       locator,
       year,
-      known ? n.change.confidence : null,
+      known ? (raw.confidence as string) : null,
       typeof raw.ticketId === "string" ? raw.ticketId : null,
       ctx.wardId,
       ctx.projectId,
@@ -803,11 +810,11 @@ export async function applyChange(
     droppedKey = `dropped:${payloadHash}`;
     const seen = await findByKey(db, wardId, projectId, droppedKey);
     if (seen) return toApplyResult(JSON.parse(seen.result) as StoredResult, seen.state_version_after, true);
-    const raw = change as Partial<ChangeInput>;
+    const raw = asRecord(change);
     normalized = {
       change,
-      source: (raw.source && typeof raw.source === "object" ? raw.source : { kind: "person" }) as Source,
-      target: typeof (raw as { itemKey?: unknown }).itemKey === "string" ? String((raw as { itemKey?: unknown }).itemKey) : "-",
+      source: { kind: "person" },
+      target: typeof raw.itemKey === "string" ? raw.itemKey : "-",
     };
     dedupeKey = droppedKey;
     ctx = { ...base, dedupeKey, confidence: "low", source: normalized.source };
@@ -884,7 +891,8 @@ export async function applyChange(
     );
   }
   statements.push(...plan.statements);
-  const packVersion = typeof (change as { packVersion?: unknown }).packVersion === "string" ? change.packVersion : "";
+  const packVersionRaw = asRecord(change).packVersion;
+  const packVersion = typeof packVersionRaw === "string" ? packVersionRaw : "";
   plan.questions.forEach((q, i) => statements.push(insertQuestionStatement(ctx, q, questionIds[i] as string, packVersion)));
   if (plan.staleKinds.length > 0) {
     const marks = plan.staleKinds.map(() => "?").join(",");
@@ -923,7 +931,7 @@ export async function applyChange(
 
 /** 捨てた差分を役員に見せる時の、何についての差分かの短い言い方。 */
 function describeChange(change: ChangeInput): string {
-  const raw = change as unknown as Record<string, unknown>;
+  const raw = asRecord(change);
   switch (raw.kind) {
     case "item":
       return isItemKey(raw.itemKey) ? `${ITEM_LABEL[raw.itemKey]}: ${quote(String(raw.value ?? ""))}` : "項目";

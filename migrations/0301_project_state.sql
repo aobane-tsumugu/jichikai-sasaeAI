@@ -54,8 +54,9 @@ CREATE TABLE project_changes (
   change_id             TEXT PRIMARY KEY,
   ward_id               TEXT NOT NULL REFERENCES wards (ward_id),
   project_id            TEXT NOT NULL,
-  -- 'item' 項目、'row' 表の行、'conflict' 食い違い、'stale' 古くなる文書、'map_task' 地図の仕事
-  kind                  TEXT NOT NULL CHECK (kind IN ('item', 'row', 'conflict', 'stale', 'map_task')),
+  -- 'item' 項目、'row' 表の行、'conflict' 食い違い、'stale' 古くなる文書、'map_task' 地図の仕事、
+  -- 'unknown' 型の外の差分（捨てた物の記録のため。捨てたことを役員に見せる）
+  kind                  TEXT NOT NULL CHECK (kind IN ('item', 'row', 'conflict', 'stale', 'map_task', 'unknown')),
   -- 書く対象（項目の名前、表の名前と相手など）
   target                TEXT NOT NULL,
   -- applied 入った、same 同じ物でした、kept 決まった中身があるので案は入れなかった、

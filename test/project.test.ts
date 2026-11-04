@@ -112,6 +112,21 @@ describe("出どころの検査", () => {
     expect((await getProjectState(db, ward.wardId, project.projectId))?.questions.filter((q) => q.kind === "discarded")).toHaveLength(1);
   });
 
+  it("型の外の差分（知らない種類、空）も例外にせず捨て、問いの一覧に出る", async () => {
+    const { ward, account, project } = await setup();
+    const unknownKind = { kind: "foo", source: person(account.accountId), confidence: "high", packVersion: "p1" } as unknown as ChangeInput;
+    expectStatus(await applyChange(db, ward.wardId, project.projectId, unknownKind), "dropped");
+    expectStatus(await applyChange(db, ward.wardId, project.projectId, null as unknown as ChangeInput), "dropped");
+    expectStatus(await applyChange(db, ward.wardId, project.projectId, {} as unknown as ChangeInput), "dropped");
+    const state = await getProjectState(db, ward.wardId, project.projectId);
+    expect(state?.questions.filter((q) => q.kind === "discarded")).toHaveLength(3);
+    const kinds = await db
+      .prepare("SELECT DISTINCT kind FROM project_changes WHERE ward_id = ? AND project_id = ?")
+      .bind(ward.wardId, project.projectId)
+      .all<{ kind: string }>();
+    expect(kinds.results.map((r) => r.kind)).toEqual(["unknown"]);
+  });
+
   it("実在しない原本の差分は捨てる（確かめる口が false を返す）", async () => {
     const { ward, project } = await setup();
     const result = await applyChange(db, ward.wardId, project.projectId, item(paper("no-such-original"), "10 月 24 日"), {
