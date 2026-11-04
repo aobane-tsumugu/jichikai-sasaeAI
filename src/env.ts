@@ -11,8 +11,12 @@ export interface Env {
   /** 区のページの固定 URL の根。空なら要求の origin。 */
   PUBLIC_BASE_URL: string;
 
-  // 束 2: Anthropic。ブラウザへは渡さない。
-  ANTHROPIC_API_KEY: string;
+  // 束 2: Anthropic。API キーは使わず、署名鍵でトークンに交換する（実装は src/ai/）。ブラウザへは渡さない。
+  ANTHROPIC_FEDERATION_SIGNING_KEY: string;
+  ANTHROPIC_FEDERATION_RULE_ID: string;
+  ANTHROPIC_ORGANIZATION_ID: string;
+  ANTHROPIC_SERVICE_ACCOUNT_ID: string;
+  ANTHROPIC_WORKSPACE_ID: string;
   ANTHROPIC_WEBHOOK_SIGNING_KEY: string;
   // 束 6: LINE。
   LINE_CHANNEL_SECRET: string;

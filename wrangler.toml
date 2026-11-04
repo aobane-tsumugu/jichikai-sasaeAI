@@ -30,9 +30,15 @@ bucket_name = "jichikai-sasae-staging"
 [triggers]
 crons = ["*/5 * * * *", "0 18 * * *"]
 
-# 鍵は Workers の secrets に置く。ここには名前だけを書き、値は書かない。
-#   ANTHROPIC_API_KEY
+# 鍵は Workers の secrets に置く。ここには名前だけを書き、値は書かない（src/env.ts と同じ名前）。
+#   ANTHROPIC_FEDERATION_SIGNING_KEY
+#   ANTHROPIC_FEDERATION_RULE_ID
+#   ANTHROPIC_ORGANIZATION_ID
+#   ANTHROPIC_SERVICE_ACCOUNT_ID
+#   ANTHROPIC_WORKSPACE_ID
 #   ANTHROPIC_WEBHOOK_SIGNING_KEY
 #   LINE_CHANNEL_SECRET
 #   LINE_CHANNEL_ACCESS_TOKEN
-# ローカルは .dev.vars（git に入らない）。
+#   OPS_ID / OPS_PASSWORD（運用の画面。使う段で入れる）
+# 鍵のファイルから入れるには scripts/put-secrets.ts、ローカルは .dev.vars（git に入らない）を
+# scripts/make-dev-vars.ts で作る。
