@@ -115,6 +115,8 @@ export async function acceptLineWebhook(
     DELETE FROM line_webhook_receipts WHERE ward_id = ? AND expires_at <= ?
   `).bind(wardId, now.toISOString()).run();
 
+  // LINE は応答を待たずに接続を切ることがある。AI の当てを待つと処理ごと止まるので、応答を先に返す。
+  const processEvents = async (): Promise<void> => {
   for (const event of payload.events) {
     const eventId = event.webhookEventId;
     if (!eventId) continue;
@@ -182,5 +184,11 @@ export async function acceptLineWebhook(
       throw error;
     }
   }
+  };
+  const work = processEvents();
+  if (dependencies) await work;
+  else ctx.waitUntil(work.catch((error) => {
+    console.error("LINE の処理に失敗しました", wardId, error instanceof Error ? error.name : "unknown");
+  }));
   return Response.json({ ok: true });
 }
