@@ -12,6 +12,7 @@ import {
   signFederationJwt,
 } from "../src/ai/anthropic";
 import { buildContent, fixOriginalIds, readOriginals, ReadError, type ReadableOriginal } from "../src/ai/read";
+import { buildMatchPrompt, buildMatchSchema, matchProject, MATCH_UNRELATED } from "../src/ai/match";
 import { GENERAL_READING_SCHEMA, type Reading } from "../src/ai/schema";
 
 async function makeKey() {
@@ -245,5 +246,40 @@ describe("読むの呼び出し", () => {
     expect(req.system).toContain("回答票");
     expect(req.output_config.format.schema.required).toContain("rows");
     expect(result.packVersion).toBe("read-answer-sheet@1");
+  });
+});
+
+describe("当てる", () => {
+  const candidates = [
+    { id: "p-1", title: "秋の収穫祭", detail: "行事、10 月 24 日" },
+    { id: "p-2", title: "防災訓練" },
+  ];
+
+  it("候補の ID と三つの決まった選択肢の列挙に縛り、haiku で一回だけ呼ぶ", async () => {
+    const { client, requests } = fakeClient(() => ({
+      stop_reason: "end_turn",
+      content: [{ type: "text", text: JSON.stringify({ choice: "p-1", reason: "収穫祭の日程の話です" }) }],
+      usage: { input_tokens: 300, output_tokens: 40 },
+    }));
+    const result = await matchProject(client, { candidates, summary: "雨なら公民館で", senderLabel: "副会長" });
+    expect(result).toEqual({ choice: "p-1", reason: "収穫祭の日程の話です", usage: { input_tokens: 300, output_tokens: 40 } });
+    expect(requests).toHaveLength(1);
+    const req = requests[0] as { model: string; output_config: { format: { schema: { properties: { choice: { enum: string[] } } } } } };
+    expect(req.model).toBe("claude-haiku-5-5");
+    expect(req.output_config.format.schema.properties.choice.enum).toEqual(["p-1", "p-2", "__new__", "__multiple__", "__unrelated__"]);
+    expect(buildMatchSchema([]).properties.choice.enum).toEqual(["__new__", "__multiple__", "__unrelated__"]);
+    expect(buildMatchPrompt({ candidates, summary: "要約", excerpt: "あ".repeat(5000) })).not.toContain("あ".repeat(2001));
+  });
+
+  it("候補に無い ID は受け付けない。候補の ID の不正も弾く", async () => {
+    const wrong = fakeClient(() => ({
+      stop_reason: "end_turn",
+      content: [{ type: "text", text: JSON.stringify({ choice: "p-9", reason: "" }) }],
+      usage: { input_tokens: 1, output_tokens: 1 },
+    }));
+    await expect(matchProject(wrong.client, { candidates, summary: "x" })).rejects.toThrow("候補に無い");
+    await expect(matchProject(wrong.client, { candidates: [{ id: "__new__", title: "x" }], summary: "x" })).rejects.toThrow("不正");
+    await expect(matchProject(wrong.client, { candidates: [candidates[0] as (typeof candidates)[0], candidates[0] as (typeof candidates)[0]], summary: "x" })).rejects.toThrow("不正");
+    expect(MATCH_UNRELATED).toBe("__unrelated__");
   });
 });

@@ -48,20 +48,13 @@ export interface DirectPart {
 }
 
 function rowsOf(table: { name: string; rows: string[][] }, originalId: string): ReadTable {
-  const [header, ...rest] = table.rows;
-  // 空の行は飛ばす。行の番号は元の並び（Excel の行番号）のままにする
+  // 見出しの行は推測しない（表の上に題の行があることが多い）。空の行は飛ばし、行の番号は元の並び（Excel の行番号）のままにする
   const rows: ReadRow[] = [];
-  rest.forEach((cells, i) => {
+  table.rows.forEach((cells, i) => {
     if (cells.every((c) => c.trim() === "")) return;
-    rows.push({ cells, locator: `${i + 2} 行目`, confidence: "high" });
+    rows.push({ cells, locator: `${i + 1} 行目`, confidence: "high" });
   });
-  return {
-    name: table.name,
-    original_id: originalId,
-    locator: table.name,
-    columns: header ?? [],
-    rows,
-  };
+  return { name: table.name, original_id: originalId, locator: table.name, columns: [], rows };
 }
 
 /** 直接読む原本を、一つの読み取りにまとめる。 */

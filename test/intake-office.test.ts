@@ -156,7 +156,7 @@ describe("展開した結果の検査と読み取りへの変換", () => {
     expect(parseExtracted({ format: "xlsx", paragraphs: [], tables: [{ name: "a", rows: [["x"]] }] })).not.toBeNull();
   });
 
-  it("表は見出しの行を列にして、空の行を飛ばし、行の番号は元のまま", () => {
+  it("表は見出しの行を推測せず、空の行を飛ばし、行の番号は元のまま", () => {
     const reading = buildDirectReading([
       {
         originalId: "o1",
@@ -173,8 +173,9 @@ describe("展開した結果の検査と読み取りへの変換", () => {
         name: "協賛先",
         original_id: "o1",
         locator: "協賛先",
-        columns: ["相手", "額"],
+        columns: [],
         rows: [
+          { cells: ["相手", "額"], locator: "1 行目", confidence: "high" },
           { cells: ["商店A", "6000"], locator: "2 行目", confidence: "high" },
           { cells: ["農園B", "3000"], locator: "4 行目", confidence: "high" },
         ],
