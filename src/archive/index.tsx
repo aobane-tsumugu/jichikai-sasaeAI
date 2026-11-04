@@ -5,8 +5,10 @@ import { newId, nowIso } from "../core/ids";
 import { Layout } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { createProject, getProjectSummary, listProjects, ProjectInputError } from "../project/api";
-import { PROJECT_KIND_LABEL, type ProjectKind } from "../project/model";
+import { PROJECT_KINDS, PROJECT_KIND_LABEL, type ProjectKind } from "../project/model";
 import { addDays } from "../map/template";
+import { ARCHIVE_RECORD_TYPES, searchArchive } from "./search";
+import type { ArchiveRecordType } from "./search";
 
 interface SeedTask { task_key: string | null; name: string; period_start: string | null; period_end: string | null; offset_start_days: number | null; offset_end_days: number | null; sort_order: number; }
 const admin = new Hono<AdminEnv>();
@@ -22,11 +24,75 @@ admin.get("/archive", async (c) => {
   }
   return c.html(<Layout title="記録" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/projects")}>プロジェクト一覧</a>}>
     <h1>記録</h1>
+    <nav class="action-links"><a class="button secondary" href={adminPath(ward, "/archive/map")}>区の地図</a><a class="button secondary" href={adminPath(ward, "/archive/search")}>記録を探す</a></nav>
     {[...byMonth.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([month, entries]) => <section><h2>{month}</h2>{entries.map((p) => <article class="panel">
       <h3><a href={adminPath(ward, `/archive/${p.projectId}`)}>{p.title}</a></h3><p>{p.year}年 / {PROJECT_KIND_LABEL[p.kind]}</p>
       <p><a href={adminPath(ward, `/archive/${p.projectId}`)}>地図と報告を開く</a></p>
     </article>)}</section>)}
     {projects.length === 0 ? <p>閉じたプロジェクトはまだありません。</p> : null}
+  </Layout>);
+});
+
+admin.get("/archive/map", async (c) => {
+  const { ward } = c.var;
+  const rows = await c.env.DB.prepare(`SELECT p.project_id, p.title, p.year, p.closed_at, t.name, t.period_start, t.period_end, t.sort_order
+      FROM projects p JOIN project_map_tasks t ON t.ward_id = p.ward_id AND t.project_id = p.project_id
+     WHERE p.ward_id = ? AND t.removed_at IS NULL
+     ORDER BY t.period_start, p.year, p.created_at, t.sort_order`).bind(ward.wardId)
+    .all<{ project_id: string; title: string; year: number; closed_at: string | null; name: string; period_start: string | null; period_end: string | null; sort_order: number }>();
+  const months = new Map<string, typeof rows.results>();
+  for (const row of rows.results) {
+    const month = row.period_start?.slice(0, 7) ?? `${row.year}年・時期未定`;
+    months.set(month, [...(months.get(month) ?? []), row]);
+  }
+  return c.html(<Layout title="区の地図" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/archive")}>記録</a>}>
+    <h1>区の地図</h1>
+    <p>プロジェクトの仕事を月ごとに並べています。去年の記録を開くと、その地図から次の年のプロジェクトを始められます。</p>
+    {[...months.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([month, entries]) => <section>
+      <h2>{month}</h2>{entries.map((entry) => <article class="panel">
+        <p>{entry.year}年 / {entry.closed_at ? "記録" : "進行中"}</p>
+        <h3><a href={adminPath(ward, entry.closed_at ? `/archive/${entry.project_id}` : `/projects/${entry.project_id}/map`)}>{entry.title}</a></h3>
+        <p>{entry.name} / {entry.period_start ?? "時期未定"}{entry.period_end ? ` から ${entry.period_end}` : ""}</p>
+        {entry.closed_at ? <p><a href={adminPath(ward, `/archive/${entry.project_id}`)}>この地図を開き、次の年の種にする</a></p> : null}
+      </article>)}</section>)}
+    {rows.results.length === 0 ? <p>地図に載っているプロジェクトはありません。</p> : null}
+  </Layout>);
+});
+
+admin.get("/archive/search", async (c) => {
+  const { ward } = c.var;
+  const query = c.req.query("q") ?? "";
+  const rawYear = c.req.query("year");
+  const year = rawYear && /^\d{4}$/.test(rawYear) ? Number(rawYear) : undefined;
+  const rawType = c.req.query("type");
+  const recordType = ARCHIVE_RECORD_TYPES.includes(rawType as ArchiveRecordType) ? rawType as ArchiveRecordType : undefined;
+  const rawProjectKind = c.req.query("kind");
+  const projectKind = PROJECT_KINDS.includes(rawProjectKind as ProjectKind) ? rawProjectKind as ProjectKind : undefined;
+  const counterpart = c.req.query("counterpart") ?? "";
+  const results = query.trim().length >= 3 ? await searchArchive(c.env.DB, ward.wardId, { query, year, recordType, projectKind, counterpart, limit: 30 }) : [];
+  const years = [...new Set((await listProjects(c.env.DB, ward.wardId, { includeClosed: true })).map((p) => p.year))].sort((a, b) => b - a);
+  const labels: Record<ArchiveRecordType, string> = { reading: "読み取り", decision: "決めたこと", report: "報告", map: "地図" };
+  return c.html(<Layout title="記録を探す" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/archive")}>記録</a>}>
+    <h1>記録を探す</h1>
+    <p>三文字以上で探します。年、種類、相手の名前で絞れます。</p>
+    <form method="get" action={adminPath(ward, "/archive/search")}>
+      <label for="q">言葉</label><input id="q" name="q" type="text" value={query} minlength={3} required />
+      <label for="year">年</label><select id="year" name="year"><option value="">すべて</option>{years.map((value) => <option value={value} selected={year === value}>{value}年</option>)}</select>
+      <label for="kind">プロジェクトの種類</label><select id="kind" name="kind"><option value="">すべて</option>{PROJECT_KINDS.map((value) => <option value={value} selected={projectKind === value}>{PROJECT_KIND_LABEL[value]}</option>)}</select>
+      <label for="type">記録の種類</label><select id="type" name="type"><option value="">すべて</option>{ARCHIVE_RECORD_TYPES.map((value) => <option value={value} selected={recordType === value}>{labels[value]}</option>)}</select>
+      <label for="counterpart">相手の名前</label><input id="counterpart" name="counterpart" type="text" value={counterpart} />
+      <p><button>探す</button></p>
+    </form>
+    {query.trim().length > 0 && query.trim().length < 3 ? <p class="notice">三文字以上入れてください。</p> : null}
+    {query.trim().length >= 3 ? <h2>見つかった記録（最大30件）</h2> : null}
+    {results.map((result) => <article class="panel">
+      <p>{result.year}年 / {PROJECT_KIND_LABEL[result.project_kind as ProjectKind]} / {labels[result.record_type]}</p>
+      <h2><a href={adminPath(ward, `/archive/${result.project_id}`)}>{result.title}</a></h2>
+      {result.counterpart ? <p>相手: {result.counterpart}</p> : null}
+      <p>{result.excerpt}</p>
+      {result.source_id ? <p><a href={adminPath(ward, `/intake/originals/${result.source_id}`)}>元の箇所へ戻る</a>{result.locator ? `（${result.locator}）` : null}</p> : null}
+    </article>)}
+    {query.trim().length >= 3 && results.length === 0 ? <p>見つかりませんでした。</p> : null}
   </Layout>);
 });
 
