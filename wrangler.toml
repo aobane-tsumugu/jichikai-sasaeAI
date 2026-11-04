@@ -1,0 +1,38 @@
+# 自治会運営AI支援（仮称）の Workers の設定。担当は束 1。他の束は触らず、足りない物は PM に言う。
+#
+# この設定は staging（jichikai-sasae-staging）。本番は提供側が委託の根拠を確かめた後に
+# [env.production] として別に足す。wrangler deploy の既定が staging なので、本番への誤配備は起きない。
+name = "jichikai-sasae-staging"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+# @anthropic-ai/sdk（束 2）と vitest-pool-workers が node の互換を要する
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# 区のページの固定 URL の根。空なら要求の origin を使う。ドメインを決めたら入れる
+PUBLIC_BASE_URL = ""
+
+# 表。区ごとの行は全部 ward_id を持つ。migrations/ は束の番号で置く（束 N は NN01_*.sql から）
+[[d1_databases]]
+binding = "DB"
+database_name = "jichikai-sasae-staging"
+# ローカルと試験では仮の値で動く。配備の時に wrangler d1 create の結果へ置き換える
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+# 物置。原本、出した物、写し。キーは必ず区の ID で始める（src/core/storage.ts）
+[[r2_buckets]]
+binding = "ORIGINALS"
+bucket_name = "jichikai-sasae-staging"
+
+# Cron。実行の振り分けは src/index.ts の scheduled が各置き場の index.ts へ渡す。
+# 式の定数は src/core/cron.ts。式を足す時は PM に言う。
+[triggers]
+crons = ["*/5 * * * *", "0 18 * * *"]
+
+# 鍵は Workers の secrets に置く。ここには名前だけを書き、値は書かない。
+#   ANTHROPIC_API_KEY
+#   ANTHROPIC_WEBHOOK_SIGNING_KEY
+#   LINE_CHANNEL_SECRET
+#   LINE_CHANNEL_ACCESS_TOKEN
+# ローカルは .dev.vars（git に入らない）。

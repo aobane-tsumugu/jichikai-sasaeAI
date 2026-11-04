@@ -1,0 +1,25 @@
+{
+  "name": "jichikai-sasae-ai",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "自治会運営AI支援（仮称）。Cloudflare Workers の上で動く運営支援システム。",
+  "scripts": {
+    "dev": "wrangler dev",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:staging": "wrangler d1 migrations apply DB --remote"
+  },
+  "dependencies": {
+    "hono": "^4.13.16"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.23.0",
+    "@cloudflare/workers-types": "^5.20261104.1",
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.157.0"
+  }
+}
