@@ -1,0 +1,65 @@
+{
+  "destination": "U000000000000000000000000000000d0",
+  "events": [
+    {
+      "type": "message",
+      "mode": "active",
+      "timestamp": 1791285300000,
+      "webhookEventId": "01FICTIONAL0000000000000001",
+      "deliveryContext": {
+        "isRedelivery": false
+      },
+      "source": {
+        "type": "user",
+        "userId": "U000000000000000000000000000000a1"
+      },
+      "replyToken": "00000000000000000000000000000001",
+      "message": {
+        "type": "text",
+        "id": "10000000000001",
+        "quoteToken": "fictional-quote-1",
+        "text": "2班の架空 橋本です。大人2人と子ども1人で行きます。受付なら手伝えます。"
+      }
+    },
+    {
+      "type": "message",
+      "mode": "active",
+      "timestamp": 1791288120000,
+      "webhookEventId": "01FICTIONAL0000000000000002",
+      "deliveryContext": {
+        "isRedelivery": false
+      },
+      "source": {
+        "type": "user",
+        "userId": "U000000000000000000000000000000a2"
+      },
+      "replyToken": "00000000000000000000000000000002",
+      "message": {
+        "type": "text",
+        "id": "10000000000002",
+        "quoteToken": "fictional-quote-2",
+        "text": "スーパーの特売、卵が今日は一人二パックまでだそうです。"
+      }
+    },
+    {
+      "type": "message",
+      "mode": "active",
+      "timestamp": 1791330000000,
+      "webhookEventId": "01FICTIONAL0000000000000003",
+      "deliveryContext": {
+        "isRedelivery": false
+      },
+      "source": {
+        "type": "user",
+        "userId": "U000000000000000000000000000000a3"
+      },
+      "replyToken": "00000000000000000000000000000003",
+      "message": {
+        "type": "text",
+        "id": "10000000000003",
+        "quoteToken": "fictional-quote-3",
+        "text": "犬の散歩で転んで膝を打ちました（笑）。あ、収穫祭は3班の架空 中川で、大人2人子ども1人で行きます。"
+      }
+    }
+  ]
+}
