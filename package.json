@@ -12,7 +12,8 @@
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:staging": "wrangler d1 migrations apply DB --remote",
     "dev-vars": "node scripts/make-dev-vars.ts",
-    "put-secrets": "node scripts/put-secrets.ts"
+    "put-secrets": "node scripts/put-secrets.ts",
+    "open-ward": "node scripts/open-ward.ts"
   },
   "dependencies": {
     "hono": "^4.13.16",
