@@ -38,7 +38,7 @@ async function pageFooter(c: { env: { DB: D1Database }; var: { ward: { wardId: s
   ]);
   return <>
     <h2>回答する</h2>
-    <p>回答の入口は準備中です。お知らせに記載の連絡先へお知らせください。</p>
+    <p>Webから回答できます。世帯名、班、人数を入力してください。名簿に登録されているかは表示しません。</p>
     <p><a href={`/${c.var.ward.slug}/answer/${encodeURIComponent(projectId)}`}>回答の入口を開く</a></p>
     <h2>お知らせを受け取る</h2>
     {lineUrl ? <p><a href={lineUrl}>区の公式 LINE を友だちに追加する（任意）</a></p> : <p>区の公式 LINE を友だちに追加すると、新しい案内や変更を受け取れます。友だち追加は任意です。</p>}

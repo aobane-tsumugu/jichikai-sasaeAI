@@ -9,6 +9,7 @@ import { getEditableDocument, saveDocument } from "../project/actions";
 import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, ITEMS_BY_KIND, SCOPES, SCOPE_LABEL, type DocumentKind, type Scope } from "../project/model";
 import { getDraftPack, listDraftPacks } from "./packs";
 import type { DraftBody } from "./packs/types";
+import { getDutyDraftHelpers } from "../answers/api";
 
 const admin = new Hono<AdminEnv>();
 const isKind = (value: string): value is DocumentKind => (DOCUMENT_KINDS as readonly string[]).includes(value);
@@ -83,7 +84,11 @@ admin.post("/projects/:projectId/draft/:kind/start", async (c) => {
   if (!project || project.closedAt) return c.notFound();
   const pack = getDraftPack(kindRaw);
   try {
-    await startTask(c.env, c.executionCtx, { wardId: ward.wardId, projectId: id, task: "draft", instruction: `${pack.instruction}\n対象の文書: ${pack.kind}。範囲: ${pack.scope}。data に pack_version を ${pack.version}、based_on_state_version を引いた状態の番号として含めてください。`, accountId: account.accountId });
+    const helpers = pack.kind === "duty_roster" ? await getDutyDraftHelpers(c.env.DB, ward.wardId, id) : [];
+    const helperInstruction = helpers.length
+      ? `\n回答から集めた手伝いの希望（この一覧を当番表の案に含めてください）: ${JSON.stringify(helpers)}`
+      : "\n回答に手伝いの希望はまだありません。";
+    await startTask(c.env, c.executionCtx, { wardId: ward.wardId, projectId: id, task: "draft", instruction: `${pack.instruction}\n対象の文書: ${pack.kind}。範囲: ${pack.scope}。data に pack_version を ${pack.version}、based_on_state_version を引いた状態の番号として含めてください。${pack.kind === "duty_roster" ? helperInstruction : ""}`, accountId: account.accountId });
     return c.redirect(`${adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}?notice=started`, 303);
   } catch { return c.redirect(`${adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}?error=${encodeURIComponent("AIに頼めませんでした。ここで手入力して保存できます")}`, 303); }
 });

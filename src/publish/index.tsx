@@ -6,8 +6,10 @@ import { newId, nowIso } from "../core/ids";
 import { Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { getLineAllowance, lineAccessToken, sendLineTitleAndUrl } from "../line/api";
-import { getPublicContact, getSquads } from "../settings/store";
+import { getPublicContact } from "../settings/store";
+import { getDistrictCopies, getDistricts, parseDistribution } from "../answers/api";
 import { checkPublicDraft } from "./check";
+import { DOCUMENT_KINDS, type DocumentKind } from "../project/model";
 
 interface DraftRow {
   document_id: string;
@@ -70,6 +72,7 @@ admin.get("/publish/:projectId", async (c) => {
   const project = await getProject(c.env.DB, ward.wardId, projectId);
   if (!project) return c.notFound();
   const drafts = await getDrafts(c.env.DB, ward.wardId, projectId);
+  const districtCopies = await getDistrictCopies(c.env.DB, ward.wardId);
   const records = await c.env.DB.prepare(`SELECT publication_id, document_id, version_no, published_at, unpublished_at,
       line_status, line_recipients, line_sent_at, line_error, recipient_scope, distribution
     FROM publication_records WHERE ward_id = ? AND project_id = ? ORDER BY published_at DESC`)
@@ -93,7 +96,7 @@ admin.get("/publish/:projectId", async (c) => {
         <section class="panel" key={draft.document_id}>
           <h2>{draft.title}</h2>
           <p>案内 {draft.version_no}。{draft.published_at ? "すでに配っています。差し替える時は下の一覧から新しい案を開いてください。" : ""}</p>
-          {draft.stale_since_version !== null || draft.based_on_state_version !== project.state_version
+          {draft.stale_since_version !== null
             ? <Notice error>新しい物が入っています。案を直すか、このまま配るか選んでください。</Notice>
             : null}
           <p><a href={adminPath(ward, `/publish/${projectId}/preview/${draft.document_id}/${draft.version_no}`)}>見た内容を確認する</a></p>
@@ -104,7 +107,7 @@ admin.get("/publish/:projectId", async (c) => {
             <label for={`recipient-${draft.document_id}`}>配布先</label>
             <select id={`recipient-${draft.document_id}`} name="recipientScope"><option value="member_households">加入世帯</option><option value="all_households">全戸</option></select>
             <label for={`copies-${draft.document_id}`}>班ごとの部数（班名と部数を一行ずつ）</label>
-            <textarea id={`copies-${draft.document_id}`} name="distribution" rows={4} style="width:100%;font:inherit;padding:0.5rem" placeholder="部数は後から名簿の一覧とつなげられます。" />
+            <textarea id={`copies-${draft.document_id}`} name="distribution" rows={4} style="width:100%;font:inherit;padding:0.5rem">{districtCopies.map((row) => `${row.district} ${row.copies}`).join("\n")}</textarea>
             <p><button type="submit">配る内容を確認する</button></p>
           </form> : null}
         </section>
@@ -152,7 +155,7 @@ admin.post("/publish/:projectId/confirm", async (c) => {
   const requestedVersionNo = Number(form.versionNo);
   const project = await getProject(c.env.DB, ward.wardId, c.req.param("projectId"));
   if (!project || project.closed_at) return c.notFound();
-  const draft = await c.env.DB.prepare(`SELECT d.title, d.scope, d.stale_since_version, v.version_id, v.version_no,
+  const draft = await c.env.DB.prepare(`SELECT d.kind, d.title, d.scope, d.stale_since_version, v.version_id, v.version_no,
       v.body, v.based_on_state_version, v.published_at
     FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
     WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_no = ?`)
@@ -160,7 +163,8 @@ admin.post("/publish/:projectId/confirm", async (c) => {
     .first<DraftRow>();
   if (!draft || (requestedVersionId && requestedVersionId !== draft.version_id)) return c.notFound();
   if (draft.scope !== "public") return c.text("公開する案内は公開の範囲にしてください。", 400);
-  const warnings = await checkPublicDraft(JSON.parse(draft.body) as unknown);
+  if (!(DOCUMENT_KINDS as readonly string[]).includes(draft.kind)) return c.text("文書の種類を確認できません。", 400);
+  const warnings = await checkPublicDraft(c.env.DB, ward.wardId, project.project_id, draft.kind as DocumentKind, draft.body);
   if (warnings.length > 0) return c.text(warnings.join("\n"), 400);
   const distribution = typeof form.distribution === "string" ? form.distribution.slice(0, 5000) : "";
   const recipientScope = form.recipientScope === "all_households" ? "all_households" : "member_households";
@@ -177,7 +181,6 @@ admin.post("/publish/:projectId/confirm", async (c) => {
       <input type="hidden" name="documentId" value={documentId} />
       <input type="hidden" name="versionId" value={draft.version_id} />
       <input type="hidden" name="versionNo" value={draft.version_no} />
-      <input type="hidden" name="stateVersion" value={project.state_version} />
       <input type="hidden" name="distribution" value={distribution} />
       <input type="hidden" name="recipientScope" value={typeof form.recipientScope === "string" ? form.recipientScope : "member_households"} />
       <button type="submit">配る</button>
@@ -195,32 +198,33 @@ admin.post("/publish/:projectId/send", async (c) => {
   const versionNo = Number(form.versionNo);
   const recipientScope = form.recipientScope === "all_households" ? "all_households" : "member_households";
   if (!project || project.closed_at) return c.notFound();
-  const row = await c.env.DB.prepare(`SELECT d.title, d.scope, d.stale_since_version, v.body, v.based_on_state_version,
+  const row = await c.env.DB.prepare(`SELECT d.kind, d.title, d.scope, d.stale_since_version, v.body, v.based_on_state_version,
       v.published_at FROM documents d JOIN document_versions v
       ON v.ward_id = d.ward_id AND v.document_id = d.document_id
       WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_id = ? AND v.version_no = ?`)
     .bind(ward.wardId, projectId, documentId, versionId, versionNo).first<DraftRow>();
   if (!row || row.scope !== "public" || row.published_at) return c.notFound();
-  if (row.based_on_state_version !== project.state_version || row.stale_since_version !== null || Number(form.stateVersion) !== project.state_version) {
+  if (row.stale_since_version !== null) {
     return c.html(<AdminPage ward={ward} account={account} title="新しい物が入りました" back={{ href: adminPath(ward, `/publish/${projectId}`), label: "案に戻る" }}>
       <h1>新しい物が入りました</h1><p>案を直すか、このまま配るか選び直してください。</p>
     </AdminPage>, 409);
   }
-  const warnings = await checkPublicDraft(JSON.parse(row.body) as unknown);
+  if (!(DOCUMENT_KINDS as readonly string[]).includes(row.kind)) return c.text("文書の種類を確認できません。", 400);
+  const warnings = await checkPublicDraft(c.env.DB, ward.wardId, projectId, row.kind as DocumentKind, row.body);
   if (warnings.length > 0) return c.text(warnings.join("\n"), 400);
   const now = nowIso();
   const publicationId = newId();
   const rawDistribution = typeof form.distribution === "string" ? form.distribution : "";
-  const squads = await getSquads(c.env.DB, ward.wardId);
+  const squads = await getDistricts(c.env.DB, ward.wardId);
   const distribution = parseDistribution(rawDistribution, squads);
   const publication = await c.env.DB.batch([
     c.env.DB.prepare(`UPDATE document_versions SET published_at = ?, published_by_account_id = ?
       WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_id = ? AND version_no = ?
-        AND published_at IS NULL AND based_on_state_version = ?
-        AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = ? AND p.project_id = ? AND p.state_version = ? AND p.closed_at IS NULL)
+        AND published_at IS NULL
+        AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL)
         AND EXISTS (SELECT 1 FROM documents d WHERE d.ward_id = ? AND d.document_id = ? AND d.stale_since_version IS NULL)`)
-      .bind(now, account.accountId, ward.wardId, projectId, documentId, versionId, versionNo, project.state_version,
-        ward.wardId, projectId, project.state_version, ward.wardId, documentId),
+      .bind(now, account.accountId, ward.wardId, projectId, documentId, versionId, versionNo,
+        ward.wardId, projectId, ward.wardId, documentId),
     c.env.DB.prepare(`INSERT INTO publication_records
       (ward_id, publication_id, project_id, document_id, version_id, version_no, recipient_scope, distribution, line_status, published_at, published_by_account_id)
       SELECT ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ? WHERE EXISTS (
@@ -261,17 +265,6 @@ admin.post("/publish/:projectId/lower/:publicationId", async (c) => {
     .bind(nowIso(), ward.wardId, c.req.param("projectId"), c.req.param("publicationId")).run();
   return c.redirect(adminPath(ward, `/publish/${c.req.param("projectId")}`), 303);
 });
-
-function parseDistribution(raw: string, squads: string[]): Record<string, number> {
-  const counts: Record<string, number> = {};
-  for (const line of raw.replace(/\r\n?/g, "\n").split("\n")) {
-    const split = line.lastIndexOf(" ");
-    const name = line.slice(0, split).trim();
-    const count = Number(line.slice(split + 1).trim());
-    if (split > 0 && squads.includes(name) && Number.isInteger(count) && count >= 0) counts[name] = count;
-  }
-  return counts;
-}
 
 export function ArticleBody({ body }: { body: string }) {
   let parsed: unknown;

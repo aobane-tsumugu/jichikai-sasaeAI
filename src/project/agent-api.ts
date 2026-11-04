@@ -4,6 +4,8 @@ import { addQuestion } from "./questions";
 import { listOpenProjects, getProjectState } from "./state";
 import { ITEM_LABEL, TABLES, DOCUMENT_KIND_LABEL, DOCUMENT_KINDS, isItemKey, isTableKey, type DocumentKind, type Source } from "./model";
 import { saveAIDraft } from "./actions";
+import { originalInProject } from "../intake/store";
+import { nowIso } from "../core/ids";
 
 function record(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -12,8 +14,10 @@ function record(value: unknown): Record<string, unknown> {
 function sourceFor(change: ChangeInput): Source | null {
   if (!change.originalId) return null;
   const data = record(change.data);
-  const year = typeof data.source_year === "number" && Number.isInteger(data.source_year) ? data.source_year : undefined;
-  return { kind: "original", ref: change.originalId, locator: change.locator || "全体", ...(year ? { year } : {}) };
+  const year = typeof data.source_year === "number" && Number.isInteger(data.source_year)
+    ? data.source_year
+    : change.year !== null && Number.isInteger(change.year) ? change.year : undefined;
+  return { kind: "original", ref: change.originalId, locator: change.locator || "全体", ...(year !== undefined ? { year } : {}) };
 }
 
 function documentKind(target: string, data: Record<string, unknown>): DocumentKind | null {
@@ -34,20 +38,57 @@ const agentApi: ProjectApi = {
     const data = record(change.data);
     const source = sourceFor(change);
     if (change.kind === "draft") {
+      if (!Number.isInteger(data.based_on_state_version) || (data.based_on_state_version as number) < 0) {
+        return { status: "rejected", note: "下書きの元にした状態がありません" };
+      }
       const kind = documentKind(change.target, data);
       if (!kind) return { status: "rejected", note: "文書の種類を特定できませんでした" };
       const packVersion = typeof data.pack_version === "string" ? data.pack_version.slice(0, 100) : ctx.packVersion;
       const ok = await saveAIDraft(env.DB, ctx.wardId, ctx.projectId, kind, packVersion, data);
       return { status: ok ? "applied" : "rejected", ...(ok ? {} : { note: "下書きを保存できませんでした" }) };
     }
-    if (change.kind === "map_draft") return { status: "rejected", note: "地図の記録は閉じる時に扱います" };
+    if (change.kind === "map_draft") {
+      const rawTasks = data.tasks;
+      if (!Array.isArray(rawTasks) || rawTasks.length === 0 || rawTasks.length > 100) return { status: "rejected", note: "地図の仕事がありません" };
+      const job = await env.DB.prepare("SELECT account_id FROM jobs WHERE ward_id = ? AND job_id = ? AND project_id = ?")
+        .bind(ctx.wardId, ctx.jobId, ctx.projectId).first<{ account_id: string | null }>();
+      if (!job?.account_id) return { status: "rejected", note: "地図の下書きを保存できませんでした" };
+      const current = await env.DB.prepare("SELECT task_id, task_key FROM project_map_tasks WHERE ward_id = ? AND project_id = ? AND removed_at IS NULL")
+        .bind(ctx.wardId, ctx.projectId).all<{ task_id: string; task_key: string | null }>();
+      const byKey = new Map(current.results.flatMap((task) => task.task_key ? [[task.task_key, task.task_id] as const] : []));
+      const statements: D1PreparedStatement[] = [];
+      for (const value of rawTasks) {
+        if (typeof value !== "object" || value === null || Array.isArray(value)) return { status: "rejected", note: "地図の仕事の形が合いません" };
+        const task = value as Record<string, unknown>;
+        const key = typeof task.task_id === "string" ? task.task_id : typeof task.task_key === "string" ? byKey.get(task.task_key) : undefined;
+        const taskId = current.results.some((row) => row.task_id === key) ? key : undefined;
+        const name = typeof task.name === "string" ? task.name.trim().slice(0, 120) : "";
+        if (!taskId || !name) return { status: "rejected", note: "地図の仕事を特定できませんでした" };
+        const progress = task.progress === "done" || task.progress === "started" ? task.progress : "open";
+        statements.push(env.DB.prepare(`UPDATE project_close_map SET period = ?, name = ?, progress = ?, requested_by = ?, difficulty = ?, next_year = ?, updated_at = ?, updated_by_account_id = ?
+          WHERE ward_id = ? AND project_id = ? AND task_id = ?
+            AND EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL)`)
+          .bind(typeof task.period === "string" ? task.period.slice(0, 80) : "", name, progress,
+            typeof task.requested_by === "string" ? task.requested_by.slice(0, 160) : "",
+            typeof task.difficulty === "string" ? task.difficulty.slice(0, 1200) : "",
+            typeof task.next_year === "string" ? task.next_year.slice(0, 1200) : "",
+            nowIso(), job.account_id, ctx.wardId, ctx.projectId, taskId, ctx.wardId, ctx.projectId));
+      }
+      const saved = await env.DB.batch(statements);
+      return saved.every((result) => (result.meta.changes ?? 0) === 1)
+        ? { status: "applied" }
+        : { status: "rejected", note: "地図の下書きを保存できませんでした" };
+    }
     if (!source) return { status: "rejected", note: "出どころがありません" };
+    if (change.originalId && !(await originalInProject(env.DB, ctx.wardId, ctx.projectId, change.originalId))) {
+      return { status: "rejected", note: "出どころの原本がこのプロジェクトにありません" };
+    }
     if (change.kind === "item") {
       const key = isItemKey(change.target) ? change.target : Object.entries(ITEM_LABEL).find(([, label]) => label === change.target)?.[0];
       const value = typeof data.value === "string" ? data.value : "";
       if (!key || !isItemKey(key) || !value) return { status: "rejected", note: "項目の中身がありません" };
       const result = await applyChange(env.DB, ctx.wardId, ctx.projectId, { kind: "item", itemKey: key, value, source, confidence: change.confidence, packVersion: ctx.packVersion, ticketId: ctx.jobId });
-      return { status: result.status };
+      return { status: result.status, ...(result.status !== "rejected" ? { duplicate: result.duplicate } : {}) };
     }
     if (change.kind === "row") {
       const tableCandidate = typeof data.table === "string" ? data.table : change.target;
@@ -56,7 +97,7 @@ const agentApi: ProjectApi = {
       if (!table || !isTableKey(table) || Object.keys(rowData).length === 0) return { status: "rejected", note: "表の行の中身がありません" };
       const clean = Object.fromEntries(Object.entries(rowData).filter(([, v]) => typeof v === "string" || typeof v === "number")) as Record<string, string | number>;
       const result = await applyChange(env.DB, ctx.wardId, ctx.projectId, { kind: "row", table, data: clean, source, confidence: change.confidence, packVersion: ctx.packVersion, ticketId: ctx.jobId });
-      return { status: result.status };
+      return { status: result.status, ...(result.status !== "rejected" ? { duplicate: result.duplicate } : {}) };
     }
     if (change.kind === "map_task") {
       const progress = data.progress;
@@ -65,13 +106,13 @@ const agentApi: ProjectApi = {
         .bind(ctx.wardId, ctx.projectId, change.target, change.target).first<{ task_key: string | null }>();
       if (!task?.task_key) return { status: "rejected", note: "地図に当てはまる仕事がありません" };
       const result = await applyChange(env.DB, ctx.wardId, ctx.projectId, { kind: "map_task", taskKey: task.task_key, progress, source, confidence: change.confidence, packVersion: ctx.packVersion, ticketId: ctx.jobId });
-      return { status: result.status };
+      return { status: result.status, ...(result.status !== "rejected" ? { duplicate: result.duplicate } : {}) };
     }
     if (change.kind === "decision") {
       const what = typeof data.what === "string" ? data.what : change.target;
       const decidedOn = typeof data.decidedOn === "string" ? data.decidedOn : "";
       const result = await applyChange(env.DB, ctx.wardId, ctx.projectId, { kind: "row", table: "decisions", data: { what, ...(decidedOn ? { decidedOn } : {}) }, source, confidence: change.confidence, packVersion: ctx.packVersion, ticketId: ctx.jobId });
-      return { status: result.status };
+      return { status: result.status, ...(result.status !== "rejected" ? { duplicate: result.duplicate } : {}) };
     }
     return { status: "rejected", note: "対応していない内容です" };
   },

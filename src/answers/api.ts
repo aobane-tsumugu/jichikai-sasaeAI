@@ -30,6 +30,18 @@ export interface HelperRequest {
   answerId: string;
 }
 
+/** 配布時に入力された班ごとの部数を、名簿にある班だけに絞る。 */
+export function parseDistribution(raw: string, districts: string[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const line of raw.replace(/\r\n?/g, "\n").split("\n")) {
+    const split = line.lastIndexOf(" ");
+    const name = line.slice(0, split).trim();
+    const count = Number(line.slice(split + 1).trim());
+    if (split > 0 && districts.includes(name) && Number.isInteger(count) && count >= 0) counts[name] = count;
+  }
+  return counts;
+}
+
 export function normalizeHousehold(value: string): string {
   return value.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("ja");
 }

@@ -5,11 +5,13 @@ import { seedWard, uniqueSlug } from "../core/testing";
 import type { Env } from "../env";
 import { listInboxItems } from "./index";
 import { acceptLineWebhook, verifyLineSignature } from "./webhook";
+import { createLineIntakePorts } from "./intake";
+import { MATCH_NEW, MATCH_UNRELATED } from "../ai/match";
 
 interface FixtureEvent {
   webhookEventId: string;
   timestamp: number;
-  source: { type: string; userId: string };
+  source: { type: string; userId?: string; groupId?: string; roomId?: string };
   message: { type: string; id: string; text?: string };
 }
 interface FixtureBody {
@@ -52,6 +54,14 @@ describe("公式 LINE と受け箱", () => {
     await env.DB.prepare(`INSERT INTO line_channels (ward_id, destination) VALUES (?, ?)`)
       .bind(ward.wardId, destination).run();
     const runtime = { ...env, LINE_CHANNEL_SECRET: secret, LINE_CHANNEL_ACCESS_TOKEN: "fictional-token" } as Env;
+    const pending: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (promise: Promise<unknown>) => void pending.push(promise) };
+    const ports = createLineIntakePorts(runtime, ctx, async (_wardId, original) => ({
+      choice: original.text?.includes("特売") ? MATCH_UNRELATED : MATCH_NEW,
+      reason: "試験用の判定",
+      usage: { input_tokens: 1, output_tokens: 1 },
+    }));
+    const dependencies = { fetch, ports };
     const makeRequest = async () => new Request("https://unit.test/hooks/line", {
       method: "POST",
       headers: { "x-line-signature": await sign(body, secret), "content-type": "application/json" },
@@ -62,17 +72,51 @@ describe("公式 LINE と受け箱", () => {
       new Request("https://unit.test/hooks/line", { method: "POST", headers: { "x-line-signature": "wrong" }, body }),
       runtime,
       env.DB,
+      dependencies,
+      new Date(),
+      ctx,
     );
     expect(rejected.status).toBe(401);
 
-    const first = await acceptLineWebhook(await makeRequest(), runtime, env.DB);
-    const duplicate = await acceptLineWebhook(await makeRequest(), runtime, env.DB);
+    const first = await acceptLineWebhook(await makeRequest(), runtime, env.DB, dependencies, new Date(), ctx);
+    const duplicate = await acceptLineWebhook(await makeRequest(), runtime, env.DB, dependencies, new Date(), ctx);
     expect(first.status).toBe(200);
     expect(duplicate.status).toBe(200);
     const inbox = await listInboxItems(env.DB, ward.wardId);
-    expect(inbox).toHaveLength(3);
-    expect(inbox.map((item) => item.original_text)).toContain(
-      "2班の架空 橋本です。大人2人と子ども1人で行きます。受付なら手伝えます。",
-    );
+    expect(inbox).toHaveLength(2);
+    expect(inbox.every((item) => item.original_text === null)).toBe(true);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM jobs WHERE ward_id = ? AND via = 'line_direct'").bind(ward.wardId).first<{ count: number }>())?.count).toBe(2);
+    expect((await env.DB.prepare("SELECT item_count FROM line_unrelated_daily_counts WHERE ward_id = ?").bind(ward.wardId).first<{ item_count: number }>())?.item_count).toBe(1);
+    await Promise.all(pending);
+  });
+
+  it("公式 LINE のグループの文も束 2 の入った物にする", async () => {
+    const ward = await seedWard(env.DB, uniqueSlug("line-group-test"));
+    const destination = `U-fixture-group-${crypto.randomUUID()}`;
+    await env.DB.prepare("INSERT INTO line_channels (ward_id, destination) VALUES (?, ?)").bind(ward.wardId, destination).run();
+    const secret = "fictional-line-secret";
+    const payload = JSON.parse(fixtureBody(destination)) as FixtureBody;
+    const groupEvent = payload.events[0];
+    if (!groupEvent) throw new Error("架空の LINE 事例がありません");
+    groupEvent.webhookEventId = `group-${crypto.randomUUID()}`;
+    groupEvent.source = { type: "group", userId: "U-fixture-user", groupId: "C-fixture-group" };
+    groupEvent.message.text = "架空の実行委員会からの連絡";
+    payload.events = [groupEvent];
+    const body = JSON.stringify(payload);
+    const runtime = { ...env, LINE_CHANNEL_SECRET: secret, LINE_CHANNEL_ACCESS_TOKEN: "fictional-token" } as Env;
+    const pending: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (promise: Promise<unknown>) => void pending.push(promise) };
+    const ports = createLineIntakePorts(runtime, ctx, async () => ({
+      choice: MATCH_NEW, reason: "新しいプロジェクトか確認が必要です", usage: { input_tokens: 1, output_tokens: 1 },
+    }));
+    const response = await acceptLineWebhook(new Request("https://unit.test/hooks/line", {
+      method: "POST", headers: { "x-line-signature": await sign(body, secret) }, body,
+    }), runtime, env.DB, { fetch, ports }, new Date(), ctx);
+    expect(response.status).toBe(200);
+    const job = await env.DB.prepare("SELECT via, sender_label FROM jobs WHERE ward_id = ? ORDER BY created_at DESC LIMIT 1")
+      .bind(ward.wardId).first<{ via: string; sender_label: string }>();
+    expect(job).toMatchObject({ via: "line_group", sender_label: "U-fixture-user" });
+    expect(await listInboxItems(env.DB, ward.wardId)).toHaveLength(1);
+    await Promise.all(pending);
   });
 });

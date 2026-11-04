@@ -91,7 +91,7 @@ admin.post("/close/:projectId/prepare", async (c) => {
       startTask(c.env, c.executionCtx, { wardId: ward.wardId, projectId: id, task: "report", accountId: account.accountId,
         instruction: "報告の下書きを起こす。公開する部分と役員だけの部分を分け、状態に無い事実は作らない。公開部分は人数や出来事のうち確認できる内容だけにする。配る操作はしない。文書: report。" }),
       startTask(c.env, c.executionCtx, { wardId: ward.wardId, projectId: id, task: "map_draft", accountId: account.accountId,
-        instruction: "閉じる時の地図の下書きを状態から作る。原本は読まない。地図の仕事ごとに時期、名前、済み、頼んだ人、困ったこと、来年変えることをまとめる。" }),
+        instruction: "閉じる時の地図の下書きを状態から作る。原本は読まない。地図の仕事ごとに、状態の taskId を task_id として、period、name、progress（open/started/done）、requested_by、difficulty、next_year をまとめる。write_change で kind=map_draft、target=map、data={tasks:[...] } を一度書く。" }),
     ]);
   } catch (error) { console.error("閉じる下書きを起こせませんでした", error instanceof Error ? error.name : ""); }
   return c.redirect(adminPath(ward, `/close/${id}`), 303);

@@ -11,6 +11,16 @@ import { getOriginal, listJobs, type JobListItem } from "./store";
 import type { JobStatus, OriginalKind } from "./types";
 import { WardBucket } from "../core/storage";
 import type { ReceivePart } from "./receive";
+import type { Waitable } from "./types";
+
+/** Hono のテスト用 request には ExecutionContext が無い場合がある。 */
+function waitableContext(context: { executionCtx: Waitable }): Waitable {
+  try {
+    return context.executionCtx;
+  } catch {
+    return { waitUntil: (promise) => void promise };
+  }
+}
 
 /** 受けた直後に出す文（設計書 5.3）。 */
 export const RECEIVED_MESSAGE = "受けました。閉じても処理は続きます。読み終わると、次に開いた時に見えます。";
@@ -178,7 +188,7 @@ intakeAdmin.post("/intake", async (c) => {
   if (text !== "") parts.push({ kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode(text) });
 
   try {
-    const outcome = await receiveOriginal(c.env, c.executionCtx, {
+    const outcome = await receiveOriginal(c.env, waitableContext(c), {
       wardId: ward.wardId,
       projectId,
       via: "admin",
@@ -204,7 +214,7 @@ intakeAdmin.post("/intake/:jobId/withdraw", async (c) => {
 
 intakeAdmin.post("/intake/:jobId/retry", async (c) => {
   const { ward } = c.var;
-  await retryJob(c.env, c.executionCtx, ward.wardId, c.req.param("jobId"));
+  await retryJob(c.env, waitableContext(c), ward.wardId, c.req.param("jobId"));
   return c.redirect(`${adminPath(ward, "/intake")}?n=retry`, 303);
 });
 

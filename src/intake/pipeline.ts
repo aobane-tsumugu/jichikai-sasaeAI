@@ -106,7 +106,9 @@ export async function runRead(
     });
     await endRun(env.DB, run, wardId, { ok: true, usage: result.usage, error: placed ? "" : "置く前に取り下げられました" });
     // 読み終わった。プロジェクトが決まっていれば、繋げる順番に入る（同じプロジェクトでは一つずつ）
-    if (placed && job.project_id) await dispatchProject(env, wardId, job.project_id).catch((e) => console.error("繋げるの起動に失敗しました", describe(e)));
+    // 読みの間に当て先が付いた場合も、最新の入った物から当て先を拾う。
+    const latest = placed ? await getJob(env.DB, wardId, jobId) : null;
+    if (latest?.project_id) await dispatchProject(env, wardId, latest.project_id).catch((e) => console.error("繋げるの起動に失敗しました", describe(e)));
     return placed ? "read" : "skipped";
   } catch (err) {
     const read = err instanceof ReadError ? err : null;

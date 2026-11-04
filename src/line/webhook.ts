@@ -1,6 +1,7 @@
 import { nowIso } from "../core/ids";
 import type { Env } from "../env";
-import { createLineIntakePorts, type LineIntakePorts, type LineOriginal } from "./intake";
+import { createLineIntakePorts, type InboxMatch, type LineIntakePorts, type LineOriginal } from "./intake";
+import type { Waitable } from "../intake/types";
 
 const RECEIPT_RETENTION_DAYS = 30;
 
@@ -8,7 +9,7 @@ interface LineMessageEvent {
   type?: string;
   webhookEventId?: string;
   timestamp?: number;
-  source?: { type?: string; userId?: string };
+  source?: { type?: string; userId?: string; groupId?: string; roomId?: string };
   message?: { type?: string; id?: string; text?: string };
 }
 
@@ -52,11 +53,13 @@ function addDays(date: Date, days: number): string {
 
 function isMessageEvent(event: LineMessageEvent): event is LineMessageEvent & {
   webhookEventId: string;
-  source: { type: "user"; userId: string };
+  source: { type: "user" | "group" | "room"; userId?: string; groupId?: string; roomId?: string };
   message: { type: "text" | "image"; id: string; text?: string };
 } {
   return event.type === "message" && Boolean(event.webhookEventId) &&
-    event.source?.type === "user" && Boolean(event.source.userId) &&
+    ((event.source?.type === "user" && Boolean(event.source.userId)) ||
+      (event.source?.type === "group" && Boolean(event.source.groupId)) ||
+      (event.source?.type === "room" && Boolean(event.source.roomId))) &&
     (event.message?.type === "text" || event.message?.type === "image") && Boolean(event.message.id);
 }
 
@@ -80,12 +83,12 @@ export async function acceptLineWebhook(
   request: Request,
   env: Env,
   db: D1Database,
-  dependencies: WebhookDependencies = {
-    fetch,
-    ports: createLineIntakePorts(db, env.ORIGINALS),
-  },
+  dependencies?: WebhookDependencies,
   now = new Date(),
+  ctx: Waitable = { waitUntil: (promise) => void promise },
 ): Promise<Response> {
+  const ports = dependencies?.ports ?? createLineIntakePorts(env, ctx);
+  const fetcher = dependencies?.fetch ?? fetch;
   const rawBody = new Uint8Array(await request.arrayBuffer());
   const signature = request.headers.get("x-line-signature") ?? "";
   if (!(await verifyLineSignature(rawBody, signature, env.LINE_CHANNEL_SECRET))) {
@@ -128,17 +131,24 @@ export async function acceptLineWebhook(
     try {
       const original: LineOriginal = {
         eventId,
-        senderId: event.source.userId,
+        senderId: event.source.userId ?? event.source.groupId ?? event.source.roomId ?? "",
+        sourceType: event.source.type,
         receivedAt: new Date(event.timestamp ?? now.getTime()).toISOString(),
         kind: event.message.type,
         ...(event.message.type === "text" ? { text: event.message.text ?? "" } : {}),
       };
       if (event.message.type === "image") {
-        const content = await getImageContent(event.message.id, env.LINE_CHANNEL_ACCESS_TOKEN, dependencies.fetch);
+        const content = await getImageContent(event.message.id, env.LINE_CHANNEL_ACCESS_TOKEN, fetcher);
         original.bytes = content.bytes;
         original.contentType = content.contentType;
       }
-      const match = await dependencies.ports.matchInboxItem(wardId, original);
+      let match: InboxMatch;
+      try {
+        match = await ports.matchInboxItem(wardId, original);
+      } catch (error) {
+        console.error("LINE の当て先を確認できませんでした", wardId, eventId, error instanceof Error ? error.name : "");
+        match = { disposition: "unmatched", reason: "当て先を確認できませんでした" };
+      }
       if (match.disposition === "unrelated") {
         const day = original.receivedAt.slice(0, 10);
         await db.prepare(`
@@ -148,14 +158,23 @@ export async function acceptLineWebhook(
         `).bind(wardId, day).run();
         continue;
       }
-      const itemId = await dependencies.ports.receiveOriginal(wardId, original);
-      if (match.disposition === "matched") {
-        await db.prepare(`
-          UPDATE line_inbox_items
-          SET disposition = 'matched', matched_project_id = ?, matched_project_name = ?, match_reason = ?
-          WHERE ward_id = ? AND item_id = ?
-        `).bind(match.projectId ?? null, match.projectName ?? null, match.reason ?? null, wardId, itemId).run();
-      }
+      const itemId = await ports.receiveOriginal(wardId, original);
+      if (!itemId) continue;
+      await db.prepare(`
+        INSERT INTO line_inbox_items (
+          ward_id, item_id, event_id, sender_id, original_kind, original_text,
+          original_object_key, received_at, matched_project_id, matched_project_name,
+          match_reason, disposition, job_id
+        ) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, NULL, NULL, NULL, 'unmatched', ?)
+      `).bind(
+        wardId, itemId, eventId, original.senderId, original.kind, original.receivedAt, itemId,
+      ).run();
+      if (match.disposition === "matched" && match.projectId) await ports.assignProject(wardId, itemId, match.projectId);
+      await db.prepare(`
+        UPDATE line_inbox_items SET disposition = ?, matched_project_id = ?, matched_project_name = ?, match_reason = ?
+        WHERE ward_id = ? AND item_id = ?
+      `).bind(match.disposition === "matched" && match.projectId ? "matched" : "unmatched",
+        match.projectId ?? null, match.projectName ?? null, match.reason ?? null, wardId, itemId).run();
     } catch (error) {
       await db.prepare(`
         DELETE FROM line_webhook_receipts WHERE ward_id = ? AND event_id = ?

@@ -1,9 +1,14 @@
-import { newId, nowIso } from "../core/ids";
-import { WardBucket } from "../core/storage";
+import { createAnthropic } from "../ai/anthropic";
+import { MATCH_NEW, MATCH_UNRELATED, matchProject, type MatchResult } from "../ai/match";
+import { projectApi } from "../ai/project-binding";
+import { assignProject as assignIntakeProject, receiveOriginal as receiveIntakeOriginal, withdrawJob as withdrawIntakeJob } from "../intake/api";
+import type { Waitable } from "../intake/types";
+import type { Env } from "../env";
 
 export interface LineOriginal {
   eventId: string;
   senderId: string;
+  sourceType: "user" | "group" | "room";
   receivedAt: string;
   kind: "text" | "image";
   text?: string;
@@ -19,77 +24,73 @@ export interface InboxMatch {
 }
 
 export interface LineIntakePorts {
-  receiveOriginal: (wardId: string, original: LineOriginal) => Promise<string>;
+  receiveOriginal: (wardId: string, original: LineOriginal) => Promise<string | null>;
   matchInboxItem: (wardId: string, original: LineOriginal) => Promise<InboxMatch>;
+  assignProject: (wardId: string, jobId: string, projectId: string) => Promise<void>;
+  discard: (wardId: string, jobId: string) => Promise<void>;
 }
 
-/** 束2の受付とAIが入るまでの差し替え口。原本と判定は個別の接続にする。 */
+/** 役員が関係ない物として消した時、受け箱から外して日ごとの数だけ残す。原本は呼び出し側で取り下げる。 */
+export async function markInboxItemUnrelated(db: D1Database, wardId: string, itemId: string): Promise<void> {
+  const item = await db.prepare("SELECT received_at FROM line_inbox_items WHERE ward_id = ? AND item_id = ?")
+    .bind(wardId, itemId).first<{ received_at: string }>();
+  if (!item) return;
+  await db.prepare(`INSERT INTO line_unrelated_daily_counts (ward_id, day, item_count)
+    VALUES (?, ?, 1) ON CONFLICT (ward_id, day) DO UPDATE SET item_count = item_count + 1`)
+    .bind(wardId, item.received_at.slice(0, 10)).run();
+  await db.prepare("DELETE FROM line_inbox_items WHERE ward_id = ? AND item_id = ?").bind(wardId, itemId).run();
+}
+
+/** LINE の本文と写真を束 2 の受け口へ渡し、開いているプロジェクトの候補から当て先を選ぶ。 */
 export function createLineIntakePorts(
-  db: D1Database,
-  bucket: R2Bucket,
+  env: Env,
+  ctx: Waitable,
+  match?: (wardId: string, original: LineOriginal) => Promise<MatchResult>,
 ): LineIntakePorts {
   return {
     async receiveOriginal(wardId, original) {
-      const itemId = newId();
-      const objectKey = `line/${itemId}.${original.kind === "image" ? "bin" : "txt"}`;
-      const scopedBucket = new WardBucket(bucket, wardId);
-      const body = original.kind === "text"
+      const bytes = original.kind === "text"
         ? new TextEncoder().encode(original.text ?? "")
-        : original.bytes;
-      if (!body) throw new Error("LINE の写真データがありません。");
-      await scopedBucket.put(objectKey, body, {
-        httpMetadata: { contentType: original.contentType ?? "text/plain; charset=utf-8" },
+        : original.bytes ? new Uint8Array(original.bytes) : null;
+      if (!bytes) throw new Error("LINE の写真データがありません。");
+      const outcome = await receiveIntakeOriginal(env, ctx, {
+        wardId,
+        via: original.sourceType === "user" ? "line_direct" : "line_group",
+        senderLabel: original.senderId,
+        parts: [{
+          kind: original.kind === "text" ? "text" : "photo",
+          filename: original.kind === "text" ? "LINE の文.txt" : "LINE の写真",
+          mediaType: original.kind === "text" ? "text/plain; charset=utf-8" : original.contentType ?? "application/octet-stream",
+          bytes,
+        }],
       });
-      try {
-        await db.prepare(`
-          INSERT INTO line_inbox_items (
-            ward_id, item_id, event_id, sender_id, original_kind,
-            original_text, original_object_key, received_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).bind(
-          wardId,
-          itemId,
-          original.eventId,
-          original.senderId,
-          original.kind,
-          original.kind === "text" ? original.text ?? "" : null,
-          objectKey,
-          original.receivedAt,
-        ).run();
-      } catch (error) {
-        await scopedBucket.delete(objectKey);
-        throw error;
-      }
-      return itemId;
+      return outcome.jobId;
     },
-    async matchInboxItem() {
-      // 束2の当てる口が入るまでは、人に仕分けを求めず受け箱に置く。
-      return { disposition: "unmatched" };
+    async assignProject(wardId, jobId, projectId) {
+      await assignIntakeProject(env, ctx, wardId, jobId, projectId);
+    },
+    async discard(wardId, jobId) {
+      await withdrawIntakeJob(env, wardId, jobId);
+    },
+    async matchInboxItem(wardId, original) {
+      const open = await projectApi().listOpenProjects(env, wardId);
+      const candidates = open.map((project) => ({
+        id: project.projectId,
+        title: project.title,
+        detail: `${project.kind} ${project.year ?? ""}`.trim(),
+      }));
+      const result = await (match ?? (async (_wardId, item) => matchProject(createAnthropic(env), {
+        candidates,
+        summary: item.kind === "text" ? (item.text ?? "") : "LINE から写真が届きました",
+        ...(item.kind === "text" && item.text ? { excerpt: item.text } : {}),
+        senderLabel: item.senderId,
+      })))(wardId, original);
+      if (result.choice === MATCH_UNRELATED) return { disposition: "unrelated", reason: result.reason };
+      if (result.choice === MATCH_NEW) return { disposition: "unmatched", reason: result.reason };
+      const project = open.find((candidate) => candidate.projectId === result.choice);
+      return project
+        ? { disposition: "matched", projectId: project.projectId, projectName: project.title, reason: result.reason }
+        : { disposition: "unmatched", reason: result.reason };
     },
   };
-}
-
-export async function markInboxItemUnrelated(
-  db: D1Database,
-  bucket: R2Bucket,
-  wardId: string,
-  itemId: string,
-  receivedAt = nowIso(),
-): Promise<boolean> {
-  const item = await db.prepare(`
-    SELECT original_object_key FROM line_inbox_items
-    WHERE ward_id = ? AND item_id = ?
-  `).bind(wardId, itemId).first<{ original_object_key: string | null }>();
-  if (!item) return false;
-  const day = receivedAt.slice(0, 10);
-  await db.batch([
-    db.prepare(`
-      INSERT INTO line_unrelated_daily_counts (ward_id, day, item_count)
-      VALUES (?, ?, 1)
-      ON CONFLICT (ward_id, day) DO UPDATE SET item_count = item_count + 1
-    `).bind(wardId, day),
-    db.prepare("DELETE FROM line_inbox_items WHERE ward_id = ? AND item_id = ?").bind(wardId, itemId),
-  ]);
-  if (item.original_object_key) await new WardBucket(bucket, wardId).delete(item.original_object_key);
-  return true;
 }

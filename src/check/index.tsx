@@ -24,11 +24,12 @@ async function saveRoster(db: D1Database, wardId: string, text: string): Promise
   return rows.length;
 }
 
-async function scanDraft(db: D1Database, wardId: string, projectId: string, kind: DocumentKind): Promise<Finding[]> {
-  const doc = await getEditableDocument(db, wardId, projectId, kind);
-  if (!doc || doc.scope !== "public") return [];
+export async function checkPublicDraft(db: D1Database, wardId: string, projectId: string, kind: DocumentKind, raw: unknown): Promise<string[]> {
   let body: { text?: string; items?: Array<{ key?: string; content?: string }> };
-  try { body = JSON.parse(doc.body) as typeof body; } catch { return [{ kind: "個人の連絡先", value: "下書きの形を読めません" }]; }
+  if (typeof raw === "string") {
+    try { body = JSON.parse(raw) as typeof body; } catch { return ["公開する文書の形を読めません"] ; }
+  } else if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) body = raw as typeof body;
+  else return ["公開する文書の形を読み取れません"];
   const text = [body.text ?? "", ...(body.items ?? []).map((i) => i.content ?? "")].join("\n");
   const found: Finding[] = [];
   const roster = await db.prepare("SELECT name, phone FROM check_roster WHERE ward_id = ? ORDER BY name").bind(wardId).all<RosterRow>();
@@ -50,7 +51,17 @@ async function scanDraft(db: D1Database, wardId: string, projectId: string, kind
   for (const value of text.match(email) ?? []) if (!allowed(value)) found.push({ kind: "個人の連絡先", value });
   for (const value of text.match(phone) ?? []) if (normalizePhone(value).length >= 10 && !allowed(value)) found.push({ kind: "個人の連絡先", value });
   const unique = new Map(found.map((f) => [`${f.kind}:${f.value}`, f]));
-  return [...unique.values()];
+  return [...unique.values()].map((finding) => `${finding.kind}: ${finding.value}`);
+}
+
+async function scanDraft(db: D1Database, wardId: string, projectId: string, kind: DocumentKind): Promise<Finding[]> {
+  const doc = await getEditableDocument(db, wardId, projectId, kind);
+  if (!doc || doc.scope !== "public") return [];
+  const messages = await checkPublicDraft(db, wardId, projectId, kind, doc.body);
+  return messages.map((message) => {
+    const [kindText, ...valueParts] = message.split(": ");
+    return { kind: kindText as Finding["kind"], value: valueParts.join(": ") };
+  });
 }
 
 const admin = new Hono<AdminEnv>();
