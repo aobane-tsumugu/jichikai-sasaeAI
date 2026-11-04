@@ -160,6 +160,15 @@ async function runTool(env: Env, wardId: string, job: JobRow | null, name: strin
     case "write_change": {
       const kind = asString(args.kind, 20) as ChangeKind;
       if (!["item", "row", "decision", "conflict", "map_task", "draft", "map_draft"].includes(kind)) return fail("kind が違います。");
+      const allowedForTask: Record<JobRow["task"], readonly ChangeKind[]> = {
+        connect: ["item", "row", "decision", "conflict", "map_task", "draft"],
+        draft: ["draft"],
+        report: ["draft"],
+        map_draft: ["map_draft"],
+      };
+      if (!allowedForTask[job.task].includes(kind)) {
+        return ok({ status: "rejected", note: "この仕事では、その種類の差分を書けません。" });
+      }
       const confidence = (["high", "medium", "low"].includes(asString(args.confidence, 10)) ? args.confidence : "low") as Confidence;
       const needsSource = kind !== "draft" && kind !== "map_draft";
       const originalId = asString(args.original_id, 100);

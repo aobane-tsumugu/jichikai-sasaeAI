@@ -1,12 +1,13 @@
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
-import { newId, nowIso } from "../core/ids";
 import { WardBucket } from "../core/storage";
 import { Layout } from "../core/ui";
 import type { AdminEnv, AppEnv } from "../env";
 import { getLineAllowance, lineAccessToken, sendLineTitleAndUrl } from "./api";
 import { markInboxItemUnrelated } from "./intake";
 import { acceptLineWebhook } from "./webhook";
+import { createProject } from "../project/api";
+import { assignProject, withdrawJob } from "../intake/api";
 
 interface InboxRow {
   item_id: string;
@@ -36,7 +37,7 @@ admin.get("/inbox", async (c) => {
   const db = c.env.DB;
   const items = await listInboxItems(db, wardId);
   const projects = await db.prepare(`
-    SELECT project_id, name FROM line_inbox_projects WHERE ward_id = ? ORDER BY created_at DESC
+    SELECT project_id, title AS name FROM projects WHERE ward_id = ? AND closed_at IS NULL ORDER BY created_at DESC
   `).bind(wardId).all<{ project_id: string; name: string }>();
   const unrelated = await db.prepare(`
     SELECT day, item_count FROM line_unrelated_daily_counts WHERE ward_id = ? ORDER BY day DESC LIMIT 30
@@ -50,7 +51,7 @@ admin.get("/inbox", async (c) => {
         <section class="panel" key={item.item_id}>
           <p><strong>{item.disposition === "matched" ? "AI が当てました" : "プロジェクト未定"}</strong></p>
           <p>{new Date(item.received_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}</p>
-          {item.original_kind === "text" ? <p>{item.original_text}</p> : <p><a href={`/${slug}/admin/inbox/${encodeURIComponent(item.item_id)}/original`}>写真を見る</a></p>}
+          <p><a href={`/${slug}/admin/inbox/${encodeURIComponent(item.item_id)}/original`}>{item.original_kind === "text" ? "届いた文を開く" : "届いた写真を開く"}</a></p>
           {item.matched_project_name ? <p>当て先: {item.matched_project_name}</p> : null}
           {item.match_reason ? <p>{item.match_reason}</p> : null}
           <form method="post" action={`/${slug}/admin/inbox/${encodeURIComponent(item.item_id)}`}>
@@ -64,7 +65,10 @@ admin.get("/inbox", async (c) => {
           <form method="post" action={`/${slug}/admin/inbox/${encodeURIComponent(item.item_id)}`}>
             <label for={`new-project-${item.item_id}`}>新しいプロジェクトを開く</label>
             <input id={`new-project-${item.item_id}`} name="projectName" type="text" maxLength={100} required />
-            <button name="operation" value="new-project">新しいプロジェクトに当てる</button>
+            <label for={`new-project-kind-${item.item_id}`}>種類</label>
+            <select id={`new-project-kind-${item.item_id}`} name="kind"><option value="event">行事</option><option value="general_meeting">総会</option><option value="city_request">市の依頼</option></select>
+            <label for={`new-project-year-${item.item_id}`}>年</label><input id={`new-project-year-${item.item_id}`} name="year" type="number" min="2000" max="2100" value={new Date().getFullYear()} required />
+            <button name="operation" value="new-project">新しいプロジェクトを開く</button>
           </form>
           <form method="post" action={`/${slug}/admin/inbox/${encodeURIComponent(item.item_id)}`}>
             <button class="danger" name="operation" value="unrelated">関係ない物として消す</button>
@@ -81,14 +85,17 @@ admin.get("/inbox", async (c) => {
 admin.get("/inbox/:itemId/original", async (c) => {
   const { wardId } = c.var.ward;
   const row = await c.env.DB.prepare(`
-    SELECT original_object_key, original_kind FROM line_inbox_items
+    SELECT job_id, original_kind FROM line_inbox_items
     WHERE ward_id = ? AND item_id = ?
-  `).bind(wardId, c.req.param("itemId")).first<{ original_object_key: string | null; original_kind: string }>();
-  if (!row?.original_object_key) return c.notFound();
-  const object = await new WardBucket(c.env.ORIGINALS, wardId).get(row.original_object_key);
+  `).bind(wardId, c.req.param("itemId")).first<{ job_id: string | null; original_kind: string }>();
+  if (!row?.job_id) return c.notFound();
+  const original = await c.env.DB.prepare("SELECT r2_path, media_type FROM originals WHERE ward_id = ? AND job_id = ? ORDER BY position LIMIT 1")
+    .bind(wardId, row.job_id).first<{ r2_path: string | null; media_type: string }>();
+  if (!original?.r2_path) return c.notFound();
+  const object = await new WardBucket(c.env.ORIGINALS, wardId).get(original.r2_path);
   if (!object) return c.notFound();
   return new Response(object.body, {
-    headers: { "content-type": object.httpMetadata?.contentType ?? "application/octet-stream", "cache-control": "private, no-store" },
+    headers: { "content-type": original.media_type, "cache-control": "private, no-store" },
   });
 });
 
@@ -98,13 +105,17 @@ admin.post("/inbox/:itemId", async (c) => {
   const operation = form.operation;
   const itemId = c.req.param("itemId");
   if (operation === "unrelated") {
-    await markInboxItemUnrelated(c.env.DB, c.env.ORIGINALS, wardId, itemId);
+    if (!(await withdrawJob(c.env, wardId, itemId))) return c.text("すでに処理が進んでいるため、受け箱から外せません。", 409);
+    await markInboxItemUnrelated(c.env.DB, wardId, itemId);
   } else if (operation === "assign") {
     const projectId = typeof form.projectId === "string" ? form.projectId : "";
     const project = await c.env.DB.prepare(`
-      SELECT name FROM line_inbox_projects WHERE ward_id = ? AND project_id = ?
+      SELECT title AS name FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL
     `).bind(wardId, projectId).first<{ name: string }>();
     if (project) {
+      const item = await c.env.DB.prepare("SELECT job_id FROM line_inbox_items WHERE ward_id = ? AND item_id = ?")
+        .bind(wardId, itemId).first<{ job_id: string | null }>();
+      if (item?.job_id) await assignProject(c.env, c.executionCtx, wardId, item.job_id, projectId);
       await c.env.DB.prepare(`
         UPDATE line_inbox_items SET disposition = 'matched', matched_project_id = ?,
           matched_project_name = ?, match_reason = NULL WHERE ward_id = ? AND item_id = ?
@@ -112,18 +123,17 @@ admin.post("/inbox/:itemId", async (c) => {
     }
   } else if (operation === "new-project") {
     const projectName = typeof form.projectName === "string" ? form.projectName.trim() : "";
-    if (projectName && projectName.length <= 100) {
-      const projectId = newId();
-      const createdAt = nowIso();
-      await c.env.DB.batch([
-        c.env.DB.prepare(`
-          INSERT INTO line_inbox_projects (ward_id, project_id, name, created_at) VALUES (?, ?, ?, ?)
-        `).bind(wardId, projectId, projectName, createdAt),
-        c.env.DB.prepare(`
-          UPDATE line_inbox_items SET disposition = 'matched', matched_project_id = ?,
-            matched_project_name = ?, match_reason = NULL WHERE ward_id = ? AND item_id = ?
-        `).bind(projectId, projectName, wardId, itemId),
-      ]);
+    const kind = String(form.kind);
+    const year = Number(form.year);
+    if (projectName && projectName.length <= 100 && ["event", "general_meeting", "city_request"].includes(kind) && Number.isInteger(year) && year >= 2000 && year <= 2100) {
+      const created = await createProject(c.env.DB, wardId, { kind: kind as "event" | "general_meeting" | "city_request", title: projectName, year, accountId: c.var.account.accountId });
+      const item = await c.env.DB.prepare("SELECT job_id FROM line_inbox_items WHERE ward_id = ? AND item_id = ?")
+        .bind(wardId, itemId).first<{ job_id: string | null }>();
+      if (item?.job_id) await assignProject(c.env, c.executionCtx, wardId, item.job_id, created.projectId);
+      await c.env.DB.prepare(`
+        UPDATE line_inbox_items SET disposition = 'matched', matched_project_id = ?,
+          matched_project_name = ?, match_reason = NULL WHERE ward_id = ? AND item_id = ?
+      `).bind(created.projectId, projectName, wardId, itemId).run();
     }
   }
   return c.redirect(`/${c.var.ward.slug}/admin/inbox`, 303);
@@ -132,7 +142,7 @@ admin.post("/inbox/:itemId", async (c) => {
 export const line: Bundle = {
   admin,
   hooks: new Hono<AppEnv>().post("/line", async (c) =>
-    acceptLineWebhook(c.req.raw, c.env, c.env.DB),
+    acceptLineWebhook(c.req.raw, c.env, c.env.DB, undefined, new Date(), c.executionCtx),
   ),
 };
 

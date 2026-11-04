@@ -50,6 +50,6 @@ export interface QuestionInput {
 export interface ProjectApi {
   listOpenProjects(env: Env, wardId: string): Promise<OpenProject[]>;
   getProjectState(env: Env, wardId: string, projectId: string): Promise<unknown>;
-  applyChange(env: Env, ctx: WriteContext, change: ChangeInput): Promise<{ status: string; note?: string }>;
+  applyChange(env: Env, ctx: WriteContext, change: ChangeInput): Promise<{ status: string; note?: string; duplicate?: boolean }>;
   addQuestion(env: Env, ctx: WriteContext, question: QuestionInput): Promise<{ status: string; note?: string }>;
 }
