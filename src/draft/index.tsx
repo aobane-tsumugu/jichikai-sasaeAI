@@ -76,7 +76,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     </section> : null}
     {document ? <h2>前の案</h2> : null}
     {versions.results.map((v) => { const old = parseBody(v.body); return <details><summary>{v.origin === "ai" ? "AIの案" : "役員が直した案"}</summary><pre style="white-space:pre-wrap">{old.text}</pre>
-      {!project.closedAt ? <form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/restore/${v.version_no}`}><button class="secondary">この案に戻す</button></form> : null}
+      {!project.closedAt ? <form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/restore/${v.version_no}`)}><button class="secondary">この案に戻す</button></form> : null}
     </details>; })}
     <form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/start`)}><button class="secondary">AIに案を起こしてもらう</button></form>
     <p><a href={adminPath(ward, `/publish/${id}`)}>配る</a></p>
