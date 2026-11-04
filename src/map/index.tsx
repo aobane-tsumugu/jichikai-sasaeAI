@@ -10,9 +10,9 @@ import { opensOf, type MapOpens } from "./template";
 
 const admin = new Hono<AdminEnv>();
 const targetPath: Record<MapOpens, (projectId: string, taskId: string) => string> = {
-  materials: (projectId) => `/projects/${projectId}#materials`,
+  materials: (projectId) => `/intake?project=${encodeURIComponent(projectId)}`,
   draft: (projectId) => `/projects/${projectId}/draft`,
-  answers: (projectId) => `/answers?project=${encodeURIComponent(projectId)}`,
+  answers: (projectId) => `/answers/${encodeURIComponent(projectId)}`,
   ledger: (projectId) => `/projects/${projectId}#ledger`,
 };
 
@@ -30,9 +30,18 @@ admin.get("/projects/:projectId/map", async (c) => {
   const max = tasks.map((t) => t.periodEnd).filter((x): x is string => !!x).sort().at(-1) ?? `${project.year}-12-31`;
   const start = Date.parse(`${min}T00:00:00Z`); const span = Math.max(1, Date.parse(`${max}T00:00:00Z`) - start);
   const positions = tasks.map((t, i) => ({ task: t, y: 38 + i * 58, x: (d: string | null) => d ? 120 + (Date.parse(`${d}T00:00:00Z`) - start) / span * 640 : 120 + i * 45 }));
-  return c.html(<Layout title={`地図: ${project.title}`} siteName={ward.name} noindex headerRight={<a href={adminPath(ward, `/projects/${id}`)}>プロジェクトへ</a>}>
+  return c.html(<Layout title={`地図: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, `/projects/${id}`)}>プロジェクトへ</a>}>
     <h1>{project.title} の地図</h1>
     <p>時期、仕事、担当を一枚で見られます。仕事を開くと、材料や案、答え、収支へ進めます。</p>
+    <nav class="action-links">
+      <a class="button secondary" href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}`)}>材料を送る</a>
+      <a class="button secondary" href={adminPath(ward, `/projects/${id}/draft`)}>案を直す</a>
+      <a class="button secondary" href={adminPath(ward, `/answers/${encodeURIComponent(id)}`)}>答えを見る</a>
+      <a class="button secondary" href={adminPath(ward, `/projects/${id}#ledger`)}>収支を見る</a>
+      <a class="button" href={adminPath(ward, `/publish/${id}`)}>配る</a>
+      <a class="button secondary" href={adminPath(ward, `/space/${id}`)}>空間</a>
+      <a class="button secondary" href={adminPath(ward, `/close/${id}`)}>報告と閉じる</a>
+    </nav>
     {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}
     <h2>今の時期に開いている仕事</h2>
     {currentTasks.length ? currentTasks.map((task) => <p><a href={`#task-${task.taskId}`}>{task.name}</a></p>) : <p>今の時期に開いている仕事はありません。</p>}
@@ -48,7 +57,11 @@ admin.get("/projects/:projectId/map", async (c) => {
     </svg></div>
     {tasks.map((task) => <section class="panel" id={`task-${task.taskId}`}><h2>{task.name}</h2><p>{task.periodStart ?? "時期未定"} から {task.periodEnd ?? "時期未定"}</p>
       <p>状態: {task.progress === "done" ? "済み" : task.progress === "started" ? "進行中" : "これから"} / {task.progressSource ? `出どころ: ${SOURCE_KIND_LABEL[task.progressSource.kind]}${task.progressSource.locator ? ` (${task.progressSource.locator})` : ""}` : "人の入力"}</p>
-      <nav>{opensOf(project.kind, task.taskKey).map((dest) => <a class="button secondary" href={adminPath(ward, targetPath[dest](id, task.taskId))}>{dest === "materials" ? "材料" : dest === "draft" ? "案" : dest === "answers" ? "答え" : "収支"}</a>)}</nav>
+      <nav class="action-links">{opensOf(project.kind, task.taskKey).map((dest) => <a class="button secondary" href={adminPath(ward, targetPath[dest](id, task.taskId))}>{dest === "materials" ? "材料を送る" : dest === "draft" ? "案" : dest === "answers" ? "答え" : "収支"}</a>)}
+        <a class="button secondary" href={adminPath(ward, `/publish/${id}`)}>配る</a>
+        <a class="button secondary" href={adminPath(ward, `/space/${id}`)}>空間</a>
+        <a class="button secondary" href={adminPath(ward, `/close/${id}`)}>報告と閉じる</a>
+      </nav>
       <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}`)}>
         <label for={`name-${task.taskId}`}>仕事</label><input id={`name-${task.taskId}`} name="name" value={task.name} maxlength={100} required />
         <label for={`start-${task.taskId}`}>始める日</label><input id={`start-${task.taskId}`} name="start" type="date" value={task.periodStart ?? ""} />
@@ -62,7 +75,7 @@ admin.get("/projects/:projectId/map", async (c) => {
     <h2>仕事を足す</h2><form method="post" action={adminPath(ward, `/projects/${id}/map/add`)}>
       <label for="new-task">仕事の名前</label><input id="new-task" name="name" maxlength={100} required /><button>足す</button>
     </form>
-    <h2>地図から開く場所</h2><p><a href={adminPath(ward, `/projects/${id}`)}>材料、問い、今年の中身</a> / <a href={adminPath(ward, `/projects/${id}/draft`)}>案を直す</a> / <a href={adminPath(ward, `/projects/${id}/check`)}>公開の下書きを確かめる</a> / <a href={adminPath(ward, `/publish/${id}`)}>配る</a></p>
+    <h2>地図から開く場所</h2><p><a href={adminPath(ward, `/projects/${id}`)}>材料、問い、今年の中身</a> / <a href={adminPath(ward, `/projects/${id}/check`)}>公開の下書きを確かめる</a></p>
   </Layout>);
 });
 

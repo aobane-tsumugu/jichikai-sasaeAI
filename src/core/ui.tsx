@@ -24,6 +24,8 @@ button.secondary, a.button.secondary { background: transparent; color: var(--acc
 button.danger { background: transparent; color: var(--danger); border-color: var(--danger); }
 .notice { border-left: 4px solid var(--accent); padding: 0.5rem 0.75rem; background: var(--panel); margin: 0.75rem 0; }
 .notice.error { border-color: var(--danger); }
+.action-links { display: flex; flex-wrap: wrap; gap: 0.65rem; margin: 1rem 0; }
+.action-links a.button { min-height: 3rem; display: inline-flex; align-items: center; }
 .secret { font: 1.4rem/1.6 ui-monospace, Consolas, monospace; letter-spacing: 0.05em; word-break: break-all; padding: 0.5rem 0.75rem; border: 2px dashed var(--accent); border-radius: 6px; background: var(--panel); }
 table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -39,12 +41,14 @@ export const Layout: FC<
     title: string;
     /** 見出しの左に出す名前（区の名前など）。 */
     siteName?: string;
+    /** 役員画面に戻るリンク。 */
+    adminHomeHref?: string;
     /** 見出しの右に出す物（ログイン中の名前、ログアウトなど）。 */
     headerRight?: Child;
     /** 検索に載せない画面（役員画面、運用の画面）。 */
     noindex?: boolean;
   }>
-> = ({ title, siteName, headerRight, noindex, children }) => (
+> = ({ title, siteName, headerRight, adminHomeHref, noindex, children }) => (
   <html lang="ja">
     <head>
       <meta charset="utf-8" />
@@ -57,7 +61,7 @@ export const Layout: FC<
       <header class="site">
         <div>
           <strong>{siteName ?? "運営支援"}</strong>
-          <span>{headerRight}</span>
+          <span>{adminHomeHref ? <><a href={adminHomeHref}>役員画面</a>{" "}</> : null}{headerRight}</span>
         </div>
       </header>
       <main>{children}</main>

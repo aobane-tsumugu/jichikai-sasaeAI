@@ -64,7 +64,7 @@ admin.get("/close/:projectId", async (c) => {
   }
   const report = (scope: "public" | "staff") => reports.results?.find((r) => r.scope === scope)?.body || (scope === "public" ? generatedText : "");
   const root = adminPath(ward, `/close/${id}`);
-  return c.html(<Layout title={`報告と閉じる: ${project.title}`} siteName={ward.name} noindex>
+  return c.html(<Layout title={`報告と閉じる: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>{project.title} の報告と閉じる</h1>
     {project.closedAt ? <Notice>このプロジェクトは凍結しています。読むことはできます。</Notice> : <form method="post" action={`${root}/prepare`}><button class="secondary">報告と地図の下書きを起こす</button></form>}
     {status.results?.map((job) => <p>{job.task === "report" ? "報告" : "地図"}: {job.status === "done" ? "できました" : job.status === "failed" ? "止まりました" : "準備中"}</p>)}

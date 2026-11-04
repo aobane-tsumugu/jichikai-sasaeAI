@@ -16,7 +16,7 @@ setProjectApi(agentApi);
 admin.get("/projects", async (c) => {
   const { ward } = c.var;
   const projects = await listProjects(c.env.DB, ward.wardId);
-  return c.html(<Layout title="プロジェクト" siteName={ward.name} noindex headerRight={<a href={adminPath(ward, "/")}>役員画面へ</a>}>
+  return c.html(<Layout title="プロジェクト" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>プロジェクト</h1>
     {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}
     {projects.map((p) => <section class="panel"><h2><a href={adminPath(ward, `/projects/${p.projectId}`)}>{p.title}</a></h2>
@@ -54,7 +54,7 @@ admin.get("/projects/:projectId", async (c) => {
     ...state.tables.sponsors.map((row) => ({ data: { counterpart: row.data.name ?? "", direction: "income", amount: row.data.amount ?? "", date: "", note: row.data.reply ?? "" } })),
     ...state.tables.ledger,
   ];
-  return c.html(<Layout title={project.title} siteName={ward.name} noindex headerRight={<a href={adminPath(ward, "/projects")}>プロジェクト一覧</a>}>
+  return c.html(<Layout title={project.title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/projects")}>プロジェクト一覧</a>}>
     <h1>{project.title}</h1>
     <nav><a href={adminPath(ward, `/projects/${projectId}/map`)}>地図</a> | <a href={adminPath(ward, `/projects/${projectId}/draft`)}>案</a> | <a href={adminPath(ward, `/projects/${projectId}/check`)}>混入を確かめる</a> | <a href={adminPath(ward, `/publish/${projectId}`)}>配る</a></nav>
     <form method="post" action={adminPath(ward, `/projects/${projectId}/title`)}><label for="title">題を直す</label><input id="title" name="title" value={project.title} maxlength={100} required /><button class="secondary">保存</button></form>
