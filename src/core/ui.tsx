@@ -28,6 +28,8 @@ button.danger { background: transparent; color: var(--danger); border-color: var
 table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
 form.inline { display: inline; }
+.qrbox { width: 12rem; max-width: 100%; margin: 0.5rem 0; }
+.qrbox svg { display: block; width: 100%; height: auto; }
 `;
 
 export const Layout: FC<
