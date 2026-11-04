@@ -100,6 +100,25 @@ describe("秋の収穫祭の最初の一片", () => {
     expect(draftPage.status).toBe(200);
     expect(await draftPage.text()).toContain(FIRST_SLICE.previousPlace);
 
+    const queuedDraftId = crypto.randomUUID();
+    const queuedAt = new Date().toISOString();
+    await env.DB.prepare(`INSERT INTO jobs (job_id, ward_id, project_id, via, task, instruction, status, created_at, updated_at)
+      VALUES (?, ?, ?, 'system', 'draft', ?, 'read', ?, ?)`)
+      .bind(queuedDraftId, ward.wardId, projectId, "当番表の案を起こす。対象の文書: duty_roster。範囲: space。", queuedAt, queuedAt).run();
+    const queuedDutyPage = await get(realApp, `/${ward.slug}/admin/projects/${projectId}/draft/duty_roster`, cookie);
+    const queuedDutyHtml = await queuedDutyPage.text();
+    expect(queuedDutyPage.status).toBe(200);
+    expect(queuedDutyHtml).toContain('data-ai-status="read"');
+    expect(queuedDutyHtml).toContain("順番を待っています");
+    expect(queuedDutyHtml).toContain(`action="/${ward.slug}/admin/projects/${projectId}/draft/duty_roster/save"`);
+    const savedManualDuty = await postForm(realApp, `/${ward.slug}/admin/projects/${projectId}/draft/duty_roster/save`, {
+      based_on: String(beforeDraft?.project.stateVersion ?? 0), title: "当番表", scope: "space", text: "担当を役員で記入します。",
+    }, cookie);
+    expect(savedManualDuty.status).toBe(303);
+    const manualDutyPage = await get(realApp, `/${ward.slug}/admin/projects/${projectId}/draft/duty_roster`, cookie);
+    expect(await manualDutyPage.text()).toContain("担当を役員で記入します。");
+    await env.DB.prepare("DELETE FROM jobs WHERE ward_id = ? AND job_id = ?").bind(ward.wardId, queuedDraftId).run();
+
     // 公開の検査用の名簿と、公開してはいけない協賛額を役員だけの状態に置く。
     await env.DB.prepare("INSERT INTO check_roster (ward_id, entry_id, name, phone, created_at) VALUES (?, ?, ?, ?, ?)")
       .bind(ward.wardId, crypto.randomUUID(), FIRST_SLICE.rosterName, "09000000000", new Date().toISOString()).run();
