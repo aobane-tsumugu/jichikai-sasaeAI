@@ -3,10 +3,11 @@ import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
 import { Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
+import { listUnansweredByDistrict } from "../answers/api";
 import { getReadings, listOriginals, listJobs } from "../intake/store";
 import { createProject, getProjectState, getProjectSummary, listProjects, ProjectInputError } from "./api";
 import { answerQuestion, renameProject } from "./actions";
-import { PROJECT_KINDS, PROJECT_KIND_LABEL, DEADLINE_LABEL, TABLES, displayFieldValue, DOCUMENT_KIND_LABEL, SCOPE_LABEL, CONFIDENCE_LABEL, type RowData } from "./model";
+import { PROJECT_KINDS, PROJECT_KIND_LABEL, DEADLINE_LABEL, ITEM_LABEL, TABLES, displayFieldValue, DOCUMENT_KIND_LABEL, SCOPE_LABEL, CONFIDENCE_LABEL, type RowData } from "./model";
 import { setProjectApi } from "../ai/project-binding";
 import { agentApi } from "./agent-api";
 
@@ -18,6 +19,7 @@ admin.get("/projects", async (c) => {
   const projects = await listProjects(c.env.DB, ward.wardId);
   return c.html(<Layout title="プロジェクト" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>プロジェクト</h1>
+    <p><a class="button secondary" href={adminPath(ward, "/projects/today")}>今やること</a></p>
     {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}
     {projects.map((p) => <section class="panel"><h2><a href={adminPath(ward, `/projects/${p.projectId}`)}>{p.title}</a></h2>
       <p>{PROJECT_KIND_LABEL[p.kind]} / {p.year}年</p>
@@ -30,6 +32,42 @@ admin.get("/projects", async (c) => {
       <input type="hidden" name="year" value={new Date().getFullYear()} />
       <p><button type="submit">開く</button></p>
     </form>
+  </Layout>);
+});
+
+admin.get("/projects/today", async (c) => {
+  const { ward } = c.var;
+  const projects = await listProjects(c.env.DB, ward.wardId);
+  const entries: Array<{ date: string | null; projectId: string; project: string; label: string; detail: string; href: string }> = [];
+  for (const project of projects) {
+    for (const [kind, date] of Object.entries(project.deadlines)) {
+      entries.push({ date, projectId: project.projectId, project: project.title, label: DEADLINE_LABEL[kind as keyof typeof DEADLINE_LABEL], detail: date, href: `/projects/${project.projectId}/map` });
+    }
+    const state = await getProjectState(c.env.DB, ward.wardId, project.projectId);
+    if (!state) continue;
+    if (project.deadlines.answer_due) {
+      const groups = await listUnansweredByDistrict(c.env.DB, ward.wardId, project.projectId);
+      const unansweredCount = groups.reduce((count, group) => count + group.households.length, 0);
+      if (unansweredCount > 0) entries.push({ date: project.deadlines.answer_due, projectId: project.projectId, project: project.title, label: "未回答", detail: `${unansweredCount}世帯`, href: `/answers/${encodeURIComponent(project.projectId)}` });
+    }
+    for (const question of state.questions) {
+      entries.push({ date: null, projectId: project.projectId, project: project.title, label: question.kind === "unreadable" ? "読めなかった所" : "未回答の問い", detail: question.text, href: `/projects/${project.projectId}#question-${question.questionId}` });
+    }
+    for (const item of state.items) {
+      if (!item.current && item.references.length === 0) entries.push({ date: null, projectId: project.projectId, project: project.title, label: "足りない物", detail: ITEM_LABEL[item.key], href: `/projects/${project.projectId}` });
+    }
+  }
+  entries.sort((a, b) => (a.date ?? "9999-99-99").localeCompare(b.date ?? "9999-99-99") || a.project.localeCompare(b.project, "ja"));
+  return c.html(<Layout title="今やること" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/projects")}>プロジェクト一覧</a>}>
+    <h1>今やること</h1>
+    <p>期限の近い順に並べています。期限のない問いと足りない物は後ろに表示します。</p>
+    {entries.map((entry) => <article class="panel">
+      <p>{entry.date ?? "日付なし"}　{entry.label}</p>
+      <h2><a href={adminPath(ward, entry.href)}>{entry.project}</a></h2>
+      <p>{entry.detail}</p>
+    </article>)}
+    {entries.length === 0 ? <p>今、確認する項目はありません。</p> : null}
+    <p><a href={adminPath(ward, "/")}>役員画面へ</a></p>
   </Layout>);
 });
 
@@ -60,7 +98,7 @@ admin.get("/projects/:projectId", async (c) => {
     <form method="post" action={adminPath(ward, `/projects/${projectId}/title`)}><label for="title">題を直す</label><input id="title" name="title" value={project.title} maxlength={100} required /><button class="secondary">保存</button></form>
     <p>{PROJECT_KIND_LABEL[project.kind]} / {project.year}年</p>
     <h2>問い</h2>
-    {state.questions.map((q) => <section class="panel"><strong>{q.text}</strong>{q.options?.length ? <ul>{q.options.map((o) => <li>{o}</li>)}</ul> : null}
+    {state.questions.map((q) => <section class="panel" id={`question-${q.questionId}`}><strong>{q.text}</strong>{q.options?.length ? <ul>{q.options.map((o) => <li>{o}</li>)}</ul> : null}
       <form method="post" action={adminPath(ward, `/projects/${projectId}/questions/${q.questionId}`)}>
         {q.options?.length ? <><label for={`answer-${q.questionId}`}>一つ選ぶ</label><select id={`answer-${q.questionId}`} name="answer">{q.options.map((o) => <option>{o}</option>)}</select></> : <><label for={`answer-${q.questionId}`}>答え</label><input id={`answer-${q.questionId}`} name="answer" maxlength={2000} /></>}
         <button name="action" value="answer">答える</button> <button class="secondary" name="action" value="unknown">分からない</button> <button class="secondary" name="action" value="later">後で</button>
