@@ -249,12 +249,12 @@ export async function listUnansweredByDistrict(
   projectId: string,
 ): Promise<Array<{ district: string; households: string[] }>> {
   const [roster, answers] = await Promise.all([getRoster(db, wardId), listAnswers(db, wardId, projectId)]);
-  const answered = new Set(answers.map((answer) => normalizeHousehold(answer.household)));
+  const keyOf = (entry: RosterEntry) => JSON.stringify([entry.district, normalizeHousehold(entry.household)]);
+  const answered = new Set(answers.map(keyOf));
   const districts = new Map<string, string[]>();
   for (const entry of roster) {
-    if (answered.has(normalizeHousehold(entry.household))) continue;
     const members = districts.get(entry.district) ?? [];
-    members.push(entry.household);
+    if (!answered.has(keyOf(entry))) members.push(entry.household);
     districts.set(entry.district, members);
   }
   return [...districts.keys()].sort().map((district) => ({ district, households: districts.get(district) ?? [] }));
