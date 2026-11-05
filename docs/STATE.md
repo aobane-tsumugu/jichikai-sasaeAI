@@ -53,7 +53,7 @@ PM が二時間ごとの点検で更新します。実施を確認した物だ�
 | 空間と回答の画面の言葉と試験 | src/answers/index.tsx、src/space/ | 未着手 |
 | 入った物の見え方と今やること | src/intake/pages.tsx、src/project/index.tsx | 未着手 |
 | 来年の種の地図に去年の記録を出す | src/map/ | 未着手 |
-| プロジェクトを消す（今ある記録の消去を使う最小の形） | src/settings/deletion.tsx、src/ops/lifecycle.ts | 未着手 |
+| プロジェクトを消す（消す列一つで続きから消す） | src/settings/deletion.tsx、src/ops/lifecycle.ts、migrations/0107 | 未着手 |
 
 PM が持つ物: 収支の表に協賛の表を混ぜて見せている作りの見直し、空間を staging で開いて確かめる、取り込んだ依頼の staging での確かめ。
 
