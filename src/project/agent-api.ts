@@ -121,9 +121,13 @@ const agentApi: ProjectApi = {
     const result = await addQuestion(env.DB, ctx.wardId, ctx.projectId, {
       kind: question.options.length ? "conflict" : "decide", text: question.text, options: question.options,
       ...(source ? { source } : {}), packVersion: ctx.packVersion, requestId: `${ctx.jobId}:${question.text}`,
-    }, { verifyOriginal: async (originalId) => !!(await env.DB.prepare(`SELECT 1 AS ok FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
+    }, { reuseOpenText: true, verifyOriginal: async (originalId) => !!(await env.DB.prepare(`SELECT 1 AS ok FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
       WHERE o.ward_id = ? AND o.original_id = ? AND j.project_id = ? AND o.withdrawn_at IS NULL`).bind(ctx.wardId, originalId, ctx.projectId).first()) });
-    return { status: result.status, ...("detail" in result ? { note: result.detail } : {}) };
+    return {
+      status: result.status,
+      ...("questionId" in result ? { questionId: result.questionId } : {}),
+      ...(result.status === "same" ? { note: "同じ問いが既にあります" } : "detail" in result ? { note: result.detail } : {}),
+    };
   },
 };
 
