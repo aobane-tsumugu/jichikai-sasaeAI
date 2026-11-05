@@ -494,17 +494,7 @@ async function planRow(ctx: Ctx, n: Normalized, change: RowChange): Promise<Plan
     .all<RowRecord>();
 
   const staleKinds = () => documentsDependingOn(ctx, { table });
-  const lowQuestions = (): NewQuestion[] =>
-    ctx.confidence === "low"
-      ? [
-          lowConfidenceQuestion(
-            ctx,
-            `「${def.label}」の「${quote(name)}」の行を、自信がないまま読みました。合っていますか。`,
-            `${table}:${matchKey}`,
-          ),
-        ]
-      : [];
-
+  // 行ごとの読み違いの確かめは頼まない（前提 1）。確かさは行に残る
   const exact = existing.results.find((r) => r.match_key === matchKey);
   if (exact) {
     const old = JSON.parse(exact.data) as RowData;
@@ -585,7 +575,7 @@ async function planRow(ctx: Ctx, n: Normalized, change: RowChange): Promise<Plan
     const result: Plan = {
       status: "applied",
       statements: [update],
-      questions: [...questions, ...lowQuestions()],
+      questions: [...questions],
       bump: true,
       staleKinds: await staleKinds(),
     };
@@ -650,7 +640,7 @@ async function planRow(ctx: Ctx, n: Normalized, change: RowChange): Promise<Plan
       ctx.now,
       isPerson ? (n.source.accountId ?? null) : null,
     );
-  return { status: "applied", statements: [insert], questions: lowQuestions(), bump: true, staleKinds: await staleKinds() };
+  return { status: "applied", statements: [insert], questions: [], bump: true, staleKinds: await staleKinds() };
 }
 
 // ---- 地図の仕事 ----
@@ -679,14 +669,10 @@ async function planMapTask(ctx: Ctx, n: Normalized, change: MapTaskChange): Prom
          progress_confidence = ?, progress_change_id = ? WHERE ward_id = ? AND task_id = ?`,
     )
     .bind(change.progress, kind, ref, locator, ctx.confidence, ctx.changeId, ctx.wardId, task.task_id);
-  const verb = change.progress === "done" ? "済み" : "進んでいる";
   return {
     status: "applied",
     statements: [update],
-    questions:
-      ctx.confidence === "low"
-        ? [lowConfidenceQuestion(ctx, `「${task.name}」が${verb}と読みましたが、自信がありません。合っていますか。`, change.taskKey)]
-        : [],
+    questions: [],
     bump: true,
     staleKinds: [],
   };

@@ -2,7 +2,7 @@
 // 包みは system に入れる（L-202）。包みを直したら PACK_VERSION を上げる。版は差分の重複を弾く印と、読み直しの選別に使う。
 import type { JobTask } from "../intake/types";
 
-export const PACK_VERSION = "connect@4";
+export const PACK_VERSION = "connect@5";
 
 /** MCP の口の名前。agent の mcp_servers と mcp_toolset が同じ名前を指す。 */
 export const MCP_SERVER_NAME = "kiroku";
@@ -23,7 +23,7 @@ write_change の書き方（名前は下の英語の鍵をそのまま使う）:
   helper_slots（手伝いの時間帯）、due（締切）、public_contact（公開用の連絡先）。
 - row: target は表の鍵、data は列。額は 6000 のような 0 以上の整数の円にする（「6,000円」と書かない）。
   sponsors（協賛先）: name（必須）、lastYearAmount、ask、reply（yes、no、pending のどれか）、amount、note。
-  duties（当番）: slot（必須）、task、assignee、attendance（present か absent）、note。
+  duties（当番）: slot（必須）、task、assignee、attendance（present か absent）、note。一行は時間帯と持ち場の組で、slot は時間帯だけ（例 9:00〜10:30）、task は持ち場だけを書く。同じ組に人が複数いる時は assignee に「、」で並べる。
   layout（配置）: spot（必須）、position、note。
   ledger（収支）: direction（income か expense。必須）、counterpart（必須）、amount、date、receiptOriginalId、note。
   submissions（提出した物）: what（必須）、to、submittedOn。
