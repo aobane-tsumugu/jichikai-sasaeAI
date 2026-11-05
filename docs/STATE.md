@@ -53,7 +53,7 @@ PM が二時間ごとの点検で更新します。実施を確認した物だ�
 | 空間と回答の画面の言葉と試験 | src/answers/index.tsx | 取り込み済み（PR #4）。staging で見出しを確かめた |
 | 入った物の見え方と今やること | src/intake/pages.tsx、src/project/index.tsx | 取り込み済み（PR #5）。staging で確かめた |
 | 来年の種の地図に去年の記録を出す | src/map/index.tsx | 取り込み済み（PR #6）。staging の確認用の種で確かめた |
-| プロジェクトを消す（消す列一つで続きから消す） | src/settings/deletion.tsx、src/ops/lifecycle.ts、migrations/0107 | 未着手 |
+| プロジェクトを消す（消す列一つで続きから消す） | src/settings/deletion.tsx、src/ops/lifecycle.ts、migrations/0107 | 着手（codex/project-deletion） |
 | 初めて開いた人に、画面が次にすることを示す | src/settings/index.tsx、src/map/index.tsx、src/space/index.tsx | 未着手 |
 | 新しいプロジェクトを、去年の地図から開ける | src/project/index.tsx | 未着手 |
 | 閉じたプロジェクトを開き直せる（閉じる前の確かめを外す） | src/close/index.tsx | 未着手 |
