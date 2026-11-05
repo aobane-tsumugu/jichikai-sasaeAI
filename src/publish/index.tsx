@@ -253,7 +253,6 @@ admin.post("/publish/:projectId/confirm", async (c) => {
   if (draft.kind === "duty_roster") return c.text("当番表は公開せず、プロジェクトの空間に配ってください。", 400);
   if (!(DOCUMENT_KINDS as readonly string[]).includes(draft.kind)) return c.text("文書の種類を確認できません。", 400);
   const warnings = await checkPublicDraft(c.env.DB, ward.wardId, project.project_id, draft.kind as DocumentKind, draft.body);
-  if (warnings.length > 0) return c.text(warnings.join("\n"), 400);
   const roster = await getRoster(c.env.DB, ward.wardId);
   const targetMode = form.get("targetMode");
   let distribution: PaperDistribution | null;
@@ -278,6 +277,7 @@ admin.post("/publish/:projectId/confirm", async (c) => {
   return c.html(<AdminPage ward={ward} account={account} title="配る内容の確認" back={{ href: adminPath(ward, `/publish/${project.project_id}`), label: "案に戻る" }}>
     <h1>配る内容の確認</h1>
     <ArticleBody body={draft.body} />
+    {warnings.length > 0 ? <section class="panel"><h2>混入の検査で見つかった所</h2><p>公開する前に内容を確認してください。配る操作は続けられます。</p><ul>{warnings.map((warning) => <li>{warning}</li>)}</ul></section> : null}
     <p>配ります。区のページに載ります。{lineDelivery === "skip" ? "今回は公式 LINE に送りません。" : `公式 LINE は${allowance?.friends === null || allowance === null ? "人数確認後" : `${allowance.friends} 人`}に届きます。`}</p>
     <p>紙の配布先を指定しました。</p>
     <p>指定した相手: {paperTargetLabel(JSON.stringify(distribution))}</p>
@@ -317,8 +317,6 @@ admin.post("/publish/:projectId/send", async (c) => {
     </AdminPage>, 409);
   }
   if (!(DOCUMENT_KINDS as readonly string[]).includes(row.kind)) return c.text("文書の種類を確認できません。", 400);
-  const warnings = await checkPublicDraft(c.env.DB, ward.wardId, projectId, row.kind as DocumentKind, row.body);
-  if (warnings.length > 0) return c.text(warnings.join("\n"), 400);
   const now = nowIso();
   const publicationId = newId();
   const roster = await getRoster(c.env.DB, ward.wardId);

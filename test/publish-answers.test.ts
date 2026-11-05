@@ -3,11 +3,14 @@ import { describe, expect, it } from "vitest";
 import { seedAdmin } from "../src/core/testing";
 import { createProject, applyChange } from "../src/project/api";
 import { saveDocument } from "../src/project/actions";
-import { replaceRoster, listAnswers, listUnansweredByDistrict, getAnswerTotals } from "../src/answers/api";
+import { replaceRoster, getRoster, listAnswers, listUnansweredByDistrict, getAnswerTotals } from "../src/answers/api";
+import { checkPublicDraft } from "../src/check";
+import { SETTING_KEYS } from "../src/settings/keys";
+import { setSetting } from "../src/settings/store";
 import { get, postForm, realApp } from "./helpers";
 
 describe("配る画面と区のページ", () => {
-  it("公開の案に協賛の額が混ざる時は配布を止め、役員画面から確認できる", async () => {
+  it("混入の検査結果を確認画面に出し、公開用の連絡先が空でも配れる", async () => {
     const { ward, account, cookie } = await seedAdmin(env.DB);
     const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
     await applyChange(env.DB, ward.wardId, project.projectId, {
@@ -24,7 +27,16 @@ describe("配る画面と区のページ", () => {
       WHERE d.ward_id = ? AND d.project_id = ? AND d.kind = 'announcement'`)
       .bind(ward.wardId, project.projectId).first<{ document_id: string; version_id: string; version_no: number; state_version: number }>();
     expect(version).not.toBeNull();
-    const response = await postForm(realApp, `/${ward.slug}/admin/publish/${project.projectId}/send`, {
+    const response = await postForm(realApp, `/${ward.slug}/admin/publish/${project.projectId}/confirm`, {
+      documentId: version!.document_id,
+      versionId: version!.version_id,
+      versionNo: String(version!.version_no),
+      recipientScope: "member_households",
+      distribution: "",
+    }, cookie);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("協賛の額: 6500");
+    const sent = await postForm(realApp, `/${ward.slug}/admin/publish/${project.projectId}/send`, {
       documentId: version!.document_id,
       versionId: version!.version_id,
       versionNo: String(version!.version_no),
@@ -32,11 +44,55 @@ describe("配る画面と区のページ", () => {
       recipientScope: "member_households",
       distribution: "",
     }, cookie);
-    expect(response.status).toBe(400);
-    expect(await response.text()).toContain("協賛の額");
-    const page = await get(realApp, `/${ward.slug}/admin/publish/${project.projectId}`, cookie);
-    expect(page.status).toBe(200);
-    expect(await page.text()).toContain("配る内容を確認する");
+    expect(sent.status).toBe(303);
+  });
+
+  it("公開用の連絡先に載せたメールは混入として知らせない", async () => {
+    const { ward, account } = await seedAdmin(env.DB);
+    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
+    await setSetting(env.DB, ward.wardId, SETTING_KEYS.publicContact, "fixture@example.test", account.accountId);
+    const body = JSON.stringify({ text: "連絡先 fixture@example.test", items: [] });
+    await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
+      kind: "announcement", title: "架空の案内", scope: "public", body, basedOn: project.stateVersion,
+    });
+    expect(await checkPublicDraft(env.DB, ward.wardId, project.projectId, "announcement", body)).toEqual([]);
+  });
+});
+
+describe("名簿の取り込み", () => {
+  it("54 世帯の CSV を画面の送信形式で保存できる", async () => {
+    const { ward, cookie } = await seedAdmin(env.DB);
+    const csv = ["番号,班,世帯名,氏名", ...Array.from({ length: 54 }, (_, index) =>
+      `${index + 1},${Math.floor(index / 18) + 1}班,架空世帯 ${index + 1},架空の氏名 ${index + 1}`,
+    )].join("\n");
+    const form = new FormData();
+    form.set("part", new File([csv], "加入世帯_2026秋.csv", { type: "text/csv" }));
+    form.set("text", "");
+    const response = await realApp.request(`/${ward.slug}/admin/answers/roster`, {
+      method: "POST",
+      headers: { accept: "application/json", origin: "http://localhost", cookie },
+      body: form,
+    }, env);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, message: "名簿を読み込みました。" });
+    expect(await getRoster(env.DB, ward.wardId)).toHaveLength(54);
+  });
+
+  it("JSON の行を受け取り、54 世帯を区ごとに保存できる", async () => {
+    const { ward, cookie } = await seedAdmin(env.DB);
+    const rows = [["番号", "班", "世帯名"], ...Array.from({ length: 54 }, (_, index) => [
+      String(index + 1), `${Math.floor(index / 18) + 1}班`, `架空世帯 ${index + 1}`,
+    ])];
+    const response = await realApp.request(`/${ward.slug}/admin/answers/roster`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json", origin: "http://localhost", cookie },
+      body: JSON.stringify({ rows_json: JSON.stringify(rows), household_column: 2, district_column: 1 }),
+    }, env);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, message: "名簿を読み込みました。" });
+    const roster = await getRoster(env.DB, ward.wardId);
+    expect(roster).toHaveLength(54);
+    expect(new Set(roster.map((entry) => entry.district))).toEqual(new Set(["1班", "2班", "3班"]));
   });
 });
 

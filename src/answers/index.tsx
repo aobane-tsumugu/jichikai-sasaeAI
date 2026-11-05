@@ -135,34 +135,70 @@ admin.post("/answers/roster/photo/import", async (c) => {
 });
 
 admin.post("/answers/roster", async (c) => {
-  const form = await c.req.formData();
-  const rowsRaw = form.get("rows_json");
-  if (typeof rowsRaw === "string") {
-    const rows = JSON.parse(rowsRaw) as string[][];
-    const household = Number(form.get("household_column"));
-    const district = Number(form.get("district_column"));
-    const columns = { household, district };
-    const entries = rowsToRoster(rows, columns);
-    await replaceRoster(c.env.DB, c.var.ward.wardId, entries, columns);
-    return c.redirect(adminPath(c.var.ward.slug, "/answers/roster"), 303);
+  const wantsJson = (c.req.header("accept") ?? "").includes("application/json");
+  const reply = (ok: boolean, message: string, status: 200 | 400 | 500 = 200) =>
+    wantsJson ? c.json({ ok, message }, status) : c.text(message, status);
+  const contentType = c.req.header("content-type") ?? "";
+  let form: FormData | Record<string, unknown>;
+  if (contentType.includes("application/json")) {
+    try {
+      const body: unknown = await c.req.json();
+      if (typeof body !== "object" || body === null || Array.isArray(body)) return reply(false, "名簿の内容を読み取れません。", 400);
+      form = body as Record<string, unknown>;
+    } catch {
+      return reply(false, "名簿の内容を読み取れません。", 400);
+    }
+  } else {
+    form = await c.req.formData();
   }
-  const data = form.get("part");
-  const extracted = form.get("part_extracted");
-  if (!(data instanceof File)) return c.text("名簿ファイルを選んでください。", 400);
+  const get = (name: string): unknown => form instanceof FormData ? form.get(name) : form[name];
+  const rowsRaw = get("rows_json");
+  if (typeof rowsRaw === "string" || Array.isArray(rowsRaw)) {
+    let rows: string[][];
+    try {
+      const parsed: unknown = typeof rowsRaw === "string" ? JSON.parse(rowsRaw) : rowsRaw;
+      if (!Array.isArray(parsed) || !parsed.every((row) => Array.isArray(row) && row.every((cell) => typeof cell === "string"))) {
+        return reply(false, "名簿の行を読み取れません。", 400);
+      }
+      rows = parsed as string[][];
+    } catch {
+      return reply(false, "名簿の行を読み取れません。", 400);
+    }
+    const household = Number(get("household_column"));
+    const district = Number(get("district_column"));
+    const columns = { household, district };
+    let entries: ReturnType<typeof rowsToRoster>;
+    try { entries = rowsToRoster(rows, columns); }
+    catch (error) {
+      return reply(false, error instanceof Error ? error.message : "名簿を読み込めませんでした。", 400);
+    }
+    try { await replaceRoster(c.env.DB, c.var.ward.wardId, entries, columns); }
+    catch { return reply(false, "名簿を保存できませんでした。もう一度お試しください。", 500); }
+    return wantsJson ? reply(true, "名簿を読み込みました。") : c.redirect(adminPath(c.var.ward.slug, "/answers/roster"), 303);
+  }
+  const data = get("part");
+  const extracted = get("part_extracted");
+  if (!(data instanceof File)) return reply(false, "名簿ファイルを選んでください。", 400);
   let rows: string[][];
   if (/\.csv$/i.test(data.name)) {
-    rows = parseCsv(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await data.arrayBuffer()));
+    try {
+      rows = parseCsv(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await data.arrayBuffer()));
+    } catch {
+      return reply(false, "CSV を読み取れませんでした。UTF-8 で保存し直してください。", 400);
+    }
   } else {
-    if (typeof extracted !== "string" || !extracted) return c.text("Excel ファイルを読み取れませんでした。", 400);
-    const workbook = JSON.parse(extracted) as { tables?: Array<{ rows?: unknown }> };
+    if (typeof extracted !== "string" || !extracted) return reply(false, "Excel ファイルを読み取れませんでした。", 400);
+    let workbook: { tables?: Array<{ rows?: unknown }> };
+    try { workbook = JSON.parse(extracted) as typeof workbook; }
+    catch { return reply(false, "Excel ファイルを読み取れませんでした。", 400); }
     const first = workbook.tables?.[0]?.rows;
     if (!Array.isArray(first) || !first.every((row) => Array.isArray(row) && row.every((cell) => typeof cell === "string"))) {
-      return c.text("先頭のシートに表がありません。", 400);
+      return reply(false, "先頭のシートに表がありません。", 400);
     }
     rows = first as string[][];
   }
   const detected = chooseRosterColumns(rows[0] ?? []);
-  const rawColumns = form.get("columns");
+  const rawColumns = get("columns");
   let columns: RosterColumns | null = detected ?? (await getSavedRosterColumns(c.env.DB, c.var.ward.wardId));
   if (!columns && typeof rawColumns === "string") {
     try {
@@ -172,9 +208,14 @@ admin.post("/answers/roster", async (c) => {
     }
   }
   if (!columns) return c.html(<RosterColumnPicker wardSlug={c.var.ward.slug} headers={rows[0] ?? []} rows={rows} />);
-  const entries = rowsToRoster(rows, columns);
-  await replaceRoster(c.env.DB, c.var.ward.wardId, entries, columns);
-  return c.redirect(adminPath(c.var.ward.slug, "/answers/roster"), 303);
+  let entries: ReturnType<typeof rowsToRoster>;
+  try { entries = rowsToRoster(rows, columns); }
+  catch (error) {
+    return reply(false, error instanceof Error ? error.message : "名簿を読み込めませんでした。", 400);
+  }
+  try { await replaceRoster(c.env.DB, c.var.ward.wardId, entries, columns); }
+  catch { return reply(false, "名簿を保存できませんでした。もう一度お試しください。", 500); }
+  return wantsJson ? reply(true, "名簿を読み込みました。") : c.redirect(adminPath(c.var.ward.slug, "/answers/roster"), 303);
 });
 
 admin.get("/answers/:projectId", async (c) => {
