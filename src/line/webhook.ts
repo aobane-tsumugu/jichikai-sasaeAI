@@ -2,6 +2,7 @@ import { nowIso } from "../core/ids";
 import type { Env } from "../env";
 import { createLineIntakePorts, type InboxMatch, type LineIntakePorts, type LineOriginal } from "./intake";
 import type { Waitable } from "../intake/types";
+import { getLineMemberDisplayName, replyLineText } from "./api";
 
 const RECEIPT_RETENTION_DAYS = 30;
 
@@ -9,6 +10,8 @@ interface LineMessageEvent {
   type?: string;
   webhookEventId?: string;
   timestamp?: number;
+  replyToken?: string;
+  joined?: { members?: Array<{ userId?: string }> };
   source?: { type?: string; userId?: string; groupId?: string; roomId?: string };
   message?: { type?: string; id?: string; text?: string };
 }
@@ -129,7 +132,28 @@ export async function acceptLineWebhook(
       INSERT OR IGNORE INTO line_webhook_receipts (ward_id, event_id, expires_at)
       VALUES (?, ?, ?)
     `).bind(wardId, eventId, addDays(now, RECEIPT_RETENTION_DAYS)).run();
-    if (receipt.meta.changes === 0 || !isMessageEvent(event)) continue;
+    if (receipt.meta.changes === 0) continue;
+
+    if (event.type === "join" && event.source?.type === "group" && event.source.groupId && event.replyToken) {
+      const prior = await db.prepare("SELECT notice_sent_at FROM line_group_notices WHERE ward_id = ? AND group_id = ?")
+        .bind(wardId, event.source.groupId).first<{ notice_sent_at: string | null }>();
+      if (!prior) {
+        const inserted = await db.prepare(`INSERT OR IGNORE INTO line_group_notices (ward_id, group_id, first_joined_at)
+          VALUES (?, ?, ?)`).bind(wardId, event.source.groupId, now.toISOString()).run();
+        if ((inserted.meta.changes ?? 0) === 0) continue;
+        try {
+          await replyLineText(env.LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, "このグループに貼られた物は全部記録に残ります。", fetcher);
+          await db.prepare("UPDATE line_group_notices SET notice_sent_at = ? WHERE ward_id = ? AND group_id = ? AND notice_sent_at IS NULL")
+            .bind(now.toISOString(), wardId, event.source.groupId).run();
+        } catch (error) {
+          await db.prepare("DELETE FROM line_group_notices WHERE ward_id = ? AND group_id = ? AND notice_sent_at IS NULL")
+            .bind(wardId, event.source.groupId).run();
+          console.error("LINE グループへの案内を送れませんでした", wardId, error instanceof Error ? error.name : "");
+        }
+      }
+      continue;
+    }
+    if (!isMessageEvent(event)) continue;
 
     try {
       const original: LineOriginal = {
@@ -138,6 +162,9 @@ export async function acceptLineWebhook(
         sourceType: event.source.type,
         receivedAt: new Date(event.timestamp ?? now.getTime()).toISOString(),
         kind: event.message.type,
+        senderDisplayName: event.source.type === "group" || event.source.type === "room"
+          ? await getLineMemberDisplayName(env.LINE_CHANNEL_ACCESS_TOKEN, event.source, fetcher)
+          : null,
         ...(event.message.type === "text" ? { text: event.message.text ?? "" } : {}),
       };
       if (event.message.type === "image") {
@@ -166,11 +193,13 @@ export async function acceptLineWebhook(
       await db.prepare(`
         INSERT INTO line_inbox_items (
           ward_id, item_id, event_id, sender_id, original_kind, original_text,
-          original_object_key, received_at, matched_project_id, matched_project_name,
+          original_object_key, received_at, sender_display_name, sender_label, matched_project_id, matched_project_name,
           match_reason, disposition, job_id
-        ) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, NULL, NULL, NULL, 'unmatched', ?)
+        ) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, NULL, NULL, NULL, 'unmatched', ?)
       `).bind(
-        wardId, itemId, eventId, original.senderId, original.kind, original.receivedAt, itemId,
+        wardId, itemId, eventId, original.senderId, original.kind, original.receivedAt,
+        original.senderDisplayName, original.sourceType === "group" ? "LINE グループ" : original.sourceType === "room" ? "LINE 複数人トーク" : "LINE 個別",
+        itemId,
       ).run();
       // 文は届いた文そのもので当てる。写真は束 2 が読み取りを終えてから当てる。
       if (match?.disposition === "matched" && match.projectId) {

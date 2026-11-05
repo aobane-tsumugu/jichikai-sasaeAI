@@ -9,8 +9,10 @@ import { createLineIntakePorts } from "./intake";
 import { MATCH_NEW, MATCH_UNRELATED } from "../ai/match";
 
 interface FixtureEvent {
+  type?: string;
   webhookEventId: string;
   timestamp: number;
+  replyToken?: string;
   source: { type: string; userId?: string; groupId?: string; roomId?: string };
   message: { type: string; id: string; text?: string };
 }
@@ -111,12 +113,50 @@ describe("公式 LINE と受け箱", () => {
     }));
     const response = await acceptLineWebhook(new Request("https://unit.test/hooks/line", {
       method: "POST", headers: { "x-line-signature": await sign(body, secret) }, body,
-    }), runtime, env.DB, { fetch, ports }, new Date(), ctx);
+    }), runtime, env.DB, { fetch: async () => Response.json({ displayName: "架空の表示名" }), ports }, new Date(), ctx);
     expect(response.status).toBe(200);
     const job = await env.DB.prepare("SELECT via, sender_label FROM jobs WHERE ward_id = ? ORDER BY created_at DESC LIMIT 1")
       .bind(ward.wardId).first<{ via: string; sender_label: string }>();
     expect(job).toMatchObject({ via: "line_group", sender_label: "U-fixture-user" });
     expect(await listInboxItems(env.DB, ward.wardId)).toHaveLength(1);
+    const sender = await env.DB.prepare("SELECT sender_display_name, sender_label FROM line_inbox_items WHERE ward_id = ? LIMIT 1")
+      .bind(ward.wardId).first<{ sender_display_name: string; sender_label: string }>();
+    expect(sender).toMatchObject({ sender_display_name: "架空の表示名", sender_label: "LINE グループ" });
     await Promise.all(pending);
+  });
+
+  it("LINE グループに入った案内は同じグループへ一度だけ送る", async () => {
+    const ward = await seedWard(env.DB, uniqueSlug("line-join-test"));
+    const destination = `U-fixture-join-${crypto.randomUUID()}`;
+    await env.DB.prepare("INSERT INTO line_channels (ward_id, destination) VALUES (?, ?)").bind(ward.wardId, destination).run();
+    const secret = "fictional-line-secret";
+    const payload = JSON.parse(fixtureBody(destination)) as FixtureBody;
+    const event = payload.events[0];
+    if (!event) throw new Error("架空の LINE 事例がありません");
+    event.type = "join";
+    event.webhookEventId = `join-${crypto.randomUUID()}`;
+    event.replyToken = "fictional-reply-token";
+    event.source = { type: "group", groupId: "C-fixture-join-group" };
+    payload.events = [event];
+    let sent = 0;
+    const fetcher: typeof fetch = async (_input, init) => {
+      sent += 1;
+      const body = String(init?.body ?? "");
+      expect(body).toContain("貼られた物は全部記録に残ります");
+      return new Response(null, { status: 200 });
+    };
+    const runtime = { ...env, LINE_CHANNEL_SECRET: secret, LINE_CHANNEL_ACCESS_TOKEN: "fictional-token" } as Env;
+    const ports = createLineIntakePorts(runtime, { waitUntil: () => undefined }, async () => ({
+      choice: MATCH_NEW, reason: "試験用", usage: { input_tokens: 1, output_tokens: 1 },
+    }));
+    for (let repeat = 0; repeat < 2; repeat += 1) {
+      if (repeat === 1) event.webhookEventId = `join-${crypto.randomUUID()}`;
+      const body = JSON.stringify(payload);
+      const response = await acceptLineWebhook(new Request("https://unit.test/hooks/line", {
+        method: "POST", headers: { "x-line-signature": await sign(body, secret) }, body,
+      }), runtime, env.DB, { fetch: fetcher, ports }, new Date());
+      expect(response.status).toBe(200);
+    }
+    expect(sent).toBe(1);
   });
 });

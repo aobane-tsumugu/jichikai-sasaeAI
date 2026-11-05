@@ -2,6 +2,34 @@ import type { Env } from "../env";
 
 const LINE_API = "https://api.line.me";
 
+export async function replyLineText(token: string, replyToken: string, text: string, request: typeof fetch = fetch): Promise<void> {
+  const response = await request(`${LINE_API}/v2/bot/message/reply`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ replyToken, messages: [{ type: "text", text }] }),
+  });
+  if (!response.ok) throw new Error(`LINE API request failed (${response.status})`);
+}
+
+export async function getLineMemberDisplayName(
+  token: string,
+  source: { type: "user" | "group" | "room"; userId?: string; groupId?: string; roomId?: string },
+  request: typeof fetch = fetch,
+): Promise<string | null> {
+  if (!source.userId) return null;
+  const path = source.type === "group" && source.groupId
+    ? `/v2/bot/group/${encodeURIComponent(source.groupId)}/member/${encodeURIComponent(source.userId)}`
+    : source.type === "room" && source.roomId
+      ? `/v2/bot/room/${encodeURIComponent(source.roomId)}/member/${encodeURIComponent(source.userId)}`
+      : `/v2/bot/profile/${encodeURIComponent(source.userId)}`;
+  try {
+    const profile = await lineGet<{ displayName?: string }>(path, token, request);
+    return profile.displayName?.trim().slice(0, 100) || null;
+  } catch {
+    return null;
+  }
+}
+
 export interface LineAllowance {
   friends: number | null;
   monthlyLimit: number | null;
@@ -61,6 +89,18 @@ export async function sendLineTitleAndUrl(
     body: JSON.stringify({
       messages: [{ type: "text", text: `${title}\n${safeUrl.toString()}` }],
     }),
+  });
+  if (!response.ok) throw new Error(`LINE API request failed (${response.status})`);
+}
+
+/** 市の通知など、役員が内容を整えてから届ける文を公式 LINE で一斉送信する。 */
+export async function broadcastLineText(token: string, text: string, request: typeof fetch = fetch): Promise<void> {
+  const message = text.trim();
+  if (!message || message.length > 5000) throw new Error("送る文を確かめてください。");
+  const response = await request(`${LINE_API}/v2/bot/message/broadcast`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ messages: [{ type: "text", text: message }] }),
   });
   if (!response.ok) throw new Error(`LINE API request failed (${response.status})`);
 }
