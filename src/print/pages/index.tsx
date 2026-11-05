@@ -90,8 +90,10 @@ admin.get("/print/:projectId/:documentId/:versionNo/:kind", async (c) => {
   const current = (table: TableKey) => (state?.tables[table] ?? []).filter((entry) => entry.scope === "current");
   const tableRows = kind === "duty" ? [...current("duties"), ...current("layout")] : kind === "sponsors" ? current("sponsors") : [];
   const listed = tableRows.slice(0, 20);
-  // 表の行が多いほど書き込む欄を減らし、一枚から溢れないようにする。
-  const blankBoxes = (max: number) => Math.max(2, Math.min(max, Math.floor((200 - (listed.length + 2) * 7.5) / 18)));
+  // 表の行は折り返すと高さが読めないので、表がある時の書き込む欄は残りの高さを埋める一つの欄にし、一枚から溢れないようにする。
+  const blankArea = (label: string, count: number) => listed.length === 0
+    ? Array.from({ length: count }, (_, index) => <FieldBox key={index} label={label} heightMm={16} />)
+    : <div class="field fill"><span class="field-label">書き足す欄（{label}）</span></div>;
   const printTitle = `${row.title} ${kindLabel(kind)}`;
   return c.html(<PrintDocument title={printTitle}>
     {kind === "announcement" && onOneSheet ? (squads.length ? squads : [""]).map((squad) => <Sheet key={squad} footer={<><span>{ward.name} {squad}</span><span>案内 {versionNo}</span></>}>
@@ -116,13 +118,13 @@ admin.get("/print/:projectId/:documentId/:versionNo/:kind", async (c) => {
       <h1>班長へのお知らせ</h1><p>{row.title}</p><ArticleBody body={row.body} /><p>班: {squad}</p>
       <p>この案内を班の世帯へお渡しください。</p>{paperQr(squad)}
     </Sheet>) : null}
-    {kind === "duty" ? <Sheet footer={<>{ward.name} 当番表と配置図</>}>
+    {kind === "duty" ? <Sheet fill footer={<>{ward.name} 当番表と配置図</>}>
       <div class="float-qr">{paperQr()}</div>
       <h1>{row.title} 当番表と配置図</h1>
       <RowsTable table="duties" rows={listed.filter((entry) => entry.table === "duties")} />
       <RowsTable table="layout" rows={listed.filter((entry) => entry.table === "layout")} />
       {tableRows.length > listed.length ? <p>ほかに {tableRows.length - listed.length} 行あります。役員画面で見られます。</p> : null}
-      {Array.from({ length: blankBoxes(8) }, (_, index) => <FieldBox key={index} label={index % 2 === 0 ? "時間帯・持ち場・担当" : "配置・場所・メモ"} heightMm={16} />)}
+      {blankArea("時間帯・持ち場・担当、配置・場所・メモ", 8)}
     </Sheet> : null}
     {kind === "meeting" ? Array.from({ length: Math.max(1, Math.ceil(meetingSheets.length / 3)) }, (_, page) => {
       const targets = meetingSheets.slice(page * 3, page * 3 + 3);
@@ -142,12 +144,12 @@ admin.get("/print/:projectId/:documentId/:versionNo/:kind", async (c) => {
         </>}
       </Sheet>;
     }) : null}
-    {kind === "sponsors" ? <Sheet footer={<>{ward.name} 協賛先</>}>
+    {kind === "sponsors" ? <Sheet fill footer={<>{ward.name} 協賛先</>}>
       <div class="float-qr">{paperQr()}</div>
       <h1>{row.title} 協賛先の一覧</h1>
       <RowsTable table="sponsors" rows={listed} />
       {tableRows.length > listed.length ? <p>ほかに {tableRows.length - listed.length} 行あります。役員画面で見られます。</p> : null}
-      {Array.from({ length: blankBoxes(10) }, (_, index) => <FieldBox key={index} label="協賛先・返事・連絡" heightMm={16} />)}
+      {blankArea("協賛先・返事・連絡", 10)}
     </Sheet> : null}
   </PrintDocument>);
 });
