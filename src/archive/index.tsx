@@ -13,7 +13,7 @@ import { createAnthropic, MODEL } from "../ai/anthropic";
 import { runSnapshotCron } from "./snapshot";
 import { runDeletionCron } from "../ops/lifecycle";
 
-interface SeedTask { task_key: string | null; name: string; period_start: string | null; period_end: string | null; offset_start_days: number | null; offset_end_days: number | null; sort_order: number; }
+interface SeedTask { task_id: string; task_key: string | null; name: string; period_start: string | null; period_end: string | null; offset_start_days: number | null; offset_end_days: number | null; sort_order: number; }
 const admin = new Hono<AdminEnv>();
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -212,7 +212,7 @@ export async function copySeed(db: D1Database, wardId: string, sourceId: string,
     const endOffset = (task.period_end && oldDeadline ? Math.round((Date.parse(`${task.period_end}T00:00:00Z`) - Date.parse(`${oldDeadline.due_on}T00:00:00Z`)) / 86400000) : null) ?? task.offset_end_days;
     return db.prepare(`INSERT INTO project_map_tasks (task_id, ward_id, project_id, task_key, name, period_start, period_end, offset_start_days, offset_end_days, sort_order, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(newId(), wardId, targetId, task.task_key, task.saved_name ?? task.name,
+      .bind(newId(), wardId, targetId, task.task_key ?? task.task_id, task.saved_name ?? task.name,
         eventDay && startOffset !== null ? addDays(eventDay, startOffset) : null,
         eventDay && endOffset !== null ? addDays(eventDay, endOffset) : null,
         startOffset, endOffset, task.sort_order, now);
