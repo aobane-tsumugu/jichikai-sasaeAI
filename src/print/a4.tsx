@@ -22,6 +22,11 @@ body { margin: 0; color: #000; font: 12pt/1.7 "Hiragino Sans", "Yu Gothic", "Mei
 .sheet { width: 210mm; height: 296mm; margin: 8mm auto; padding: 14mm 16mm 10mm; background: #fff; overflow: hidden; display: flex; flex-direction: column; break-after: page; page-break-after: always; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3); }
 .sheet:last-of-type { break-after: auto; page-break-after: auto; }
 .sheet-body { flex: 1; min-height: 0; }
+.sheet.dense { font-size: 10.5pt; line-height: 1.55; }
+.sheet.dense p { margin: 0 0 2mm; }
+.sheet .float-qr { float: right; margin: 0 0 3mm 4mm; }
+.sheet table { border-collapse: collapse; width: 100%; margin: 0 0 3mm; font-size: 10.5pt; }
+.sheet th, .sheet td { border: 0.3mm solid #000; padding: 1mm 2mm; text-align: left; vertical-align: top; }
 .sheet-footer { display: flex; justify-content: space-between; align-items: flex-end; gap: 6mm; padding-top: 2mm; border-top: 0.3mm solid #000; font-size: 9pt; }
 .sheet h1 { margin: 0 0 4mm; font-size: 22pt; line-height: 1.4; }
 .sheet h2 { margin: 5mm 0 2mm; font-size: 15pt; line-height: 1.4; }
@@ -71,8 +76,9 @@ export const PrintDocument: FC<PropsWithChildren<{ title: string; hint?: Child }
 );
 
 /** A4 の 1 枚。内容が 1 枚に収まらない時は、枚を分けて書く（溢れた分は紙に出ない）。 */
-export const Sheet: FC<PropsWithChildren<{ footer?: Child }>> = ({ footer, children }) => (
-  <section class="sheet">
+/** A4 一枚。dense は長い本文を一枚に収めるために文字を少し小さくする。 */
+export const Sheet: FC<PropsWithChildren<{ footer?: Child; dense?: boolean }>> = ({ footer, dense, children }) => (
+  <section class={dense ? "sheet dense" : "sheet"}>
     <div class="sheet-body">{children}</div>
     {footer ? <div class="sheet-footer">{footer}</div> : null}
   </section>
