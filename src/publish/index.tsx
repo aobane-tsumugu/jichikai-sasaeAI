@@ -396,7 +396,9 @@ admin.post("/publish/:projectId/send", async (c) => {
     distribution = { mode: "district", targets: Object.entries(legacy).map(([district, copies]) => ({ district, copies })) };
   }
   if (!distribution) return c.text("紙の配布先が名簿と合いません。配布内容を選び直してください。", 400);
-  const answerDue = row.kind === "announcement" ? answerDeadlineFromDraft(row.body, project.year) : null;
+  const draftDue = row.kind === "announcement" ? answerDeadlineFromDraft(row.body, project.year) : null;
+  // 過ぎた日を受付の締切に入れると、配った途端に回答が閉じる。去年の中身の案でも起きるので入れない
+  const answerDue = draftDue && draftDue >= new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date()) ? draftDue : null;
   const publication = await c.env.DB.batch([
     c.env.DB.prepare(`UPDATE document_versions SET published_at = ?, published_by_account_id = ?, tables_snapshot = ${publicationTablesSql}
       WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_id = ? AND version_no = ?

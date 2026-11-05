@@ -76,8 +76,10 @@ it("案内の締切を受付に使い、回答を直して消し、手で延ば�
   ]);
   expect((await get(realApp, editPath, cookie)).status).toBe(404);
 
+  vi.setSystemTime(new Date("2026-10-01T03:00:00Z"));
   await publish("10 月 9 日（金）まで");
   expect(await getAnswerDeadline(env.DB, ward.wardId, project.projectId)).toBe("2026-10-09");
+  vi.setSystemTime(new Date("2026-10-10T03:00:00Z"));
   expect(await (await get(realApp, publicPath)).text()).toContain("回答の受付は終わりました。");
   const webInput = { ...input, district: FIRST_SLICE.district };
   expect((await postForm(realApp, publicPath, webInput)).status).toBe(400);
@@ -89,4 +91,8 @@ it("案内の締切を受付に使い、回答を直して消し、手で延ば�
   expect(await getAnswerDeadline(env.DB, ward.wardId, project.projectId)).toBe("2026-10-12");
   expect((await postForm(realApp, publicPath, webInput)).status).toBe(200);
   expect(await getAnswerTotals(env.DB, ward.wardId, project.projectId)).toEqual({ people: 3, helperRequests: 1 });
+  // 過ぎた日は受付の締切に入れない。配った途端に回答が閉じないように
+  await env.DB.prepare("DELETE FROM project_deadlines WHERE ward_id = ? AND project_id = ? AND kind = 'answer_due'").bind(ward.wardId, project.projectId).run();
+  await publish("2025年10月10日");
+  expect(await getAnswerDeadline(env.DB, ward.wardId, project.projectId)).toBeNull();
 });
