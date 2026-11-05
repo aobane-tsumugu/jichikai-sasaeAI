@@ -57,6 +57,18 @@ async function prepareDrafts(db: D1Database, wardId: string, projectId: string, 
   return true;
 }
 
+/** 報告の文書の最新の中身（AI の下書きか、役員が保存した物）。閉じる画面の欄と、閉じる時の記録に使う。 */
+async function generatedReportText(db: D1Database, wardId: string, projectId: string): Promise<string> {
+  const row = await db.prepare(`SELECT v.body FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
+    WHERE d.ward_id = ? AND d.project_id = ? AND d.kind = 'report' AND d.scope = 'public' AND v.scope = 'public'
+    ORDER BY v.version_no DESC LIMIT 1`).bind(wardId, projectId).first<{ body: string }>();
+  if (!row?.body) return "";
+  try {
+    const parsed = JSON.parse(row.body) as { text?: unknown };
+    return typeof parsed.text === "string" ? parsed.text : "";
+  } catch { return ""; }
+}
+
 /**
  * 閉じる時の報告の指示。案の部品と同じ包み（下書きの形と based_on_state_version の決め）を使う。
  * 形を書かない指示では、AI の下書きが保存の検査で捨てられ、報告が空のまま残った。
@@ -80,19 +92,11 @@ admin.get("/close/:projectId", async (c) => {
       .bind(ward.wardId, id).all<{ scope: "public" | "staff"; body: string }>(),
     c.env.DB.prepare("SELECT task, status FROM jobs WHERE ward_id = ? AND project_id = ? AND task IN ('report', 'map_draft') ORDER BY created_at DESC LIMIT 2")
       .bind(ward.wardId, id).all<{ task: string; status: string }>(),
-    c.env.DB.prepare(`SELECT v.body FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
-      WHERE d.ward_id = ? AND d.project_id = ? AND d.kind = 'report' AND d.scope = 'public' AND v.scope = 'public'
-      ORDER BY v.version_no DESC LIMIT 1`).bind(ward.wardId, id).first<{ body: string }>(),
+    generatedReportText(c.env.DB, ward.wardId, id),
     c.env.DB.prepare("SELECT draft_body, published_at FROM project_activity_pages WHERE ward_id = ? AND project_id = ?")
       .bind(ward.wardId, id).first<{ draft_body: string; published_at: string | null }>(),
   ]);
-  let generatedText = "";
-  if (generatedReport?.body) {
-    try {
-      const parsed = JSON.parse(generatedReport.body) as { text?: unknown };
-      if (typeof parsed.text === "string") generatedText = parsed.text;
-    } catch { generatedText = ""; }
-  }
+  const generatedText = generatedReport;
   const report = (scope: "public" | "staff") => reports.results?.find((r) => r.scope === scope)?.body || (scope === "public" ? generatedText : "");
   const savedActivity = parseActivityBody(activityPage?.draft_body);
   const activity = savedActivity ?? { introduction: generatedText, membershipBurden: "", membershipBenefit: "", tasks: tasks.results.map((task) => ({ taskId: task.task_id, name: task.name, period: task.period })) };
@@ -139,11 +143,9 @@ admin.get("/close/:projectId", async (c) => {
         <label for={`activity-period-${task.task_id}`}>時期</label><input id={`activity-period-${task.task_id}`} name={`activityPeriod_${task.task_id}`} value={saved?.period ?? task.period} maxlength={80} />
       </div>; })}</fieldset>
       <p><button name="action" value="save">下書きを保存</button></p>
-      {!project.closedAt ? <p class="muted">区のページに載せるのは、プロジェクトを閉じた後です。</p> : null}
-      <p><button name="action" value="publish" disabled={!project.closedAt}>区のページに載せる</button></p>
+      {project.closedAt ? <p><button name="action" value="publish">区のページに載せる</button></p> : null}
     </form>
     {activityPage?.published_at ? <p><a href={`/${ward.slug}/work/${encodeURIComponent(id)}`}>区のページで確認する</a></p> : null}
-    {!project.closedAt && !reports.results?.find((r) => r.scope === "public")?.body ? <Notice>報告の公開する部分がまだ保存されていません。上の欄で直して「保存」を押すと、記録に残ります。</Notice> : null}
     {!project.closedAt ? <form method="post" action={`${root}/finalize`} onsubmit="return confirm('閉じると、報告と地図は記録になり書き直せません。実行委員と班長は空間を開けなくなります。閉じますか？')"><p><button class="danger">閉じて記録に残す</button></p></form> : null}
     <p><a href={adminPath(ward, "/archive")}>記録を開く</a></p>
   </Layout>);
@@ -234,8 +236,15 @@ admin.post("/close/:projectId/map/:taskId", async (c) => {
 
 admin.post("/close/:projectId/finalize", async (c) => {
   const { ward, account } = c.var; const id = c.req.param("projectId"); const now = nowIso();
-  await c.env.DB.prepare("UPDATE projects SET closed_at = ?, closed_by_account_id = ? WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL")
-    .bind(now, account.accountId, ward.wardId, id).run();
+  // 公開の報告を保存していなければ、閉じる画面の欄に出ていた中身（AI の下書き）を記録に残す。閉じる操作のほかに記録のための操作を求めない。
+  const shown = await generatedReportText(c.env.DB, ward.wardId, id);
+  await c.env.DB.batch([
+    c.env.DB.prepare(`UPDATE project_close_reports SET body = ?, updated_at = ?, updated_by_account_id = ?
+      WHERE ward_id = ? AND project_id = ? AND scope = 'public' AND body = '' AND EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL)`)
+      .bind(shown, now, account.accountId, ward.wardId, id, ward.wardId, id),
+    c.env.DB.prepare("UPDATE projects SET closed_at = ?, closed_by_account_id = ? WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL")
+      .bind(now, account.accountId, ward.wardId, id),
+  ]);
   return c.redirect(adminPath(ward, `/close/${id}`), 303);
 });
 
