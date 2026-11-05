@@ -21,6 +21,12 @@ function startsWith(bytes: Uint8Array, signature: number[], offset = 0): boolean
   return signature.every((b, i) => bytes[offset + i] === b);
 }
 
+function utf16Encoding(bytes: Uint8Array): "utf-16le" | "utf-16be" | null {
+  if (startsWith(bytes, [0xff, 0xfe])) return "utf-16le";
+  if (startsWith(bytes, [0xfe, 0xff])) return "utf-16be";
+  return null;
+}
+
 /** 受けられる形式なら種類を返し、そうでなければ null。 */
 export function classifyUpload(bytes: Uint8Array, declaredType: string, filename: string): Classified | null {
   if (bytes.length === 0) return null;
@@ -41,14 +47,17 @@ export function classifyUpload(bytes: Uint8Array, declaredType: string, filename
   // 古い形式の Word と Excel（.doc、.xls）は読めない
   if (startsWith(bytes, [0xd0, 0xcf, 0x11, 0xe0])) return null;
   const looksText = declaredType.startsWith("text/") || TEXT_EXTENSIONS.has(extensionOf(filename)) || declaredType === "application/json";
-  if (looksText && !bytes.subarray(0, 8192).includes(0)) {
+  // BOM のある UTF-16 は、文字を表すゼロのバイトを含んでいても文字の資料。
+  if (looksText && (utf16Encoding(bytes) !== null || !bytes.subarray(0, 8192).includes(0))) {
     return { mediaType: "text/plain", mediaClass: "text" };
   }
   return null;
 }
 
-/** 文字のファイルを文字にする。BOM を外し、UTF-8 で読めなければ Shift_JIS で読む。 */
+/** BOM のある UTF-16 を読み、それ以外は UTF-8、読めなければ Shift_JIS で読む。 */
 export function decodeText(bytes: Uint8Array): string {
+  const encoding = utf16Encoding(bytes);
+  if (encoding) return new TextDecoder(encoding).decode(bytes);
   const start = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf ? 3 : 0;
   const body = bytes.subarray(start);
   try {
