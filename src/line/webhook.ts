@@ -2,7 +2,7 @@ import { nowIso } from "../core/ids";
 import type { Env } from "../env";
 import { createLineIntakePorts, type InboxMatch, type LineIntakePorts, type LineOriginal } from "./intake";
 import type { Waitable } from "../intake/types";
-import { getLineMemberDisplayName, replyLineText } from "./api";
+import { getLineMemberDisplayName, lineChannelCredentials, replyLineText } from "./api";
 
 const RECEIPT_RETENTION_DAYS = 30;
 
@@ -94,17 +94,13 @@ export async function acceptLineWebhook(
   const fetcher = dependencies?.fetch ?? fetch;
   const rawBody = new Uint8Array(await request.arrayBuffer());
   const signature = request.headers.get("x-line-signature") ?? "";
-  if (!(await verifyLineSignature(rawBody, signature, env.LINE_CHANNEL_SECRET))) {
-    return Response.json({ error: "invalid signature" }, { status: 401 });
-  }
-
   let payload: LineWebhookBody;
   try {
     payload = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(rawBody)) as LineWebhookBody;
   } catch {
     return Response.json({ error: "invalid body" }, { status: 400 });
   }
-  if (typeof payload.destination !== "string" || !Array.isArray(payload.events)) {
+  if (!payload || typeof payload.destination !== "string" || !Array.isArray(payload.events)) {
     return Response.json({ error: "invalid body" }, { status: 400 });
   }
 
@@ -114,6 +110,13 @@ export async function acceptLineWebhook(
   `).bind(payload.destination).first<{ ward_id: string }>();
   if (!channel) return Response.json({ error: "unknown channel" }, { status: 404 });
   const wardId = channel.ward_id;
+  const credentials = await lineChannelCredentials(env, wardId, payload.destination);
+  if (!credentials?.channelSecret) return Response.json({ error: "channel not configured" }, { status: 503 });
+  if (!(await verifyLineSignature(rawBody, signature, credentials.channelSecret))) {
+    return Response.json({ error: "invalid signature" }, { status: 401 });
+  }
+  if (!credentials.accessToken) return Response.json({ error: "channel not configured" }, { status: 503 });
+  const accessToken = credentials.accessToken;
   await db.prepare(`
     DELETE FROM line_webhook_receipts WHERE ward_id = ? AND expires_at <= ?
   `).bind(wardId, now.toISOString()).run();
@@ -142,7 +145,7 @@ export async function acceptLineWebhook(
           VALUES (?, ?, ?)`).bind(wardId, event.source.groupId, now.toISOString()).run();
         if ((inserted.meta.changes ?? 0) === 0) continue;
         try {
-          await replyLineText(env.LINE_CHANNEL_ACCESS_TOKEN, event.replyToken, "このグループに貼られた物は全部記録に残ります。", fetcher);
+          await replyLineText(accessToken, event.replyToken, "このグループに貼られた物は全部記録に残ります。", fetcher);
           await db.prepare("UPDATE line_group_notices SET notice_sent_at = ? WHERE ward_id = ? AND group_id = ? AND notice_sent_at IS NULL")
             .bind(now.toISOString(), wardId, event.source.groupId).run();
         } catch (error) {
@@ -163,12 +166,12 @@ export async function acceptLineWebhook(
         receivedAt: new Date(event.timestamp ?? now.getTime()).toISOString(),
         kind: event.message.type,
         senderDisplayName: event.source.type === "group" || event.source.type === "room"
-          ? await getLineMemberDisplayName(env.LINE_CHANNEL_ACCESS_TOKEN, event.source, fetcher)
+          ? await getLineMemberDisplayName(accessToken, event.source, fetcher)
           : null,
         ...(event.message.type === "text" ? { text: event.message.text ?? "" } : {}),
       };
       if (event.message.type === "image") {
-        const content = await getImageContent(event.message.id, env.LINE_CHANNEL_ACCESS_TOKEN, fetcher);
+        const content = await getImageContent(event.message.id, accessToken, fetcher);
         original.bytes = content.bytes;
         original.contentType = content.contentType;
       }

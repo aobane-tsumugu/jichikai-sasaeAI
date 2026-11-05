@@ -23,6 +23,8 @@ export interface Env {
   // 束 6: LINE。
   LINE_CHANNEL_SECRET: string;
   LINE_CHANNEL_ACCESS_TOKEN: string;
+  /** 区ごとの LINE の鍵。D1 に置くのは、この Workers secret の名前だけ。 */
+  [name: `LINE_${string}`]: string | undefined;
 
   // 運用の画面（提供側）。未設定なら運用の画面は開かない。
   OPS_ID?: string;
