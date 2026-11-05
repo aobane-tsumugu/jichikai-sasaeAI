@@ -32,7 +32,10 @@ admin.get("/", async (c) => {
         <h3><a href={adminPath(ward, `/projects/${project.projectId}/map`)}>{project.title}</a></h3>
         <p>{project.year}年</p>
       </section>)}
-      {projects.length === 0 ? <p>開いているプロジェクトはありません。</p> : null}
+      {projects.length === 0 ? <>
+        <p>行事や総会など、仕事ごとにプロジェクトを開きます。</p>
+        <p><a class="button" href={adminPath(ward, "/projects")}>プロジェクトを開く</a></p>
+      </> : null}
       <nav class="action-links">
         <a class="button" href={adminPath(ward, "/projects/today")}>今やること</a>
         <a class="button secondary" href={adminPath(ward, "/projects")}>新しいプロジェクト</a>

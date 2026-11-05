@@ -18,7 +18,7 @@ const targetPath: Record<MapOpens, (projectId: string, taskId: string) => string
 
 admin.get("/projects/:projectId/map", async (c) => {
   const { ward } = c.var; const id = c.req.param("projectId");
-  const [project, state, seats, history] = await Promise.all([
+  const [project, state, seats, history, material] = await Promise.all([
     getProjectSummary(c.env.DB, ward.wardId, id), getProjectState(c.env.DB, ward.wardId, id),
     c.env.DB.prepare("SELECT seat_id, title AS name FROM seats WHERE ward_id = ? AND removed_at IS NULL ORDER BY sort_order, created_at").bind(ward.wardId).all<{ seat_id: string; name: string }>(),
     c.env.DB.prepare(`SELECT t.task_key, m.requested_by, m.difficulty, m.next_year
@@ -27,6 +27,9 @@ admin.get("/projects/:projectId/map", async (c) => {
       JOIN project_close_map m ON m.ward_id = t.ward_id AND m.project_id = t.project_id AND m.task_id = t.task_id
       WHERE p.ward_id = ? AND p.project_id = ? AND t.task_key IS NOT NULL`)
       .bind(ward.wardId, id).all<{ task_key: string; requested_by: string; difficulty: string; next_year: string }>(),
+    c.env.DB.prepare(`SELECT 1 AS found FROM jobs j JOIN originals o ON o.ward_id = j.ward_id AND o.job_id = j.job_id
+      WHERE j.ward_id = ? AND j.project_id = ? AND o.withdrawn_at IS NULL LIMIT 1`)
+      .bind(ward.wardId, id).first<{ found: number }>(),
   ]);
   if (!project || !state) return c.notFound();
   const tasks = state.mapTasks;
@@ -45,6 +48,7 @@ admin.get("/projects/:projectId/map", async (c) => {
   return c.html(<Layout title={`地図: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, `/projects/${id}`)}>プロジェクトへ</a>}>
     <h1>{project.title} の地図</h1>
     <p>時期、仕事、担当を一枚で見られます。仕事を開くと、材料や案、答え、収支へ進めます。</p>
+    {!material ? <p>去年の案内や記録の紙、Word や Excel を、見つかった物から送ってください。全部そろえなくてかまいません。</p> : null}
     <nav class="action-links">
       <a class="button secondary" href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}`)}>材料を送る</a>
       <a class="button secondary" href={adminPath(ward, `/projects/${id}/draft`)}>案を直す</a>

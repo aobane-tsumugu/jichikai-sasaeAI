@@ -20,6 +20,7 @@ admin.get("/space/:projectId", async (c) => {
   return c.html(
     <Layout title={`プロジェクトの空間 - ${project.title}`} siteName={c.var.ward.name} noindex adminHomeHref={adminPath(c.var.ward.slug, "/")}>
       <h1>{project.title} の空間</h1>
+      <p>実行委員や班長に、当番表や出欠を見てもらう場所です。</p>
       <p>状態: {space?.closed_at ? "閉じています" : space ? "開いています" : "まだ開いていません"}</p>
       <form method="post" action={adminPath(c.var.ward.slug, `/space/${encodeURIComponent(projectId)}/open`)} class="panel">
         <label for="passphrase">合言葉</label><input id="passphrase" name="passphrase" type="text" minLength={6} maxLength={120} required />
