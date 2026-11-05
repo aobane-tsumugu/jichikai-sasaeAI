@@ -7,7 +7,8 @@ const SNAPSHOT_TABLES = [
   "wards", "seats", "accounts", "devices", "ward_settings", "ops_ward_limits", "ward_ai",
   "jobs", "originals", "projects", "project_deadlines", "project_item_values", "project_rows",
   "project_changes", "job_runs", "job_tool_calls",
-  "documents", "document_versions", "project_questions", "project_map_tasks", "publication_records",
+  "documents", "document_versions", "project_questions", "project_map_tasks", "publication_records", "project_activity_pages",
+  "inquiry_records", "city_request_details", "ward_annual_budgets",
   "ward_roster_entries", "ward_roster_settings", "project_answers", "project_spaces", "project_space_invites", "project_space_members",
   "line_channels", "line_inbox_items", "line_unrelated_daily_counts", "project_close_map", "project_close_reports",
 ] as const;
