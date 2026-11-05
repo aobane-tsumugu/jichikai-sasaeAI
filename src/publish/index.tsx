@@ -267,6 +267,8 @@ admin.post("/publish/:projectId/confirm", async (c) => {
     distribution = buildDistribution(roster, String(targetMode), selectedDistricts, selectedHouseholds,
       (index) => Number(form.get(`copies_${index}`)));
   }
+  // 名簿は入れなくても動く。無い区は部数の割り振りなしで配る。
+  if (!distribution && roster.length === 0) distribution = { mode: "district", targets: [] };
   if (!distribution) return c.text("名簿にある班か世帯を選んでください。", 400);
   const recipientScope = form.get("recipientScope") === "all_households" ? "all_households" : "member_households";
   const lineDelivery = form.get("lineDelivery") === "skip" ? "skip" : "send";
@@ -321,7 +323,7 @@ admin.post("/publish/:projectId/send", async (c) => {
   const publicationId = newId();
   const roster = await getRoster(c.env.DB, ward.wardId);
   const rawDistribution = typeof form.distribution === "string" ? form.distribution : "";
-  let distribution = validateDistribution(rawDistribution, roster);
+  let distribution: PaperDistribution | null = roster.length === 0 ? { mode: "district", targets: [] } : validateDistribution(rawDistribution, roster);
   if (!distribution && !rawDistribution.trim().startsWith("{")) {
     const districts = [...new Set(roster.map((entry) => entry.district))];
     const legacy = parseDistribution(rawDistribution, districts);
