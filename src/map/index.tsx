@@ -21,11 +21,11 @@ admin.get("/projects/:projectId/map", async (c) => {
   const [project, state, seats, history, material] = await Promise.all([
     getProjectSummary(c.env.DB, ward.wardId, id), getProjectState(c.env.DB, ward.wardId, id),
     c.env.DB.prepare("SELECT seat_id, title AS name FROM seats WHERE ward_id = ? AND removed_at IS NULL ORDER BY sort_order, created_at").bind(ward.wardId).all<{ seat_id: string; name: string }>(),
-    c.env.DB.prepare(`SELECT t.task_key, m.requested_by, m.difficulty, m.next_year
+    c.env.DB.prepare(`SELECT COALESCE(t.task_key, t.task_id) AS task_key, m.requested_by, m.difficulty, m.next_year
       FROM projects p JOIN projects seed ON seed.ward_id = p.ward_id AND seed.project_id = p.seed_project_id AND seed.closed_at IS NOT NULL
       JOIN project_map_tasks t ON t.ward_id = seed.ward_id AND t.project_id = seed.project_id
       JOIN project_close_map m ON m.ward_id = t.ward_id AND m.project_id = t.project_id AND m.task_id = t.task_id
-      WHERE p.ward_id = ? AND p.project_id = ? AND t.task_key IS NOT NULL`)
+      WHERE p.ward_id = ? AND p.project_id = ?`)
       .bind(ward.wardId, id).all<{ task_key: string; requested_by: string; difficulty: string; next_year: string }>(),
     c.env.DB.prepare(`SELECT 1 AS found FROM jobs j JOIN originals o ON o.ward_id = j.ward_id AND o.job_id = j.job_id
       WHERE j.ward_id = ? AND j.project_id = ? AND o.withdrawn_at IS NULL LIMIT 1`)
