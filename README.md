@@ -13,8 +13,8 @@
 
 ## 試用する
 
-- 公開ページ: [https://jichikai.aobane-tsumugu.com/claude/](https://jichikai.aobane-tsumugu.com/claude/)
-- 役員画面: [https://jichikai.aobane-tsumugu.com/claude/admin/](https://jichikai.aobane-tsumugu.com/claude/admin/)
+- 公開ページ: [https://jichikai.aobane-tsumugu.com/demoku/](https://jichikai.aobane-tsumugu.com/demoku/)
+- 役員画面: [https://jichikai.aobane-tsumugu.com/demoku/admin/](https://jichikai.aobane-tsumugu.com/demoku/admin/)
 - デモの役員画面への入り方: 提出時に書きます。
 - 操作の題材と順序: [fixtures/README.md](fixtures/README.md) にある架空の資料を使い、[docs/RUNBOOK.md](docs/RUNBOOK.md) の段 0〜6 に沿って確認する想定です。RUNBOOK の画面表示は設計から書いた箇所を含み、全段を実機で確認した手順ではありません。
 
