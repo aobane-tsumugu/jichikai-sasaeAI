@@ -169,7 +169,7 @@ export async function setMapTask(db: D1Database, wardId: string, projectId: stri
   if (!date(input.start) || !date(input.end)) return false;
   if (input.seatId && !(await db.prepare("SELECT 1 AS ok FROM seats WHERE ward_id = ? AND seat_id = ? AND removed_at IS NULL").bind(wardId, input.seatId).first())) return false;
   const r = await db.prepare(`UPDATE project_map_tasks SET name = ?, period_start = ?, period_end = ?, progress = ?, seat_id = ?,
-    progress_source_kind = 'person', progress_source_ref = NULL, progress_source_locator = NULL, progress_confidence = 'high'
+    progress_source_kind = 'person', progress_source_ref = NULL, progress_source_locator = NULL, progress_confidence = 'high', progress_change_id = NULL
     WHERE ward_id = ? AND project_id = ? AND task_id = ? AND removed_at IS NULL`)
     .bind(name, input.start || null, input.end || null, input.progress, input.seatId, wardId, projectId, taskId).run();
   return (r.meta.changes ?? 0) > 0;
