@@ -208,8 +208,8 @@ export async function copySeed(db: D1Database, wardId: string, sourceId: string,
   const now = nowIso();
   const removeTemplates = db.prepare("DELETE FROM project_map_tasks WHERE ward_id = ? AND project_id = ?").bind(wardId, targetId);
   const addTasks = (tasks.results ?? []).map((task) => {
-    const startOffset = task.offset_start_days ?? (task.period_start && oldDeadline ? Math.round((Date.parse(`${task.period_start}T00:00:00Z`) - Date.parse(`${oldDeadline.due_on}T00:00:00Z`)) / 86400000) : null);
-    const endOffset = task.offset_end_days ?? (task.period_end && oldDeadline ? Math.round((Date.parse(`${task.period_end}T00:00:00Z`) - Date.parse(`${oldDeadline.due_on}T00:00:00Z`)) / 86400000) : null);
+    const startOffset = (task.period_start && oldDeadline ? Math.round((Date.parse(`${task.period_start}T00:00:00Z`) - Date.parse(`${oldDeadline.due_on}T00:00:00Z`)) / 86400000) : null) ?? task.offset_start_days;
+    const endOffset = (task.period_end && oldDeadline ? Math.round((Date.parse(`${task.period_end}T00:00:00Z`) - Date.parse(`${oldDeadline.due_on}T00:00:00Z`)) / 86400000) : null) ?? task.offset_end_days;
     return db.prepare(`INSERT INTO project_map_tasks (task_id, ward_id, project_id, task_key, name, period_start, period_end, offset_start_days, offset_end_days, sort_order, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(newId(), wardId, targetId, task.task_key, task.saved_name ?? task.name,
