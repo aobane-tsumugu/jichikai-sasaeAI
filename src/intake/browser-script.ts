@@ -273,6 +273,13 @@ export const SEND_SCRIPT = String.raw`(function (root) {
         fd.append('part_extracted', extracted);
       }
       var res = await fetch(form.action, { method: 'POST', body: fd, headers: { accept: 'application/json' }, credentials: 'same-origin' });
+      if (!(res.headers.get('content-type') || '').toLowerCase().includes('application/json')) {
+        var html = await res.text();
+        document.open();
+        document.write(html);
+        document.close();
+        return;
+      }
       var data = await res.json();
       say(data.message, !data.ok);
       if (data.ok) {

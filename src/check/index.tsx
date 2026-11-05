@@ -7,6 +7,7 @@ import { getProjectState, getProjectSummary } from "../project/api";
 import { getEditableDocument } from "../project/actions";
 import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, type DocumentKind } from "../project/model";
 import { getRoster } from "../answers/api";
+import { getPublicContact } from "../settings/store";
 
 interface Finding { kind: "名簿の名前" | "協賛の額" | "個人の連絡先"; value: string; }
 interface PrivateRow { person_fields: string | null; data: string; }
@@ -42,10 +43,20 @@ export async function checkPublicDraft(db: D1Database, wardId: string, projectId
     }
     return values;
   });
-  const publicContact = state?.items.find((i) => i.key === "public_contact")?.current?.content ?? "";
-  const isAllowed = (value: string) => publicContact.includes(value) || (normalizePhone(value).length >= 8 && normalizePhone(publicContact).includes(normalizePhone(value)));
   const email = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
   const phone = /(?:\+?81[- ]?)?0\d{1,4}[- ]?\d{1,4}[- ]?\d{3,4}/g;
+  const publicContact = await getPublicContact(db, wardId);
+  const publicEmails = new Set(publicContact.match(email)?.map((value) => value.toLowerCase()) ?? []);
+  const publicPhones = normalizePhone(publicContact);
+  const isAllowed = (value: string) => {
+    if (email.test(value)) {
+      email.lastIndex = 0;
+      return publicEmails.has(value.toLowerCase());
+    }
+    email.lastIndex = 0;
+    const digits = normalizePhone(value);
+    return digits.length >= 8 && publicPhones.includes(digits);
+  };
   const contacts = [...privateValues.filter((v) => /@|\d{8,}/.test(v)), ...(text.match(email) ?? []), ...(text.match(phone) ?? []).filter((v) => normalizePhone(v).length >= 10)];
   for (const value of contacts) if (!isAllowed(value) && text.includes(value)) found.push({ kind: "個人の連絡先", value });
   return [...new Map(found.map((f) => [`${f.kind}:${f.value}`, f])).values()].map((f) => `${f.kind}: ${f.value}`);

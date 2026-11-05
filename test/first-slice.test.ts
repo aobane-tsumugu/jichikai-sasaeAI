@@ -172,6 +172,11 @@ describe("秋の収穫祭の最初の一片", () => {
       { household: FIRST_SLICE.firstHousehold, district: FIRST_SLICE.district },
       { household: FIRST_SLICE.secondHousehold, district: FIRST_SLICE.district },
     ], { household: 0, district: 1 });
+    const answerPrint = await get(realApp, `/${ward.slug}/admin/print/${projectId}/${publication!.document_id}/${publication!.version_no}/answer`, cookie);
+    const answerPrintHtml = await answerPrint.text();
+    expect(answerPrint.status).toBe(200);
+    expect(answerPrintHtml).toContain(`班: ${FIRST_SLICE.district}`);
+    expect(answerPrintHtml).toContain(`回答票`);
     expect((await get(realApp, `/${ward.slug}/answer/${projectId}`)).status).toBe(200);
     const webAnswer = await postForm(realApp, `/${ward.slug}/answer/${projectId}`, {
       household: FIRST_SLICE.firstHousehold, district: FIRST_SLICE.district, people_count: "3", helper_name: "", helper_times: "",
