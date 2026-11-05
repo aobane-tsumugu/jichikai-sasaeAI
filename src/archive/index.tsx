@@ -8,7 +8,7 @@ import { createProject, getProjectSummary, listProjects, ProjectInputError } fro
 import { MAP_PROGRESS_LABEL, PROJECT_KINDS, PROJECT_KIND_LABEL, type MapProgress, type ProjectKind } from "../project/model";
 import { addDays } from "../map/template";
 import { ARCHIVE_RECORD_TYPES, findFragments, searchArchive } from "./search";
-import type { ArchiveRecordType } from "./search";
+import type { ArchiveRecordType, ArchiveSearchResult } from "./search";
 import { createAnthropic, MODEL } from "../ai/anthropic";
 import { runSnapshotCron } from "./snapshot";
 import { runDeletionCron } from "../ops/lifecycle";
@@ -16,6 +16,11 @@ import { runDeletionCron } from "../ops/lifecycle";
 interface SeedTask { task_key: string | null; name: string; period_start: string | null; period_end: string | null; offset_start_days: number | null; offset_end_days: number | null; sort_order: number; }
 const admin = new Hono<AdminEnv>();
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function projectRecordPath(result: ArchiveSearchResult): string {
+  const id = encodeURIComponent(result.project_id);
+  return result.closed_at ? `/archive/${id}` : `/projects/${id}`;
+}
 
 admin.get("/archive", async (c) => {
   const { ward } = c.var;
@@ -90,7 +95,7 @@ admin.get("/archive/search", async (c) => {
     {query.trim().length >= 2 ? <h2>見つかった記録（最大30件）</h2> : null}
     {results.map((result) => <article class="panel">
       <p>{result.year}年 / {PROJECT_KIND_LABEL[result.project_kind as ProjectKind]} / {labels[result.record_type]}</p>
-      <h2><a href={adminPath(ward, `/archive/${result.project_id}`)}>{result.title}</a></h2>
+      <h2><a href={adminPath(ward, projectRecordPath(result))}>{result.title}</a></h2>
       {result.counterpart ? <p>相手: {result.counterpart}</p> : null}
       <p>{result.excerpt}</p>
       {result.source_id ? <p><a href={adminPath(ward, `/intake/originals/${result.source_id}`)}>元の箇所へ戻る</a>{result.locator ? `（${result.locator}）` : null}</p> : null}
@@ -139,7 +144,7 @@ admin.post("/archive/ask", async (c) => {
   const citations = fragments.filter((fragment) => citedIds.includes(String(fragment.entry_id)));
   return c.html(<Layout title="記録に聞く" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>記録に聞く</h1><p><strong>質問:</strong> {question}</p><section class="panel"><p style="white-space:pre-wrap">{answer}</p></section>
-    <h2>元の箇所</h2>{citations.map((fragment) => <p><a href={adminPath(ward, fragment.source_id ? `/intake/originals/${fragment.source_id}` : `/archive/${fragment.project_id}`)}>{fragment.year}年 {fragment.title}</a> — {fragment.locator}（{fragment.excerpt}）</p>)}
+    <h2>元の箇所</h2>{citations.map((fragment) => <p><a href={adminPath(ward, fragment.source_id ? `/intake/originals/${fragment.source_id}` : projectRecordPath(fragment))}>{fragment.year}年 {fragment.title}</a> — {fragment.locator}（{fragment.excerpt}）</p>)}
     {citations.length === 0 ? <p>根拠として示せる箇所は見つかりませんでした。</p> : null}
     <p><a href={adminPath(ward, "/archive/search")}>記録を探す</a></p>
   </Layout>);
