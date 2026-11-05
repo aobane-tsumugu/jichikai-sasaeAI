@@ -57,13 +57,17 @@ function paperTargetLabel(raw: string): string {
     const value: unknown = JSON.parse(raw);
     if (typeof value === "object" && value !== null && !Array.isArray(value) && Array.isArray((value as { targets?: unknown }).targets)) {
       const targets = (value as { targets: unknown[] }).targets;
-      return targets.map((entry) => {
+      const labels = targets.map((entry) => {
         if (typeof entry !== "object" || entry === null) return "";
         const row = entry as { district?: unknown; household?: unknown; copies?: unknown };
         return typeof row.household === "string" && typeof row.district === "string"
           ? `${row.district} / ${row.household}`
           : typeof row.district === "string" && typeof row.copies === "number" ? `${row.district}（${row.copies} 部）` : "";
-      }).filter(Boolean).join("、") || "指定なし";
+      }).filter(Boolean);
+      // 名簿に同じ名前の世帯がある時は、一つにまとめて部数を添える。
+      const counts = new Map<string, number>();
+      for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1);
+      return [...counts].map(([label, count]) => count > 1 ? `${label}（${count} 部）` : label).join("、") || "指定なし";
     }
     if (typeof value === "object" && value !== null && !Array.isArray(value)) {
       return Object.entries(value as Record<string, unknown>).map(([district, copies]) => `${district}（${String(copies)} 部）`).join("、") || "指定なし";
@@ -157,8 +161,8 @@ admin.get("/publish/:projectId", async (c) => {
               <label><input type="checkbox" name="district" value={row.district} checked /> {row.district}（名簿 {row.copies} 世帯）</label>
               部数 <input type="number" name={`copies_${index}`} min="0" max={row.copies} value={row.copies} style="width:6rem" />
             </p>)}</fieldset>
-            <details><summary>世帯を選ぶ</summary>{roster.map((entry, index) => <label>
-              <input type="checkbox" name="household" value={JSON.stringify([entry.district, entry.household])} /> {entry.district} / {entry.household}
+            <details><summary>世帯を選ぶ</summary><p>世帯に印を付けると、印を付けた世帯にだけ紙を配ります。</p>{householdChoices(roster).map(({ district, household, count }) => <label>
+              <input type="checkbox" name="household" value={JSON.stringify([district, household])} /> {district} / {household}{count > 1 ? `（名簿に同じ名前が ${count} 世帯あり、${count} 部）` : ""}
             </label>)}</details>
             <p>紙の部数と配る相手の指定は、公開ページに表示されません。</p>
             <label for={`line-${draft.document_id}`}>公式 LINE</label>
@@ -254,7 +258,8 @@ admin.post("/publish/:projectId/confirm", async (c) => {
   } else {
     const selectedDistricts = new Set(form.getAll("district").map(String));
     const selectedHouseholds = new Set(form.getAll("household").map(String));
-    distribution = buildDistribution(roster, String(targetMode), selectedDistricts, selectedHouseholds,
+    // 世帯に印があれば、選びの欄が班のままでも世帯に配る。印を黙って捨てて全ての班に配らないため。
+    distribution = buildDistribution(roster, selectedHouseholds.size > 0 ? "household" : String(targetMode), selectedDistricts, selectedHouseholds,
       (index) => Number(form.get(`copies_${index}`)));
   }
   // 名簿は入れなくても動く。無い区は部数の割り振りなしで配る。
@@ -270,8 +275,7 @@ admin.post("/publish/:projectId/confirm", async (c) => {
     <ArticleBody body={draft.body} />
     {warnings.length > 0 ? <section class="panel"><h2>混入の検査で見つかった所</h2><p>公開する前に内容を確認してください。配る操作は続けられます。</p><ul>{warnings.map((warning) => <li>{warning}</li>)}</ul></section> : null}
     <p>配ります。区のページに載ります。{lineDelivery === "skip" ? "今回は公式 LINE に送りません。" : `公式 LINE は${allowance?.friends === null || allowance === null ? "人数確認後" : `${allowance.friends} 人`}に届きます。`}</p>
-    <p>紙の配布先を指定しました。</p>
-    <p>指定した相手: {paperTargetLabel(JSON.stringify(distribution))}</p>
+    {distribution.targets.length ? <p>紙の配布先: {paperTargetLabel(JSON.stringify(distribution))}</p> : <p>名簿が無いため、紙の配布先と部数は指定していません。</p>}
     <p>公開用の連絡先: {contacts || "未設定"}</p>
     <form method="post" action={adminPath(ward, `/publish/${project.project_id}/send`)}>
       <input type="hidden" name="documentId" value={documentId} />
@@ -392,6 +396,18 @@ export function ArticleBody({ body }: { body: string }) {
 
 interface DistributionTarget { district: string; copies: number; household?: string; }
 interface PaperDistribution { mode: "district" | "household"; targets: DistributionTarget[]; }
+
+/** 世帯を選ぶ欄。名簿に同じ班と名前の世帯が複数あると見分けられないので、一つの欄にまとめて数を示す。 */
+function householdChoices(roster: Array<{ district: string; household: string }>) {
+  const choices = new Map<string, { district: string; household: string; count: number }>();
+  for (const entry of roster) {
+    const key = JSON.stringify([entry.district, entry.household]);
+    const found = choices.get(key);
+    if (found) found.count += 1;
+    else choices.set(key, { district: entry.district, household: entry.household, count: 1 });
+  }
+  return [...choices.values()];
+}
 
 function buildDistribution(
   roster: Array<{ district: string; household: string }>, mode: string, districts: Set<string>, households: Set<string>, copyCount: (index: number) => number,
