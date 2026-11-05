@@ -3,9 +3,9 @@
 PM が二時間ごとの点検で更新します。実施を確認した物だけ済みと書きます。実機の「通過」は scripts/walkthrough.ts が応答を確かめた物で、ブラウザの見え方は含みません。
 
 - 固定（確かめる手に渡す commit）: まだ無い
-- main: 束 1〜8、接続、続けて作る物（顔のマスクを除く）を取り込み済み（試験 224 件）。2026-11-05 夕方に cloud の PM が割り当て 1〜3 の直しを取り込み、staging に配備した
+- main: 束 1〜8、接続、続けて作る物（顔のマスクを除く）を取り込み済み（試験 238 件）。2026-11-05 夕方に cloud の PM が割り当て 1〜3 の直しを取り込み、staging に配備した
 - staging: https://jichikai.aobane-tsumugu.com （デモの区はクロード区 /demoku/。架空の区です）。staging では確認用のプロジェクトを作るなど自由に試してよい（本人、2026-11-05）。デモの前にきれいにする
-- 今ある名前と消す: プロジェクトの題は開いている間だけ直せる。プロジェクトを消す操作は無い（Codex に依頼中）。活動紹介を下げる操作は、直して載せ直せば足り、プロジェクトを消せば一緒に消えるので作らない
+- 今ある名前と消す: プロジェクトの題は開いている間だけ直せる。プロジェクトは区の設定の「消す求め」から消せる（5 分ごとの処理で続きから消す）。閉じたプロジェクトは開き直せる。活動紹介を下げる操作は、直して載せ直せば足り、プロジェクトを消せば一緒に消えるので作らない
 
 ## 段ごとの状態
 
@@ -53,13 +53,14 @@ PM が二時間ごとの点検で更新します。実施を確認した物だ�
 | 空間と回答の画面の言葉と試験 | src/answers/index.tsx | 取り込み済み（PR #4）。staging で見出しを確かめた |
 | 入った物の見え方と今やること | src/intake/pages.tsx、src/project/index.tsx | 取り込み済み（PR #5）。staging で確かめた |
 | 来年の種の地図に去年の記録を出す | src/map/index.tsx | 取り込み済み（PR #6）。staging の確認用の種で確かめた |
-| プロジェクトを消す（消す列一つで続きから消す） | src/settings/deletion.tsx、src/ops/lifecycle.ts、migrations/0107 | 着手（codex/project-deletion） |
-| 初めて開いた人に、画面が次にすることを示す | src/settings/index.tsx、src/map/index.tsx、src/space/index.tsx | 未着手 |
-| 新しいプロジェクトを、去年の地図から開ける | src/project/index.tsx | 未着手 |
-| 閉じたプロジェクトを開き直せる（閉じる前の確かめを外す） | src/close/index.tsx | 未着手 |
-| 見出しとボタンに説明を添える 第一弾（部品 Hint は main にある） | src/publish、src/answers、src/draft、src/intake/pages.tsx、src/line、src/archive、src/check、src/project/followup.tsx | 未着手 |
+| プロジェクトを消す（消す列一つで続きから消す） | src/settings/deletion.tsx、src/ops/lifecycle.ts、migrations/0107 | 取り込み済み（PR #7）。staging で使い捨てのプロジェクトを消して確かめた |
+| 初めて開いた人に、画面が次にすることを示す | src/settings/index.tsx、src/map/index.tsx、src/space/index.tsx | 取り込み済み（PR #9） |
+| 新しいプロジェクトを、去年の地図から開ける | src/project/index.tsx | 取り込み済み（PR #10）。staging で確かめた |
+| 閉じたプロジェクトを開き直せる（閉じる前の確かめを外す） | src/close/index.tsx | 取り込み済み（PR #8）。staging で「開き直す」が出ることを確かめた |
+| 見出しとボタンに説明を添える 第一弾（部品 Hint は main にある） | src/publish、src/answers、src/draft、src/intake/pages.tsx、src/line、src/archive、src/check、src/project/followup.tsx | 取り込み済み（PR #11） |
+| 見出しとボタンに説明を添える 第二弾 | src/settings、src/map、src/space、src/project/index.tsx、src/close | 未着手 |
 
-PM が持つ物: 説明を添える第二弾の依頼（今 Codex が触っている画面が取り込まれた後。役員画面の最初、区の設定、地図、空間、プロジェクト、今やること、閉じる、消す求め）、収支の表に協賛の表を混ぜて見せている作りの見直し、空間を staging で開いて確かめる、取り込んだ依頼の staging での確かめ。
+PM が持つ物: 収支の表に協賛の表を混ぜて見せている作りの見直し、空間を staging で開いて確かめる、取り込んだ依頼の staging での確かめ。
 
 閉じる、記録、来年の種、活動紹介の掲載は、2026-11-05 にクロード区の確認用のプロジェクト（「閉じる流れの確認用（2026-11-05 作成、デモに使わない）」と、それを種にした「来年の種の確認用（2026-11-05 作成、デモに使わない）」）で staging で通した。デモの前に片付ける。受け箱に残る本物の LINE の確かめの写真も、デモの前に片付ける（本人の判断で今は触らない）。
 
