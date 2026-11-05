@@ -6,7 +6,7 @@ import { getSquads } from "../../settings/store";
 import { ArticleBody } from "../../publish";
 import type { AdminEnv } from "../../env";
 import { CutLine, FieldBox, PrintDocument, PrintQr, Sheet } from "../a4";
-import { printQrUrl } from "../qr";
+import { makePaperCode, printQrUrl } from "../qr";
 
 const printKinds = ["announcement", "answer", "leader", "duty", "meeting", "sponsors"] as const;
 type PrintKind = (typeof printKinds)[number];
@@ -58,40 +58,72 @@ admin.get("/print/:projectId/:documentId/:versionNo/:kind", async (c) => {
   const named = (squad?: string) => printQrUrl(baseUrl, ward.slug, {
     projectId, documentId: row.document_id, version: versionNo, ...(squad ? { squad } : {}),
   });
+  const paperCode = await makePaperCode(c.env.DB, ward.wardId, projectId, row.document_id, versionNo);
+  const meetingTargets = kind === "meeting" ? await c.env.DB.prepare(`SELECT p.project_id, p.title, d.document_id, r.version_no
+    FROM projects p JOIN publication_records r ON r.ward_id = p.ward_id AND r.project_id = p.project_id
+    JOIN documents d ON d.ward_id = r.ward_id AND d.document_id = r.document_id
+    WHERE p.ward_id = ? AND p.closed_at IS NULL AND r.unpublished_at IS NULL
+      AND r.publication_id = (SELECT latest.publication_id FROM publication_records latest
+        WHERE latest.ward_id = p.ward_id AND latest.project_id = p.project_id AND latest.unpublished_at IS NULL
+        ORDER BY latest.published_at DESC, latest.publication_id DESC LIMIT 1)
+    ORDER BY p.created_at, p.project_id`).bind(ward.wardId).all<{
+      project_id: string; title: string; document_id: string; version_no: number;
+    }>() : { results: [] };
+  const meetingSheets = await Promise.all(meetingTargets.results.map(async (target) => ({
+    ...target,
+    paperCode: await makePaperCode(c.env.DB, ward.wardId, target.project_id, target.document_id, target.version_no),
+    url: printQrUrl(baseUrl, ward.slug, { projectId: target.project_id, documentId: target.document_id, version: target.version_no }),
+  })));
+  const paperQr = (squad?: string) => <><PrintQr text={named(squad)} caption={`${paperCode ?? ""} ${named(squad)}`} sizeMm={22} />
+    <span class="paper-code">{paperCode}</span></>;
   const printTitle = `${row.title} ${kindLabel(kind)}`;
   return c.html(<PrintDocument title={printTitle}>
     {kind === "announcement" ? <>
       <Sheet footer={<><span>{ward.name}</span><span>案内 {versionNo}</span></>}>
         <h1>{row.document_title}</h1><ArticleBody body={row.body} />
-        <PrintQr text={url} caption={url} />
+        {paperQr()}
       </Sheet>
       {squads.map((squad) => <Sheet key={squad} footer={<><span>{ward.name} {squad}</span><span>回答票</span></>}>
         <h1>{row.title} 回答票</h1><p>班: {squad}</p><CutLine />
         <FieldBox label="世帯名" heightMm={20} /><FieldBox label="人数" heightMm={16} /><FieldBox label="手伝いの名前と時間帯" heightMm={28} />
-        <p>回答の入口: {`/${ward.slug}/answer/${projectId}`}</p><PrintQr text={named(squad)} caption={named(squad)} sizeMm={25} />
+        <p>回答の入口: {`/${ward.slug}/answer/${projectId}`}</p>{paperQr(squad)}
       </Sheet>)}
     </> : null}
     {kind === "answer" ? squads.map((squad) => <Sheet key={squad} footer={<>{ward.name} {squad} 回答票</>}>
       <h1>{row.title} 回答票</h1><p>班: {squad}</p><FieldBox label="世帯名" heightMm={20} /><FieldBox label="人数" heightMm={16} /><FieldBox label="手伝いの名前と時間帯" heightMm={35} />
-      <PrintQr text={named(squad)} caption={named(squad)} />
+      {paperQr(squad)}
     </Sheet>) : null}
     {kind === "leader" ? squads.map((squad) => <Sheet key={squad} footer={<>{ward.name} {squad}</>}>
       <h1>班長へのお知らせ</h1><p>{row.title}</p><ArticleBody body={row.body} /><p>班: {squad}</p>
-      <p>この案内を班の世帯へお渡しください。</p><PrintQr text={named(squad)} caption={named(squad)} />
+      <p>この案内を班の世帯へお渡しください。</p>{paperQr(squad)}
     </Sheet>) : null}
     {kind === "duty" ? <Sheet footer={<>{ward.name} 当番表と配置図</>}>
       <h1>{row.title} 当番表と配置図</h1><ArticleBody body={row.body} />
       {Array.from({ length: 8 }, (_, index) => <FieldBox key={index} label={index < 5 ? `時間帯 ${index + 1}・持ち場・担当` : `配置 ${index - 4}・場所・メモ`} heightMm={16} />)}
-      <PrintQr text={url} caption={url} sizeMm={22} />
+      {paperQr()}
     </Sheet> : null}
-    {kind === "meeting" ? <Sheet footer={<>{ward.name} 役員会の記入欄</>}>
-      <h1>役員会の記入欄</h1><p>{row.title}</p><FieldBox label="決めたこと" heightMm={30} /><FieldBox label="日時・場所・変更" heightMm={30} />
-      <FieldBox label="次にすること" heightMm={30} /><PrintQr text={url} caption={url} />
-    </Sheet> : null}
+    {kind === "meeting" ? Array.from({ length: Math.max(1, Math.ceil(meetingSheets.length / 3)) }, (_, page) => {
+      const targets = meetingSheets.slice(page * 3, page * 3 + 3);
+      return <Sheet key={page} footer={<>{ward.name} 役員会の記入欄</>}>
+        <h1>役員会の記入欄</h1><p>{row.title}</p>{paperQr()}
+        {targets.length ? targets.map((target) => {
+          return <section key={target.project_id} style="margin:2mm 0">
+            <h2>{target.title}</h2>
+            <PaperField label="決めたこと" heightMm={16} code={target.paperCode} text={target.url} />
+            <PaperField label="日時・場所・変更" heightMm={16} code={target.paperCode} text={target.url} />
+            <PaperField label="次にすること" heightMm={16} code={target.paperCode} text={target.url} />
+          </section>;
+        }) : <>
+          <PaperField label="決めたこと" heightMm={30} code={paperCode} text={url} />
+          <PaperField label="日時・場所・変更" heightMm={30} code={paperCode} text={url} />
+          <PaperField label="次にすること" heightMm={30} code={paperCode} text={url} />
+        </>}
+      </Sheet>;
+    }) : null}
     {kind === "sponsors" ? <Sheet footer={<>{ward.name} 協賛先</>}>
       <h1>{row.title} 協賛先の一覧</h1><ArticleBody body={row.body} />
       {Array.from({ length: 10 }, (_, index) => <FieldBox key={index} label={`協賛先 ${index + 1}・返事・連絡`} heightMm={18} />)}
-      <PrintQr text={url} caption={url} sizeMm={22} />
+      {paperQr()}
     </Sheet> : null}
   </PrintDocument>);
 });
@@ -120,3 +152,11 @@ function kindLabel(kind: PrintKind): string {
 }
 
 export const printPages: Bundle = { admin };
+
+function PaperField({ label, heightMm, code, text }: { label: string; heightMm: number; code: string | null; text: string }) {
+  return <div class="meeting-field" style="display:flex;align-items:flex-start;gap:3mm;margin:2mm 0">
+    <FieldBox label={label} heightMm={heightMm} code={code ?? undefined} />
+    <PrintQr text={text} caption={`${code ?? ""} ${text}`} sizeMm={18} />
+  </div>;
+}
+

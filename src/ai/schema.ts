@@ -46,6 +46,8 @@ export interface ReadField {
   confidence: Confidence;
   original_id: string;
   locator: string;
+  /** 紙面に印字されたプロジェクト・文書・配布回の符号。無い場合は空文字。 */
+  paper_code?: string;
 }
 
 export interface ReadRow {
@@ -103,6 +105,8 @@ export interface AnswerSheetRow {
   confidence: Confidence;
   original_id: string;
   locator: string;
+  /** 回答票の紙面に印字された符号。無い場合は空文字。 */
+  paper_code?: string;
 }
 
 export interface AnswerSheetReading {
@@ -147,8 +151,8 @@ export const GENERAL_READING_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["name", "value", "confidence", "original_id", "locator"],
-        properties: { name: str, value: str, confidence, original_id: str, locator: str },
+        required: ["name", "value", "confidence", "original_id", "locator", "paper_code"],
+        properties: { name: str, value: str, confidence, original_id: str, locator: str, paper_code: str },
       },
     },
     tables: {
@@ -209,6 +213,7 @@ export const ANSWER_SHEET_SCHEMA = {
           "confidence",
           "original_id",
           "locator",
+          "paper_code",
         ],
         properties: {
           household_name: str,
@@ -221,6 +226,7 @@ export const ANSWER_SHEET_SCHEMA = {
           confidence,
           original_id: str,
           locator: str,
+          paper_code: str,
         },
       },
     },

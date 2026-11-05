@@ -5,13 +5,15 @@
 // Cron は一回 15 分まで動ける。試行は MAX_READ_ATTEMPTS 回まで。
 import type Anthropic from "@anthropic-ai/sdk";
 import { WardBucket } from "../core/storage";
-import { nowIso } from "../core/ids";
+import { newId, nowIso } from "../core/ids";
 import type { Env } from "../env";
 import { createAnthropic, MODEL } from "../ai/anthropic";
 import { dispatchProject } from "../ai/session";
 import { matchProject, MATCH_NEW, MATCH_MULTIPLE, MATCH_UNRELATED } from "../ai/match";
 import { projectApi } from "../ai/project-binding";
-import { ReadError, readOriginals, type ReadableOriginal } from "../ai/read";
+import { fixOriginalIds, ReadError, readOriginals, type ReadableOriginal } from "../ai/read";
+import { lookupPaperCode } from "../print/qr";
+import { addAnswer } from "../answers/api";
 import {
   claimRead,
   closeAbandonedRuns,
@@ -131,14 +133,20 @@ async function performRead(
       source: "model",
       packVersion: result.packVersion,
       model: result.model,
-      body: result.body,
+      body: fixOriginalIds(result.body, readable.map((original) => original.originalId)),
     });
     await endRun(env.DB, run, wardId, { ok: true, usage: result.usage, error: placed ? "" : "置く前に取り下げられました" });
     // 読み終わった。プロジェクトが決まっていれば、繋げる順番に入る（同じプロジェクトでは一つずつ）
     // 読みの間に当て先が付いた場合も、最新の入った物から当て先を拾う。
-    const latest = placed && job.read_kind !== "answer_sheet" ? await getJob(env.DB, wardId, jobId) : null;
-    if (latest?.project_id) await dispatchProject(env, wardId, latest.project_id).catch((e) => console.error("繋げるの起動に失敗しました", describe(e)));
-    else if (latest?.via === "admin" || latest?.via === "line_direct" || latest?.via === "line_group") await matchUnassignedAdminJob(env, wardId, jobId, client).catch((e) => console.error("受け箱の当てに失敗しました", describe(e)));
+    let latest = placed ? await getJob(env.DB, wardId, jobId) : null;
+    if (latest?.read_kind === "answer_sheet" && !latest.project_id) {
+      latest = await routeByPaperCode(env.DB, wardId, jobId) ?? latest;
+    }
+    if (latest?.read_kind === "answer_sheet" && latest.project_id) {
+      await saveAnswerSheetRows(env.DB, wardId, latest.project_id, jobId, latest.account_id);
+    }
+    if (latest?.project_id && latest.read_kind !== "answer_sheet") await dispatchProject(env, wardId, latest.project_id).catch((e) => console.error("繋げるの起動に失敗しました", describe(e)));
+    else if (latest && (latest.via === "admin" || latest.via === "line_direct" || latest.via === "line_group")) await matchUnassignedAdminJob(env, wardId, jobId, client).catch((e) => console.error("受け箱の当てに失敗しました", describe(e)));
     return placed ? "read" : "skipped";
   } catch (err) {
     const read = err instanceof ReadError ? err : null;
@@ -157,6 +165,35 @@ async function performRead(
   }
 }
 
+async function saveAnswerSheetRows(
+  db: D1Database,
+  wardId: string,
+  projectId: string,
+  jobId: string,
+  accountId: string | null,
+): Promise<void> {
+  const readings = await getReadings(db, wardId, jobId);
+  const reading = readings.find((row) => "rows" in row.body)?.body;
+  if (!reading || !("rows" in reading)) return;
+  await Promise.all(reading.rows.map(async (row, index) => {
+    const household = row.household_name.trim();
+    const district = row.ward_group.trim();
+    if (!household || !district) return;
+    await addAnswer(db, wardId, {
+      projectId,
+      household,
+      district,
+      peopleCount: (row.adults ?? 0) + (row.children ?? 0),
+      helperName: row.helper_names.join("、"),
+      helperTimes: row.helper_slots.join("、"),
+      source: "sheet",
+      originalId: row.original_id,
+      sheetRowIndex: index,
+      accountId,
+    });
+  }));
+}
+
 /** 役員画面から受け箱へ送られた写真を、読み終わってから自動で当てる。 */
 async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, client: Anthropic): Promise<void> {
   const current = await getJob(env.DB, wardId, jobId);
@@ -167,6 +204,28 @@ async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, 
     detail: `${project.kind} ${project.year ?? ""}`.trim(),
   }));
   const readings = await getReadings(env.DB, wardId, jobId);
+  const paperCodes = readings.flatMap((reading) => {
+    const body = reading.body;
+    if ("rows" in body) return body.rows.map((row) => row.paper_code ?? "").filter(Boolean);
+    return body.fields.map((field) => field.paper_code ?? "").filter(Boolean);
+  });
+  if (paperCodes.length > 0) {
+    const routes = await Promise.all(paperCodes.map((code) => lookupPaperCode(env.DB, wardId, code)));
+    const routedProjects = [...new Set(routes.flatMap((route) => route ? [route.projectId] : []))];
+    // 印字符号がある紙は AI の候補選びに回さない。欄ごとの読みをプロジェクト別に渡す。
+    if (routes.every(Boolean) && routedProjects.length === 1) {
+      const selectedId = routedProjects[0] as string;
+      const changed = await setJobProject(env.DB, wardId, jobId, selectedId);
+      if (changed && current.read_kind !== "answer_sheet") await dispatchProject(env, wardId, selectedId);
+    } else if (routes.every(Boolean) && routedProjects.length > 1 && readings.length === 1 && "fields" in readings[0]!.body) {
+      await createPaperRouteJobs(env, current, readings[0]!.body, paperCodes, routes.map((route) => route?.projectId ?? ""));
+    } else if (routes.some(Boolean)) {
+      return;
+    } else {
+      // 符号が読めなかった場合は、従来どおり受け箱の候補から AI が当てる。
+    }
+    if (routes.every(Boolean) || routes.some(Boolean)) return;
+  }
   const summary = readings.map((reading) => "summary" in reading.body ? reading.body.summary : "").filter(Boolean).join("\n").slice(0, 2000);
   if (!summary) return;
   const result = await matchProject(client, { candidates, summary });
@@ -176,7 +235,7 @@ async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, 
     if (!changed) return;
     await env.DB.prepare("UPDATE jobs SET ai_matched_at = ?, ai_match_reason = ? WHERE ward_id = ? AND job_id = ? AND project_id = ?")
       .bind(nowIso(), result.reason, wardId, jobId, selected.id).run();
-    await dispatchProject(env, wardId, selected.id);
+    if (current.read_kind !== "answer_sheet") await dispatchProject(env, wardId, selected.id);
   } else if (result.choice === MATCH_NEW || result.choice === MATCH_MULTIPLE || result.choice === MATCH_UNRELATED) {
     await env.DB.prepare("UPDATE jobs SET ai_match_reason = ? WHERE ward_id = ? AND job_id = ? AND project_id IS NULL")
       .bind(result.reason, wardId, jobId).run();
@@ -199,6 +258,55 @@ async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, 
         .bind(result.reason, wardId, jobId).run();
     }
   }
+}
+
+async function createPaperRouteJobs(
+  env: Env,
+  source: NonNullable<Awaited<ReturnType<typeof getJob>>>,
+  reading: import("../ai/schema").Reading,
+  paperCodes: string[],
+  projectIds: string[],
+): Promise<void> {
+  const fieldsByProject = new Map<string, import("../ai/schema").ReadField[]>();
+  for (const [index, code] of paperCodes.entries()) {
+    const projectId = projectIds[index];
+    if (!projectId) continue;
+    const fields = reading.fields.filter((field) => field.paper_code === code);
+    fieldsByProject.set(projectId, [...(fieldsByProject.get(projectId) ?? []), ...fields]);
+  }
+  for (const [projectId, fields] of fieldsByProject) {
+    if (fields.length === 0) continue;
+    const now = nowIso();
+    const childId = newId();
+    await env.DB.prepare(`INSERT OR IGNORE INTO jobs
+      (job_id, ward_id, project_id, via, task, read_kind, sender_label, account_id, status, created_at, updated_at, read_at, paper_source_job_id)
+      VALUES (?, ?, ?, 'admin', 'connect', 'general', ?, ?, 'read', ?, ?, ?, ?)`)
+      .bind(childId, source.ward_id, projectId, source.sender_label, source.account_id, now, now, now, source.job_id).run();
+    const child = await env.DB.prepare("SELECT job_id FROM jobs WHERE ward_id = ? AND paper_source_job_id = ? AND project_id = ?")
+      .bind(source.ward_id, source.job_id, projectId).first<{ job_id: string }>();
+    if (!child) continue;
+    const body = { ...reading, fields, text_blocks: [], tables: [], decisions: [], unreadable: [] };
+    await env.DB.prepare(`INSERT OR IGNORE INTO paper_reading_slices (ward_id, job_id, source_job_id, body, created_at)
+      VALUES (?, ?, ?, ?, ?)`)
+      .bind(source.ward_id, child.job_id, source.job_id, JSON.stringify(body), now).run();
+    await dispatchProject(env, source.ward_id, projectId);
+  }
+}
+
+async function routeByPaperCode(db: D1Database, wardId: string, jobId: string) {
+  const readings = await getReadings(db, wardId, jobId);
+  const codes = readings.flatMap((reading) => {
+    const body = reading.body;
+    if ("rows" in body) return body.rows.map((row) => row.paper_code ?? "").filter(Boolean);
+    return body.fields.map((field) => field.paper_code ?? "").filter(Boolean);
+  });
+  if (codes.length === 0) return null;
+  const routes = await Promise.all(codes.map((code) => lookupPaperCode(db, wardId, code)));
+  const projectIds = [...new Set(routes.flatMap((route) => route ? [route.projectId] : []))];
+  if (!routes.every(Boolean) || projectIds.length !== 1) return null;
+  const projectId = projectIds[0] as string;
+  if (!(await setJobProject(db, wardId, jobId, projectId))) return null;
+  return getJob(db, wardId, jobId);
 }
 
 /** 画面の応答の後に読みを始める。応答は待たない。 */

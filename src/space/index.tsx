@@ -175,7 +175,8 @@ async function renderSpace(c: Context<WardEnv>, direct: string | null) {
       <h2>当番表と配置図</h2>{data.items.filter((item) => item.kind === "duties" || item.kind === "layout").map((item) => <pre class="panel">{JSON.stringify(item.data, null, 2)}</pre>)}
       <h2>当日の紙など</h2>{data.documents.map((doc) => <details class="panel"><summary>{doc.title}</summary><pre>{doc.body}</pre></details>)}
       <h2>写真と入った物</h2>{data.originals.map((file) => <p><a href={`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/file/${encodeURIComponent(file.original_id)}`}>{file.filename}</a></p>)}
-      <h2>撮って送る</h2><form method="post" action={`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/send`} enctype="multipart/form-data"><label for="file">写真またはファイル</label><input id="file" name="file" type="file" accept="image/*,.pdf" capture="environment" required /><button type="submit">送る</button></form>
+      <h2>撮って送る</h2><form id="space-send" method="post" action={`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/send`} enctype="multipart/form-data"><label for="file">写真またはファイル</label><input id="file" name="file" type="file" accept="image/*,.pdf" capture="environment" required /><input id="paper-qr" type="hidden" name="paper_qr" /><button type="submit">送る</button></form>
+      <script dangerouslySetInnerHTML={{ __html: SPACE_CAMERA_SCRIPT }} />
     </Layout>,
   );
 }
@@ -194,6 +195,23 @@ function closedNotice(c: Context<WardEnv>) {
 }
 
 export const space: Bundle = { admin, pub };
+
+const SPACE_CAMERA_SCRIPT = String.raw`(function () {
+  var form = document.getElementById('space-send');
+  if (!form) return;
+  form.addEventListener('submit', async function (event) {
+    if (typeof BarcodeDetector === 'undefined') return;
+    event.preventDefault();
+    try {
+      var file = document.getElementById('file').files[0];
+      if (file) {
+        var found = await new BarcodeDetector({ formats: ['qr_code'] }).detect(file);
+        if (found.length) document.getElementById('paper-qr').value = found[0].rawValue || '';
+      }
+    } catch (ignored) { /* 対応していない画像は符号なしで送る */ }
+    form.submit();
+  });
+})();`;
 
 function adminPath(wardSlug: string, path: string): string {
   return `/${encodeURIComponent(wardSlug)}/admin${path}`;

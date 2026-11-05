@@ -23,6 +23,83 @@ export interface PrintCode {
   squad?: string;
 }
 
+/** 人が読める紙面の符号。番号は区内の作成順で引く。 */
+export interface PaperCode {
+  project: number;
+  document: number;
+  version: number;
+}
+
+export function formatPaperCode(code: PaperCode): string {
+  return `P${code.project}-D${code.document}-V${code.version}`;
+}
+
+export function parsePaperCode(value: string): PaperCode | null {
+  const match = /^P([1-9][0-9]*)-D([1-9][0-9]*)-V([1-9][0-9]*)$/i.exec(value.trim());
+  if (!match) return null;
+  const project = Number(match[1]);
+  const document = Number(match[2]);
+  const version = Number(match[3]);
+  if (![project, document, version].every(Number.isSafeInteger)) return null;
+  return { project, document, version };
+}
+
+/** 区内の作成順から短い符号を作る。全問い合わせは ward_id で絞る。 */
+export async function lookupPaperCode(
+  db: D1Database,
+  wardId: string,
+  value: string,
+): Promise<{ projectId: string; documentId: string; version: number } | null> {
+  const code = parsePaperCode(value);
+  if (!code) return null;
+  const projects = await db.prepare("SELECT project_id FROM projects WHERE ward_id = ? ORDER BY created_at, project_id")
+    .bind(wardId).all<{ project_id: string }>();
+  const project = projects.results[code.project - 1];
+  if (!project) return null;
+  const documents = await db.prepare("SELECT document_id FROM documents WHERE ward_id = ? AND project_id = ? ORDER BY created_at, document_id")
+    .bind(wardId, project.project_id).all<{ document_id: string }>();
+  const document = documents.results[code.document - 1];
+  if (!document) return null;
+  const published = await db.prepare(`SELECT 1 AS found FROM publication_records
+    WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_no = ? LIMIT 1`)
+    .bind(wardId, project.project_id, document.document_id, code.version).first();
+  return published ? { projectId: project.project_id, documentId: document.document_id, version: code.version } : null;
+}
+
+/** 読み取った QR がこの区で実際に配った物か確認してから返す。 */
+export async function lookupPrintQr(
+  db: D1Database,
+  wardId: string,
+  wardSlug: string,
+  text: string,
+): Promise<PrintCode | null> {
+  const parsed = parsePrintQrUrl(text);
+  if (!parsed || parsed.wardSlug !== wardSlug) return null;
+  const code = parsed.code;
+  const row = await db.prepare(`SELECT 1 AS found FROM publication_records
+    WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_no = ? LIMIT 1`)
+    .bind(wardId, code.projectId, code.documentId, code.version).first();
+  return row ? code : null;
+}
+
+export async function makePaperCode(
+  db: D1Database,
+  wardId: string,
+  projectId: string,
+  documentId: string,
+  version: number,
+): Promise<string | null> {
+  const projects = await db.prepare("SELECT project_id FROM projects WHERE ward_id = ? ORDER BY created_at, project_id")
+    .bind(wardId).all<{ project_id: string }>();
+  const projectIndex = projects.results.findIndex((row) => row.project_id === projectId);
+  if (projectIndex < 0) return null;
+  const documents = await db.prepare("SELECT document_id FROM documents WHERE ward_id = ? AND project_id = ? ORDER BY created_at, document_id")
+    .bind(wardId, projectId).all<{ document_id: string }>();
+  const documentIndex = documents.results.findIndex((row) => row.document_id === documentId);
+  if (documentIndex < 0) return null;
+  return formatPaperCode({ project: projectIndex + 1, document: documentIndex + 1, version });
+}
+
 const ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 /**

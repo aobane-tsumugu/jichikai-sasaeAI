@@ -12,6 +12,7 @@ import type { JobStatus, OriginalKind } from "./types";
 import { WardBucket } from "../core/storage";
 import type { ReceivePart } from "./receive";
 import type { Waitable } from "./types";
+import { lookupPrintQr } from "../print/qr";
 
 /** Hono のテスト用 request には ExecutionContext が無い場合がある。 */
 function waitableContext(context: { executionCtx: Waitable }): Waitable {
@@ -158,7 +159,11 @@ intakeAdmin.post("/intake", async (c) => {
 
   const form = await c.req.formData();
   const projectIdRaw = String(form.get("project_id") ?? "").trim();
-  const projectId = projectIdRaw === "" ? null : projectIdRaw;
+  const suppliedQr = form.getAll("paper_qr").map(String).filter(Boolean);
+  const qrMatches = (await Promise.all(suppliedQr.map((value) => lookupPrintQr(c.env.DB, ward.wardId, ward.slug, value))))
+    .filter((value): value is NonNullable<typeof value> => value !== null);
+  const qrProjects = [...new Set(qrMatches.map((value) => value.projectId))];
+  const projectId = qrProjects.length === 1 ? qrProjects[0] as string : qrProjects.length > 1 ? null : projectIdRaw === "" ? null : projectIdRaw;
   if (projectId && !(await projectDirectory().isOpen(c.env.DB, ward.wardId, projectId))) {
     return reply(false, "そのプロジェクトには送れません。プロジェクトを選び直してください。", {}, 400);
   }

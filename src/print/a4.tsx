@@ -32,6 +32,7 @@ body { margin: 0; color: #000; font: 12pt/1.7 "Hiragino Sans", "Yu Gothic", "Mei
 .qr svg { display: block; width: 100%; height: auto; }
 .qr small { display: block; overflow-wrap: anywhere; }
 .field { border: 0.4mm solid #000; padding: 1.5mm 2.5mm; }
+.field-code { float: right; font: 8pt/1.2 sans-serif; }
 .field-label { font-size: 9pt; }
 @page { size: A4 portrait; margin: 0; }
 @media print {
@@ -96,8 +97,8 @@ export const PrintQr: FC<{ text: string; sizeMm?: number; caption?: string }> = 
 );
 
 /** 手で書き込む欄（枠と見出し）。高さは mm。 */
-export const FieldBox: FC<{ label: string; heightMm?: number }> = ({ label, heightMm = 12 }) => (
+export const FieldBox: FC<{ label: string; heightMm?: number; code?: string }> = ({ label, heightMm = 12, code }) => (
   <div class="field" style={`min-height:${heightMm}mm`}>
-    <span class="field-label">{label}</span>
+    <span class="field-label">{label}</span>{code ? <span class="field-code">{code}</span> : null}
   </div>
 );
