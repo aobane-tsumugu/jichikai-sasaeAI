@@ -290,7 +290,10 @@ export const SEND_SCRIPT = String.raw`(function (root) {
       say(data.message, !data.ok);
       if (data.ok) {
         form.reset();
-        setTimeout(function () { location.reload(); }, 1500);
+        setTimeout(function () {
+          if (data.redirectTo) location.assign(data.redirectTo);
+          else location.reload();
+        }, 1500);
       }
     } catch (e) {
       say('送れませんでした。電波を確かめて、もう一度送ってください。', true);
