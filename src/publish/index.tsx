@@ -3,13 +3,13 @@ import { AdminPage } from "../core/admin-ui";
 import { adminPath } from "../core/auth";
 import type { Bundle } from "../core/bundle";
 import { newId, nowIso } from "../core/ids";
-import { Layout, Notice } from "../core/ui";
+import { Hint, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { getLineAllowance, lineAccessToken, sendLineTitleAndUrl } from "../line/api";
 import { getPublicContact } from "../settings/store";
 import { getDistrictCopies, getRoster, parseDistribution } from "../answers/api";
 import { checkPublicDraft } from "./check";
-import { DOCUMENT_KINDS, ITEM_LABEL, isItemKey, type DocumentKind } from "../project/model";
+import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, isItemKey, type DocumentKind } from "../project/model";
 
 interface DraftRow {
   document_id: string;
@@ -112,6 +112,7 @@ admin.get("/publish/:projectId", async (c) => {
       line_status, line_recipients, line_sent_at, line_error, recipient_scope, distribution
     FROM publication_records WHERE ward_id = ? AND project_id = ? ORDER BY published_at DESC`)
     .bind(ward.wardId, projectId).all<PublicationRow>();
+  const firstPublishedId = records.results.find((record) => !record.unpublished_at)?.publication_id;
   let allowance = null;
   let allowanceError = "";
   try {
@@ -122,7 +123,7 @@ admin.get("/publish/:projectId", async (c) => {
   c.header("Cache-Control", "no-store");
   return c.html(
     <AdminPage ward={ward} account={account} title="配る" back={{ href: adminPath(ward, "/projects"), label: "プロジェクト一覧へ" }}>
-      <h1>{project.title} を配る</h1>
+      <h1>{project.title} を配る <Hint text="案を選び、配る内容と相手を確認して区のページに載せます。まだ直す時は案の画面へ戻れます。" /></h1>
       {project.closed_at ? <Notice error>このプロジェクトは閉じています。</Notice> : null}
       {c.req.query("space") === "sent" ? <Notice>プロジェクトの空間に出しました。</Notice> : null}
       {allowance ? <p>公式 LINE の友だち {allowance.friends ?? "確認中"} 人、今月の残り {allowance.remaining ?? "制限なし"} 通です。</p> : null}
@@ -148,7 +149,7 @@ admin.get("/publish/:projectId", async (c) => {
               <input type="hidden" name="documentId" value={draft.document_id} />
               <input type="hidden" name="versionId" value={draft.version_id} />
               <input type="hidden" name="versionNo" value={draft.version_no} />
-              <button type="submit">空間に配る</button>
+              <button type="submit">空間に配る</button> <Hint text={`${DOCUMENT_KIND_LABEL[draft.kind as DocumentKind]}を、区のページに載せず実行委員と班長の空間に出します。`} />
             </form> : null}
           </> : null}
           {draft.scope === "public" && !project.closed_at ? <form method="post" action={adminPath(ward, `/publish/${projectId}/confirm`)}>
@@ -166,7 +167,7 @@ admin.get("/publish/:projectId", async (c) => {
             <p>紙の部数と配る相手の指定は、公開ページに表示されません。</p>
             <label for={`line-${draft.document_id}`}>公式 LINE</label>
             <select id={`line-${draft.document_id}`} name="lineDelivery"><option value="send">題と URL を送る</option><option value="skip">今回は送らない</option></select>
-            <p><button type="submit">配る内容を確認する</button></p>
+            <p><button type="submit">配る内容を確認する</button> <Hint text={`${DOCUMENT_KIND_LABEL[draft.kind as DocumentKind]}の本文と配る相手を確認する画面を開くだけで、まだ配りません。`} /></p>
           </form> : null}
         </section>
       ))}
@@ -177,7 +178,7 @@ admin.get("/publish/:projectId", async (c) => {
           <p>紙の配布先: {paperTargetLabel(record.distribution)}</p>
           <p>公式 LINE: {record.line_status === "sent" ? `${record.line_recipients ?? 0} 人に送信済み` : record.line_status === "failed" ? "送信できませんでした" : record.line_status === "not_sent" ? "今回は送っていません" : record.line_status === "not_configured" ? "接続設定なし" : "送信待ち"}</p>
           {record.line_error ? <p>{record.line_error}</p> : null}
-          {record.unpublished_at ? <p>現在は公開を下げています。</p> : <form class="inline" method="post" action={adminPath(ward, `/publish/${projectId}/lower/${record.publication_id}`)}><button class="danger" type="submit">公開を下げる</button></form>}
+          {record.unpublished_at ? <p>現在は公開を下げています。</p> : <form class="inline" method="post" action={adminPath(ward, `/publish/${projectId}/lower/${record.publication_id}`)}><button class="danger" type="submit">公開を下げる</button> {record.publication_id === firstPublishedId ? <Hint text="配った記録を残したまま、この案内を区のページから下げます。" /> : null}</form>}
           <p><a href={adminPath(ward, `/print/${projectId}/${record.document_id}/${record.version_no}`)}>印刷用ページを開く</a></p>
         </section>
       ))}
@@ -221,7 +222,7 @@ admin.get("/publish/:projectId/preview/:documentId/:versionNo", async (c) => {
     .first<{ title: string; scope: string; body: string; version_no: number }>();
   if (!row) return c.notFound();
   return c.html(<AdminPage ward={ward} account={account} title={row.title} back={{ href: adminPath(ward, `/publish/${c.req.param("projectId")}`), label: "配る画面へ戻る" }}>
-    <h1>{row.title}</h1><ArticleBody body={row.body} />
+    <h1>{row.title} <Hint text="配る前の案を読む画面です。ここでは区のページには載りません。" /></h1><ArticleBody body={row.body} />
     <p><a href={adminPath(ward, `/print/${c.req.param("projectId")}/${c.req.param("documentId")}/${row.version_no}/preview`)}>印刷用ページで見る</a></p>
     <p>見せるだけの確認用ページです。配る操作をするまで、出した内容にはなりません。</p>
     {row.scope === "public" ? <p>配る相手と紙の部数は、配る画面から選んでください。</p> : <p>この物は実行委員と班長に配る内容です。</p>}
@@ -270,7 +271,7 @@ admin.post("/publish/:projectId/confirm", async (c) => {
   let allowance = null;
   try { allowance = await getLineAllowance(lineAccessToken(c.env)); } catch { /* 送信結果として記録する */ }
   return c.html(<AdminPage ward={ward} account={account} title="配る内容の確認" back={{ href: adminPath(ward, `/publish/${project.project_id}`), label: "案に戻る" }}>
-    <h1>配る内容の確認</h1>
+    <h1>配る内容の確認 <Hint text="本文と配る相手を読んでから「配る」を押すと、区のページに載ります。公式 LINE に送るかどうかも確認してください。" /></h1>
     <ArticleBody body={draft.body} />
     {warnings.length > 0 ? <section class="panel"><h2>混入の検査で見つかった所</h2><p>公開する前に内容を確認してください。配る操作は続けられます。</p><ul>{warnings.map((warning) => <li>{warning}</li>)}</ul></section> : null}
     <p>配ります。区のページに載ります。{lineDelivery === "skip" ? "今回は公式 LINE に送りません。" : `公式 LINE は${allowance?.friends === null || allowance === null ? "人数確認後" : `${allowance.friends} 人`}に届きます。`}</p>

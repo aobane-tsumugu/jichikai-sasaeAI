@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
-import { Layout, Notice } from "../core/ui";
+import { Hint, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { getProjectState, getProjectSummary } from "../project/api";
 import { getEditableDocument } from "../project/actions";
@@ -82,7 +82,7 @@ admin.get("/projects/:projectId/check", async (c) => {
     scanDraft(c.env.DB, ward.wardId, id, kind), getEditableDocument(c.env.DB, ward.wardId, id, kind), getRoster(c.env.DB, ward.wardId),
   ]);
   return c.html(<Layout title="公開の下書きを確かめる" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, `/projects/${id}`)}>プロジェクトへ</a>}>
-    <h1>公開の下書きを確かめる</h1>
+    <h1>公開の下書きを確かめる <Hint text="文書を選び、公開する内容に名簿や個人の連絡先が入り込んでいないか見ます。見つかった箇所は案の画面で直せます。" /></h1>
     <p>登録済みの名簿、協賛先、個人の連絡先と照合します。公開してよい連絡先は通します。</p>
     <p>名簿: {roster.length} 世帯</p>
     <h2>確かめる文書</h2><form method="get" action={adminPath(ward, `/projects/${id}/check`)}><label for="document">文書</label><select id="document" name="document">{DOCUMENT_KINDS.map((k) => <option value={k} selected={k === kind}>{DOCUMENT_KIND_LABEL[k]}</option>)}</select><button class="secondary">開く</button></form>
