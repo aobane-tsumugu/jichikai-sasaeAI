@@ -289,6 +289,7 @@ export interface JobListItem extends JobRow {
 }
 
 /** 入った物の一覧（新しい順）。 */
+/** 入った物の一覧。AI に頼んだ下書きなどの仕事（via が system）は入った物ではないので含めない。 */
 export async function listJobs(
   db: D1Database,
   wardId: string,
@@ -301,7 +302,7 @@ export async function listJobs(
             COALESCE((SELECT o.filename FROM originals o WHERE o.ward_id = j.ward_id AND o.job_id = j.job_id ORDER BY o.position LIMIT 1), '') AS first_filename,
             COALESCE((SELECT o.kind FROM originals o WHERE o.ward_id = j.ward_id AND o.job_id = j.job_id ORDER BY o.position LIMIT 1), '') AS first_kind
        FROM jobs j
-      WHERE j.ward_id = ? AND j.paper_source_job_id IS NULL
+      WHERE j.ward_id = ? AND j.paper_source_job_id IS NULL AND j.via <> 'system'
         AND NOT EXISTS (SELECT 1 FROM jobs routed WHERE routed.ward_id = j.ward_id AND routed.paper_source_job_id = j.job_id)
         ${where}
       ORDER BY j.created_at DESC
