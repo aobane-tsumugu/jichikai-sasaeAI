@@ -34,6 +34,8 @@ details { margin: 0.6rem 0; }
 select { margin-bottom: 0.4rem; }
 .qrbox { width: 12rem; max-width: 100%; margin: 0.5rem 0; }
 .qrbox svg { display: block; width: 100%; height: auto; }
+button.hint-mark { min-height: 0; width: 1.7rem; height: 1.7rem; padding: 0; margin-left: 0.35rem; border-radius: 50%; border-color: var(--line); background: var(--panel); color: var(--accent); font-size: 0.95rem; font-weight: 600; line-height: 1; vertical-align: middle; cursor: help; }
+.hint-body { max-width: min(24rem, calc(100vw - 2rem)); margin: auto; padding: 0.75rem 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--fg); font-size: 1rem; font-weight: 400; line-height: 1.7; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2); }
 `;
 
 export const Layout: FC<
@@ -87,3 +89,23 @@ export const Credentials: FC<{ loginId: string; name: string; password: string }
     <p class="secret">{password}</p>
   </div>
 );
+
+/** 説明の id。同じ文には同じ id を振る（同じ画面に同じ説明を二度置かない前提）。 */
+function hintId(text: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
+  return `hint-${(hash >>> 0).toString(36)}`;
+}
+
+/**
+ * 見出しやボタンに添える短い説明（何をする画面か、どう使うか）。
+ * PC はカーソルを当てると出て（title）、スマホと PC は押すと開く（popover。外を押すと閉じる）。JS は使わない。
+ * popover を知らないブラウザでは、説明の文がそのまま並んで読める。
+ */
+export const Hint: FC<{ text: string }> = ({ text }) => {
+  const id = hintId(text);
+  return <>
+    <button type="button" class="hint-mark" popovertarget={id} title={text} aria-label="説明">?</button>
+    <span id={id} popover="auto" class="hint-body">{text}</span>
+  </>;
+};
