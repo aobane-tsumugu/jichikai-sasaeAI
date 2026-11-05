@@ -3,7 +3,7 @@ import { AdminPage } from "../core/admin-ui";
 import { adminPath } from "../core/auth";
 import { newId } from "../core/ids";
 import { cleanName } from "../core/password";
-import { Notice } from "../core/ui";
+import { Hint, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { LIMITS, SETTING_KEYS } from "./keys";
 import { deleteSetting, getTemplates, saveTemplates } from "./store";
@@ -26,7 +26,7 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
   c.header("Cache-Control", "no-store");
   return c.html(
     <AdminPage ward={ward} account={account} title="定型文" back={{ href: adminPath(ward, "/settings"), label: "区の設定" }}>
-      <h1>定型文</h1>
+      <h1>定型文 <Hint text="雨天の変更など、繰り返し使う知らせの文を用意する画面です。直したい文の名前と本文を書き換えてください。" /></h1>
       <p class="muted">
         {"{会場}"} のように波括弧で囲んだ言葉は、知らせを出す時に会場や日時などの中身に置き換わります。
       </p>
@@ -66,7 +66,7 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
       <form method="post" action={base(c, "/reset")} onsubmit="return confirm('保存した定型文を全部消して、標準の定型文に戻します。')">
         <button type="submit" class="secondary">
           標準の定型文に戻す
-        </button>
+        </button> <Hint text="保存した定型文をすべて消して、初めから用意された定型文に戻します。" />
       </form>
     </AdminPage>,
     status,

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
-import { Layout, Notice } from "../core/ui";
+import { Hint, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { getProjectState, getProjectSummary } from "../project/api";
 import { addMapTask, removeMapTask, setMapTask } from "../project/actions";
@@ -46,7 +46,7 @@ admin.get("/projects/:projectId/map", async (c) => {
   const dayX = (layout: (typeof layouts)[number], d: string) => layout.gutter + (Date.parse(`${d}T00:00:00Z`) - start) / span * layout.barWidth;
   const monthDay = (d: string) => `${Number(d.slice(5, 7))}月${Number(d.slice(8, 10))}日`;
   return c.html(<Layout title={`地図: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, `/projects/${id}`)}>プロジェクトへ</a>}>
-    <h1>{project.title} の地図</h1>
+    <h1>{project.title} の地図 <Hint text="仕事の時期と進み具合を見る画面です。仕事の名前を押すと、その仕事や材料、案を開けます。" /></h1>
     <p>時期、仕事、担当を一枚で見られます。仕事を開くと、材料や案、答え、収支へ進めます。</p>
     {!material ? <p>去年の案内や記録の紙、Word や Excel を、見つかった物から送ってください。全部そろえなくてかまいません。</p> : null}
     <nav class="action-links">
@@ -81,7 +81,7 @@ admin.get("/projects/:projectId/map", async (c) => {
         })}
       </svg></div>;
     })}
-    {tasks.map((task) => <section class="panel" id={`task-${task.taskId}`}><h2>{task.name}</h2><p>{task.periodStart ?? "時期未定"} から {task.periodEnd ?? "時期未定"}</p>
+    {tasks.map((task, index) => <section class="panel" id={`task-${task.taskId}`}><h2>{task.name}</h2><p>{task.periodStart ?? "時期未定"} から {task.periodEnd ?? "時期未定"}</p>
       <p>状態: {MAP_PROGRESS_LABEL[task.progress]} / {task.progressSource ? `出どころ: ${SOURCE_KIND_LABEL[task.progressSource.kind]}${task.progressSource.locator ? ` (${task.progressSource.locator})` : ""}` : "人の入力"}</p>
       {history.results.filter((row) => row.task_key === task.taskKey && [row.requested_by, row.difficulty, row.next_year].some((value) => value.trim())).map((row) => <div>
         <h3>去年の記録</h3>
@@ -102,7 +102,7 @@ admin.get("/projects/:projectId/map", async (c) => {
         <label for={`seat-${task.taskId}`}>担当する人</label><select id={`seat-${task.taskId}`} name="seat_id"><option value="">担当を選ぶ</option>{seats.results.map((seat) => <option value={seat.seat_id} selected={seat.seat_id === task.seatId}>{seat.name}</option>)}</select>
         <button class="secondary">保存</button>
       </form>
-      <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}/remove`)}><button class="danger">この仕事を地図から外す</button></form></details>
+      <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}/remove`)}><button class="danger">この仕事を地図から外す</button> {index === 0 ? <Hint text="送った材料やほかの仕事は残し、この仕事だけを今の地図から外します。" /> : null}</form></details>
     </section>)}
     <h2>仕事を足す</h2><form method="post" action={adminPath(ward, `/projects/${id}/map/add`)}>
       <label for="new-task">仕事の名前</label><input id="new-task" name="name" maxlength={100} required /><button>足す</button>

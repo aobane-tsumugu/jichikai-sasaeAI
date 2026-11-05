@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { AdminPage } from "../core/admin-ui";
+import { Hint } from "../core/ui";
 import { adminPath, clearDeviceCookie } from "../core/auth";
 import type { Bundle } from "../core/bundle";
 import type { AdminEnv } from "../env";
@@ -26,7 +27,7 @@ admin.get("/", async (c) => {
   const inboxCount = lineInbox.filter((item) => item.disposition === "unmatched").length + (unmatchedCityCount?.count ?? 0);
   return c.html(
     <AdminPage ward={ward} account={account} title="役員画面">
-      <h1>役員画面</h1>
+      <h1>役員画面 <Hint text="行事や総会などの仕事を始める画面です。続けるプロジェクトを選び、まだ無ければ新しく開いてください。" /></h1>
       <h2>開いているプロジェクト</h2>
       {projects.map((project) => <section class="panel">
         <h3><a href={adminPath(ward, `/projects/${project.projectId}/map`)}>{project.title}</a></h3>
@@ -56,7 +57,7 @@ admin.get("/settings", (c) => {
   const { ward, account } = c.var;
   return c.html(
     <AdminPage ward={ward} account={account} title="区の設定" back={{ href: adminPath(ward, "/"), label: "役員画面" }}>
-      <h1>区の設定</h1>
+      <h1>区の設定 <Hint text="区の連絡先、役員、定型文などを設定する画面です。直したい項目を選んでください。" /></h1>
       <ul>
         <li>
           <a href={adminPath(ward, "/settings/people")}>役員の席とアカウント</a>

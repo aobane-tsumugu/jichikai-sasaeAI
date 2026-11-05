@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
-import { Layout, Notice } from "../core/ui";
+import { Hint, Layout, Notice } from "../core/ui";
 import { nowIso } from "../core/ids";
 import type { AdminEnv } from "../env";
 import type { Waitable } from "../intake/types";
@@ -102,8 +102,8 @@ admin.get("/close/:projectId", async (c) => {
   const activity = savedActivity ?? { introduction: generatedText, membershipBurden: "", membershipBenefit: "", tasks: tasks.results.map((task) => ({ taskId: task.task_id, name: task.name, period: task.period })) };
   const root = adminPath(ward, `/close/${id}`);
   return c.html(<Layout title={`報告と閉じる: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>{project.title} の報告と閉じる</h1>
-    {project.closedAt ? <Notice>このプロジェクトは閉じました。記録として読めます。</Notice> : <form method="post" action={`${root}/prepare`}><button class="secondary">報告と地図の下書きを起こす</button></form>}
+    <h1>{project.title} の報告と閉じる <Hint text={project.closedAt ? "閉じたプロジェクトの報告と地図を見る画面です。直したい時は「開き直す」を押してください。" : "実施後の報告と、来年に残す地図をまとめる画面です。下書きを起こすか、欄に直接書いてください。"} /></h1>
+    {project.closedAt ? <Notice>このプロジェクトは閉じました。記録として読めます。</Notice> : <form method="post" action={`${root}/prepare`}><button class="secondary">報告と地図の下書きを起こす</button> <Hint text="今年の中身をもとに、AI に報告と地図の下書きを頼みます。" /></form>}
     {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}
     {c.req.query("activity") === "saved" ? <Notice>仕事紹介の下書きを保存しました。</Notice> : null}
     {c.req.query("activity") === "published" ? <Notice>仕事紹介を区のページに載せました。</Notice> : null}
@@ -143,11 +143,11 @@ admin.get("/close/:projectId", async (c) => {
         <label for={`activity-period-${task.task_id}`}>時期</label><input id={`activity-period-${task.task_id}`} name={`activityPeriod_${task.task_id}`} value={saved?.period ?? task.period} maxlength={80} />
       </div>; })}</fieldset>
       <p><button name="action" value="save">下書きを保存</button></p>
-      {project.closedAt ? <p><button name="action" value="publish">区のページに載せる</button></p> : null}
+      {project.closedAt ? <p><button name="action" value="publish">区のページに載せる</button> <Hint text="入力した活動の紹介と選んだ仕事を、だれでも読める区のページに載せます。" /></p> : null}
     </form>
     {activityPage?.published_at ? <p><a href={`/${ward.slug}/work/${encodeURIComponent(id)}`}>区のページで確認する</a></p> : null}
-    {!project.closedAt ? <form method="post" action={`${root}/finalize`}><p><button class="danger">閉じて記録に残す</button></p></form>
-      : <form method="post" action={`${root}/reopen`}><p><button>開き直す</button></p></form>}
+    {!project.closedAt ? <form method="post" action={`${root}/finalize`}><p><button class="danger">閉じて記録に残す</button> <Hint text="報告と地図を記録に残し、実行委員や班長の空間と回答の受付を終えます。" /></p></form>
+      : <form method="post" action={`${root}/reopen`}><p><button>開き直す</button> <Hint text="報告や地図を再び直せるようにし、空間と回答の受付も閉じる前の状態に戻します。" /></p></form>}
     <p><a href={adminPath(ward, "/archive")}>記録を開く</a></p>
   </Layout>);
 });

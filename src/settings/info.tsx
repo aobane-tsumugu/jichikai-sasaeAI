@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { AdminPage } from "../core/admin-ui";
 import { adminPath } from "../core/auth";
-import { Notice } from "../core/ui";
+import { Hint, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { LIMITS, PUBLIC_PRIVACY_NOTICE, SETTING_KEYS, linesToList } from "./keys";
 import { deleteSetting, getPublicContact, getSquads, setSetting } from "./store";
@@ -17,7 +17,7 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
   c.header("Cache-Control", "no-store");
   return c.html(
     <AdminPage ward={ward} account={account} title="区の情報" back={{ href: adminPath(ward, "/settings"), label: "区の設定" }}>
-      <h1>区の情報</h1>
+      <h1>区の情報 <Hint text="区のページで使う連絡先と班の名前を設定する画面です。公開する窓口の連絡先を入れてください。" /></h1>
       {extra.notice ? <Notice>{extra.notice}</Notice> : null}
       {extra.error ? <Notice error>{extra.error}</Notice> : null}
       <form method="post" action={adminPath(ward, "/settings/info")}>
