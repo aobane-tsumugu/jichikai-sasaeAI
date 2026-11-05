@@ -3,7 +3,7 @@ import { AdminPage } from "../../core/admin-ui";
 import { adminPath } from "../../core/auth";
 import type { Bundle } from "../../core/bundle";
 import { getSquads } from "../../settings/store";
-import { ArticleBody } from "../../publish";
+import { ArticleBody, articleParagraphs } from "../../publish";
 import type { AdminEnv } from "../../env";
 import { CutLine, FieldBox, PrintDocument, PrintQr, Sheet } from "../a4";
 import { makePaperCode, printQrUrl } from "../qr";
@@ -74,24 +74,32 @@ admin.get("/print/:projectId/:documentId/:versionNo/:kind", async (c) => {
     paperCode: await makePaperCode(c.env.DB, ward.wardId, target.project_id, target.document_id, target.version_no),
     url: printQrUrl(baseUrl, ward.slug, { projectId: target.project_id, documentId: target.document_id, version: target.version_no }),
   })));
-  const paperQr = (squad?: string) => <><PrintQr text={named(squad)} caption={`${paperCode ?? ""} ${named(squad)}`} sizeMm={22} />
-    <span class="paper-code">{paperCode}</span></>;
+  const paperQr = (squad?: string) => <div style="text-align:center"><PrintQr text={named(squad)} sizeMm={26} />
+    <div class="paper-code">{paperCode}</div></div>;
+  const answerSheet = (squad: string, helperMm: number) => <div style="display:flex;gap:4mm;align-items:flex-start">
+    <div style="flex:1"><FieldBox label="世帯名" heightMm={16} /><FieldBox label="人数" heightMm={12} /><FieldBox label="手伝いの名前と時間帯" heightMm={helperMm} /></div>
+    {paperQr(squad)}
+  </div>;
+  const onOneSheet = fitsAboveAnswer(row.body);
   const printTitle = `${row.title} ${kindLabel(kind)}`;
   return c.html(<PrintDocument title={printTitle}>
-    {kind === "announcement" ? <>
+    {kind === "announcement" && onOneSheet ? (squads.length ? squads : [""]).map((squad) => <Sheet key={squad} footer={<><span>{ward.name} {squad}</span><span>案内 {versionNo}</span></>}>
+      <h1>{row.document_title}</h1><ArticleBody body={row.body} /><CutLine />
+      <h2>{row.title} 回答票 {squad}</h2>{answerSheet(squad, 24)}
+      <p>QR を読むと案内のページが開き、Web でも回答できます。</p>
+    </Sheet>) : null}
+    {kind === "announcement" && !onOneSheet ? <>
       <Sheet footer={<><span>{ward.name}</span><span>案内 {versionNo}</span></>}>
         <h1>{row.document_title}</h1><ArticleBody body={row.body} />
         {paperQr()}
       </Sheet>
       {squads.map((squad) => <Sheet key={squad} footer={<><span>{ward.name} {squad}</span><span>回答票</span></>}>
-        <h1>{row.title} 回答票</h1><p>班: {squad}</p><CutLine />
-        <FieldBox label="世帯名" heightMm={20} /><FieldBox label="人数" heightMm={16} /><FieldBox label="手伝いの名前と時間帯" heightMm={28} />
-        <p>回答の入口: {`/${ward.slug}/answer/${projectId}`}</p>{paperQr(squad)}
+        <h1>{row.title} 回答票</h1><p>班: {squad}</p>{answerSheet(squad, 28)}
+        <p>QR を読むと案内のページが開き、Web でも回答できます。</p>
       </Sheet>)}
     </> : null}
     {kind === "answer" ? squads.map((squad) => <Sheet key={squad} footer={<>{ward.name} {squad} 回答票</>}>
-      <h1>{row.title} 回答票</h1><p>班: {squad}</p><FieldBox label="世帯名" heightMm={20} /><FieldBox label="人数" heightMm={16} /><FieldBox label="手伝いの名前と時間帯" heightMm={35} />
-      {paperQr(squad)}
+      <h1>{row.title} 回答票</h1><p>班: {squad}</p>{answerSheet(squad, 35)}
     </Sheet>) : null}
     {kind === "leader" ? squads.map((squad) => <Sheet key={squad} footer={<>{ward.name} {squad}</>}>
       <h1>班長へのお知らせ</h1><p>{row.title}</p><ArticleBody body={row.body} /><p>班: {squad}</p>
@@ -153,10 +161,17 @@ function kindLabel(kind: PrintKind): string {
 
 export const printPages: Bundle = { admin };
 
+/** 案内と切り取る回答票を一枚に載せられるか。A4 の文字幅で約 42 字、案内に使える高さで約 20 行。 */
+function fitsAboveAnswer(body: string): boolean {
+  const paragraphs = articleParagraphs(body);
+  const lines = paragraphs.flatMap((paragraph) => paragraph.split("\n")).reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / 42)), 0);
+  return lines + paragraphs.length * 0.4 <= 20;
+}
+
 function PaperField({ label, heightMm, code, text }: { label: string; heightMm: number; code: string | null; text: string }) {
   return <div class="meeting-field" style="display:flex;align-items:flex-start;gap:3mm;margin:2mm 0">
     <FieldBox label={label} heightMm={heightMm} code={code ?? undefined} />
-    <PrintQr text={text} caption={`${code ?? ""} ${text}`} sizeMm={18} />
+    <PrintQr text={text} sizeMm={18} />
   </div>;
 }
 

@@ -9,7 +9,7 @@ import { getLineAllowance, lineAccessToken, sendLineTitleAndUrl } from "../line/
 import { getPublicContact } from "../settings/store";
 import { getDistrictCopies, getRoster, parseDistribution } from "../answers/api";
 import { checkPublicDraft } from "./check";
-import { DOCUMENT_KINDS, type DocumentKind } from "../project/model";
+import { DOCUMENT_KINDS, ITEM_LABEL, isItemKey, type DocumentKind } from "../project/model";
 
 interface DraftRow {
   document_id: string;
@@ -49,16 +49,7 @@ interface PublicationRow {
 interface DraftHistoryRow { document_id: string; version_no: number; body: string; created_at: string; }
 
 function bodyLines(body: string): string[] {
-  try {
-    const value: unknown = JSON.parse(body);
-    const flatten = (input: unknown): string[] => {
-      if (typeof input === "string") return input.trim() ? [input.trim()] : [];
-      if (Array.isArray(input)) return input.flatMap(flatten);
-      if (typeof input !== "object" || input === null) return [];
-      return Object.entries(input as Record<string, unknown>).filter(([key]) => !["format", "kind", "scope", "source", "version"].includes(key)).flatMap(([, child]) => flatten(child));
-    };
-    return flatten(value);
-  } catch { return [body]; }
+  return articleParagraphs(body).flatMap((paragraph) => paragraph.split("\n")).map((line) => line.trim()).filter(Boolean);
 }
 
 function paperTargetLabel(raw: string): string {
@@ -379,11 +370,24 @@ admin.post("/publish/:projectId/lower/:publicationId", async (c) => {
   return c.redirect(adminPath(ward, `/publish/${c.req.param("projectId")}`), 303);
 });
 
-export function ArticleBody({ body }: { body: string }) {
+/** 読む人に見せる段落。文を正とし、項目は文に書かれていない物だけ見出しを付けて足す。 */
+export function articleParagraphs(body: string): string[] {
   let parsed: unknown;
   try { parsed = JSON.parse(body) as unknown; } catch { parsed = body; }
-  const strings = collectText(parsed);
-  return <div>{strings.map((text, index) => <p key={index}>{text}</p>)}</div>;
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return collectText(parsed);
+  const { text, items } = parsed as { text?: unknown; items?: unknown };
+  if (typeof text !== "string" || !Array.isArray(items)) return collectText(parsed);
+  const paragraphs = text.replace(/\r\n/g, "\n").split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
+  const missing = items.flatMap((item: unknown) => {
+    const { key, content } = (item ?? {}) as { key?: unknown; content?: unknown };
+    if (typeof key !== "string" || typeof content !== "string" || !content.trim() || text.includes(content.trim())) return [];
+    return [`${isItemKey(key) ? ITEM_LABEL[key] : key}: ${content.trim()}`];
+  });
+  return [...paragraphs, ...(missing.length ? [missing.join("\n")] : [])];
+}
+
+export function ArticleBody({ body }: { body: string }) {
+  return <div>{articleParagraphs(body).map((text, index) => <p key={index} style="white-space:pre-wrap">{text}</p>)}</div>;
 }
 
 interface DistributionTarget { district: string; copies: number; household?: string; }

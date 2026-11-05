@@ -1,5 +1,6 @@
 import jsQR from "jsqr";
 import { Hono } from "hono";
+import { articleParagraphs } from "../src/publish";
 import { describe, expect, it } from "vitest";
 import { CutLine, FieldBox, PrintDocument, PrintQr, Sheet } from "../src/print";
 import { parsePrintQrUrl, printQrUrl, qrMatrix, qrSvg } from "../src/print";
@@ -124,5 +125,16 @@ describe("A4 の版面", () => {
     const html = await (await hostile.request("/")).text();
     expect(html).not.toContain("<script>alert(1)</script>");
     expect(html).not.toContain("<img src=x");
+  });
+});
+
+describe("読む人に見せる本文", () => {
+  it("文を段落に分け、項目の名前を出さない", () => {
+    const body = JSON.stringify({ text: "秋の案内\r\n\r\n日時: 10月24日", items: [{ key: "date_time", content: "10月24日" }] });
+    expect(articleParagraphs(body)).toEqual(["秋の案内", "日時: 10月24日"]);
+  });
+  it("文に無い項目は見出しを付けて足す", () => {
+    const body = JSON.stringify({ text: "秋の案内", items: [{ key: "rain_plan", content: "公民館" }] });
+    expect(articleParagraphs(body)).toEqual(["秋の案内", "雨天時: 公民館"]);
   });
 });
