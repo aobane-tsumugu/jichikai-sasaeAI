@@ -159,7 +159,7 @@ function fakeClient(respond: (req: unknown) => unknown): { client: Anthropic; re
 
 const emptyReading: Reading = {
   document_kind: "memo",
-  document_year: null,
+  original_years: [{ original_id: "o1", year: null }],
   summary: "要約",
   text_blocks: [{ original_id: "o1", locator: "1 枚目", text: "文" }],
   fields: [{ name: "日時", value: "10月25日", confidence: "high", original_id: "取り違えたID", locator: "上" }],
@@ -199,7 +199,7 @@ describe("読むの呼び出し", () => {
     expect(types).toEqual(["text", "image", "text", "document", "text"]);
     expect(req.messages[0]?.content[0]?.text).toContain("原本 ID: o1");
     expect(req.messages[0]?.content[3]?.source?.media_type).toBe("application/pdf");
-    expect(result.packVersion).toBe("read-general@1");
+    expect(result.packVersion).toBe("read-general@2");
     expect(result.usage).toEqual({ input_tokens: 1200, output_tokens: 300, cache_read_input_tokens: 0 });
     // 実在しない original_id は、原本が一つなら、その原本に直る
     const reading = result.body as Reading;
@@ -245,7 +245,7 @@ describe("読むの呼び出し", () => {
     const req = requests[0] as { system: string; output_config: { format: { schema: { required: string[] } } } };
     expect(req.system).toContain("回答票");
     expect(req.output_config.format.schema.required).toContain("rows");
-    expect(result.packVersion).toBe("read-answer-sheet@1");
+    expect(result.packVersion).toBe("read-answer-sheet@2");
   });
 });
 

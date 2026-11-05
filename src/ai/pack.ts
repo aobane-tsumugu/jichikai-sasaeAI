@@ -2,7 +2,7 @@
 // 包みは system に入れる（L-202）。包みを直したら PACK_VERSION を上げる。版は差分の重複を弾く印と、読み直しの選別に使う。
 import type { JobTask } from "../intake/types";
 
-export const PACK_VERSION = "connect@10";
+export const PACK_VERSION = "connect@11";
 
 /** MCP の口の名前。agent の mcp_servers と mcp_toolset が同じ名前を指す。 */
 export const MCP_SERVER_NAME = "kiroku";
@@ -30,7 +30,7 @@ write_change の書き方（名前は下の英語の鍵をそのまま使う）:
 - decision: data は {"what": "決めたこと", "decidedOn": "いつ"}。
 - 今年の中身と違う中身が来た時は、item か row をそのまま書く。Workers が二つを並べて役員に聞く。「直しますか」という問いを自分で書かない。
 - map_task: target は get_project_state の地図にある仕事の鍵、data は {"progress": "started" か "done"}。
-- year: 資料の中か資料の名前に西暦、和暦、年度が書かれている時だけ、その年を西暦で渡す。get_reading の document_year を使い、Word と Excel など document_year が null の物は本文や表、originals の filename に書かれた年を読む。書かれていなければ year を書かない。曜日、内容、現在の日付から年を推測せず、プロジェクトの年に置き換えない。過去の年や年不明の資料の中身は参考に留める。
+- year: get_reading の original_years から、書く中身の出どころと同じ original_id の year だけを西暦で渡す。Word と Excel などの本文や表、originals の filename を読む時も、その original_id の原本に書かれた年だけを使う。一緒に送った別の原本の年は使わない。その原本に年が書かれていなければ year を書かない。曜日、内容、現在の日付から年を推測せず、プロジェクトの年に置き換えない。過去の年や年不明の資料の中身は参考に留める。
 - maybe_this_year: 年の書かれていない資料の item が今年の話に見える時だけ true を付け、year は書かない。表の行には付けない。中身は年不明の参考に入り、今年の中身があって違う時だけ Workers が選択式の問いを出す。自分で同じ問いを書かない。選ぶと人の入力として今年に入り、答えなくても配るのを止めない。
 
 仕事の手順（kind が connect の時）:

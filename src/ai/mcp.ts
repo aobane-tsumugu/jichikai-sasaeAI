@@ -11,6 +11,7 @@ import { PACK_VERSION } from "./pack";
 import { projectApi } from "./project-binding";
 import type { ChangeKind, Confidence, WriteContext } from "./project-contract";
 import { jobByTicket } from "./session";
+import { isAnswerSheetReading, normalizeOriginalYears, type ReadingBody } from "./schema";
 
 const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 const MAX_DISCARDS_KEPT = 20;
@@ -43,7 +44,7 @@ export const TOOLS = [
       properties: {
         ticket: ticketProp,
         kind: { type: "string", enum: ["item", "row", "decision", "conflict", "map_task", "draft", "map_draft"] },
-        year: { type: "integer", description: "資料の中か名前に書かれた年を西暦で渡す。Word と Excel は本文も読む。書かれていなければ省略し、曜日や内容から推測しない" },
+        year: { type: "integer", description: "original_years のうち、出どころと同じ original_id の年だけを渡す。別の原本の年を使わない。年が無ければ省略する" },
         maybe_this_year: { type: "boolean", description: "年不明の item が今年の話に見える時だけ true。年不明の参考に留め、今年の中身と違う時だけ問いになる。表の行には付けない" },
         original_id: { type: "string", description: "出どころの原本の ID（get_reading の original_id）" },
         locator: { type: "string", description: "元の箇所（get_reading の locator）" },
@@ -91,6 +92,15 @@ function asString(v: unknown, max = 4000): string {
 
 function sourceExists(db: D1Database, job: JobRow, originalId: string): Promise<boolean> {
   return originalInProject(db, job.ward_id, job.project_id as string, originalId);
+}
+
+async function readingsForJob(db: D1Database, job: JobRow) {
+  if (!job.paper_source_job_id) return getReadings(db, job.ward_id, job.job_id);
+  const slice = await db.prepare("SELECT body FROM paper_reading_slices WHERE ward_id = ? AND job_id = ? AND source_job_id = ?")
+    .bind(job.ward_id, job.job_id, job.paper_source_job_id).first<{ body: string }>();
+  if (!slice) return null;
+  const originals = await listOriginals(db, job.ward_id, job.job_id);
+  return [{ body: normalizeOriginalYears(JSON.parse(slice.body) as ReadingBody, originals.map((original) => original.original_id)) }];
 }
 
 async function recordDiscard(db: D1Database, job: JobRow, reason: string): Promise<void> {
@@ -158,12 +168,8 @@ async function runTool(env: Env, wardId: string, job: JobRow | null, name: strin
       const originals = (await listOriginals(env.DB, wardId, job.job_id))
         .filter((original) => !original.withdrawn_at)
         .map((original) => ({ original_id: original.original_id, filename: original.filename }));
-      if (job.paper_source_job_id) {
-        const slice = await env.DB.prepare("SELECT body FROM paper_reading_slices WHERE ward_id = ? AND job_id = ? AND source_job_id = ?")
-          .bind(wardId, job.job_id, job.paper_source_job_id).first<{ body: string }>();
-        return slice ? ok({ job_task: job.task, instruction: job.instruction, originals, readings: [{ body: JSON.parse(slice.body) }] }) : fail("紙の該当欄を開けませんでした。");
-      }
-      const readings = await getReadings(env.DB, wardId, job.job_id);
+      const readings = await readingsForJob(env.DB, job);
+      if (!readings) return fail("紙の該当欄を開けませんでした。");
       return ok({ job_task: job.task, instruction: job.instruction, originals, readings });
     }
     case "write_change": {
@@ -185,11 +191,15 @@ async function runTool(env: Env, wardId: string, job: JobRow | null, name: strin
         await recordDiscard(env.DB, job, `出どころの原本が見つからない差分を捨てました（${kind}: ${asString(args.target, 60)}）`);
         return fail("出どころ（original_id）がこのプロジェクトに実在しないので、この差分は捨てました。get_reading にある original_id を使ってください。");
       }
+      // 年は、繋げる AI の引数ではなく出どころの原本から取る。別の原本の年を渡されても引き継がない。
+      const readings = needsSource ? await readingsForJob(env.DB, job) : null;
+      const year = readings?.flatMap(({ body }) => isAnswerSheetReading(body) ? [] : body.original_years)
+        .find((entry) => entry.original_id === originalId)?.year ?? null;
       const result = await api.applyChange(env, ctx, {
         kind,
         originalId: originalId || null,
         locator: asString(args.locator, 200),
-        year: Number.isInteger(args.year) ? (args.year as number) : null,
+        year,
         ...(kind === "item" && args.maybe_this_year === true ? { maybeThisYear: true } : {}),
         target: asString(args.target, 200),
         data: args.data ?? {},

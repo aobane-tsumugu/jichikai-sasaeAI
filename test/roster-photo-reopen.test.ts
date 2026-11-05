@@ -19,7 +19,7 @@ it("同じ名簿の写真を送り直すと、前の読み取り結果を開い�
   expect(await finishRead(env.DB, {
     wardId: ward.wardId, jobId: received.jobId!, attempt: attempt!, source: "model", packVersion: "roster-test@1", model: "fixture",
     body: {
-      document_kind: "roster", document_year: 2026, summary: "架空の名簿",
+      document_kind: "roster", original_years: [{ original_id: received.received[0]!.originalId, year: 2026 }], summary: "架空の名簿",
       text_blocks: [], fields: [], decisions: [], unreadable: [],
       tables: [{ name: "架空の世帯", original_id: received.received[0]!.originalId, locator: "1枚目", columns: ["世帯", "班"], rows: [
         { cells: ["架空の世帯A", "1班"], locator: "1行目", confidence: "high" },

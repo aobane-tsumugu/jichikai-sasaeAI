@@ -6,11 +6,11 @@
 
 /** 包みの版。どの版で読んだかを readings に残し、直した後に古い版で読んだ物を選んで読み直せるようにする。 */
 export const READ_PACK_VERSION = {
-  general: "read-general@1",
-  answer_sheet: "read-answer-sheet@1",
-  restore: "read-restore@1",
+  general: "read-general@2",
+  answer_sheet: "read-answer-sheet@2",
+  restore: "read-restore@2",
   /** モデルを通さない読み取り（Word、Excel、文字） */
-  direct: "read-direct@1",
+  direct: "read-direct@2",
 } as const;
 
 export type Confidence = "high" | "medium" | "low";
@@ -78,10 +78,15 @@ export interface ReadUnreadable {
   note: string;
 }
 
+export interface OriginalYear {
+  original_id: string;
+  /** この原本に書かれた年。書かれていなければ null。他の原本の年を使わない。 */
+  year: number | null;
+}
+
 export interface Reading {
   document_kind: DocumentKind;
-  /** 資料の年（中の日付や年度から読む）。分からなければ null */
-  document_year: number | null;
+  original_years: OriginalYear[];
   /** 一行の要約 */
   summary: string;
   text_blocks: TextBlock[];
@@ -132,10 +137,18 @@ const unreadableSchema = {
 export const GENERAL_READING_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["document_kind", "document_year", "summary", "text_blocks", "fields", "tables", "decisions", "unreadable"],
+  required: ["document_kind", "original_years", "summary", "text_blocks", "fields", "tables", "decisions", "unreadable"],
   properties: {
     document_kind: { type: "string", enum: [...DOCUMENT_KINDS] },
-    document_year: { anyOf: [{ type: "integer" }, { type: "null" }] },
+    original_years: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["original_id", "year"],
+        properties: { original_id: str, year: { anyOf: [{ type: "integer" }, { type: "null" }] } },
+      },
+    },
     summary: str,
     text_blocks: {
       type: "array",
@@ -237,4 +250,18 @@ export const ANSWER_SHEET_SCHEMA = {
 /** 回答票かどうかを見分ける（readings.body は二つの形のどちらか）。 */
 export function isAnswerSheetReading(body: ReadingBody): body is AnswerSheetReading {
   return "rows" in body && Array.isArray((body as AnswerSheetReading).rows);
+}
+
+/** 保存済みの古い読み取りも原本ごとの形にする。複数原本に付いた一つの年は引き継がない。 */
+export function normalizeOriginalYears(body: ReadingBody, originalIds: string[]): ReadingBody {
+  if (isAnswerSheetReading(body)) return body;
+  const { document_year: legacyYear, ...reading } = body as Reading & { document_year?: number | null };
+  return {
+    ...reading,
+    original_years: originalIds.map((original_id) => {
+      const entry = reading.original_years?.find((value) => value.original_id === original_id);
+      const year = entry ? entry.year : !reading.original_years && originalIds.length === 1 ? legacyYear : null;
+      return { original_id, year: typeof year === "number" && Number.isInteger(year) ? year : null };
+    }),
+  };
 }

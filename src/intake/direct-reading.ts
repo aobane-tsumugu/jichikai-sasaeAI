@@ -42,9 +42,29 @@ export function parseExtracted(value: unknown): ExtractedDocument | null {
 
 export interface DirectPart {
   originalId: string;
+  filename?: string;
   /** 文字（一行の文、文字のファイル）か、展開した Word と Excel */
   text?: string;
   extracted?: ExtractedDocument;
+}
+
+/** 書かれた年だけを読む。複数の年があって一つに決まらなければ年不明に留める。 */
+function writtenYear(part: DirectPart): number | null {
+  const text = [part.filename ?? "", part.text ?? "", ...(part.extracted?.paragraphs ?? []),
+    ...(part.extracted?.tables.flatMap((table) => [table.name, ...table.rows.map((row) => row.join("\t"))]) ?? [])]
+    .join("\n").normalize("NFKC");
+  const years = new Set<number>();
+  for (const match of text.matchAll(/(?<!\d)([12]\d{3})\s*(?:年|[/.\-]\s*\d{1,2}\s*[/.\-]\s*\d{1,2})/g)) {
+    years.add(Number(match[1]));
+  }
+  for (const match of (part.filename ?? "").normalize("NFKC").matchAll(/(?:^|[_.\s-])([12]\d{3})(?=$|[_.\s-])/g)) {
+    years.add(Number(match[1]));
+  }
+  for (const match of text.matchAll(/(令和|平成|昭和)\s*(元|\d{1,2})\s*年/g)) {
+    const base = match[1] === "令和" ? 2018 : match[1] === "平成" ? 1988 : 1925;
+    years.add(base + (match[2] === "元" ? 1 : Number(match[2])));
+  }
+  return years.size === 1 ? [...years][0]! : null;
 }
 
 function rowsOf(table: { name: string; rows: string[][] }, originalId: string): ReadTable {
@@ -79,7 +99,7 @@ export function buildDirectReading(parts: DirectPart[]): Reading {
   }
   return {
     document_kind: "other" as (typeof DOCUMENT_KINDS)[number],
-    document_year: null,
+    original_years: parts.map((part) => ({ original_id: part.originalId, year: writtenYear(part) })),
     summary: "",
     text_blocks: textBlocks,
     fields: [],

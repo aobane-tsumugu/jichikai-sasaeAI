@@ -14,7 +14,7 @@ it("写真の読み取りの先に空の表があっても、選んだ表の世�
   });
   const originalId = received.received[0]!.originalId;
   const reading: Reading = {
-    document_kind: "roster", document_year: 2026, summary: "架空の名簿の写真から読んだ表",
+    document_kind: "roster", original_years: [{ original_id: originalId, year: 2026 }], summary: "架空の名簿の写真から読んだ表",
     text_blocks: [], fields: [], decisions: [], unreadable: [],
     tables: [
       { name: "架空の空の表", original_id: originalId, locator: "上", columns: ["世帯", "班"], rows: [] },

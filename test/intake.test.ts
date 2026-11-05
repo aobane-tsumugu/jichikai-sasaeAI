@@ -43,7 +43,7 @@ const okRead = (overrides: Partial<ReadResult> = {}): NonNullable<PipelineDeps["
   async (_client, { originals }) => ({
     body: {
       document_kind: "memo",
-      document_year: 2026,
+      original_years: originals.map((o) => ({ original_id: o.originalId, year: 2026 })),
       summary: "試験の読み取り",
       text_blocks: originals.map((o) => ({ original_id: o.originalId, locator: "1 枚目", text: "文" })),
       fields: [],
@@ -51,7 +51,7 @@ const okRead = (overrides: Partial<ReadResult> = {}): NonNullable<PipelineDeps["
       decisions: [],
       unreadable: [],
     },
-    packVersion: "read-general@1",
+    packVersion: "read-general@2",
     model: "claude-sonnet-5-5",
     usage: { input_tokens: 1000, output_tokens: 200, cache_read_input_tokens: 0 },
     ...overrides,
@@ -114,7 +114,7 @@ describe("受付", () => {
     expect(job).toMatchObject({ status: "read", attempt: 1, failure: "" });
     const readings = await getReadings(env.DB, ward.wardId, out.jobId as string);
     expect(readings).toHaveLength(1);
-    expect(readings[0]).toMatchObject({ source: "model", pack_version: "read-general@1", model: "claude-sonnet-5-5" });
+    expect(readings[0]).toMatchObject({ source: "model", pack_version: "read-general@2", model: "claude-sonnet-5-5" });
     const run = await env.DB.prepare("SELECT kind, status, input_tokens, output_tokens FROM job_runs WHERE ward_id = ? AND job_id = ?")
       .bind(ward.wardId, out.jobId)
       .first();
@@ -217,7 +217,7 @@ describe("受付", () => {
     const job = await getJob(env.DB, ward.wardId, out.jobId as string);
     expect(job).toMatchObject({ status: "read", project_id: "p-1", via: "admin" });
     const [reading] = await getReadings(env.DB, ward.wardId, out.jobId as string);
-    expect(reading).toMatchObject({ source: "direct", pack_version: "read-direct@1", model: "" });
+    expect(reading).toMatchObject({ source: "direct", pack_version: "read-direct@2", model: "" });
     const texts = (reading?.body as { text_blocks: Array<{ text: string; original_id: string }> }).text_blocks.map((t) => t.text);
     expect(texts).toEqual(["公民館 25日午後で押さえた", "雨天は屋内", "傘置きは田中", "案内"]);
   });
