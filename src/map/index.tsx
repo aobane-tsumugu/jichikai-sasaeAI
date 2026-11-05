@@ -5,7 +5,7 @@ import { Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { getProjectState, getProjectSummary } from "../project/api";
 import { addMapTask, removeMapTask, setMapTask } from "../project/actions";
-import { SOURCE_KIND_LABEL } from "../project/model";
+import { MAP_PROGRESS_LABEL, SOURCE_KIND_LABEL } from "../project/model";
 import { opensOf, type MapOpens } from "./template";
 
 const admin = new Hono<AdminEnv>();
@@ -29,10 +29,12 @@ admin.get("/projects/:projectId/map", async (c) => {
   const min = tasks.map((t) => t.periodStart).filter((x): x is string => !!x).sort()[0] ?? `${project.year}-01-01`;
   const max = tasks.map((t) => t.periodEnd).filter((x): x is string => !!x).sort().at(-1) ?? `${project.year}-12-31`;
   const start = Date.parse(`${min}T00:00:00Z`); const span = Math.max(1, Date.parse(`${max}T00:00:00Z`) - start);
-  const gutter = 270; const barWidth = 440;
-  const positions = tasks.map((t, i) => ({ task: t, y: 56 + i * 62, x: (d: string | null) => d ? gutter + (Date.parse(`${d}T00:00:00Z`) - start) / span * barWidth : gutter + i * 45 }));
-  const mapHeight = Math.max(120, tasks.length * 62 + 56);
-  const todayX = today >= min && today <= max ? gutter + (Date.parse(`${today}T00:00:00Z`) - start) / span * barWidth : null;
+  // 広い画面は名前の右に帯、狭い画面（スマホ）は名前の下に帯を置く。狭い画面で帯が右に切れて見えなくなるため。
+  const layouts = [
+    { className: "map-wide", width: 720, gutter: 270, barWidth: 440, rowHeight: 62, barOffset: 0 },
+    { className: "map-narrow", width: 360, gutter: 10, barWidth: 340, rowHeight: 78, barOffset: 40 },
+  ] as const;
+  const dayX = (layout: (typeof layouts)[number], d: string) => layout.gutter + (Date.parse(`${d}T00:00:00Z`) - start) / span * layout.barWidth;
   const monthDay = (d: string) => `${Number(d.slice(5, 7))}月${Number(d.slice(8, 10))}日`;
   return c.html(<Layout title={`地図: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, `/projects/${id}`)}>プロジェクトへ</a>}>
     <h1>{project.title} の地図</h1>
@@ -49,18 +51,28 @@ admin.get("/projects/:projectId/map", async (c) => {
     {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}
     <h2>今の時期に開いている仕事</h2>
     {currentTasks.length ? currentTasks.map((task) => <p><a href={`#task-${task.taskId}`}>{task.name}</a></p>) : <p>今の時期に開いている仕事はありません。</p>}
-    <div style="overflow-x:auto"><svg viewBox={`0 0 720 ${mapHeight}`} role="img" aria-label="プロジェクトの仕事の時期と進み具合" style="min-width:680px;width:100%;height:auto">
-      <line x1={gutter} y1="24" x2={gutter + barWidth} y2="24" stroke="currentColor" />
-      <text x={gutter} y="16" font-size="16">{monthDay(min)}</text><text x={gutter + barWidth} y="16" font-size="16" text-anchor="end">{monthDay(max)}</text>
-      {todayX === null ? null : <g><line x1={todayX} y1="24" x2={todayX} y2={mapHeight - 20} stroke="#b3452c" stroke-dasharray="4 4" /><text x={todayX} y={mapHeight - 4} font-size="16" text-anchor="middle" fill="#b3452c">今日</text></g>}
-      {positions.map(({ task, y, x }) => <a href={`#task-${task.taskId}`}>
-        <text x="0" y={y} font-size="17" font-weight="500">{task.name}</text>
-        <text x="0" y={y + 22} font-size="15" opacity="0.75">{task.progress === "done" ? "済み" : task.progress === "started" ? "進行中" : "これから"}{task.seatId ? ` / ${seats.results.find((s) => s.seat_id === task.seatId)?.name ?? "担当あり"}` : ""}</text>
-        <line x1={x(task.periodStart)} y1={y} x2={Math.max(x(task.periodStart) + 12, x(task.periodEnd))} y2={y} stroke={task.progress === "done" ? "#287a43" : task.progress === "started" ? "#2b6d9a" : "#9db4c4"} stroke-width="14" stroke-linecap="round" />
-      </a>)}
-    </svg></div>
+    <style>{".map-narrow{display:none}@media (max-width:40rem){.map-wide{display:none}.map-narrow{display:block}}"}</style>
+    {layouts.map((layout) => {
+      const top = layout.barOffset ? 64 : 56;
+      const height = Math.max(120, tasks.length * layout.rowHeight + top);
+      const todayX = today >= min && today <= max ? dayX(layout, today) : null;
+      return <div class={layout.className}><svg viewBox={`0 0 ${layout.width} ${height}`} role="img" aria-label="プロジェクトの仕事の時期と進み具合" style="width:100%;height:auto">
+        <line x1={layout.gutter} y1="24" x2={layout.gutter + layout.barWidth} y2="24" stroke="currentColor" />
+        <text x={layout.gutter} y="16" font-size="16">{monthDay(min)}</text><text x={layout.gutter + layout.barWidth} y="16" font-size="16" text-anchor="end">{monthDay(max)}</text>
+        {todayX === null ? null : <g><line x1={todayX} y1="24" x2={todayX} y2={height - 20} stroke="#b3452c" stroke-dasharray="4 4" /><text x={todayX} y={height - 4} font-size="16" text-anchor="middle" fill="#b3452c">今日</text></g>}
+        {tasks.map((task, i) => {
+          const y = top + i * layout.rowHeight;
+          const x = (d: string | null) => d ? dayX(layout, d) : layout.gutter + i * 45;
+          return <a href={`#task-${task.taskId}`}>
+            <text x={layout.barOffset ? layout.gutter : 0} y={y} font-size="17" font-weight="500">{task.name}</text>
+            <text x={layout.barOffset ? layout.gutter : 0} y={y + 22} font-size="15" opacity="0.75">{MAP_PROGRESS_LABEL[task.progress]}{task.seatId ? ` / ${seats.results.find((s) => s.seat_id === task.seatId)?.name ?? "担当あり"}` : ""}</text>
+            <line x1={x(task.periodStart)} y1={y + layout.barOffset} x2={Math.max(x(task.periodStart) + 12, x(task.periodEnd))} y2={y + layout.barOffset} stroke={task.progress === "done" ? "#287a43" : task.progress === "started" ? "#2b6d9a" : "#9db4c4"} stroke-width="14" stroke-linecap="round" />
+          </a>;
+        })}
+      </svg></div>;
+    })}
     {tasks.map((task) => <section class="panel" id={`task-${task.taskId}`}><h2>{task.name}</h2><p>{task.periodStart ?? "時期未定"} から {task.periodEnd ?? "時期未定"}</p>
-      <p>状態: {task.progress === "done" ? "済み" : task.progress === "started" ? "進行中" : "これから"} / {task.progressSource ? `出どころ: ${SOURCE_KIND_LABEL[task.progressSource.kind]}${task.progressSource.locator ? ` (${task.progressSource.locator})` : ""}` : "人の入力"}</p>
+      <p>状態: {MAP_PROGRESS_LABEL[task.progress]} / {task.progressSource ? `出どころ: ${SOURCE_KIND_LABEL[task.progressSource.kind]}${task.progressSource.locator ? ` (${task.progressSource.locator})` : ""}` : "人の入力"}</p>
       <nav class="action-links">{opensOf(project.kind, task.taskKey).map((dest) => <a class="button secondary" href={adminPath(ward, targetPath[dest](id, task.taskId))}>{dest === "materials" ? "材料を送る" : dest === "draft" ? "案" : dest === "answers" ? "答え" : "収支"}</a>)}
         <a class="button secondary" href={adminPath(ward, `/publish/${id}`)}>配る</a>
         <a class="button secondary" href={adminPath(ward, `/space/${id}`)}>空間</a>
