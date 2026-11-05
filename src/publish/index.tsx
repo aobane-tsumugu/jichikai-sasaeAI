@@ -7,7 +7,7 @@ import { Hint, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { getLineAllowance, lineAccessToken, sendLineTitleAndUrl } from "../line/api";
 import { getPublicContact } from "../settings/store";
-import { getDistrictCopies, getRoster, parseDistribution } from "../answers/api";
+import { answerDeadlineFromDraft, getDistrictCopies, getRoster, parseDistribution } from "../answers/api";
 import { checkPublicDraft } from "./check";
 import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, isItemKey, type DocumentKind } from "../project/model";
 import { applyChange } from "../project/apply";
@@ -31,6 +31,7 @@ interface DraftRow {
 interface ProjectRow {
   project_id: string;
   title: string;
+  year: number;
   state_version: number;
   closed_at: string | null;
 }
@@ -82,7 +83,7 @@ function paperTargetLabel(raw: string): string {
 }
 
 async function getProject(db: D1Database, wardId: string, projectId: string): Promise<ProjectRow | null> {
-  return db.prepare(`SELECT project_id, title, state_version, closed_at FROM projects
+  return db.prepare(`SELECT project_id, title, year, state_version, closed_at FROM projects
     WHERE ward_id = ? AND project_id = ?`).bind(wardId, projectId).first<ProjectRow>();
 }
 
@@ -388,6 +389,7 @@ admin.post("/publish/:projectId/send", async (c) => {
     distribution = { mode: "district", targets: Object.entries(legacy).map(([district, copies]) => ({ district, copies })) };
   }
   if (!distribution) return c.text("紙の配布先が名簿と合いません。配布内容を選び直してください。", 400);
+  const answerDue = row.kind === "announcement" ? answerDeadlineFromDraft(row.body, project.year) : null;
   const publication = await c.env.DB.batch([
     c.env.DB.prepare(`UPDATE document_versions SET published_at = ?, published_by_account_id = ?, tables_snapshot = ${publicationTablesSql}
       WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_id = ? AND version_no = ?
@@ -404,6 +406,14 @@ admin.post("/publish/:projectId/send", async (c) => {
       )`)
       .bind(ward.wardId, publicationId, projectId, documentId, versionId, versionNo, recipientScope, JSON.stringify(distribution), now, account.accountId,
         ward.wardId, versionId, now, account.accountId),
+    // 配った内容と同時に締切を保存する。回答画面で保存した日付は上書きしない。
+    ...(answerDue ? [c.env.DB.prepare(`INSERT INTO project_deadlines
+      (ward_id, project_id, kind, due_on, updated_at, updated_by_account_id)
+      SELECT ward_id, project_id, 'answer_due', ?, ?, NULL FROM publication_records
+      WHERE ward_id = ? AND project_id = ? AND publication_id = ?
+      ON CONFLICT (ward_id, project_id, kind) DO UPDATE SET due_on = excluded.due_on, updated_at = excluded.updated_at
+      WHERE project_deadlines.updated_by_account_id IS NULL`)
+      .bind(answerDue, now, ward.wardId, projectId, publicationId)] : []),
   ]);
   if (publication[0]?.meta.changes !== 1 || publication[1]?.meta.changes !== 1) {
     return c.html(<AdminPage ward={ward} account={account} title="配る内容を確かめてください" back={{ href: adminPath(ward, `/publish/${projectId}`), label: "案に戻る" }}>

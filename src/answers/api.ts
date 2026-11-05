@@ -247,6 +247,57 @@ export async function listAnswers(db: D1Database, wardId: string, projectId: str
   return result.results;
 }
 
+export async function getAnswer(db: D1Database, wardId: string, projectId: string, answerId: string): Promise<AnswerRow | null> {
+  return db.prepare(`SELECT answer_id AS answerId, project_id AS projectId, household, district, people_count AS peopleCount,
+      helper_name AS helperName, helper_times AS helperTimes, source, original_id AS originalId,
+      sheet_row_index AS sheetRowIndex, created_at AS createdAt
+    FROM project_answers WHERE ward_id = ? AND project_id = ? AND answer_id = ?`)
+    .bind(wardId, projectId, answerId).first<AnswerRow>();
+}
+
+/** 受け取った時の情報は残し、役員が直した回答を同じ一件に保存する。 */
+export async function updateAnswer(
+  db: D1Database, wardId: string, projectId: string, answerId: string,
+  input: Pick<AnswerInput, "household" | "district" | "peopleCount" | "helperName" | "helperTimes">,
+): Promise<boolean> {
+  const result = await db.prepare(`UPDATE project_answers
+    SET household = ?, district = ?, people_count = ?, helper_name = ?, helper_times = ?
+    WHERE ward_id = ? AND project_id = ? AND answer_id = ?
+      AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = project_answers.ward_id
+        AND p.project_id = project_answers.project_id AND p.closed_at IS NULL)`)
+    .bind(input.household.trim(), input.district.trim(), input.peopleCount, input.helperName?.trim() ?? "",
+      input.helperTimes?.trim() ?? "", wardId, projectId, answerId).run();
+  return result.meta.changes === 1;
+}
+
+export async function deleteAnswer(db: D1Database, wardId: string, projectId: string, answerId: string): Promise<boolean> {
+  const result = await db.prepare(`DELETE FROM project_answers WHERE ward_id = ? AND project_id = ? AND answer_id = ?
+    AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = project_answers.ward_id
+      AND p.project_id = project_answers.project_id AND p.closed_at IS NULL)`)
+    .bind(wardId, projectId, answerId).run();
+  return result.meta.changes === 1;
+}
+
+/** 年が省かれた締切はプロジェクトの年を使う。日付が複数ある時や、読めない時は任せない。 */
+export function answerDeadlineFromDraft(body: string, projectYear: number): string | null {
+  let parsed: unknown;
+  try { parsed = JSON.parse(body); } catch { return null; }
+  if (typeof parsed !== "object" || parsed === null || !Array.isArray((parsed as { items?: unknown }).items)) return null;
+  const items: unknown[] = (parsed as { items: unknown[] }).items;
+  const dueItems = items.filter((item): item is { key: string; content: string } =>
+    typeof item === "object" && item !== null && (item as { key?: unknown }).key === "due" &&
+    typeof (item as { content?: unknown }).content === "string");
+  if (dueItems.length !== 1) return null;
+  const dates = [...dueItems[0]!.content.normalize("NFKC").matchAll(
+    /(?<!\d)(?:(\d{4})\s*(?:年|[-/])\s*)?(\d{1,2})\s*(?:月|[-/])\s*(\d{1,2})(?:\s*日)?(?!\d)/g,
+  )];
+  if (dates.length !== 1) return null;
+  const date = dates[0]!;
+  const dueOn = `${date[1] ?? projectYear}-${date[2]!.padStart(2, "0")}-${date[3]!.padStart(2, "0")}`;
+  const timestamp = Date.parse(`${dueOn}T00:00:00Z`);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === dueOn ? dueOn : null;
+}
+
 export async function listUnansweredByDistrict(
   db: D1Database,
   wardId: string,
