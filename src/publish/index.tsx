@@ -154,7 +154,7 @@ admin.get("/publish/:projectId", async (c) => {
             <label for={`targetMode-${draft.document_id}`}>紙の配布先</label>
             <select id={`targetMode-${draft.document_id}`} name="targetMode"><option value="district">班を選ぶ</option><option value="household">世帯を選ぶ</option></select>
             <fieldset><legend>班ごとの部数</legend>{districtCopies.map((row, index) => <p>
-              <label><input type="checkbox" name="district" value={row.district} /> {row.district}（名簿 {row.copies} 世帯）</label>
+              <label><input type="checkbox" name="district" value={row.district} checked /> {row.district}（名簿 {row.copies} 世帯）</label>
               部数 <input type="number" name={`copies_${index}`} min="0" max={row.copies} value={row.copies} style="width:6rem" />
             </p>)}</fieldset>
             <details><summary>世帯を選ぶ</summary>{roster.map((entry, index) => <label>
@@ -380,7 +380,7 @@ export function articleParagraphs(body: string): string[] {
   const paragraphs = text.replace(/\r\n/g, "\n").split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
   const missing = items.flatMap((item: unknown) => {
     const { key, content } = (item ?? {}) as { key?: unknown; content?: unknown };
-    if (typeof key !== "string" || typeof content !== "string" || !content.trim() || text.includes(content.trim())) return [];
+    if (typeof key !== "string" || typeof content !== "string" || !content.trim() || text.includes(content.trim().slice(0, 10))) return [];
     return [`${isItemKey(key) ? ITEM_LABEL[key] : key}: ${content.trim()}`];
   });
   return [...paragraphs, ...(missing.length ? [missing.join("\n")] : [])];
