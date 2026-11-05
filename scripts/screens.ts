@@ -186,7 +186,7 @@ try {
   if (!browserReady) throw new Error("ブラウザーを起動できませんでした");
   const credentials = readCredentials(credsPath);
   await page.goto(new URL(`${admin}/login`, `${baseUrl}/`).toString(), { waitUntil: "domcontentloaded", timeout: 30000 });
-  await page.locator('input[name="name"]').fill(credentials.name);
+  await page.locator('input[name="loginId"]').fill(credentials.name);
   await page.locator('input[name="password"]').fill(credentials.password);
   await page.getByRole("button", { name: "ログイン" }).click();
   await page.waitForURL((url) => !url.pathname.includes("/admin/login"), { timeout: 15000 });
