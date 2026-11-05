@@ -36,16 +36,21 @@ export interface LineIntakePorts {
 async function saveLineAnswer(db: D1Database, wardId: string, projectId: string, original: LineOriginal, jobId: string): Promise<void> {
   const text = original.text ?? "";
   const roster = await getRoster(db, wardId);
-  const household = roster.filter((entry) => text.includes(entry.household)).sort((a, b) => b.household.length - a.household.length)[0];
-  if (!household) return;
+  const matches = roster.filter((entry) => text.includes(entry.household)).sort((a, b) => b.household.length - a.household.length);
+  let candidates = matches.filter((entry) => entry.household.length === matches[0]?.household.length);
+  const namedDistricts = candidates.filter((entry) => text.includes(entry.district)).sort((a, b) => b.district.length - a.district.length);
+  if (namedDistricts.length) candidates = namedDistricts.filter((entry) => entry.district.length === namedDistricts[0]!.district.length);
+  // 同名の世帯は、班も使って一つの候補に絞れた時だけ回答に入れる。
+  const household = candidates[0];
+  if (!household || candidates.some((entry) => entry.district !== household.district || normalizeHousehold(entry.household) !== normalizeHousehold(household.household))) return;
   const adults = /大人\s*(\d+)\s*人/.exec(text);
   const children = /子ども\s*(\d+)\s*人/.exec(text);
   const total = /来場(?:は|が)?\s*(\d+)\s*人/.exec(text);
   const peopleCount = adults || children ? Number(adults?.[1] ?? 0) + Number(children?.[1] ?? 0) : Number(total?.[1]);
   if (!Number.isInteger(peopleCount) || peopleCount < 0) return;
-  const existing = await db.prepare("SELECT answer_id, household FROM project_answers WHERE ward_id = ? AND project_id = ?")
-    .bind(wardId, projectId).all<{ answer_id: string; household: string }>();
-  if (existing.results.some((answer) => normalizeHousehold(answer.household) === normalizeHousehold(household.household))) return;
+  const existing = await db.prepare("SELECT answer_id, household, district FROM project_answers WHERE ward_id = ? AND project_id = ?")
+    .bind(wardId, projectId).all<{ answer_id: string; household: string; district: string }>();
+  if (existing.results.some((answer) => answer.district === household.district && normalizeHousehold(answer.household) === normalizeHousehold(household.household))) return;
   const sourceOriginal = await db.prepare("SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ? AND withdrawn_at IS NULL ORDER BY position LIMIT 1")
     .bind(wardId, jobId).first<{ original_id: string }>();
   const helperPhrase = /([^。\n]{1,40}?)(?:なら|は)(?:手伝え|手伝い|手伝)/.exec(text)?.[1]?.trim() ?? "";
