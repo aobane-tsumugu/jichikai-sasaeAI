@@ -80,6 +80,7 @@ pub.get("/", async (c) => {
   const unique = [...uniqueItems.values()];
   return c.html(<Layout title={`${c.var.ward.name}のお知らせ`} siteName={c.var.ward.name}>
     <h1>{c.var.ward.name}のお知らせ</h1>
+    {c.env.DEMO_NOTICE ? <p class="muted">{c.env.DEMO_NOTICE}</p> : null}
     {unique.length === 0 ? <p>公開中のお知らせはありません。</p> : unique.map((item) => <section class="panel" key={item.project_id}>
       <h2><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(item.project_id)}`}>{item.title}</a></h2>
       <p>更新: {new Date(item.published_at).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}</p>
