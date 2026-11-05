@@ -4,8 +4,11 @@ import { adminPath } from "../core/auth";
 import { newId, nowIso } from "../core/ids";
 import { Hint, Layout } from "../core/ui";
 import type { AdminEnv } from "../env";
-import { createProject, getProjectSummary, listProjects, ProjectInputError } from "../project/api";
-import { MAP_PROGRESS_LABEL, PROJECT_KINDS, PROJECT_KIND_LABEL, type MapProgress, type ProjectKind } from "../project/model";
+import { createProject, getProjectState, getProjectSummary, listProjects, ProjectInputError } from "../project/api";
+import { MAP_PROGRESS_LABEL, PROJECT_KINDS, PROJECT_KIND_LABEL, TABLES, displayFieldValue, type MapProgress, type ProjectKind, type TableKey } from "../project/model";
+import type { RowView } from "../project/types";
+import { listAnswers } from "../answers/api";
+import { ArticleBody } from "../publish";
 import { addDays } from "../map/template";
 import { ARCHIVE_RECORD_TYPES, findFragments, searchArchive } from "./search";
 import type { ArchiveRecordType, ArchiveSearchResult } from "./search";
@@ -154,17 +157,51 @@ admin.get("/archive/:projectId", async (c) => {
   const { ward } = c.var; const id = c.req.param("projectId");
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
   if (!project?.closedAt) return c.notFound();
-  const [reports, map, originals] = await Promise.all([
+  const [reports, map, originals, documents, answers, state] = await Promise.all([
     c.env.DB.prepare("SELECT scope, body FROM project_close_reports WHERE ward_id = ? AND project_id = ? ORDER BY scope").bind(ward.wardId, id).all<{ scope: string; body: string }>(),
     c.env.DB.prepare("SELECT task_id, name, period, progress, requested_by, difficulty, next_year FROM project_close_map WHERE ward_id = ? AND project_id = ? ORDER BY period, task_id").bind(ward.wardId, id).all<{ task_id: string; name: string; period: string; progress: string; requested_by: string; difficulty: string; next_year: string }>(),
     c.env.DB.prepare(`SELECT o.original_id, o.filename, o.kind FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
       WHERE o.ward_id = ? AND j.project_id = ? AND o.withdrawn_at IS NULL ORDER BY o.received_at`).bind(ward.wardId, id).all<{ original_id: string; filename: string; kind: string }>(),
+    c.env.DB.prepare(`SELECT d.title, v.version_no, v.body, v.scope, COALESCE(r.published_at, v.published_at) AS published_at, r.unpublished_at
+      FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id AND v.project_id = d.project_id
+      LEFT JOIN publication_records r ON r.ward_id = v.ward_id AND r.version_id = v.version_id
+      WHERE d.ward_id = ? AND d.project_id = ? AND (v.published_at IS NOT NULL OR r.publication_id IS NOT NULL)
+      ORDER BY COALESCE(r.published_at, v.published_at), d.document_id, v.version_no`)
+      .bind(ward.wardId, id).all<{ title: string; version_no: number; body: string; scope: string; published_at: string; unpublished_at: string | null }>(),
+    listAnswers(c.env.DB, ward.wardId, id),
+    getProjectState(c.env.DB, ward.wardId, id),
   ]);
+  const totals = new Map<string, { people: number; helpers: number }>();
+  for (const answer of answers) {
+    const total = totals.get(answer.district) ?? { people: 0, helpers: 0 };
+    total.people += answer.peopleCount;
+    total.helpers += answer.helperName ? 1 : 0;
+    totals.set(answer.district, total);
+  }
   return c.html(<Layout title={`記録: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>{project.title} <Hint text="この仕事で残した地図や報告を読めます。次の年の準備を始める時は、下の「来年の種」を使ってください。" /></h1><p>{project.year}年に閉じたプロジェクト</p>
     <h2>地図</h2>{map.results?.map((task) => <section class="panel"><h3>{task.name}</h3><p>{task.period} / {MAP_PROGRESS_LABEL[task.progress as MapProgress] ?? "これから"}</p>
       {task.requested_by ? <p>頼んだ人: {task.requested_by}</p> : null}{task.difficulty ? <p>困ったこと: {task.difficulty}</p> : null}{task.next_year ? <p>来年変えること: {task.next_year}</p> : null}</section>)}
     <h2>報告</h2>{reports.results?.map((report) => <section class="panel"><h3>{report.scope === "public" ? "公開する部分" : "役員だけの部分"}</h3><p style="white-space:pre-wrap">{report.body || "まだ記入されていません"}</p></section>)}
+    <h2>配った物 <Hint text="配った時の本文を読み返せます。変更前の内容や、公開を下げた物も役員の記録として残っています。" /></h2>
+    {documents.results.map((document) => <section class="panel">
+      <h3>{document.title}</h3>
+      <p>{document.published_at.slice(0, 10)} / {document.scope === "public" ? "公開" : document.scope === "space" ? "実行委員と班長向け" : "役員向け"}{document.unpublished_at ? " / 公開を下げました" : ""}</p>
+      <ArticleBody body={document.body} />
+    </section>)}
+    {!documents.results.length ? <p>配った物はありません。</p> : null}
+    <h2>答えの集計 <Hint text="紙、電話、Web から集めた答えを一緒に数えています。人数の下で、答えと手伝いの希望を読めます。" /></h2>
+    <p>参加人数 {answers.reduce((sum, answer) => sum + answer.peopleCount, 0)} 人 / 手伝いの申し出 {answers.filter((answer) => answer.helperName).length} 件</p>
+    {[...totals].map(([district, total]) => <p>{district || "班の記入なし"}: 参加 {total.people} 人 / 手伝い {total.helpers} 件</p>)}
+    {answers.map((answer) => <section class="panel">
+      <h3>{answer.household || answer.helperName || "手伝いの申し出"}</h3><p>{answer.district || "班の記入なし"} / 参加 {answer.peopleCount} 人</p>
+      {answer.helperName ? <p>手伝い: {answer.helperName} / {answer.helperTimes || "時間の記入なし"}</p> : null}
+      {answer.originalId ? <p><a href={adminPath(ward, `/intake/originals/${answer.originalId}`)}>回答票を読む</a></p> : null}
+    </section>)}
+    {!answers.length ? <p>答えはありません。</p> : null}
+    {(["decisions", "sponsors"] as const).map((table) => <section>
+      <h2>{TABLES[table].label}</h2><RecordedRows table={table} rows={(state?.tables[table] ?? []).filter((row) => row.scope === "current")} ward={ward} />
+    </section>)}
     <h2>原本へ戻る</h2>{originals.results?.map((o) => <p><a href={adminPath(ward, `/intake/originals/${o.original_id}`)}>{o.filename || "一行の文"}（{o.kind === "photo" ? "写真" : o.kind === "file" ? "ファイル" : "文"}）</a></p>)}
     {originals.results?.length === 0 ? <p>原本はありません。</p> : null}
     <h2>来年の種</h2><p>去年の地図と状態を参考に、新しい年のプロジェクトを開きます。仕事を全部点検する必要はありません。</p>
@@ -177,6 +214,13 @@ admin.get("/archive/:projectId", async (c) => {
     <p><a href={adminPath(ward, "/archive")}>記録の一覧へ</a></p>
   </Layout>);
 });
+
+function RecordedRows({ table, rows, ward }: { table: TableKey; rows: RowView[]; ward: { slug: string } }) {
+  return rows.length ? <>{rows.map((row) => <article class="panel">
+    {Object.entries(TABLES[table].fields).map(([key, field]) => row.data[key] !== undefined && row.data[key] !== "" ? <p style="white-space:pre-wrap"><strong>{field.label}:</strong> {displayFieldValue(table, key, row.data[key])}</p> : null)}
+    {row.source.kind === "original" && row.source.ref ? <p><a href={adminPath(ward, `/intake/originals/${row.source.ref}`)}>元の資料を読む</a>{row.source.locator ? `（${row.source.locator}）` : ""}</p> : null}
+  </article>)}</> : <p>記録はありません。</p>;
+}
 
 admin.post("/archive/:projectId/seed", async (c) => {
   const { ward, account } = c.var; const sourceId = c.req.param("projectId"); const form = await c.req.formData();

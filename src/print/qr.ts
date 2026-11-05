@@ -35,7 +35,7 @@ export function formatPaperCode(code: PaperCode): string {
 }
 
 export function parsePaperCode(value: string): PaperCode | null {
-  const match = /^P([1-9][0-9]*)-D([1-9][0-9]*)-V([1-9][0-9]*)$/i.exec(value.trim());
+  const match = /^P([1-9][0-9]*)-D(0|[1-9][0-9]*)-V([1-9][0-9]*)$/i.exec(value.trim());
   if (!match) return null;
   const project = Number(match[1]);
   const document = Number(match[2]);
@@ -56,6 +56,8 @@ export async function lookupPaperCode(
     .bind(wardId).all<{ project_id: string }>();
   const project = projects.results[code.project - 1];
   if (!project) return null;
+  // D0 は文書を配る前の記入用紙。文書を作らず、プロジェクトだけへ戻す。
+  if (code.document === 0) return code.version === 1 ? { projectId: project.project_id, documentId: "_project", version: 1 } : null;
   const documents = await db.prepare("SELECT document_id FROM documents WHERE ward_id = ? AND project_id = ? ORDER BY created_at, document_id")
     .bind(wardId, project.project_id).all<{ document_id: string }>();
   const document = documents.results[code.document - 1];
@@ -76,6 +78,11 @@ export async function lookupPrintQr(
   const parsed = parsePrintQrUrl(text);
   if (!parsed || parsed.wardSlug !== wardSlug) return null;
   const code = parsed.code;
+  if (code.documentId === "_project") {
+    const project = await db.prepare("SELECT project_id FROM projects WHERE ward_id = ? AND project_id = ?")
+      .bind(wardId, code.projectId).first();
+    return project ? code : null;
+  }
   const row = await db.prepare(`SELECT 1 AS found FROM publication_records
     WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_no = ? LIMIT 1`)
     .bind(wardId, code.projectId, code.documentId, code.version).first();
@@ -98,6 +105,19 @@ export async function makePaperCode(
   const documentIndex = documents.results.findIndex((row) => row.document_id === documentId);
   if (documentIndex < 0) return null;
   return formatPaperCode({ project: projectIndex + 1, document: documentIndex + 1, version });
+}
+
+/** 配る前の紙。D0 は記入用紙のために予約し、既存の読み取り経路でプロジェクトへ当てる。 */
+export async function makeProjectPaperCode(db: D1Database, wardId: string, projectId: string): Promise<string | null> {
+  const projects = await db.prepare("SELECT project_id FROM projects WHERE ward_id = ? ORDER BY created_at, project_id")
+    .bind(wardId).all<{ project_id: string }>();
+  const index = projects.results.findIndex((row) => row.project_id === projectId);
+  return index < 0 ? null : formatPaperCode({ project: index + 1, document: 0, version: 1 });
+}
+
+/** 記入用紙の QR は役員の紙の入口へ戻す。公開の案内や班長の鍵は含めない。 */
+export function projectPaperQrUrl(baseUrl: string, wardSlug: string, projectId: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}/${encodeURIComponent(wardSlug)}/admin/print/${encodeURIComponent(projectId)}`;
 }
 
 const ID_PATTERN = /^[A-Za-z0-9_-]+$/;
@@ -126,6 +146,8 @@ export function parsePrintQrUrl(text: string): { wardSlug: string; code: PrintCo
   } catch {
     return null;
   }
+  const paper = /^\/([a-z0-9-]+)\/admin\/print\/([A-Za-z0-9_-]+)\/?$/.exec(url.pathname);
+  if (paper) return { wardSlug: paper[1]!, code: { projectId: paper[2]!, documentId: "_project", version: 1 } };
   const match = /^\/([a-z0-9-]+)\/q\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)\/([1-9][0-9]*)\/?$/.exec(url.pathname);
   if (!match) return null;
   const [, wardSlug, projectId, documentId, version] = match;

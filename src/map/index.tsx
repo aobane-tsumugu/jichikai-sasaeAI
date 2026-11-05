@@ -10,7 +10,7 @@ import { opensOf, type MapOpens } from "./template";
 
 const admin = new Hono<AdminEnv>();
 const targetPath: Record<MapOpens, (projectId: string, taskId: string) => string> = {
-  materials: (projectId) => `/projects/${projectId}#materials`,
+  materials: (projectId) => `/intake?project=${encodeURIComponent(projectId)}#send-form`,
   draft: (projectId) => `/projects/${projectId}/draft`,
   answers: (projectId) => `/answers?project=${encodeURIComponent(projectId)}`,
   ledger: (projectId) => `/projects/${projectId}#ledger`,
@@ -51,7 +51,8 @@ admin.get("/projects/:projectId/map", async (c) => {
     {project.closedAt ? <Notice>このプロジェクトは閉じました。直す時は「報告と閉じる」から「開き直す」を押してください。</Notice>
       : !material ? <p>去年の案内や記録の紙、Word や Excel を、見つかった物から送ってください。全部そろえなくてかまいません。</p> : null}
     <nav class="action-links">
-      <a class="button secondary" href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}`)}>材料を送る</a>
+      <a class="button secondary" href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>材料を送る</a>
+      <a class="button secondary" href={adminPath(ward, `/print/${id}`)}>紙を印刷する</a><Hint text="案内を配る前でも、役員会で決めることや、協賛先の返事を書き込む紙を印刷できます。" />
       <a class="button secondary" href={adminPath(ward, `/projects/${id}/draft`)}>案を直す</a>
       <a class="button secondary" href={adminPath(ward, `/answers/${encodeURIComponent(id)}`)}>答えを見る</a>
       <a class="button secondary" href={adminPath(ward, `/projects/${id}#ledger`)}>収支を見る</a>

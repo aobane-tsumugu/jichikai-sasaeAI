@@ -19,15 +19,19 @@ body { margin: 0; color: #000; font: 12pt/1.7 "Hiragino Sans", "Yu Gothic", "Mei
 .toolbar { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 8px 12px; background: #fff; border-bottom: 1px solid #888; font-size: 14px; }
 .toolbar button { font: inherit; min-height: 40px; padding: 4px 18px; border: 1px solid #1f5f8b; border-radius: 6px; background: #1f5f8b; color: #fff; cursor: pointer; }
 .toolbar p { margin: 0; color: #333; }
-.sheet { width: 210mm; height: 296mm; margin: 8mm auto; padding: 14mm 16mm 10mm; background: #fff; overflow: hidden; display: flex; flex-direction: column; break-after: page; page-break-after: always; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3); }
+.sheet { width: 210mm; min-height: 296mm; margin: 8mm auto; padding: 14mm 16mm 10mm; background: #fff; break-after: page; page-break-after: always; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3); }
 .sheet:last-of-type { break-after: auto; page-break-after: auto; }
 .sheet-body { flex: 1; min-height: 0; }
 .sheet.dense { font-size: 10.5pt; line-height: 1.55; }
 .sheet.dense p { margin: 0 0 2mm; }
 .sheet.dense table { font-size: 9pt; }
 .sheet .float-qr { float: right; margin: 0 0 3mm 4mm; }
-.sheet table { border-collapse: collapse; width: 100%; margin: 0 0 3mm; font-size: 10.5pt; }
+.sheet table { border-collapse: collapse; width: 100%; margin: 0 0 3mm; font-size: 12pt; table-layout: fixed; }
 .sheet th, .sheet td { border: 0.3mm solid #000; padding: 1mm 2mm; text-align: left; vertical-align: top; }
+.sheet td, .sheet th, .sheet p { overflow-wrap: anywhere; white-space: pre-wrap; }
+.sheet thead { display: table-header-group; }
+.sheet tr, .field, .meeting-field, .qr { break-inside: avoid; page-break-inside: avoid; }
+.sheet h1, .sheet h2 { break-after: avoid; }
 .sheet-footer { display: flex; justify-content: space-between; align-items: flex-end; gap: 6mm; padding-top: 2mm; border-top: 0.3mm solid #000; font-size: 9pt; }
 .sheet h1 { margin: 0 0 4mm; font-size: 22pt; line-height: 1.4; }
 .sheet h2 { margin: 5mm 0 2mm; font-size: 15pt; line-height: 1.4; }
@@ -44,7 +48,7 @@ body { margin: 0; color: #000; font: 12pt/1.7 "Hiragino Sans", "Yu Gothic", "Mei
 @media print {
   html { background: #fff; }
   .toolbar { display: none; }
-  .sheet { margin: 0; box-shadow: none; }
+  .sheet { margin: 0; min-height: 0; box-shadow: none; }
 }
 @media screen and (max-width: 215mm) {
   .sheet { width: auto; height: auto; min-height: 0; margin: 0 0 6mm; padding: 8mm 5mm; }
@@ -76,8 +80,7 @@ export const PrintDocument: FC<PropsWithChildren<{ title: string; hint?: Child }
   </html>
 );
 
-/** A4 の 1 枚。内容が 1 枚に収まらない時は、枚を分けて書く（溢れた分は紙に出ない）。 */
-/** A4 一枚。dense は長い本文や表を一枚に収めるために文字を少し小さくする。 */
+/** A4 の印刷範囲。長い本文や表はブラウザが次の頁へ続け、表の見出しを繰り返す。 */
 export const Sheet: FC<PropsWithChildren<{ footer?: Child; dense?: boolean }>> = ({ footer, dense, children }) => (
   <section class={dense ? "sheet dense" : "sheet"}>
     <div class="sheet-body">{children}</div>

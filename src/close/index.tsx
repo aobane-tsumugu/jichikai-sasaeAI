@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
 import { Hint, Layout, Notice } from "../core/ui";
-import { nowIso } from "../core/ids";
+import { newId, nowIso } from "../core/ids";
 import type { AdminEnv } from "../env";
 import type { Waitable } from "../intake/types";
 import { startTask } from "../ai/api";
@@ -112,7 +112,7 @@ admin.get("/close/:projectId", async (c) => {
       : job.status === "failed" ? "止まりました。下の欄に直接書けます" : "準備中"}</p>)}
     <h2>報告の下書き</h2>
     {(["public", "staff"] as const).map((scope) => <form class="panel" method="post" action={`${root}/report/${scope}`}>
-      <h3>{scope === "public" ? "公開する部分" : "役員だけの部分"}</h3>
+      <h3>{scope === "public" ? "公開する部分" : "役員だけの部分"} <Hint text={scope === "public" ? "保存した内容は、閉じる時に区のページの同じ行事の所へ載ります。" : "区のページには載せず、役員の記録に残します。"} /></h3>
       <label for={`report-${scope}`}>報告</label><textarea id={`report-${scope}`} name="body" rows={7} maxlength={12000} style="width:100%;font:inherit" disabled={!!project.closedAt}>{report(scope)}</textarea>
       {!project.closedAt ? <p><button>保存</button></p> : null}
     </form>)}
@@ -146,7 +146,7 @@ admin.get("/close/:projectId", async (c) => {
       {project.closedAt ? <p><button name="action" value="publish">区のページに載せる</button> <Hint text="入力した活動の紹介と選んだ仕事を、だれでも読める区のページに載せます。" /></p> : null}
     </form>
     {activityPage?.published_at ? <p><a href={`/${ward.slug}/work/${encodeURIComponent(id)}`}>区のページで確認する</a></p> : null}
-    {!project.closedAt ? <form method="post" action={`${root}/finalize`}><p><button class="danger">閉じて記録に残す</button> <Hint text="報告と地図を記録に残し、実行委員や班長の空間と回答の受付を終えます。" /></p></form>
+    {!project.closedAt ? <form method="post" action={`${root}/finalize`}><p><button class="danger">閉じて記録に残す</button> <Hint text="報告と地図を記録に残し、公開する部分を区のページに載せます。実行委員や班長の空間と回答の受付を終えます。" /></p></form>
       : <form method="post" action={`${root}/reopen`}><p><button>開き直す</button> <Hint text="報告や地図を再び直せるようにし、空間と回答の受付も閉じる前の状態に戻します。" /></p></form>}
     <p><a href={adminPath(ward, "/archive")}>記録を開く</a></p>
   </Layout>);
@@ -237,9 +237,50 @@ admin.post("/close/:projectId/map/:taskId", async (c) => {
 
 admin.post("/close/:projectId/finalize", async (c) => {
   const { ward, account } = c.var; const id = c.req.param("projectId"); const now = nowIso();
+  const project = await getProjectSummary(c.env.DB, ward.wardId, id);
+  if (!project) return c.notFound();
+  if (project.closedAt) return c.redirect(adminPath(ward, `/close/${id}`), 303);
+  await prepareDrafts(c.env.DB, ward.wardId, id, account.accountId);
   // 公開の報告を保存していなければ、閉じる画面の欄に出ていた中身（AI の下書き）を記録に残す。閉じる操作のほかに記録のための操作を求めない。
   const shown = await generatedReportText(c.env.DB, ward.wardId, id);
+  const saved = await c.env.DB.prepare("SELECT body FROM project_close_reports WHERE ward_id = ? AND project_id = ? AND scope = 'public'")
+    .bind(ward.wardId, id).first<{ body: string }>();
+  const publicText = saved?.body || shown;
+  const statements: D1PreparedStatement[] = [];
+  if (publicText.trim()) {
+    const warnings = await checkPublicDraft(c.env.DB, ward.wardId, id, "report", { text: publicText, items: [] });
+    if (warnings.length) return c.redirect(`${adminPath(ward, `/close/${id}`)}?error=${encodeURIComponent("報告に公開できない情報が含まれる可能性があります。公開する部分を直してください。")}`, 303);
+    const latestReport = async () => c.env.DB.prepare(`SELECT v.document_id, v.version_id, v.version_no, v.body FROM documents d
+      JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id AND v.project_id = d.project_id
+      WHERE d.ward_id = ? AND d.project_id = ? AND d.kind = 'report' AND d.scope = 'public' AND v.scope = 'public'
+      ORDER BY v.version_no DESC LIMIT 1`).bind(ward.wardId, id).first<{ document_id: string; version_id: string; version_no: number; body: string }>();
+    let report = await latestReport();
+    const publicationBody = JSON.stringify({ text: publicText, items: [] });
+    // 閉じる画面で見えていた本文だけを載せる。下書きの補助項目を公開へ持ち出さない。
+    if (report?.body !== publicationBody) {
+      const written = await saveDocument(c.env.DB, ward.wardId, id, account.accountId, {
+        kind: "report", title: "実施報告", scope: "public", body: publicationBody, basedOn: project.stateVersion,
+      });
+      if (!written) return c.text("報告を保存できませんでした。もう一度お願いします。", 409);
+      report = await latestReport();
+    }
+    if (!report) return c.text("報告を保存できませんでした。もう一度お願いします。", 409);
+    statements.push(
+      c.env.DB.prepare(`UPDATE document_versions SET published_at = ?, published_by_account_id = ?
+        WHERE ward_id = ? AND project_id = ? AND version_id = ? AND published_at IS NULL
+          AND EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL)`)
+        .bind(now, account.accountId, ward.wardId, id, report.version_id, ward.wardId, id),
+      c.env.DB.prepare(`INSERT INTO publication_records
+        (ward_id, publication_id, project_id, document_id, version_id, version_no, line_status, published_at, published_by_account_id)
+        SELECT ?, ?, ?, ?, ?, ?, 'not_sent', ?, ?
+        WHERE EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL)
+          AND NOT EXISTS (SELECT 1 FROM publication_records WHERE ward_id = ? AND project_id = ? AND version_id = ?)`)
+        .bind(ward.wardId, newId(), id, report.document_id, report.version_id, report.version_no, now, account.accountId,
+          ward.wardId, id, ward.wardId, id, report.version_id),
+    );
+  }
   await c.env.DB.batch([
+    ...statements,
     c.env.DB.prepare(`UPDATE project_close_reports SET body = ?, updated_at = ?, updated_by_account_id = ?
       WHERE ward_id = ? AND project_id = ? AND scope = 'public' AND body = '' AND EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL)`)
       .bind(shown, now, account.accountId, ward.wardId, id, ward.wardId, id),
