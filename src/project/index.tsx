@@ -40,7 +40,9 @@ admin.route("/", followupAdmin);
 
 admin.get("/projects", async (c) => {
   const { ward } = c.var;
-  const projects = await listProjects(c.env.DB, ward.wardId);
+  const allProjects = await listProjects(c.env.DB, ward.wardId, { includeClosed: true });
+  const projects = allProjects.filter((project) => !project.closedAt);
+  const seeds = allProjects.filter((project) => project.closedAt);
   return c.html(<Layout title="プロジェクト" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>プロジェクト</h1>
     <p><a class="button secondary" href={adminPath(ward, "/projects/today")}>今やること</a></p>
@@ -51,6 +53,10 @@ admin.get("/projects", async (c) => {
       {Object.entries(p.deadlines).map(([kind, date]) => <p>{DEADLINE_LABEL[kind as keyof typeof DEADLINE_LABEL]}: {date}</p>)}
     </section>)}
     {projects.length === 0 ? <p>まだプロジェクトはありません。</p> : null}
+    {seeds.length ? <section class="panel">
+      <h2>去年の地図から開く</h2>
+      <ul>{seeds.map((project) => <li><a href={adminPath(ward, `/archive/${project.projectId}`)}>{project.year}年 {project.title} の地図から開く</a></li>)}</ul>
+    </section> : null}
     <h2>プロジェクトを開く</h2>
     <form method="post" action={adminPath(ward, "/projects")}>
       <label for="kind">種類</label><select id="kind" name="kind" required>{PROJECT_KINDS.map((kind) => <option value={kind}>{PROJECT_KIND_LABEL[kind]}</option>)}</select>
