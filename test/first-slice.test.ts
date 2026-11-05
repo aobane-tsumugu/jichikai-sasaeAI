@@ -237,7 +237,8 @@ describe("秋の収穫祭の最初の一片", () => {
     const spacePage = await get(realApp, `/${ward.slug}/space/${projectId}`, spaceCookie ?? undefined);
     const spaceBody = await spacePage.text();
     expect(spacePage.status).toBe(200);
-    expect(spaceBody).toContain(FIRST_SLICE.dutyText);
+    expect(spaceBody).toContain("文書はまだ配っていません。");
+    expect(spaceBody).not.toContain(FIRST_SLICE.dutyText);
     expect(spaceBody).toContain(FIRST_SLICE.layoutSpot);
     const publicSpaceCheck = await get(realApp, publicUrl);
     const publicSpaceBody = await publicSpaceCheck.text();

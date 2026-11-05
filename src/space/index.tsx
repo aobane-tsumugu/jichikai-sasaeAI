@@ -6,7 +6,9 @@ import { WardBucket } from "../core/storage";
 import { Hint, Layout } from "../core/ui";
 import type { AdminEnv, WardEnv } from "../env";
 import { receiveOriginal } from "../intake/api";
-import { createInvite, enterWithPassphrase, exchangeInvite, findMember, getSpace, getSpaceMaterials, openSpace, closeSpace, type SpaceCredential } from "./api";
+import { articleParagraphs } from "../publish";
+import { createInvite, enterWithPassphrase, exchangeInvite, findMember, getSpace, getSpaceMaterials, makePassphrase, openSpace, closeSpace, type SpaceCredential } from "./api";
+import { MaterialsTable } from "./materials";
 
 const admin = new Hono<AdminEnv>();
 const pub = new Hono<WardEnv>();
@@ -17,15 +19,19 @@ admin.get("/space/:projectId", async (c) => {
     .bind(c.var.ward.wardId, projectId).first<{ title: string }>();
   if (!project) return c.notFound();
   const space = await getSpace(c.env.DB, c.var.ward.wardId, projectId);
+  c.header("Cache-Control", "private, no-store");
   return c.html(
     <Layout title={`プロジェクトの空間 - ${project.title}`} siteName={c.var.ward.name} noindex adminHomeHref={adminPath(c.var.ward.slug, "/")}>
-      <h1>{project.title} の空間 <Hint text="実行委員や班長が入る場所を用意する画面です。合言葉を決めて開き、相手に伝えてください。" /></h1>
+      <h1>{project.title} の空間 <Hint text="実行委員や班長が入る場所を用意する画面です。合言葉は用意してあります。そのまま開くか、書き換えて使えます。" /></h1>
       <p>実行委員や班長に、当番表や出欠を見てもらう場所です。</p>
       <p>状態: {space?.closed_at ? "閉じています" : space ? "開いています" : "まだ開いていません"}</p>
-      <form method="post" action={adminPath(c.var.ward.slug, `/space/${encodeURIComponent(projectId)}/open`)} class="panel">
-        <label for="passphrase">合言葉</label><input id="passphrase" name="passphrase" type="text" minLength={6} maxLength={120} required />
+      {c.req.query("opened") === "1" ? <p role="status">空間を開きました。開く時に表示した合言葉と、下の空間のリンクを実行委員に伝えてください。</p> : null}
+      <details open={!space || Boolean(space.closed_at)}><summary>{space && !space.closed_at ? "合言葉を変えて開き直す" : "合言葉を使って空間を開く"}</summary><form method="post" action={adminPath(c.var.ward.slug, `/space/${encodeURIComponent(projectId)}/open`)} class="panel">
+        <p>{space && !space.closed_at ? "合言葉を変えて開き直す時に使います。" : "この合言葉を使えます。好きな言葉に書き換えることもできます。"}</p>
+        <label for="passphrase">{space && !space.closed_at ? "開き直す時の新しい合言葉" : "合言葉"}</label><input id="passphrase" name="passphrase" type="text" value={makePassphrase()} minLength={6} maxLength={120} required autocomplete="off" />
+        <p>開く前に合言葉を控えて、実行委員に伝えてください。</p>
         <button type="submit">空間を開く</button> <Hint text="入力した合言葉で空間を開き、それまでの招待や入室の情報は使えなくします。" />
-      </form>
+      </form></details>
       {space && !space.closed_at ? <>
         <form method="post" action={adminPath(c.var.ward.slug, `/space/${encodeURIComponent(projectId)}/invite`)} class="panel">
           <h2>一人ずつ招待する</h2><label for="invite-role">入る人</label><select id="invite-role" name="role"><option value="member">実行委員</option><option value="leader">班長</option></select>
@@ -52,7 +58,7 @@ admin.post("/space/:projectId/open", async (c) => {
   } catch (error) {
     return c.text(error instanceof Error ? error.message : "空間を開けませんでした。", 400);
   }
-  return c.redirect(adminPath(c.var.ward.slug, `/space/${encodeURIComponent(c.req.param("projectId"))}`), 303);
+  return c.redirect(adminPath(c.var.ward.slug, `/space/${encodeURIComponent(c.req.param("projectId"))}?opened=1`), 303);
 });
 
 admin.post("/space/:projectId/close", async (c) => {
@@ -134,8 +140,12 @@ pub.get("/space/:projectId/file/:originalId", async (c) => {
   });
 });
 
-pub.post("/space/:projectId/send", async (c) => {
+pub.post("/space/:projectId/send", (c) => sendMaterial(c, "general"));
+pub.post("/space/:projectId/send-answer", (c) => sendMaterial(c, "answer_sheet"));
+
+async function sendMaterial(c: Context<WardEnv>, readKind: "general" | "answer_sheet") {
   const projectId = c.req.param("projectId");
+  if (!projectId) return c.notFound();
   const credential = await cookieMember(c, projectId);
   if (!credential) return c.redirect(`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/send-error`, 303);
   const form = await c.req.formData();
@@ -146,13 +156,14 @@ pub.post("/space/:projectId/send", async (c) => {
       wardId: c.var.ward.wardId,
       projectId,
       via: "space",
+      readKind,
       parts: [{ kind: "photo", filename: file.name, mediaType: file.type, bytes: new Uint8Array(await file.arrayBuffer()) }],
     });
-    return c.redirect(`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}`, 303);
+    return c.redirect(`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}?sent=${readKind === "answer_sheet" ? "answer" : "paper"}`, 303);
   } catch {
     return c.redirect(`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/send-error`, 303);
   }
-});
+}
 
 async function renderSpace(c: Context<WardEnv>, direct: string | null) {
   const projectId = c.req.param("projectId");
@@ -171,14 +182,18 @@ async function renderSpace(c: Context<WardEnv>, direct: string | null) {
     <Layout title={`プロジェクトの空間 - ${project.title}`} siteName={c.var.ward.name}>
       <h1>{project.title} の空間 <Hint text="このプロジェクトの出欠や配られた資料を見る場所です。必要な資料を開き、書き込みのある紙は写真で送れます。" /></h1>
       {credential.role === "leader" && credential.district ? <p>{credential.district}の班長向け</p> : null}
+      {c.req.query("sent") === "answer" ? <p role="status">回答票を受け取りました。読み取った内容は、役員画面と同じ回答の集計に入ります。</p> : c.req.query("sent") === "paper" ? <p role="status">紙を受け取りました。役員が配り直すまで、配った文書は変わりません。</p> : null}
       <h2>出欠</h2>
       {data.attendance.length ? <div class="panel"><table><thead><tr><th>班</th><th>世帯</th><th>人数</th></tr></thead><tbody>{data.attendance.map((row) => <tr><td>{row.district}</td><td>{row.household}</td><td>{row.people_count}</td></tr>)}</tbody></table></div> : <p>回答はまだありません。</p>}
-      <h2>協賛先と打診</h2>{data.items.filter((item) => item.kind === "sponsors").map((item) => <pre class="panel">{JSON.stringify(item.data, null, 2)}</pre>)}
-      <h2>当番表と配置図</h2>{data.items.filter((item) => item.kind === "duties" || item.kind === "layout").map((item) => <pre class="panel">{JSON.stringify(item.data, null, 2)}</pre>)}
-      <h2>当日の紙など</h2>{data.documents.map((doc) => <details class="panel"><summary>{doc.title}</summary><pre>{doc.body}</pre></details>)}
+      <h2>協賛先と打診</h2><MaterialsTable table="sponsors" items={data.items} />
+      <h2>当番表と配置図</h2><MaterialsTable table="duties" items={data.items} /><MaterialsTable table="layout" items={data.items} />
+      <h2>配った文書 <Hint text="役員が実行委員と班長に配った文書です。役員が作り直している途中の文書は出ません。" /></h2>
+      {data.documents.length ? data.documents.map((doc) => <section class="panel"><h3>{doc.title}</h3>{articleParagraphs(doc.body).map((text, index) => <p key={index} style="white-space:pre-wrap;overflow-wrap:anywhere">{text}</p>)}</section>) : <p>文書はまだ配っていません。</p>}
       <h2>写真と入った物</h2>{data.originals.map((file) => <p><a href={`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/file/${encodeURIComponent(file.original_id)}`}>{file.filename}</a></p>)}
-      <h2>撮って送る</h2><form id="space-send" method="post" action={`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/send`} enctype="multipart/form-data"><label for="file">写真またはファイル</label><input id="file" name="file" type="file" accept="image/*,.pdf" capture="environment" required /><input id="paper-qr" type="hidden" name="paper_qr" /><button type="submit">送る</button></form>
-      <script dangerouslySetInnerHTML={{ __html: SPACE_CAMERA_SCRIPT }} />
+      <h2>回答票を撮って送る <Hint text="集まった回答票を撮って送ると、役員画面と同じ回答の集計に入ります。一枚の写真に複数の回答票が写っていても送れます。" /></h2>
+      <form class="panel" method="post" action={`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/send-answer`} enctype="multipart/form-data"><label for="answer-file">回答票の写真またはPDF</label><input id="answer-file" name="file" type="file" accept="image/*,.pdf" capture="environment" required /><p><button type="submit">回答票を送る</button></p></form>
+      <h2>当番表や当日の紙を撮って送る <Hint text="書き込みのある当番表、配置図、当日の紙などを送れます。配った文書は、役員が配り直すまで変わりません。" /></h2>
+      <form class="panel" method="post" action={`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/send`} enctype="multipart/form-data"><label for="file">写真またはPDF</label><input id="file" name="file" type="file" accept="image/*,.pdf" capture="environment" required /><p><button type="submit">当番表や当日の紙を送る</button></p></form>
     </Layout>,
   );
 }
@@ -197,23 +212,6 @@ function closedNotice(c: Context<WardEnv>) {
 }
 
 export const space: Bundle = { admin, pub };
-
-const SPACE_CAMERA_SCRIPT = String.raw`(function () {
-  var form = document.getElementById('space-send');
-  if (!form) return;
-  form.addEventListener('submit', async function (event) {
-    if (typeof BarcodeDetector === 'undefined') return;
-    event.preventDefault();
-    try {
-      var file = document.getElementById('file').files[0];
-      if (file) {
-        var found = await new BarcodeDetector({ formats: ['qr_code'] }).detect(file);
-        if (found.length) document.getElementById('paper-qr').value = found[0].rawValue || '';
-      }
-    } catch (ignored) { /* 対応していない画像は符号なしで送る */ }
-    form.submit();
-  });
-})();`;
 
 function adminPath(wardSlug: string, path: string): string {
   return `/${encodeURIComponent(wardSlug)}/admin${path}`;
