@@ -80,7 +80,7 @@ it("配った当番・配置・協賛先は直しても変わらず、配り直�
   const changed = await (await get(realApp, spacePath, memberCookie)).text();
   expect(changed).toContain(FIRST_SLICE.requestedBy);
   expect(changed).toContain(FIRST_SLICE.previousPlace);
-  expect(changed).toContain(FIRST_SLICE.reportText);
+  expect(changed).not.toContain(FIRST_SLICE.reportText);
   expect(changed).toContain("不可");
   expect(changed).not.toContain(FIRST_SLICE.amountNotPublished);
   expect(changed).not.toContain(FIRST_SLICE.phoneHelper);

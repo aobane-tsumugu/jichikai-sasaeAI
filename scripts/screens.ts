@@ -90,7 +90,7 @@ async function discover() {
     links.map((link) => (link as HTMLAnchorElement).getAttribute("href") ?? "")
       .filter((href) => new RegExp(`/admin/projects/[0-9a-f-]{36}$`).test(href)),
   );
-  projectId = projectLinks[0]?.split("/").at(-1) ?? "";
+  projectId = arg("--project") ?? projectLinks[0]?.split("/").at(-1) ?? "";
   if (projectId) return;
 
   // 区内のプロジェクトがすべて閉じている場合は、記録の先頭を最新候補にする。

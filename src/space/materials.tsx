@@ -2,7 +2,7 @@ import { TABLES, displayFieldValue, type RowData } from "../project/model";
 
 type SpaceTable = "sponsors" | "duties" | "layout";
 
-/** 空間では協賛額を出さず、決められた見出しと読める値だけを並べる。 */
+/** 空間では協賛の額と打診の中身を出さず、決められた見出しと読める値だけを並べる。 */
 export function MaterialsTable({ table, items }: {
   table: SpaceTable;
   items: { kind: string; data: Record<string, unknown> }[];
@@ -10,7 +10,7 @@ export function MaterialsTable({ table, items }: {
   const rows = items.filter((item) => item.kind === table);
   if (!rows.length) return <p>まだありません。</p>;
   const fields = Object.entries(TABLES[table].fields).filter(([name]) =>
-    table !== "sponsors" || (name !== "amount" && name !== "lastYearAmount"));
+    table !== "sponsors" || name === "name" || name === "reply");
   return <div class="panel" style="overflow-x:auto" tabindex={0} role="region" aria-label={TABLES[table].label}>
     <table style="min-width:28rem;overflow-wrap:anywhere">
       <caption>{table === "duties" ? "当番表" : table === "layout" ? "配置図" : "協賛先と打診"}</caption>
