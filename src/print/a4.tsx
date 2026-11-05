@@ -23,6 +23,8 @@ body { margin: 0; color: #000; font: 12pt/1.7 "Hiragino Sans", "Yu Gothic", "Mei
 .sheet:last-of-type { break-after: auto; page-break-after: auto; }
 .sheet-body { flex: 1; min-height: 0; }
 .sheet.dense { font-size: 10.5pt; line-height: 1.55; }
+.sheet.fill .sheet-body { display: flex; flex-direction: column; }
+.sheet .field.fill { flex: 1 1 auto; min-height: 0; overflow: hidden; margin-bottom: 2mm; }
 .sheet.dense p { margin: 0 0 2mm; }
 .sheet .float-qr { float: right; margin: 0 0 3mm 4mm; }
 .sheet table { border-collapse: collapse; width: 100%; margin: 0 0 3mm; font-size: 10.5pt; }
@@ -47,6 +49,7 @@ body { margin: 0; color: #000; font: 12pt/1.7 "Hiragino Sans", "Yu Gothic", "Mei
 }
 @media screen and (max-width: 215mm) {
   .sheet { width: auto; height: auto; min-height: 0; margin: 0 0 6mm; padding: 8mm 5mm; }
+  .sheet .field.fill { min-height: 30mm; }
 }
 `;
 
@@ -76,9 +79,9 @@ export const PrintDocument: FC<PropsWithChildren<{ title: string; hint?: Child }
 );
 
 /** A4 の 1 枚。内容が 1 枚に収まらない時は、枚を分けて書く（溢れた分は紙に出ない）。 */
-/** A4 一枚。dense は長い本文を一枚に収めるために文字を少し小さくする。 */
-export const Sheet: FC<PropsWithChildren<{ footer?: Child; dense?: boolean }>> = ({ footer, dense, children }) => (
-  <section class={dense ? "sheet dense" : "sheet"}>
+/** A4 一枚。dense は長い本文を一枚に収めるために文字を少し小さくする。fill は最後の欄が残りの高さを埋める。 */
+export const Sheet: FC<PropsWithChildren<{ footer?: Child; dense?: boolean; fill?: boolean }>> = ({ footer, dense, fill, children }) => (
+  <section class={["sheet", dense ? "dense" : "", fill ? "fill" : ""].filter(Boolean).join(" ")}>
     <div class="sheet-body">{children}</div>
     {footer ? <div class="sheet-footer">{footer}</div> : null}
   </section>
