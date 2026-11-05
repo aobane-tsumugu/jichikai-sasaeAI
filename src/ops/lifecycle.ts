@@ -225,6 +225,28 @@ function eraseSnapshotJob(snapshot: unknown, wardId: string, jobId: string, orig
     if (Array.isArray(rows)) tables[table] = rows.filter((row) =>
       typeof row !== "object" || row === null || Array.isArray(row) || !match(row as Record<string, unknown>));
   };
+  const changeIds = new Set<string>();
+  if (Array.isArray(tables.project_changes)) {
+    for (const value of tables.project_changes) {
+      if (typeof value !== "object" || value === null) continue;
+      const row = value as Record<string, unknown>;
+      if (typeof row.source_ref === "string" && originalIds.has(row.source_ref) && typeof row.change_id === "string") changeIds.add(row.change_id);
+    }
+  }
+  remove("project_questions", (row) =>
+    (typeof row.source_ref === "string" && originalIds.has(row.source_ref)) ||
+    (typeof row.change_id === "string" && changeIds.has(row.change_id)));
+  if (Array.isArray(tables.project_map_tasks)) {
+    for (const value of tables.project_map_tasks) {
+      if (typeof value !== "object" || value === null) continue;
+      const row = value as Record<string, unknown>;
+      if ((typeof row.progress_source_ref === "string" && originalIds.has(row.progress_source_ref)) ||
+          (typeof row.progress_change_id === "string" && changeIds.has(row.progress_change_id))) {
+        Object.assign(row, { progress: "open", progress_source_kind: null, progress_source_ref: null,
+          progress_source_locator: null, progress_confidence: null, progress_change_id: null });
+      }
+    }
+  }
   remove("jobs", (row) => row.job_id === jobId);
   remove("originals", (row) => row.job_id === jobId || (typeof row.original_id === "string" && originalIds.has(row.original_id)));
   for (const table of ["readings", "job_runs", "job_tool_calls"]) remove(table, (row) => row.job_id === jobId);
@@ -295,6 +317,17 @@ async function eraseJob(env: Env, item: QueueRow, projectJob?: { jobId: string; 
     ...(!projectJob ? [
       env.DB.prepare("DELETE FROM project_item_values WHERE ward_id = ? AND source_ref IN (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)").bind(wardId, wardId, jobId),
       env.DB.prepare("DELETE FROM project_rows WHERE ward_id = ? AND source_ref IN (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)").bind(wardId, wardId, jobId),
+      env.DB.prepare(`DELETE FROM project_questions WHERE ward_id = ? AND (
+        source_ref IN (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?) OR
+        change_id IN (SELECT change_id FROM project_changes WHERE ward_id = ? AND source_ref IN
+          (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)))`)
+        .bind(wardId, wardId, jobId, wardId, wardId, jobId),
+      env.DB.prepare(`UPDATE project_map_tasks SET progress = 'open', progress_source_kind = NULL, progress_source_ref = NULL,
+        progress_source_locator = NULL, progress_confidence = NULL, progress_change_id = NULL WHERE ward_id = ? AND (
+        progress_source_ref IN (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?) OR
+        progress_change_id IN (SELECT change_id FROM project_changes WHERE ward_id = ? AND source_ref IN
+          (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)))`)
+        .bind(wardId, wardId, jobId, wardId, wardId, jobId),
       env.DB.prepare("DELETE FROM project_changes WHERE ward_id = ? AND source_ref IN (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)").bind(wardId, wardId, jobId),
     ] : []),
     env.DB.prepare("DELETE FROM project_answers WHERE ward_id = ? AND original_id IN (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)").bind(wardId, wardId, jobId),
