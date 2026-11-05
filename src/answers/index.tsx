@@ -93,8 +93,8 @@ async function RosterPhotoResult({ wardSlug, wardId, db, jobId }: { wardSlug: st
   const readings = await getReadings(db, wardId, jobId);
   const reading = readings.find((row) => "tables" in row.body)?.body;
   if (!reading || !("tables" in reading)) return <p class="notice">読み取りが終わると、ここに名簿が表示されます。ページを開き直してください。</p>;
-  const tables = reading.tables.filter((table) => table.rows.length > 0);
-  return <section class="panel"><h2>読み取った名簿</h2>{tables.map((table, index) => <form method="post" action={adminPath(wardSlug, "/answers/roster/photo/import")}>
+  const tables = reading.tables.map((table, index) => ({ table, index })).filter(({ table }) => table.rows.length > 0);
+  return <section class="panel"><h2>読み取った名簿</h2>{tables.map(({ table, index }) => <form method="post" action={adminPath(wardSlug, "/answers/roster/photo/import")}>
     <p>{table.name}（{table.rows.length} 行）</p><div style="overflow-x:auto"><table><tbody>{table.rows.slice(0, 12).map((row) => <tr>{row.cells.map((cell) => <td>{cell}</td>)}</tr>)}</tbody></table></div>
     <input type="hidden" name="jobId" value={jobId} /><input type="hidden" name="tableIndex" value={index} /><button type="submit">この名簿を使う</button>
   </form>)}</section>;
