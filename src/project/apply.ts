@@ -433,7 +433,7 @@ async function planItem(ctx: Ctx, n: Normalized, change: ItemChange): Promise<Pl
     questions: [
       {
         kind: "conflict",
-        text: `「${label}」の中身が食い違っています。今ある「${quote(current.content)}」と、入った物の「${quote(content)}」のどちらにしますか。`,
+        text: `「${label}」が食い違っています。今ある「${quote(current.content)}」と、入った物の「${quote(content)}」のどちらにしますか。`,
         target: change.itemKey,
         detail: {
           itemKey: change.itemKey,
