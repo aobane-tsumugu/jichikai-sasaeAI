@@ -66,13 +66,15 @@ function paperTargetLabel(raw: string): string {
     const value: unknown = JSON.parse(raw);
     if (typeof value === "object" && value !== null && !Array.isArray(value) && Array.isArray((value as { targets?: unknown }).targets)) {
       const targets = (value as { targets: unknown[] }).targets;
-      return targets.map((entry) => {
+      const labels = targets.map((entry) => {
         if (typeof entry !== "object" || entry === null) return "";
         const row = entry as { district?: unknown; household?: unknown; copies?: unknown };
         return typeof row.household === "string" && typeof row.district === "string"
           ? `${row.district} / ${row.household}`
           : typeof row.district === "string" && typeof row.copies === "number" ? `${row.district}（${row.copies} 部）` : "";
-      }).filter(Boolean).join("、") || "指定なし";
+      }).filter(Boolean).join("、");
+      const mode = (value as { mode?: unknown }).mode;
+      return labels || (mode === "all" ? "班・世帯で絞り込まない" : "指定なし");
     }
     if (typeof value === "object" && value !== null && !Array.isArray(value)) {
       return Object.entries(value as Record<string, unknown>).map(([district, copies]) => `${district}（${String(copies)} 部）`).join("、") || "指定なし";
@@ -160,15 +162,17 @@ admin.get("/publish/:projectId", async (c) => {
             <input type="hidden" name="documentId" value={draft.document_id} />
             <input type="hidden" name="versionId" value={draft.version_id} />
             <input type="hidden" name="versionNo" value={draft.version_no} />
-            <label for={`targetMode-${draft.document_id}`}>紙の配布先</label>
-            <select id={`targetMode-${draft.document_id}`} name="targetMode"><option value="district">班を選ぶ</option><option value="household">世帯を選ぶ</option></select>
-            <fieldset><legend>班ごとの部数</legend>{districtCopies.map((row, index) => <p>
+            <label for={`recipientScope-${draft.document_id}`}>配る範囲</label>
+            <select id={`recipientScope-${draft.document_id}`} name="recipientScope"><option value="member_households">加入世帯</option><option value="all_households">全戸</option></select>
+            <label for={`targetMode-${draft.document_id}`}>紙の配布先をさらに絞る（任意）</label>
+            <select id={`targetMode-${draft.document_id}`} name="targetMode"><option value="all">絞り込まない</option><option value="district" disabled={!roster.length}>班を選ぶ</option><option value="household" disabled={!roster.length}>世帯を選ぶ</option></select>
+            {roster.length ? <><fieldset><legend>班ごとの部数</legend>{districtCopies.map((row, index) => <p>
               <label><input type="checkbox" name="district" value={row.district} /> {row.district}（名簿 {row.copies} 世帯）</label>
               部数 <input type="number" name={`copies_${index}`} min="0" max={row.copies} value={row.copies} style="width:6rem" />
             </p>)}</fieldset>
-            <details><summary>世帯を選ぶ</summary>{roster.map((entry, index) => <label>
+            <details><summary>世帯を選ぶ</summary>{roster.map((entry) => <label>
               <input type="checkbox" name="household" value={JSON.stringify([entry.district, entry.household])} /> {entry.district} / {entry.household}
-            </label>)}</details>
+            </label>)}</details></> : <p>名簿がなくても配れます。紙の配布先は絞り込まずに進みます。</p>}
             <p>紙の部数と配る相手の指定は、公開ページに表示されません。</p>
             <label for={`line-${draft.document_id}`}>公式 LINE</label>
             <select id={`line-${draft.document_id}`} name="lineDelivery"><option value="send">題と URL を送る</option><option value="skip">今回は送らない</option></select>
@@ -180,6 +184,7 @@ admin.get("/publish/:projectId", async (c) => {
       {records.results.length === 0 ? <p>まだ配っていません。</p> : records.results.map((record) => (
         <section class="panel" key={record.publication_id}>
           <p>{new Date(record.published_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}に配りました。</p>
+          <p>配る範囲: {record.recipient_scope === "all_households" ? "全戸" : "加入世帯"}</p>
           <p>紙の配布先: {paperTargetLabel(record.distribution)}</p>
           <p>公式 LINE: {record.line_status === "sent" ? `${record.line_recipients ?? 0} 人に送信済み` : record.line_status === "failed" ? "送信できませんでした" : record.line_status === "not_sent" ? "今回は送っていません" : record.line_status === "not_configured" ? "接続設定なし" : "送信待ち"}</p>
           {record.line_error ? <p>{record.line_error}</p> : null}
@@ -267,7 +272,7 @@ admin.post("/publish/:projectId/confirm", async (c) => {
     distribution = buildDistribution(roster, String(targetMode), selectedDistricts, selectedHouseholds,
       (index) => Number(form.get(`copies_${index}`)));
   }
-  if (!distribution) return c.text("名簿にある班か世帯を選んでください。", 400);
+  if (!distribution) return c.text("配る相手の指定を確認してください。", 400);
   const recipientScope = form.get("recipientScope") === "all_households" ? "all_households" : "member_households";
   const lineDelivery = form.get("lineDelivery") === "skip" ? "skip" : "send";
   const contacts = await getPublicContact(c.env.DB, ward.wardId);
@@ -387,11 +392,12 @@ export function ArticleBody({ body }: { body: string }) {
 }
 
 interface DistributionTarget { district: string; copies: number; household?: string; }
-interface PaperDistribution { mode: "district" | "household"; targets: DistributionTarget[]; }
+interface PaperDistribution { mode: "all" | "district" | "household"; targets: DistributionTarget[]; }
 
 function buildDistribution(
   roster: Array<{ district: string; household: string }>, mode: string, districts: Set<string>, households: Set<string>, copyCount: (index: number) => number,
 ): PaperDistribution | null {
+  if (mode === "all") return { mode, targets: [] };
   if (mode === "household") {
     const targets = roster.filter((entry) => households.has(JSON.stringify([entry.district, entry.household])))
       .map((entry) => ({ district: entry.district, household: entry.household, copies: 1 }));
@@ -416,6 +422,7 @@ function validateDistribution(raw: string, roster: Array<{ district: string; hou
     if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
     const input = value as { mode?: unknown; targets?: unknown };
     if (!Array.isArray(input.targets)) return null;
+    if (input.mode === "all") return input.targets.length === 0 ? { mode: "all", targets: [] } : null;
     const households = new Set(roster.map((entry) => JSON.stringify([entry.district, entry.household])));
     const districts = new Set(roster.map((entry) => entry.district));
     const targets: DistributionTarget[] = [];

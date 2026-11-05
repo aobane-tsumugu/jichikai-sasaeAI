@@ -175,9 +175,9 @@ admin.post("/close/:projectId/prepare", async (c) => {
   try {
     await Promise.all([
       startTask(c.env, waitableContext(c), { wardId: ward.wardId, projectId: id, task: "report", accountId: account.accountId,
-        instruction: "報告の下書きを起こす。公開する部分と役員だけの部分を分け、状態に無い事実は作らない。公開部分は人数や出来事のうち確認できる内容だけにする。配る操作はしない。文書: report。" }),
+        instruction: "住民向けの実施報告と役員向けの記録を分けて下書きする。状態にある今年の事実だけを使い、参考の中身を今年の実績として書かない。公開する文は年配の人にも読みやすい短い文にする。人数や出来事は確認できる内容だけにし、分からない所は空欄のまま役員への問いにする。公開部分に個人名、電話番号、協賛額、収支、個人の連絡先を含めない。空欄や問いを埋めるために事実を作らない。配る操作はしない。文書: report。" }),
       startTask(c.env, waitableContext(c), { wardId: ward.wardId, projectId: id, task: "map_draft", accountId: account.accountId,
-        instruction: "閉じる時の地図の下書きを状態から作る。原本は読まない。地図の仕事ごとに、状態の taskId を task_id として、period、name、progress（open/started/done）、requested_by、difficulty、next_year をまとめる。write_change で kind=map_draft、target=map、data={tasks:[...] } を一度書く。" }),
+        instruction: "閉じる時の地図の下書きを状態から作る。原本は読まない。状態にある仕事を一つずつ保ち、task_id、period、name、progress（open/started/done）、requested_by、difficulty、next_year を記録する。時期、進み具合、頼んだ相手、困ったこと、来年変えることは状態にある内容だけを書き、分からない欄は空にして役員への問いにする。仕事を省いたり、過去の参考情報を今年の実績にしたり、内容を補って作らない。write_change で kind=map_draft、target=map、data={tasks:[...] } を一度書く。" }),
     ]);
   } catch (error) { console.error("閉じる下書きを起こせませんでした", error instanceof Error ? error.name : ""); }
   return c.redirect(adminPath(ward, `/close/${id}`), 303);
