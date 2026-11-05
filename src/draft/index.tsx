@@ -12,6 +12,7 @@ import type { DraftBody } from "./packs/types";
 import { getDutyDraftHelpers } from "../answers/api";
 import { getTemplates } from "../settings/store";
 import { renderTemplate } from "../settings/keys";
+import { saveDutyRow } from "../project/actions";
 
 const admin = new Hono<AdminEnv>();
 const isKind = (value: string): value is DocumentKind => (DOCUMENT_KINDS as readonly string[]).includes(value);
@@ -77,6 +78,18 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
       </div>; })}
       <p><button type="submit">直した中身を保存</button></p>
     </form>
+    {kindRaw === "duty_roster" ? <section>
+      <h2>当番の担当を直す</h2>
+      {state.tables.duties.filter((row) => row.scope === "current").map((row) => <form class="panel" method="post" action={adminPath(ward, `/projects/${id}/draft/duty-row/${row.rowId}`)}>
+        <label for={`slot-${row.rowId}`}>時間帯</label><input id={`slot-${row.rowId}`} name="slot" value={String(row.data.slot ?? "")} maxlength={120} required />
+        <label for={`task-${row.rowId}`}>持ち場</label><input id={`task-${row.rowId}`} name="task" value={String(row.data.task ?? "")} maxlength={200} />
+        <label for={`assignee-${row.rowId}`}>担当</label><input id={`assignee-${row.rowId}`} name="assignee" value={String(row.data.assignee ?? "")} maxlength={160} />
+        <label for={`attendance-${row.rowId}`}>出席</label><select id={`attendance-${row.rowId}`} name="attendance"><option value="no_change" selected={!row.data.attendance}>まだ記録しない</option><option value="present" selected={row.data.attendance === "present"}>出席</option><option value="absent" selected={row.data.attendance === "absent"}>欠席</option></select>
+        <p><button type="submit">この行を保存</button></p>
+      </form>)}
+      {state.tables.duties.filter((row) => row.scope === "current").length === 0 ? <p>当番表の行はまだありません。下の紙の欄に書き込めます。</p> : null}
+      <p>印刷用ページから紙の当番表を開き、手で書き込むこともできます。</p>
+    </section> : null}
     {kindRaw === "notice" && !project.closedAt ? <section class="panel">
       <h2>雨天の知らせをすぐ用意</h2>
       <p>定型文に会場と日時を入れて、配る画面へ進みます。AIは使いません。</p>
@@ -92,7 +105,10 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     {versions.results.map((v) => { const old = parseBody(v.body); return <details><summary>{v.origin === "ai" ? "AIの案" : "役員が直した案"}</summary><pre style="white-space:pre-wrap">{old.text}</pre>
       {!project.closedAt ? <form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/restore/${v.version_no}`)}><button class="secondary">この案に戻す</button></form> : null}
     </details>; })}
-    <form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/start`)}><button class="secondary">AIに案を起こしてもらう</button></form>
+    <form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/start`)}>
+      <label for="instruction">AIに一行で頼む</label><input id="instruction" name="instruction" type="text" maxlength={800} placeholder="例: 雨天時の会場変更を反映してください" />
+      <p><button class="secondary">AIに案を起こしてもらう</button></p>
+    </form>
     <p><a href={adminPath(ward, `/publish/${id}`)}>配る</a></p>
   </Layout>);
 });
@@ -157,18 +173,31 @@ admin.post("/projects/:projectId/draft/:kind/save", async (c) => {
   return c.redirect(`${adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}?${ok ? "notice=saved" : "error=" + encodeURIComponent("保存できませんでした。入力を確かめてください")}`, 303);
 });
 
+admin.post("/projects/:projectId/draft/duty-row/:rowId", async (c) => {
+  const { ward, account } = c.var; const id = c.req.param("projectId"); const rowId = c.req.param("rowId");
+  const form = await c.req.formData();
+  const rawAttendance = String(form.get("attendance") ?? "no_change");
+  if (rawAttendance !== "no_change" && rawAttendance !== "present" && rawAttendance !== "absent") return c.notFound();
+  const data: Record<string, string> = { slot: String(form.get("slot") ?? "").trim(), task: String(form.get("task") ?? "").trim(), assignee: String(form.get("assignee") ?? "").trim() };
+  if (rawAttendance !== "no_change") data.attendance = rawAttendance;
+  const ok = await saveDutyRow(c.env.DB, ward.wardId, id, rowId, account.accountId, data);
+  return c.redirect(`${adminPath(ward, `/projects/${id}/draft/duty_roster`)}?${ok ? "notice=saved" : "error=" + encodeURIComponent("当番の行を保存できませんでした")}`, 303);
+});
+
 admin.post("/projects/:projectId/draft/:kind/start", async (c) => {
   const { ward, account } = c.var; const id = c.req.param("projectId"); const kindRaw = c.req.param("kind");
   if (!isKind(kindRaw)) return c.notFound();
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
   if (!project || project.closedAt) return c.notFound();
   const pack = getDraftPack(kindRaw);
+  const form = await c.req.formData();
+  const instruction = String(form.get("instruction") ?? "").trim().slice(0, 800);
   try {
     const helpers = pack.kind === "duty_roster" ? await getDutyDraftHelpers(c.env.DB, ward.wardId, id) : [];
     const helperInstruction = helpers.length
       ? `\n回答から集めた手伝いの希望（この一覧を当番表の案に含めてください）: ${JSON.stringify(helpers)}`
       : "\n回答に手伝いの希望はまだありません。";
-    await startTask(c.env, c.executionCtx, { wardId: ward.wardId, projectId: id, task: "draft", instruction: `${pack.instruction}\n対象の文書: ${pack.kind}。範囲: ${pack.scope}。data に pack_version を ${pack.version}、based_on_state_version を引いた状態の番号として含めてください。${pack.kind === "duty_roster" ? helperInstruction : ""}`, accountId: account.accountId });
+    await startTask(c.env, c.executionCtx, { wardId: ward.wardId, projectId: id, task: "draft", instruction: `${pack.instruction}${instruction ? `\n役員からの頼み: ${instruction}` : ""}\n対象の文書: ${pack.kind}。範囲: ${pack.scope}。data に pack_version を ${pack.version}、based_on_state_version を引いた状態の番号として含めてください。${pack.kind === "duty_roster" ? helperInstruction : ""}`, accountId: account.accountId });
     return c.redirect(`${adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}?notice=started`, 303);
   } catch { return c.redirect(`${adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}?error=${encodeURIComponent("AIに頼めませんでした。ここで手入力して保存できます")}`, 303); }
 });

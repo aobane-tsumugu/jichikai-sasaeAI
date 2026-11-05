@@ -15,7 +15,7 @@ import { firstMessage, MCP_SERVER_NAME, PACK_SYSTEM, PACK_VERSION } from "./pack
 /** environment の名前。提供側で一つ。最初の区が名前で探して作り、他の区は同じ物を見つける。 */
 export const ENVIRONMENT_NAME = "jichikai-sasae";
 /** セッション一つの予算（セント）。根拠のある数は実測の後に置く（設計書 5.9）。それまでの仮の歯止め。 */
-export const SESSION_BUDGET_CENTS = 100;
+export const SESSION_BUDGET_CENTS = 10_000;
 /** 繋げるの試行の上限。超えたら failed（役員が「もう一度」を押せる）。 */
 export const CONNECT_MAX_ATTEMPTS = 3;
 const SETUP_LEASE_MS = 120_000;
@@ -230,6 +230,9 @@ async function openSession(env: Env, job: JobRow, ticket: string): Promise<strin
     .bind(job.ward_id)
     .first<{ ward_id: string; slug: string }>();
   if (!ward) throw new Error("区が見つかりません");
+  const budget = await env.DB.prepare("SELECT session_budget_cents FROM ops_ward_limits WHERE ward_id = ?")
+    .bind(job.ward_id)
+    .first<{ session_budget_cents: number }>();
   const ai = await ensureWardAi(env, { wardId: ward.ward_id, slug: ward.slug });
   const client = getClient(env);
   const session = await client.beta.sessions.create({
@@ -238,7 +241,7 @@ async function openSession(env: Env, job: JobRow, ticket: string): Promise<strin
     vault_ids: [ai.vault_id],
     title: `入力 ${job.job_id.slice(0, 8)}`,
     metadata: { ward_id: job.ward_id, job_id: job.job_id, task: job.task },
-    budget: { type: "limit", max_list_cost: { amount: String(SESSION_BUDGET_CENTS), currency: "USD" } },
+    budget: { type: "limit", max_list_cost: { amount: String((budget?.session_budget_cents ?? SESSION_BUDGET_CENTS) / 100), currency: "USD" } },
     initial_events: [
       { type: "user.message", content: [{ type: "text", text: firstMessage({ ticket, task: job.task, instruction: job.instruction }) }] },
     ],
