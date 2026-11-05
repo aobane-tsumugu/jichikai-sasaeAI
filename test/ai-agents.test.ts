@@ -463,7 +463,7 @@ describe("束 3 の API との繋ぎ", () => {
       wardId: ward.wardId,
       via: "admin",
       projectId: project.projectId,
-      parts: [{ kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode("公民館前の広場。協賛は商店Aが 6000 円") }],
+      parts: [{ kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode(`${project.year}年。公民館前の広場。協賛は商店Aが 6000 円`) }],
     });
     const originalId = out.received[0]?.originalId as string;
     await dispatchProject(env, ward.wardId, project.projectId);

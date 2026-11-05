@@ -12,6 +12,7 @@ import { setProjectApi } from "../ai/project-binding";
 import { agentApi } from "./agent-api";
 import { MAP_TEMPLATES } from "../map/template";
 import { followupAdmin } from "./followup";
+import { markMaterialThisYear, unknownYearContents } from "./material-year";
 
 /** 変わった所の対象を、内部の鍵ではなく画面の言葉で示す。 */
 function changeTargetLabel(kind: string, target: string): string {
@@ -123,6 +124,8 @@ admin.get("/projects/:projectId", async (c) => {
   const { ward } = c.var; const projectId = c.req.param("projectId");
   const [project, state, jobs, changes] = await Promise.all([getProjectSummary(c.env.DB, ward.wardId, projectId), getProjectState(c.env.DB, ward.wardId, projectId), listJobs(c.env.DB, ward.wardId, { projectId, limit: 40 }), c.env.DB.prepare("SELECT kind, target, status, reason, source_locator FROM project_changes WHERE ward_id = ? AND project_id = ? ORDER BY created_at DESC LIMIT 30").bind(ward.wardId, projectId).all<{ kind: string; target: string; status: string; reason: string | null; source_locator: string | null }>()]);
   if (!project || !state) return c.notFound();
+  const unknown = unknownYearContents(state);
+  const unknownOriginalIds = new Set([...unknown.items, ...unknown.rows].map((value) => value.source.ref));
   const ledgerRows: Array<{ data: RowData }> = [
     ...state.tables.sponsors.map((row) => ({ data: { counterpart: row.data.name ?? "", direction: "income", amount: row.data.amount ?? "", date: "", note: row.data.reply ? `協賛の返事: ${displayFieldValue("sponsors", "reply", row.data.reply)}` : "" } })),
     ...state.tables.ledger,
@@ -147,6 +150,7 @@ admin.get("/projects/:projectId", async (c) => {
       <a class="button" href={adminPath(ward, `/publish/${projectId}`)}>配る</a>
     </nav>
     <p>{PROJECT_KIND_LABEL[project.kind]} / {project.year}年</p>
+    {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}
     <details><summary>題を直す</summary><form method="post" action={adminPath(ward, `/projects/${projectId}/title`)}><label for="title">題</label><input id="title" name="title" value={project.title} maxlength={100} required /> <button class="secondary">保存</button></form></details>
     <h2>問い</h2>
     {firstQuestions.map(questionPanel)}
@@ -158,7 +162,11 @@ admin.get("/projects/:projectId", async (c) => {
       const readings = await getReadings(c.env.DB, ward.wardId, job.job_id);
       return <section class="panel" id="materials"><h3>{job.first_filename || "一行の文"}</h3><p>{job.status === "done" ? "反映しました" : job.status === "failed" ? "読めませんでした" : "処理中または確認中"}</p>
         {originals.map((original) => { const target = adminPath(ward, `/intake/originals/${original.original_id}`); const related = readings.filter((r) => "fields" in r.body ? r.body.fields.some((f) => f.original_id === original.original_id) || r.body.text_blocks.some((b) => b.original_id === original.original_id) : r.body.rows.some((row) => row.original_id === original.original_id)); return <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:1rem;align-items:start;margin:1rem 0">
-          <div><a href={target} target="_blank">元の物を開く: {original.filename || "一行の文"}</a>{original.kind === "text" ? <p style="white-space:pre-wrap">{readings.filter((r) => r.source === "direct").flatMap((r) => "text_blocks" in r.body ? r.body.text_blocks.filter((block) => block.original_id === original.original_id).map((block) => block.text) : []).join("\n")}</p> : null}{original.media_type.startsWith("image/") ? <a href={target} target="_blank"><img src={target} alt="入った元の写真" loading="lazy" style="display:block;width:100%;height:auto;margin-top:.5rem" /></a> : null}</div>
+          <div><a href={target} target="_blank">元の物を開く: {original.filename || "一行の文"}</a>{original.kind === "text" ? <p style="white-space:pre-wrap">{readings.filter((r) => r.source === "direct").flatMap((r) => "text_blocks" in r.body ? r.body.text_blocks.filter((block) => block.original_id === original.original_id).map((block) => block.text) : []).join("\n")}</p> : null}{original.media_type.startsWith("image/") ? <a href={target} target="_blank"><img src={target} alt="入った元の写真" loading="lazy" style="display:block;width:100%;height:auto;margin-top:.5rem" /></a> : null}
+            {!project.closedAt && !original.withdrawn_at && unknownOriginalIds.has(original.original_id) ? <form method="post" action={adminPath(ward, `/projects/${projectId}/materials/${original.original_id}/this-year`)}>
+              <p><button type="submit" class="secondary">この資料は今年の物</button> <Hint text={`${project.year}年の資料として中身を入れ直します。今年の中身と違う所は、上書きせず問いに並びます。問いに答えなくても配れます。`} /></p>
+            </form> : null}
+          </div>
           <div>{related.map((r) => <details><summary>読み取った中身</summary><p>{r.body.summary}</p>
             {"fields" in r.body ? <>{r.body.fields.filter((f) => f.original_id === original.original_id).map((f) => <p><a href={target} target="_blank">{f.name}: {f.value}</a>（写真全体・{f.locator} / 確かさ{CONFIDENCE_LABEL[f.confidence]}）</p>)}{r.body.text_blocks.filter((b) => b.original_id === original.original_id).map((b) => <p><a href={target} target="_blank">{b.text}</a>（写真全体・{b.locator}）</p>)}</> : r.body.rows.filter((row) => row.original_id === original.original_id).map((row) => <p><a href={target} target="_blank">{row.household_name} / {row.ward_group}</a>（写真全体・{row.locator}）</p>)}
           </details>)}</div>
@@ -183,6 +191,13 @@ admin.get("/projects/:projectId", async (c) => {
 });
 
 admin.post("/projects/:projectId/title", async (c) => { const { ward } = c.var; const f = await c.req.formData(); await renameProject(c.env.DB, ward.wardId, c.req.param("projectId"), String(f.get("title") ?? "")); return c.redirect(adminPath(ward, `/projects/${c.req.param("projectId")}`), 303); });
+admin.post("/projects/:projectId/materials/:originalId/this-year", async (c) => {
+  const { ward, account } = c.var;
+  const projectId = c.req.param("projectId");
+  const ok = await markMaterialThisYear(c.env.DB, ward.wardId, projectId, c.req.param("originalId"), account.accountId);
+  const path = adminPath(ward, `/projects/${projectId}`);
+  return c.redirect(ok ? `${path}#materials` : `${path}?error=${encodeURIComponent("今年の資料として入れ直せませんでした。材料を確かめて、もう一度お試しください。")}`, 303);
+});
 admin.post("/projects/:projectId/questions/:questionId", async (c) => { const { ward, account } = c.var; const f = await c.req.formData(); const action = f.get("action") ? String(f.get("action")) : "answer"; if (["answer", "unknown", "later"].includes(action)) await answerQuestion(c.env.DB, ward.wardId, c.req.param("projectId"), c.req.param("questionId"), action as "answer" | "unknown" | "later", String(f.get("answer") ?? ""), account.accountId); return c.redirect(adminPath(ward, `/projects/${c.req.param("projectId")}`), 303); });
 
 export { admin as projectAdmin };

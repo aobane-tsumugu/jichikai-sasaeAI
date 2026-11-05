@@ -60,6 +60,8 @@ export interface ItemChange extends ChangeBase {
   kind: "item";
   itemKey: ItemKey;
   value: string;
+  /** 年不明の資料が今年の話に見える時の印。今年の中身には入れず、違う所だけを問う。 */
+  maybeThisYear?: boolean;
 }
 
 /** 表の行の追加と更新。同じ相手（照合の鍵）に当たれば更新、当たらなければ追加。 */
@@ -97,8 +99,10 @@ export type ChangeInput = ItemChange | RowChange | ConflictChange | StaleChange 
 export interface ApplyOptions {
   /** 出どころの原本が区の中に実在するか。束 2 の MCP の手が渡す。無ければ形の検査だけをする。 */
   verifyOriginal?: (originalId: string) => Promise<boolean>;
-  /** 差分を書いた役員のアカウント（人の入力の時）。出どころの accountId と同じにする。 */
+  /** 変更を行った役員のアカウント。人の入力の時は出どころの accountId と同じにする。 */
   actorAccountId?: string;
+  /** 資料を今年の物に直す時、今年の中身と違う所を上書きせず問いにする。 */
+  compareCurrent?: boolean;
 }
 
 interface ResultBase {
