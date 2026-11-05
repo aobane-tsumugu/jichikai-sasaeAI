@@ -8,6 +8,7 @@ import { listInboxItems } from "../line";
 import { info } from "./info";
 import { people } from "./people";
 import { templates } from "./templates";
+import { deletion } from "./deletion";
 
 // 束 1: 区の設定（席とアカウント、区の情報、定型文）と役員画面の入口。
 // 他の束が設定を読む入口は store.ts（getPublicContact、getSquads、getTemplates）と keys.ts。
@@ -57,6 +58,7 @@ admin.get("/settings", (c) => {
         <li>
           <a href={adminPath(ward, "/settings/info")}>区の情報</a>（公開用の連絡先、班の名前）
         </li>
+        <li><a href={adminPath(ward, "/settings/deletion")}>消す求め</a>（住民から届いた希望の処理）</li>
         <li>
           <a href={adminPath(ward, "/settings/templates")}>定型文</a>（雨天の変更の知らせなど）
         </li>
@@ -67,6 +69,7 @@ admin.get("/settings", (c) => {
 
 admin.route("/settings/people", people);
 admin.route("/settings/info", info);
+admin.route("/settings/deletion", deletion);
 admin.route("/settings/templates", templates);
 
 // この端末の記憶を消してログアウトする。ほかの端末には影響しない。

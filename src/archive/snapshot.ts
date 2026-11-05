@@ -4,8 +4,9 @@ import type { Env } from "../env";
 
 // 正本と運営上必要な記録だけを写す。AI の読み、実行計測、検索用索引、照合用の一時表は再作成できるため含めない。
 const SNAPSHOT_TABLES = [
-  "wards", "seats", "accounts", "devices", "ward_settings", "ward_ai",
+  "wards", "seats", "accounts", "devices", "ward_settings", "ops_ward_limits", "ward_ai",
   "jobs", "originals", "projects", "project_deadlines", "project_item_values", "project_rows",
+  "project_changes", "job_runs", "job_tool_calls",
   "documents", "document_versions", "project_questions", "project_map_tasks", "publication_records",
   "ward_roster_entries", "ward_roster_settings", "project_answers", "project_spaces", "project_space_invites", "project_space_members",
   "line_channels", "line_inbox_items", "line_unrelated_daily_counts", "project_close_map", "project_close_reports",

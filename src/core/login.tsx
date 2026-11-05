@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { WardEnv } from "../env";
 import { adminPath, issueDevice, safeNext } from "./auth";
 import { cleanLoginId, cleanName, hashPassword, loginIdProblem, nameKey, safeEqual } from "./password";
+import { clearLoginFailures, delayLoginAfterFailures } from "./login-throttle";
 import { Layout, Notice } from "./ui";
 
 // 役員画面のログイン。ID と長いパスワード。公開の入口なので、ID の有無は答えに出さない。
@@ -26,10 +27,12 @@ const LoginPage = (props: { wardName: string; action: string; next: string; erro
   </Layout>
 );
 
-loginRoutes.get("/login", (c) => {
+loginRoutes.get("/login", async (c) => {
   const ward = c.var.ward;
   c.header("Cache-Control", "no-store");
   c.header("X-Robots-Tag", "noindex");
+  const active = await c.env.DB.prepare("SELECT is_active FROM wards WHERE ward_id = ?").bind(ward.wardId).first<{ is_active: number }>();
+  if (!active || active.is_active !== 1) return c.html(<Layout title="役員画面は停止中" siteName={ward.name} noindex><h1>役員画面は停止中です</h1><p>区のページは引き続きご覧いただけます。</p></Layout>, 503);
   return c.html(
     <LoginPage
       wardName={ward.name}
@@ -44,6 +47,8 @@ const DUMMY_SALT = "no-such-account";
 
 loginRoutes.post("/login", async (c) => {
   const ward = c.var.ward;
+  const active = await c.env.DB.prepare("SELECT is_active FROM wards WHERE ward_id = ?").bind(ward.wardId).first<{ is_active: number }>();
+  if (!active || active.is_active !== 1) return c.html(<Layout title="役員画面は停止中" siteName={ward.name} noindex><h1>役員画面は停止中です</h1><p>区のページは引き続きご覧いただけます。</p></Layout>, 503);
   const form = await c.req.parseBody();
   // 現行フォームは loginId。旧フォームが送る name も互換用に受け付ける。
   const hasLoginId = typeof form["loginId"] === "string";
@@ -69,6 +74,7 @@ loginRoutes.post("/login", async (c) => {
   c.header("Cache-Control", "no-store");
   c.header("X-Robots-Tag", "noindex");
   if (!account || !ok || (hasLoginId && loginIdProblem(rawIdentity) !== null)) {
+    await delayLoginAfterFailures(c.env.DB, ward.wardId, identity || rawIdentity || "unknown");
     return c.html(
       <LoginPage
         wardName={ward.name}
@@ -79,6 +85,7 @@ loginRoutes.post("/login", async (c) => {
       401,
     );
   }
+  await clearLoginFailures(c.env.DB, ward.wardId, identity || rawIdentity);
   await issueDevice(c, ward, account.account_id);
   return c.redirect(next, 303);
 });

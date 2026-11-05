@@ -11,6 +11,7 @@ import { ARCHIVE_RECORD_TYPES, searchArchive } from "./search";
 import type { ArchiveRecordType } from "./search";
 import { createAnthropic, MODEL } from "../ai/anthropic";
 import { runSnapshotCron } from "./snapshot";
+import { runDeletionCron } from "../ops/lifecycle";
 
 interface SeedTask { task_key: string | null; name: string; period_start: string | null; period_end: string | null; offset_start_days: number | null; offset_end_days: number | null; sort_order: number; }
 const admin = new Hono<AdminEnv>();
@@ -221,4 +222,6 @@ export async function copySeed(db: D1Database, wardId: string, sourceId: string,
 }
 
 export { admin as archiveAdmin };
-export const archive: Bundle = { admin, scheduled: runSnapshotCron };
+export const archive: Bundle = { admin, scheduled: async (event, env) => {
+  await Promise.all([runSnapshotCron(event, env), runDeletionCron(event, env)]);
+} };

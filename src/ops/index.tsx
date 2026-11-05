@@ -10,6 +10,8 @@ import { addAccount, listAccounts, resetPassword } from "../settings/accounts";
 import { checkOpsLogin, createOpsSession, OPS_COOKIE, OPS_SESSION_HOURS, opsConfigured, verifyOpsSession } from "./session";
 import { getWardMetrics, listWardQueue, type MonthlyMetrics } from "./metrics";
 import { listWards, openWard } from "./wards";
+import { clearLoginFailures, delayLoginAfterFailures } from "../core/login-throttle";
+import { lifecyclePages } from "./lifecycle-pages";
 
 // 束 1: 運用の画面（提供側の ID とパスワード）。/ops に付く。
 // 区の一覧と開設、固定 URL と QR、A4 の案内、最初の役員のアカウントの足す・初期化（役員が入れなくなった時）。
@@ -81,8 +83,10 @@ opsRoutes.post("/login", async (c) => {
   const id = typeof form["id"] === "string" ? form["id"] : "";
   const password = typeof form["password"] === "string" ? form["password"] : "";
   if (!(await checkOpsLogin(c.env, id, password))) {
+    await delayLoginAfterFailures(c.env.DB, "provider", c.env.OPS_ID ?? "provider");
     return c.html(<LoginForm error="ID かパスワードが違います。" />, 401);
   }
+  await clearLoginFailures(c.env.DB, "provider", c.env.OPS_ID ?? "provider");
   setCookie(c, OPS_COOKIE, await createOpsSession(c.env), {
     path: "/ops",
     httpOnly: true,
@@ -135,6 +139,7 @@ opsRoutes.get("/", async (c) => {
     <OpsPage title="区の一覧" loggedIn>
       <h1>区の一覧</h1>
       <p><a href="/ops/costs">全体の費用を見る</a></p>
+      <p><a href="/ops/deletions">消去の状況</a></p>
       {wards.length === 0 ? (
         <p class="muted">まだ区がありません。</p>
       ) : (
@@ -148,6 +153,7 @@ opsRoutes.get("/", async (c) => {
               <a class="button secondary" href={`/ops/wards/${w.slug}/costs`}>費用</a>
               <a class="button secondary" href={`/ops/wards/${w.slug}/budget`}>予算</a>
               <a class="button secondary" href={`/ops/wards/${w.slug}/queue`}>処理状況</a>
+              <a class="button secondary" href={`/ops/wards/${w.slug}/lifecycle`}>保管と消去</a>
             </nav>
           </section>
         ))
@@ -255,6 +261,7 @@ opsRoutes.get("/wards/:slug", async (c) => {
         <a class="button secondary" href={`/ops/wards/${ward.slug}/costs`}>費用</a>
         <a class="button secondary" href={`/ops/wards/${ward.slug}/budget`}>予算</a>
         <a class="button secondary" href={`/ops/wards/${ward.slug}/queue`}>処理状況</a>
+        <a class="button secondary" href={`/ops/wards/${ward.slug}/lifecycle`}>保管と消去</a>
       </nav>
       <h2>役員のアカウント</h2>
       <p class="muted">役員全員が入れなくなった時のために、提供側からも足す・初期化ができます。</p>
@@ -580,3 +587,5 @@ opsRoutes.post("/wards/:slug/queue/:jobId/retry", async (c) => {
   }
   return c.redirect(`/ops/wards/${ward.slug}/queue`, 303);
 });
+
+opsRoutes.route("/", lifecyclePages);

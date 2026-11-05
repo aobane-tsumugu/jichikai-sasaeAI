@@ -1,11 +1,12 @@
 // 区ごとの設定の読み書き。どの束も、設定は必ずこの関数で読み書きする（ward_id を where に持つ）。
 import { nowIso } from "../core/ids";
-import { DEFAULT_TEMPLATES, SETTING_KEYS, parseSquads, parseTemplates, type Template } from "./keys";
+import { DEFAULT_TEMPLATES, PUBLIC_PRIVACY_NOTICE, SETTING_KEYS, parseSquads, parseTemplates, type Template } from "./keys";
 
 const KEY_PATTERN = /^[a-z0-9_.:-]{1,64}$/;
 const MAX_VALUE = 20_000;
 
 export async function getSetting(db: D1Database, wardId: string, key: string): Promise<string | null> {
+  if (key === SETTING_KEYS.privacyNotice) return PUBLIC_PRIVACY_NOTICE;
   const row = await db
     .prepare("SELECT value FROM ward_settings WHERE ward_id = ? AND key = ?")
     .bind(wardId, key)
