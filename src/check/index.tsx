@@ -9,7 +9,7 @@ import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, type DocumentKind } from "../proje
 import { getRoster } from "../answers/api";
 import { getPublicContact } from "../settings/store";
 
-interface Finding { kind: "名簿の名前" | "協賛の額" | "個人の連絡先"; value: string; }
+interface Finding { kind: "名簿の名前" | "協賛の額" | "個人の連絡先" | "まだ決まっていない所"; value: string; }
 interface PrivateRow { person_fields: string | null; data: string; }
 const normalizePhone = (s: string) => s.replace(/[^0-9]/g, "");
 
