@@ -18,9 +18,15 @@ const targetPath: Record<MapOpens, (projectId: string, taskId: string) => string
 
 admin.get("/projects/:projectId/map", async (c) => {
   const { ward } = c.var; const id = c.req.param("projectId");
-  const [project, state, seats] = await Promise.all([
+  const [project, state, seats, history] = await Promise.all([
     getProjectSummary(c.env.DB, ward.wardId, id), getProjectState(c.env.DB, ward.wardId, id),
     c.env.DB.prepare("SELECT seat_id, title AS name FROM seats WHERE ward_id = ? AND removed_at IS NULL ORDER BY sort_order, created_at").bind(ward.wardId).all<{ seat_id: string; name: string }>(),
+    c.env.DB.prepare(`SELECT t.task_key, m.requested_by, m.difficulty, m.next_year
+      FROM projects p JOIN projects seed ON seed.ward_id = p.ward_id AND seed.project_id = p.seed_project_id AND seed.closed_at IS NOT NULL
+      JOIN project_map_tasks t ON t.ward_id = seed.ward_id AND t.project_id = seed.project_id
+      JOIN project_close_map m ON m.ward_id = t.ward_id AND m.project_id = t.project_id AND m.task_id = t.task_id
+      WHERE p.ward_id = ? AND p.project_id = ? AND t.task_key IS NOT NULL`)
+      .bind(ward.wardId, id).all<{ task_key: string; requested_by: string; difficulty: string; next_year: string }>(),
   ]);
   if (!project || !state) return c.notFound();
   const tasks = state.mapTasks;
@@ -73,6 +79,12 @@ admin.get("/projects/:projectId/map", async (c) => {
     })}
     {tasks.map((task) => <section class="panel" id={`task-${task.taskId}`}><h2>{task.name}</h2><p>{task.periodStart ?? "時期未定"} から {task.periodEnd ?? "時期未定"}</p>
       <p>状態: {MAP_PROGRESS_LABEL[task.progress]} / {task.progressSource ? `出どころ: ${SOURCE_KIND_LABEL[task.progressSource.kind]}${task.progressSource.locator ? ` (${task.progressSource.locator})` : ""}` : "人の入力"}</p>
+      {history.results.filter((row) => row.task_key === task.taskKey && [row.requested_by, row.difficulty, row.next_year].some((value) => value.trim())).map((row) => <div>
+        <h3>去年の記録</h3>
+        {row.requested_by.trim() ? <p>頼んだ人: {row.requested_by}</p> : null}
+        {row.difficulty.trim() ? <p>困ったこと: {row.difficulty}</p> : null}
+        {row.next_year.trim() ? <p>来年変えること: {row.next_year}</p> : null}
+      </div>)}
       <nav class="action-links">{opensOf(project.kind, task.taskKey).map((dest) => <a class="button secondary" href={adminPath(ward, targetPath[dest](id, task.taskId))}>{dest === "materials" ? "材料を送る" : dest === "draft" ? "案" : dest === "answers" ? "答え" : "収支"}</a>)}
         <a class="button secondary" href={adminPath(ward, `/publish/${id}`)}>配る</a>
         <a class="button secondary" href={adminPath(ward, `/space/${id}`)}>空間</a>
