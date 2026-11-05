@@ -14,6 +14,7 @@ import {
   removeSeat,
   resetPassword,
   setAccountSeat,
+  setAccountLoginId,
   type AccountRow,
   type Failure,
   type SeatRow,
@@ -28,6 +29,7 @@ const DONE: Record<string, string> = {
   "seat-removed": "席を外しました。その席にいた人は、席なしになりました。",
   "seat-changed": "席を変えました。",
   "account-removed": "アカウントを外しました。",
+  "login-id-changed": "ID を変更しました。",
   "locked-out": "端末を締め出しました。",
 };
 
@@ -65,7 +67,7 @@ const PeoplePage = (props: {
     <AdminPage ward={ward} account={me} title="役員の席とアカウント" back={{ href: adminPath(ward, "/settings"), label: "区の設定" }}>
       <h1>役員の席とアカウント</h1>
       <p class="muted">
-        席は「会長」「書記」などの名札です。席があるかないかで、できることは変わりません。アカウントは一人に一つで、名前と長いパスワードで入ります。
+        席は「会長」「書記」などの名札です。席があるかないかで、できることは変わりません。アカウントは一人に一つで、ID とパスワードで入ります。表示名は漢字のまま使えます。
       </p>
       {props.notice ? <Notice>{props.notice}</Notice> : null}
       {props.error ? <Notice error>{props.error}</Notice> : null}
@@ -108,6 +110,12 @@ const PeoplePage = (props: {
               <strong>{a.name}</strong>
               {mine ? <span class="muted">（あなた）</span> : null}
             </p>
+            <form method="post" action={base(`/accounts/${a.accountId}/login-id`)}>
+              <label for={`login-id-${a.accountId}`}>ID</label>
+              <input id={`login-id-${a.accountId}`} name="loginId" type="text" required maxlength={40} value={a.loginId} autocapitalize="none" spellcheck={false} />
+              <p class="muted">半角の英数字だけ。前後の空白は取り除きます。</p>
+              <button type="submit" class="secondary">ID を変更</button>
+            </form>
             <form method="post" action={base(`/accounts/${a.accountId}/seat`)} class="inline">
               <SeatSelect seats={seats} selected={a.seatId} label={`${a.name} の席`} />{" "}
               <button type="submit" class="secondary">
@@ -176,14 +184,14 @@ const PeoplePage = (props: {
         );
       })}
       <form method="post" action={base("/accounts")} class="panel">
-        <label for="account-name">アカウントを足す（名前）</label>
+        <label for="account-name">表示名</label>
         <input id="account-name" name="name" type="text" required maxlength={40} />
         <label for="account-seat">席</label>
         <SeatSelect seats={seats} selected={null} label="席" />
         <p>
           <button type="submit">足す</button>
         </p>
-        <p class="muted">足すと、パスワードが一度だけ出ます。その人に渡してください。</p>
+        <p class="muted">ID は自動で作られます。足すと ID とパスワードが一度だけ出ます。その人に渡してください。</p>
       </form>
     </AdminPage>
   );
@@ -224,7 +232,7 @@ people.post("/seats/:seatId/remove", async (c) => {
   return result.ok ? done(c, "seat-removed") : fail(c, result);
 });
 
-const CredentialsPage = (props: { c: Context<AdminEnv>; title: string; name: string; password: string }) => (
+const CredentialsPage = (props: { c: Context<AdminEnv>; title: string; loginId: string; name: string; password: string }) => (
   <AdminPage
     ward={props.c.var.ward}
     account={props.c.var.account}
@@ -232,7 +240,7 @@ const CredentialsPage = (props: { c: Context<AdminEnv>; title: string; name: str
     back={{ href: adminPath(props.c.var.ward, "/settings/people"), label: "役員の席とアカウントへ戻る" }}
   >
     <h1>{props.title}</h1>
-    <Credentials name={props.name} password={props.password} />
+    <Credentials loginId={props.loginId} name={props.name} password={props.password} />
   </AdminPage>
 );
 
@@ -246,7 +254,7 @@ people.post("/accounts", async (c) => {
   });
   if (!result.ok) return fail(c, result);
   c.header("Cache-Control", "no-store");
-  return c.html(<CredentialsPage c={c} title="アカウントを足しました" name={result.name} password={result.password} />, 201);
+  return c.html(<CredentialsPage c={c} title="アカウントを足しました" loginId={result.loginId} name={result.name} password={result.password} />, 201);
 });
 
 people.post("/accounts/:accountId/reset", async (c) => {
@@ -255,7 +263,18 @@ people.post("/accounts/:accountId/reset", async (c) => {
   const result = await resetPassword(c.env.DB, c.var.ward.wardId, accountId, keep);
   if (!result.ok) return showPage(c, { error: result.message }, 404);
   c.header("Cache-Control", "no-store");
-  return c.html(<CredentialsPage c={c} title="パスワードを作り直しました" name={result.name} password={result.password} />);
+  return c.html(<CredentialsPage c={c} title="パスワードを作り直しました" loginId={result.loginId} name={result.name} password={result.password} />);
+});
+
+people.post("/accounts/:accountId/login-id", async (c) => {
+  const result = await setAccountLoginId(
+    c.env.DB,
+    c.var.ward.wardId,
+    c.req.param("accountId"),
+    await formText(c, "loginId"),
+  );
+  if (!result.ok) return fail(c, result);
+  return done(c, "login-id-changed");
 });
 
 people.post("/accounts/:accountId/remove", async (c) => {

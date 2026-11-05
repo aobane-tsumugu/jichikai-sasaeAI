@@ -39,7 +39,7 @@ export function normalizeSlug(raw: string): string {
 export async function openWard(
   db: D1Database,
   input: { slug: string; name: string; firstAccountName: string },
-): Promise<{ ok: true; ward: WardInfo; account: { accountId: string; name: string; password: string } } | Failure> {
+): Promise<{ ok: true; ward: WardInfo; account: { accountId: string; loginId: string; name: string; password: string } } | Failure> {
   const slug = normalizeSlug(input.slug);
   const slugError = slugProblem(slug);
   if (slugError) return { ok: false, message: slugError };
@@ -67,6 +67,6 @@ export async function openWard(
   return {
     ok: true,
     ward: { wardId, slug, name },
-    account: { accountId: account.accountId, name: account.name, password: account.password },
+    account: { accountId: account.accountId, loginId: account.loginId, name: account.name, password: account.password },
   };
 }

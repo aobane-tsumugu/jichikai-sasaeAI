@@ -185,7 +185,7 @@ opsRoutes.post("/wards", async (c) => {
         url,
         adminUrl,
         qrSvgUrl: `${baseUrl(c.env, c.req.url)}/ops/wards/${result.ward.slug}/qr.svg`,
-        account: { name: result.account.name, password: result.account.password },
+        account: { loginId: result.account.loginId, name: result.account.name, password: result.account.password },
       },
       201,
     );
@@ -193,7 +193,7 @@ opsRoutes.post("/wards", async (c) => {
   return c.html(
     <OpsPage title="区を開きました" loggedIn>
       <h1>区を開きました</h1>
-      <Credentials name={result.account.name} password={result.account.password} />
+      <Credentials loginId={result.account.loginId} name={result.account.name} password={result.account.password} />
       <WardUrls url={url} adminUrl={adminUrl} slug={result.ward.slug} />
     </OpsPage>,
     201,
@@ -261,7 +261,8 @@ opsRoutes.get("/wards/:slug", async (c) => {
       <table>
         <thead>
           <tr>
-            <th>名前</th>
+            <th>ID</th>
+            <th>表示名</th>
             <th>席</th>
             <th></th>
           </tr>
@@ -269,6 +270,7 @@ opsRoutes.get("/wards/:slug", async (c) => {
         <tbody>
           {accounts.map((a) => (
             <tr>
+              <td>{a.loginId}</td>
               <td>{a.name}</td>
               <td>{a.seatTitle ?? ""}</td>
               <td>
@@ -288,7 +290,7 @@ opsRoutes.get("/wards/:slug", async (c) => {
         </tbody>
       </table>
       <form method="post" action={`/ops/wards/${ward.slug}/accounts`} class="panel">
-        <label for="newname">アカウントを足す（名前）</label>
+        <label for="newname">表示名</label>
         <input id="newname" name="name" type="text" required maxlength={40} />
         <p>
           <button type="submit">足す</button>
@@ -317,7 +319,7 @@ opsRoutes.post("/wards/:slug/accounts", async (c) => {
   return c.html(
     <OpsPage title="アカウントを足しました" loggedIn>
       <h1>アカウントを足しました</h1>
-      <Credentials name={result.name} password={result.password} />
+      <Credentials loginId={result.loginId} name={result.name} password={result.password} />
       <p>
         <a href={`/ops/wards/${ward.slug}`}>区の画面へ戻る</a>
       </p>
@@ -344,7 +346,7 @@ opsRoutes.post("/wards/:slug/accounts/:accountId/reset", async (c) => {
   return c.html(
     <OpsPage title="パスワードを作り直しました" loggedIn>
       <h1>パスワードを作り直しました</h1>
-      <Credentials name={result.name} password={result.password} />
+      <Credentials loginId={result.loginId} name={result.name} password={result.password} />
       <p>
         <a href={`/ops/wards/${ward.slug}`}>区の画面へ戻る</a>
       </p>

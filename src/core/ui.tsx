@@ -77,11 +77,12 @@ export const Notice: FC<PropsWithChildren<{ error?: boolean }>> = ({ error, chil
 );
 
 /** 作ったばかりのパスワードを一度だけ見せる枠。保存は要約だけなので、後から見ることはできない。 */
-export const Credentials: FC<{ name: string; password: string }> = ({ name, password }) => (
+export const Credentials: FC<{ loginId: string; name: string; password: string }> = ({ loginId, name, password }) => (
   <div class="panel">
-    <p>名前とパスワードです。パスワードはこの画面でしか見られません。{name} さんに渡してください。</p>
+    <p>ID とパスワードです。パスワードはこの画面でしか見られません。{name} さんに渡してください。</p>
     <p>
-      名前: <strong>{name}</strong>
+      ID: <strong>{loginId}</strong><br />
+      表示名: <strong>{name}</strong>
     </p>
     <p class="secret">{password}</p>
   </div>
