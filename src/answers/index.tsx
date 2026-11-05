@@ -26,6 +26,7 @@ import {
   replaceRoster,
   rowsToRoster,
   setAnswerDeadline,
+  type AnswerRow,
   type RosterColumns,
 } from "./api";
 
@@ -273,7 +274,7 @@ admin.get("/answers/:projectId", async (c) => {
       <h2>手伝いの一覧</h2>
       {helpers.length === 0 ? <p>手伝いの希望はまだありません。</p> : <div class="panel" style="overflow-x:auto"><table><thead><tr><th>名前</th><th>時間帯</th><th>世帯</th><th>班</th></tr></thead><tbody>{helpers.map((helper) => <tr><td>{helper.name}</td><td>{helper.times}</td><td>{helper.household}</td><td>{helper.district}</td></tr>)}</tbody></table></div>}
       <h2>回答票の読み取り</h2>
-      {sheets.results.map((sheet) => <section class="panel"><h3>{sheet.filename}</h3><p><a href={adminPath(c.var.ward.slug, `/intake/originals/${encodeURIComponent(sheet.original_id)}`)}>回答票の原本を開く</a></p>{renderSheetRows(sheet.body, projectId, sheet.original_id, c.var.ward.slug, !!project.closed_at)}</section>)}
+      {sheets.results.map((sheet) => <section class="panel"><h3>{sheet.filename}</h3><p><a href={adminPath(c.var.ward.slug, `/intake/originals/${encodeURIComponent(sheet.original_id)}`)}>回答票の原本を開く</a></p>{renderSheetRows(sheet.body, projectId, sheet.original_id, c.var.ward.slug, !!project.closed_at, answers)}</section>)}
     </Layout>,
   );
 });
@@ -421,7 +422,7 @@ function RosterColumnPicker({ wardSlug, headers, rows }: { wardSlug: string; hea
   </form></Layout>;
 }
 
-function renderSheetRows(body: string | null, projectId: string, originalId: string, wardSlug: string, closed: boolean) {
+function renderSheetRows(body: string | null, projectId: string, originalId: string, wardSlug: string, closed: boolean, answers: AnswerRow[]) {
   if (!body) return <p>読み取り中です。時間をおいて開き直してください。</p>;
   let parsed: unknown;
   try {
@@ -437,15 +438,16 @@ function renderSheetRows(body: string | null, projectId: string, originalId: str
   return <>
     <p>{reading.summary}</p>
     {reading.rows.map((row, index) => {
-      const count = (row.adults ?? 0) + (row.children ?? 0);
+      const saved = answers.find((answer) => answer.originalId === originalId && answer.sheetRowIndex === index);
+      const count = saved?.peopleCount ?? (row.adults ?? 0) + (row.children ?? 0);
       const endpoint = adminPath(wardSlug, `/answers/${encodeURIComponent(projectId)}/sheet/${encodeURIComponent(originalId)}/row/${index}`);
       return <form class="panel" method="post" action={endpoint}>
         <h4>回答 {index + 1}（{row.locator}）</h4>
-        <label for={`sheet-household-${originalId}-${index}`}>世帯名</label><input id={`sheet-household-${originalId}-${index}`} name="household" type="text" value={row.household_name} required maxlength={120} disabled={closed} />
-        <label for={`sheet-district-${originalId}-${index}`}>班</label><input id={`sheet-district-${originalId}-${index}`} name="district" type="text" value={row.ward_group} required maxlength={80} disabled={closed} />
+        <label for={`sheet-household-${originalId}-${index}`}>世帯名</label><input id={`sheet-household-${originalId}-${index}`} name="household" type="text" value={saved?.household ?? row.household_name} required maxlength={120} disabled={closed} />
+        <label for={`sheet-district-${originalId}-${index}`}>班</label><input id={`sheet-district-${originalId}-${index}`} name="district" type="text" value={saved?.district ?? row.ward_group} required maxlength={80} disabled={closed} />
         <label for={`sheet-people-${originalId}-${index}`}>参加人数</label><input id={`sheet-people-${originalId}-${index}`} name="people_count" type="number" value={count} min="0" max="1000" required disabled={closed} />
-        <label for={`sheet-helper-${originalId}-${index}`}>手伝う人の名前</label><input id={`sheet-helper-${originalId}-${index}`} name="helper_name" type="text" value={row.helper_names.join("、")} maxlength={240} disabled={closed} />
-        <label for={`sheet-times-${originalId}-${index}`}>手伝える時間帯</label><input id={`sheet-times-${originalId}-${index}`} name="helper_times" type="text" value={row.helper_slots.join("、")} maxlength={240} disabled={closed} />
+        <label for={`sheet-helper-${originalId}-${index}`}>手伝う人の名前</label><input id={`sheet-helper-${originalId}-${index}`} name="helper_name" type="text" value={saved?.helperName ?? row.helper_names.join("、")} maxlength={240} disabled={closed} />
+        <label for={`sheet-times-${originalId}-${index}`}>手伝える時間帯</label><input id={`sheet-times-${originalId}-${index}`} name="helper_times" type="text" value={saved?.helperTimes ?? row.helper_slots.join("、")} maxlength={240} disabled={closed} />
         {!closed ? <><p>読み取った内容を確認し、必要なら直してから回答に入れてください。</p>
         <button type="submit">回答に入れる</button></> : null}
       </form>;
