@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
 import { newId, nowIso } from "../core/ids";
-import { Layout } from "../core/ui";
+import { Hint, Layout } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { createProject, getProjectSummary, listProjects, ProjectInputError } from "../project/api";
 import { MAP_PROGRESS_LABEL, PROJECT_KINDS, PROJECT_KIND_LABEL, type MapProgress, type ProjectKind } from "../project/model";
@@ -31,7 +31,7 @@ admin.get("/archive", async (c) => {
     byMonth.set(month, [...(byMonth.get(month) ?? []), project]);
   }
   return c.html(<Layout title="記録" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/projects")}>プロジェクト一覧</a>}>
-    <h1>記録</h1>
+    <h1>記録 <Hint text="閉じたプロジェクトの報告や地図を読みます。去年の記録を選ぶと、そこから来年の準備も始められます。" /></h1>
     <nav class="action-links"><a class="button secondary" href={adminPath(ward, "/archive/map")}>区の地図</a><a class="button secondary" href={adminPath(ward, "/archive/search")}>記録を探す</a></nav>
     {[...byMonth.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([month, entries]) => <section><h2>{month}</h2>{entries.map((p) => <article class="panel">
       <h3><a href={adminPath(ward, `/archive/${p.projectId}`)}>{p.title}</a></h3><p>{p.year}年 / {PROJECT_KIND_LABEL[p.kind]}</p>
@@ -54,7 +54,7 @@ admin.get("/archive/map", async (c) => {
     months.set(month, [...(months.get(month) ?? []), row]);
   }
   return c.html(<Layout title="区の地図" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/archive")}>記録</a>}>
-    <h1>区の地図</h1>
+    <h1>区の地図 <Hint text="区の仕事を月ごとに見ます。行事の名前から、その仕事の地図や閉じた後の記録を開けます。" /></h1>
     <p>プロジェクトの仕事を月ごとに並べています。去年の記録を開くと、その地図から次の年のプロジェクトを始められます。</p>
     {[...months.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([month, entries]) => <section>
       <h2>{month}</h2>{entries.map((entry) => <article class="panel">
@@ -81,7 +81,7 @@ admin.get("/archive/search", async (c) => {
   const years = [...new Set((await listProjects(c.env.DB, ward.wardId, { includeClosed: true })).map((p) => p.year))].sort((a, b) => b - a);
   const labels: Record<ArchiveRecordType, string> = { reading: "読み取り", decision: "決めたこと", report: "報告", map: "地図" };
   return c.html(<Layout title="記録を探す" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/archive")}>記録</a>}>
-    <h1>記録を探す</h1>
+    <h1>記録を探す <Hint text="覚えている言葉を入れて、過去の資料や報告を探します。年や相手の名前でも絞れます。" /></h1>
     <p>二文字以上で探します。年、種類、相手の名前で絞れます。</p>
     <form method="get" action={adminPath(ward, "/archive/search")}>
       <label for="q">言葉</label><input id="q" name="q" type="text" value={query} minlength={2} required />
@@ -117,7 +117,7 @@ admin.post("/archive/ask", async (c) => {
   if (question.length < 3) return c.redirect(adminPath(ward, "/archive/search"), 303);
   const fragments = await findFragments(c.env.DB, ward.wardId, question, 8);
   if (fragments.length === 0) return c.html(<Layout title="記録に聞く" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>記録に聞く</h1><p>記録の中に答えは見つかりませんでした。</p><p><a href={adminPath(ward, "/archive/search")}>記録を探す</a></p>
+    <h1>記録に聞く <Hint text="過去の記録について聞いた結果です。元の箇所が示されている時は、そこも開いて内容を読んでください。" /></h1><p>記録の中に答えは見つかりませんでした。</p><p><a href={adminPath(ward, "/archive/search")}>記録を探す</a></p>
   </Layout>);
   const allowed = fragments.map((fragment) => String(fragment.entry_id));
   const response = await createAnthropic(c.env).messages.create({
@@ -143,7 +143,7 @@ admin.post("/archive/ask", async (c) => {
   }
   const citations = fragments.filter((fragment) => citedIds.includes(String(fragment.entry_id)));
   return c.html(<Layout title="記録に聞く" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>記録に聞く</h1><p><strong>質問:</strong> {question}</p><section class="panel"><p style="white-space:pre-wrap">{answer}</p></section>
+    <h1>記録に聞く <Hint text="過去の記録について聞いた結果です。元の箇所が示されている時は、そこも開いて内容を読んでください。" /></h1><p><strong>質問:</strong> {question}</p><section class="panel"><p style="white-space:pre-wrap">{answer}</p></section>
     <h2>元の箇所</h2>{citations.map((fragment) => <p><a href={adminPath(ward, fragment.source_id ? `/intake/originals/${fragment.source_id}` : projectRecordPath(fragment))}>{fragment.year}年 {fragment.title}</a> — {fragment.locator}（{fragment.excerpt}）</p>)}
     {citations.length === 0 ? <p>根拠として示せる箇所は見つかりませんでした。</p> : null}
     <p><a href={adminPath(ward, "/archive/search")}>記録を探す</a></p>
@@ -161,7 +161,7 @@ admin.get("/archive/:projectId", async (c) => {
       WHERE o.ward_id = ? AND j.project_id = ? AND o.withdrawn_at IS NULL ORDER BY o.received_at`).bind(ward.wardId, id).all<{ original_id: string; filename: string; kind: string }>(),
   ]);
   return c.html(<Layout title={`記録: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>{project.title}</h1><p>{project.year}年に閉じたプロジェクト</p>
+    <h1>{project.title} <Hint text="この仕事で残した地図や報告を読めます。次の年の準備を始める時は、下の「来年の種」を使ってください。" /></h1><p>{project.year}年に閉じたプロジェクト</p>
     <h2>地図</h2>{map.results?.map((task) => <section class="panel"><h3>{task.name}</h3><p>{task.period} / {MAP_PROGRESS_LABEL[task.progress as MapProgress] ?? "これから"}</p>
       {task.requested_by ? <p>頼んだ人: {task.requested_by}</p> : null}{task.difficulty ? <p>困ったこと: {task.difficulty}</p> : null}{task.next_year ? <p>来年変えること: {task.next_year}</p> : null}</section>)}
     <h2>報告</h2>{reports.results?.map((report) => <section class="panel"><h3>{report.scope === "public" ? "公開する部分" : "役員だけの部分"}</h3><p style="white-space:pre-wrap">{report.body || "まだ記入されていません"}</p></section>)}
@@ -172,7 +172,7 @@ admin.get("/archive/:projectId", async (c) => {
       <label for="title">新しいプロジェクトの題</label><input id="title" name="title" type="text" value={project.title} maxlength={100} required />
       <label for="year">年</label><input id="year" name="year" type="number" value={project.year + 1} min="1900" max="2200" required />
       <label for="eventDay">行事の日</label><input id="eventDay" name="eventDay" type="date" required={project.kind === "event"} />
-      <p><button>この地図を種に開く</button></p>
+      <p><button>この地図を種に開く</button> <Hint text="去年の地図と記録を参考に、新しい年のプロジェクトを開きます。" /></p>
     </form>
     <p><a href={adminPath(ward, "/archive")}>記録の一覧へ</a></p>
   </Layout>);

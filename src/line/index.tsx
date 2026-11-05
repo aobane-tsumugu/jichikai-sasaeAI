@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { WardBucket } from "../core/storage";
-import { Layout } from "../core/ui";
+import { Hint, Layout } from "../core/ui";
 import type { AdminEnv, AppEnv } from "../env";
 import { getLineAllowance, lineAccessToken, sendLineTitleAndUrl } from "./api";
 import { markInboxItemUnrelated } from "./intake";
@@ -48,7 +48,7 @@ admin.get("/inbox", async (c) => {
   `).bind(wardId).all<{ day: string; item_count: number }>();
   return c.html(
     <Layout title="受け箱" siteName={name} noindex adminHomeHref={`/${slug}/admin/`}>
-      <h1>受け箱</h1>
+      <h1>受け箱 <Hint text="まだ当て先が決まっていない物を見ます。届いた文や写真を読み、必要なら当て先を選ぶか新しいプロジェクトを開いてください。" /></h1>
       <p>公式 LINE に届いた文と写真です。仕分けをしなくてもかまいません。</p>
       {items.length === 0 ? <p>入った物はありません。</p> : null}
       <h2>市の通知など、プロジェクト未定の写真</h2>
@@ -78,7 +78,7 @@ admin.get("/inbox", async (c) => {
           </form>
         </section>;
       }))}
-      {items.map((item) => (
+      {items.map((item, index) => (
         <section class="panel" key={item.item_id}>
           <p><strong>{item.disposition === "matched" ? "AI が当てました" : "プロジェクト未定"}</strong></p>
           <p>{new Date(item.received_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}</p>
@@ -100,7 +100,7 @@ admin.get("/inbox", async (c) => {
             <label for={`new-project-kind-${item.item_id}`}>種類</label>
             <select id={`new-project-kind-${item.item_id}`} name="kind"><option value="event">行事</option><option value="general_meeting">総会</option><option value="city_request">市の依頼</option></select>
             <label for={`new-project-year-${item.item_id}`}>年</label><input id={`new-project-year-${item.item_id}`} name="year" type="number" min="2000" max="2100" value={new Date().getFullYear()} required />
-            <button name="operation" value="new-project">新しいプロジェクトを開く</button>
+            <button name="operation" value="new-project">新しいプロジェクトを開く</button> {index === 0 ? <Hint text="届いた物を入れた、新しいプロジェクトを開きます。" /> : null}
           </form>
           <form method="post" action={`/${slug}/admin/inbox/${encodeURIComponent(item.item_id)}`}>
             <button class="danger" name="operation" value="unrelated">関係ない物として消す</button>

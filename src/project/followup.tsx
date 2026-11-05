@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { adminPath } from "../core/auth";
 import { newId, nowIso } from "../core/ids";
-import { Layout, Notice } from "../core/ui";
+import { Hint, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { getReadings, listJobs } from "../intake/store";
 import { broadcastLineText, lineAccessToken } from "../line/api";
@@ -17,7 +17,7 @@ followupAdmin.get("/inquiries", async (c) => {
     FROM inquiry_records WHERE ward_id = ? ORDER BY received_at DESC, created_at DESC LIMIT 200`)
     .bind(ward.wardId).all<{ inquiry_id: string; received_at: string; kind: "inquiry" | "request"; subject: string; answer: string; submitted_to_city: number }>();
   return c.html(<Layout title="問い合わせ" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>問い合わせと要望</h1>
+    <h1>問い合わせと要望 <Hint text="受けた内容と、どう答えたかを残します。受けた日から順に入力してください。" /></h1>
     {c.req.query("saved") ? <Notice>記録しました。</Notice> : null}
     <form method="post" action={adminPath(ward, "/inquiries")} class="panel">
       <label for="receivedAt">受けた日</label><input id="receivedAt" name="receivedAt" type="date" required />
@@ -74,7 +74,7 @@ followupAdmin.get("/requests/city", async (c) => {
   }));
   rows.sort((a, b) => (a.dueOn ?? "9999-12-31").localeCompare(b.dueOn ?? "9999-12-31") || b.year - a.year);
   return c.html(<Layout title="行政の依頼" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>行政の依頼</h1>
+    <h1>行政の依頼 <Hint text="行政から届いた依頼と締切を見ます。依頼の名前を選ぶと、回答案や提出した内容を記録できます。" /></h1>
     <p>届いた通知をもとに、期限、回答、提出した物を記録します。</p>
     {rows.map((project) => <article class="panel"><h2><a href={adminPath(ward, `/requests/city/${encodeURIComponent(project.project_id)}`)}>{project.title}</a></h2>
       <p>{project.year}年 / 期限: {project.dueOn ?? "未入力"} / 提出: {project.submitted_on ?? "未記録"}</p></article>)}
@@ -97,7 +97,7 @@ followupAdmin.get("/requests/city/:projectId", async (c) => {
   const readings = await Promise.all(jobs.map((job) => getReadings(c.env.DB, ward.wardId, job.job_id)));
   const sourceText = readings.flatMap((rows) => rows.map((row) => row.body.summary)).filter(Boolean).join("\n").slice(0, 6000);
   return c.html(<Layout title={project.title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>{project.title}</h1><p><a href={adminPath(ward, "/requests/city")}>行政の依頼一覧</a></p>
+    <h1>{project.title} <Hint text="届いた通知を読み、締切や提出先、回答案を残す画面です。まず通知の内容と締切を確認してください。" /></h1><p><a href={adminPath(ward, "/requests/city")}>行政の依頼一覧</a></p>
     {c.req.query("saved") ? <Notice>記録しました。</Notice> : null}
     {c.req.query("sent") ? <Notice>公式 LINE で送りました。</Notice> : null}
     {c.req.query("error") ? <Notice error>送れませんでした。文と公式 LINE の設定を確かめてください。</Notice> : null}
@@ -237,7 +237,7 @@ followupAdmin.get("/ledger", async (c) => {
   for (const budget of budgets.results) if (!years.includes(budget.year)) years.push(budget.year);
   years.sort((a, b) => b - a);
   return c.html(<Layout title="帳簿" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>帳簿</h1><p>収支の記録から年ごとに集計しています。監査の判断は人が行います。</p>
+    <h1>帳簿 <Hint text="年を選び、収入と支出、予算を見比べます。プロジェクトで残した収支も、ここに集まります。" /></h1><p>収支の記録から年ごとに集計しています。監査の判断は人が行います。</p>
     {c.req.query("saved") ? <Notice>記録しました。</Notice> : null}
     {years.map((year) => {
       const total = totals.get(year) ?? { year, income: 0, expense: 0 };

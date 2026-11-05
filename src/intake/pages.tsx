@@ -2,7 +2,7 @@
 // 画面に出す言葉は CLAUDE.md の表に従う（札、列、セッション、包み、版、差分は出さない）。
 import { Hono } from "hono";
 import { adminPath } from "../core/auth";
-import { Layout, Notice } from "../core/ui";
+import { Hint, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { receiveOriginal, ReceiveError, retryJob, withdrawJob } from "./api";
 import { SEND_SCRIPT } from "./browser-script";
@@ -85,7 +85,7 @@ intakeAdmin.get("/intake", async (c) => {
   const notice = c.req.query("n");
   return c.html(
     <Layout title="送る" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-      <h1>送る</h1>
+      <h1>送る <Hint text="資料を撮るか、ファイルや一行の文を送る画面です。分かる時だけ送り先のプロジェクトを選んでください。" /></h1>
       <p class="muted">持っている形のまま送ってください。分類も名前付けも要りません。</p>
       {notice === "withdrawn" ? <Notice>取り下げました。</Notice> : null}
       {notice === "retry" ? <Notice>もう一度読みます。</Notice> : null}
