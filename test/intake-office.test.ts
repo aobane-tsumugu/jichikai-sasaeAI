@@ -148,6 +148,17 @@ describe("Excel の展開", () => {
     expect(await extractOffice((await makeZip(prefixed, false)).buffer as ArrayBuffer)).toEqual(plain);
   });
 
+  it("1904年日付システムのExcelも、同じ日付を書いた通常のExcelと同じに読む", async () => {
+    // 架空の表の2026年10月24日を、1904年からの日数で保存したブックにする。
+    const date1904 = {
+      ...XLSX,
+      "xl/workbook.xml": XLSX["xl/workbook.xml"].replace("<workbook>", '<workbook><workbookPr date1904="1"/>'),
+      "xl/worksheets/sheet1.xml": XLSX["xl/worksheets/sheet1.xml"].replace("<v>46319</v>", "<v>44857</v>"),
+    };
+    expect(await extractOffice(await makeZip(date1904, false)))
+      .toEqual(await extractOffice(await makeZip(XLSX, false)));
+  });
+
   it("日付の型のセルを年月日で読む", async () => {
     const sheet = XLSX["xl/worksheets/sheet1.xml"].replace("</sheetData>", '<row r="9"><c r="A9" t="d"><v>2026-10-22T00:00:00.000Z</v></c></row></sheetData>');
     const result = await extractOffice(await makeZip({ ...XLSX, "xl/worksheets/sheet1.xml": sheet }, false)) as { tables: { rows: string[][] }[] };
