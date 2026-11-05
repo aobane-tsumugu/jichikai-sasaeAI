@@ -53,7 +53,8 @@ describe("公式 LINE と受け箱", () => {
     const destination = `U-fixture-${crypto.randomUUID()}`;
     const body = fixtureBody(destination);
     const secret = "fictional-line-secret";
-    await env.DB.prepare(`INSERT INTO line_channels (ward_id, destination) VALUES (?, ?)`)
+    await env.DB.prepare(`INSERT INTO line_channels (ward_id, destination, channel_secret_binding, access_token_binding)
+      VALUES (?, ?, 'LINE_CHANNEL_SECRET', 'LINE_CHANNEL_ACCESS_TOKEN')`)
       .bind(ward.wardId, destination).run();
     const runtime = { ...env, LINE_CHANNEL_SECRET: secret, LINE_CHANNEL_ACCESS_TOKEN: "fictional-token" } as Env;
     const pending: Promise<unknown>[] = [];
@@ -95,7 +96,7 @@ describe("公式 LINE と受け箱", () => {
   it("公式 LINE のグループの文も束 2 の入った物にする", async () => {
     const ward = await seedWard(env.DB, uniqueSlug("line-group-test"));
     const destination = `U-fixture-group-${crypto.randomUUID()}`;
-    await env.DB.prepare("INSERT INTO line_channels (ward_id, destination) VALUES (?, ?)").bind(ward.wardId, destination).run();
+    await env.DB.prepare("INSERT INTO line_channels (ward_id, destination, channel_secret_binding, access_token_binding) VALUES (?, ?, 'LINE_CHANNEL_SECRET', 'LINE_CHANNEL_ACCESS_TOKEN')").bind(ward.wardId, destination).run();
     const secret = "fictional-line-secret";
     const payload = JSON.parse(fixtureBody(destination)) as FixtureBody;
     const groupEvent = payload.events[0];
@@ -128,7 +129,7 @@ describe("公式 LINE と受け箱", () => {
   it("LINE グループに入った案内は同じグループへ一度だけ送る", async () => {
     const ward = await seedWard(env.DB, uniqueSlug("line-join-test"));
     const destination = `U-fixture-join-${crypto.randomUUID()}`;
-    await env.DB.prepare("INSERT INTO line_channels (ward_id, destination) VALUES (?, ?)").bind(ward.wardId, destination).run();
+    await env.DB.prepare("INSERT INTO line_channels (ward_id, destination, channel_secret_binding, access_token_binding) VALUES (?, ?, 'LINE_CHANNEL_SECRET', 'LINE_CHANNEL_ACCESS_TOKEN')").bind(ward.wardId, destination).run();
     const secret = "fictional-line-secret";
     const payload = JSON.parse(fixtureBody(destination)) as FixtureBody;
     const event = payload.events[0];

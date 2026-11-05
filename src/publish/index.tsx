@@ -5,7 +5,7 @@ import type { Bundle } from "../core/bundle";
 import { newId, nowIso } from "../core/ids";
 import { Hint, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
-import { getLineAllowance, lineAccessToken, sendLineTitleAndUrl } from "../line/api";
+import { getLineAllowance, lineAccessToken, LINE_NOT_CONFIGURED, sendLineTitleAndUrl } from "../line/api";
 import { getPublicContact } from "../settings/store";
 import { answerDeadlineFromDraft, getDistrictCopies, getRoster, parseDistribution } from "../answers/api";
 import { checkPublicDraft } from "./check";
@@ -147,7 +147,9 @@ admin.get("/publish/:projectId", async (c) => {
   let allowance = null;
   let allowanceError = "";
   if (drafts.some((draft) => canSendLine(draft.kind))) try {
-    allowance = await getLineAllowance(lineAccessToken(c.env));
+    const token = await lineAccessToken(c.env, ward.wardId);
+    if (token) allowance = await getLineAllowance(token);
+    else allowanceError = LINE_NOT_CONFIGURED;
   } catch {
     allowanceError = "公式 LINE の通数を読み取れません。配る操作後に送信結果を確認してください。";
   }
@@ -337,13 +339,18 @@ admin.post("/publish/:projectId/confirm", async (c) => {
   const lineDelivery = !canSendLine(draft.kind) || form.get("lineDelivery") === "skip" ? "skip" : "send";
   const contacts = await getPublicContact(c.env.DB, ward.wardId);
   let allowance = null;
-  if (lineDelivery === "send") try { allowance = await getLineAllowance(lineAccessToken(c.env)); } catch { /* 送信結果として記録する */ }
+  let lineNotice = "";
+  if (lineDelivery === "send") try {
+    const token = await lineAccessToken(c.env, ward.wardId);
+    if (token) allowance = await getLineAllowance(token);
+    else lineNotice = LINE_NOT_CONFIGURED;
+  } catch { /* 送信結果として記録する */ }
   return c.html(<AdminPage ward={ward} account={account} title="配る内容の確認" back={{ href: adminPath(ward, `/publish/${project.project_id}`), label: "案に戻る" }}>
     <h1>配る内容の確認 <Hint text="本文と配る相手を読んでから「配る」を押すと、区のページに載ります。公式 LINE に送るかどうかも確認してください。" /></h1>
     <ArticleBody body={draft.body} />
     {draft.stale_since_version !== null ? <Notice>新しい物が入っています。ここに表示した内容で配れます。直す時は案に戻ってください。</Notice> : null}
     {warnings.length > 0 ? <section class="panel"><h2>混入の検査で見つかった所</h2><p>公開する前に内容を確認してください。配る操作は続けられます。</p><ul>{warnings.map((warning) => <li>{warning}</li>)}</ul></section> : null}
-    <p>配ります。区のページに載ります。{lineDelivery === "skip" ? "今回は公式 LINE に送りません。" : `公式 LINE は${allowance?.friends === null || allowance === null ? "人数確認後" : `${allowance.friends} 人`}に届きます。`}</p>
+    <p>配ります。区のページに載ります。{lineDelivery === "skip" ? "今回は公式 LINE に送りません。" : lineNotice || `公式 LINE は${allowance?.friends === null || allowance === null ? "人数確認後" : `${allowance.friends} 人`}に届きます。`}</p>
     {distribution.targets.length ? <p>紙の配布先: {paperTargetLabel(JSON.stringify(distribution))}</p> : <p>名簿が無いため、紙の配布先と部数は指定していません。</p>}
     <p>配る相手: {recipientScope === "all_households" ? "全戸" : "加入世帯"}</p>
     <p>公開用の連絡先: {contacts || "未設定"}</p>
@@ -429,14 +436,18 @@ admin.post("/publish/:projectId/send", async (c) => {
   let lineError: string | null = null;
   if (sendLine) {
     try {
-      const allowance = await getLineAllowance(lineAccessToken(c.env));
-      lineRecipients = allowance.friends;
-      await sendLineTitleAndUrl(c.env.LINE_CHANNEL_ACCESS_TOKEN, row.title, publicUrl);
-      lineStatus = "sent";
-      lineSentAt = nowIso();
-    } catch (error) {
+      const token = await lineAccessToken(c.env, ward.wardId);
+      if (!token) lineError = LINE_NOT_CONFIGURED;
+      else {
+        const allowance = await getLineAllowance(token);
+        lineRecipients = allowance.friends;
+        await sendLineTitleAndUrl(token, row.title, publicUrl);
+        lineStatus = "sent";
+        lineSentAt = nowIso();
+      }
+    } catch {
       lineStatus = "failed";
-      lineError = error instanceof Error ? error.message : "送信に失敗しました";
+      lineError = "公式 LINE に送信できませんでした。接続設定を提供側に確認してください。";
     }
   }
   await c.env.DB.prepare(`UPDATE publication_records SET line_status = ?, line_recipients = ?, line_sent_at = ?, line_error = ?

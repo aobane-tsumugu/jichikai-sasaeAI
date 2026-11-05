@@ -115,7 +115,7 @@ opsRoutes.post("/logout", (c) => {
 
 // ---- 区の一覧と開設 ----
 
-const OpenForm = (props: { error?: string; values?: { slug: string; name: string; firstAccountName: string } }) => (
+const OpenForm = (props: { error?: string; values?: { slug: string; name: string; firstAccountName: string; lineDestination?: string } }) => (
   <>
     <h2>区を開く</h2>
     {props.error ? <Notice error>{props.error}</Notice> : null}
@@ -126,6 +126,11 @@ const OpenForm = (props: { error?: string; values?: { slug: string; name: string
       <input id="slug" name="slug" type="text" required maxlength={40} value={props.values?.slug ?? ""} />
       <label for="first">最初の役員の名前</label>
       <input id="first" name="firstAccountName" type="text" required maxlength={40} value={props.values?.firstAccountName ?? ""} />
+      <details><summary>公式 LINE を使う区だけ</summary>
+        <label for="line-destination">Webhook の destination（公式 LINE の送信先 ID）</label>
+        <input id="line-destination" name="lineDestination" type="text" maxlength={100} value={props.values?.lineDestination ?? ""} />
+        <p>鍵の値は入力しません。開設後に表示する名前で Workers secrets に設定してください。</p>
+      </details>
       <p>
         <button type="submit">開く</button>
       </p>
@@ -166,7 +171,7 @@ opsRoutes.get("/", async (c) => {
 opsRoutes.post("/wards", async (c) => {
   const form = await c.req.parseBody();
   const text = (key: string) => (typeof form[key] === "string" ? (form[key] as string) : "");
-  const input = { slug: text("slug"), name: text("name"), firstAccountName: text("firstAccountName") };
+  const input = { slug: text("slug"), name: text("name"), firstAccountName: text("firstAccountName"), lineDestination: text("lineDestination") };
   const result = await openWard(c.env.DB, input);
 
   if (!result.ok) {
@@ -192,6 +197,7 @@ opsRoutes.post("/wards", async (c) => {
         adminUrl,
         qrSvgUrl: `${baseUrl(c.env, c.req.url)}/ops/wards/${result.ward.slug}/qr.svg`,
         account: { loginId: result.account.loginId, name: result.account.name, password: result.account.password },
+        ...(result.line ? { line: result.line } : {}),
       },
       201,
     );
@@ -200,6 +206,11 @@ opsRoutes.post("/wards", async (c) => {
     <OpsPage title="区を開きました" loggedIn>
       <h1>区を開きました</h1>
       <Credentials loginId={result.account.loginId} name={result.account.name} password={result.account.password} />
+      {result.line ? <><h2>公式 LINE の鍵の設定</h2>
+        <p>Workers secrets に次の名前で鍵を設定してください。値はこの画面にも D1 にも保存しません。</p>
+        <p>チャネルシークレット: <code>{result.line.channelSecretBinding}</code></p>
+        <p>チャネルアクセストークン: <code>{result.line.accessTokenBinding}</code></p>
+      </> : null}
       <WardUrls url={url} adminUrl={adminUrl} slug={result.ward.slug} />
     </OpsPage>,
     201,

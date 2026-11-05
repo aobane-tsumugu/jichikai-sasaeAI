@@ -4,6 +4,7 @@ import { cleanName } from "../core/password";
 import { findWardBySlug, slugProblem } from "../core/ward";
 import type { WardInfo } from "../env";
 import { addAccount, type Failure } from "../settings/accounts";
+import { lineSecretNames } from "../line/api";
 
 export interface WardSummary extends WardInfo {
   createdAt: string;
@@ -38,8 +39,8 @@ export function normalizeSlug(raw: string): string {
  */
 export async function openWard(
   db: D1Database,
-  input: { slug: string; name: string; firstAccountName: string },
-): Promise<{ ok: true; ward: WardInfo; account: { accountId: string; loginId: string; name: string; password: string } } | Failure> {
+  input: { slug: string; name: string; firstAccountName: string; lineDestination?: string },
+): Promise<{ ok: true; ward: WardInfo; account: { accountId: string; loginId: string; name: string; password: string }; line?: ReturnType<typeof lineSecretNames> } | Failure> {
   const slug = normalizeSlug(input.slug);
   const slugError = slugProblem(slug);
   if (slugError) return { ok: false, message: slugError };
@@ -49,24 +50,34 @@ export async function openWard(
   if (name.length > 60) return { ok: false, message: "区の名前は 60 文字までです。" };
 
   if (await findWardBySlug(db, slug)) return { ok: false, message: "その区の URL はもう使われています。" };
-
+  const destination = input.lineDestination?.trim() ?? "";
+  if (destination.length > 100) return { ok: false, message: "公式 LINE の送信先 ID を確かめてください。" };
+  if (destination && await db.prepare("SELECT 1 FROM line_channels WHERE destination = ?").bind(destination).first()) {
+    return { ok: false, message: "その公式 LINE は別の区に接続されています。" };
+  }
   const wardId = newId();
+  const line = destination ? lineSecretNames(wardId) : undefined;
   try {
-    await db.prepare("INSERT INTO wards (ward_id, slug, name, created_at) VALUES (?, ?, ?, ?)").bind(wardId, slug, name, nowIso()).run();
+    const statements = [db.prepare("INSERT INTO wards (ward_id, slug, name, created_at) VALUES (?, ?, ?, ?)").bind(wardId, slug, name, nowIso())];
+    if (line) statements.push(db.prepare(`INSERT INTO line_channels (ward_id, destination, channel_secret_binding, access_token_binding)
+      VALUES (?, ?, ?, ?)`).bind(wardId, destination, line.channelSecretBinding, line.accessTokenBinding));
+    await db.batch(statements);
   } catch {
-    // 同時に同じ URL で開かれた時
-    return { ok: false, message: "その区の URL はもう使われています。" };
+    return { ok: false, message: destination ? "区の URL か公式 LINE の送信先 ID はもう使われています。" : "その区の URL はもう使われています。" };
   }
 
   const account = await addAccount(db, wardId, { name: input.firstAccountName });
   if (!account.ok) {
-    // 区だけが残らないよう戻す（まだ他の行は無い）
-    await db.prepare("DELETE FROM wards WHERE ward_id = ?").bind(wardId).run();
+    await db.batch([
+      db.prepare("DELETE FROM line_channels WHERE ward_id = ?").bind(wardId),
+      db.prepare("DELETE FROM wards WHERE ward_id = ?").bind(wardId),
+    ]);
     return account;
   }
   return {
     ok: true,
     ward: { wardId, slug, name },
     account: { accountId: account.accountId, loginId: account.loginId, name: account.name, password: account.password },
+    ...(line ? { line } : {}),
   };
 }

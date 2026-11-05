@@ -105,7 +105,34 @@ export async function broadcastLineText(token: string, text: string, request: ty
   if (!response.ok) throw new Error(`LINE API request failed (${response.status})`);
 }
 
-export function lineAccessToken(env: Pick<Env, "LINE_CHANNEL_ACCESS_TOKEN">): string {
-  if (!env.LINE_CHANNEL_ACCESS_TOKEN) throw new Error("LINE の接続設定がありません。");
-  return env.LINE_CHANNEL_ACCESS_TOKEN;
+export const LINE_NOT_CONFIGURED = "この区の公式 LINE は接続設定がないため送信しません。";
+
+/** 開設時に参照先の名前だけを決め、鍵の値は Workers secrets に置く。 */
+export function lineSecretNames(wardId: string) {
+  const name = wardId.toUpperCase().replaceAll("-", "_");
+  return {
+    channelSecretBinding: `LINE_${name}_CHANNEL_SECRET`,
+    accessTokenBinding: `LINE_${name}_CHANNEL_ACCESS_TOKEN`,
+  } as const;
+}
+
+function secretValue(env: Env, name: string | null): string | null {
+  if (!name || !/^LINE_[A-Z0-9_]+$/.test(name)) return null;
+  const value = env[name as `LINE_${string}`];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export async function lineChannelCredentials(env: Env, wardId: string, destination?: string) {
+  const statement = env.DB.prepare(`SELECT channel_secret_binding, access_token_binding FROM line_channels
+    WHERE ward_id = ? ${destination === undefined ? "" : "AND destination = ?"} ORDER BY created_at, destination LIMIT 1`);
+  const bindings = destination === undefined ? [wardId] : [wardId, destination];
+  const row = await statement.bind(...bindings).first<{ channel_secret_binding: string | null; access_token_binding: string | null }>();
+  return row ? {
+    channelSecret: secretValue(env, row.channel_secret_binding),
+    accessToken: secretValue(env, row.access_token_binding),
+  } : null;
+}
+
+export async function lineAccessToken(env: Env, wardId: string): Promise<string | null> {
+  return (await lineChannelCredentials(env, wardId))?.accessToken ?? null;
 }
