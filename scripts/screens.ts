@@ -88,7 +88,7 @@ async function discover() {
   await openPath(`${admin}/projects`);
   const projectLinks = await page.locator(`a[href*="/admin/projects/"]`).evaluateAll((links) =>
     links.map((link) => (link as HTMLAnchorElement).getAttribute("href") ?? "")
-      .filter((href) => new RegExp(`/admin/projects/[^/]+$`).test(href)),
+      .filter((href) => new RegExp(`/admin/projects/[0-9a-f-]{36}$`).test(href)),
   );
   projectId = projectLinks[0]?.split("/").at(-1) ?? "";
   if (projectId) return;
