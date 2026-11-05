@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
-import { Hint, Layout } from "../core/ui";
+import { Hint, Layout, Notice } from "../core/ui";
 import type { AdminEnv, WardEnv } from "../env";
 import type { AnswerSheetReading } from "../ai/schema";
 import type { Reading } from "../ai/schema";
@@ -225,8 +225,8 @@ admin.post("/answers/roster", async (c) => {
 
 admin.get("/answers/:projectId", async (c) => {
   const projectId = c.req.param("projectId");
-  const project = await c.env.DB.prepare("SELECT project_id, title FROM projects WHERE ward_id = ? AND project_id = ?")
-    .bind(c.var.ward.wardId, projectId).first<{ project_id: string; title: string }>();
+  const project = await c.env.DB.prepare("SELECT project_id, title, closed_at FROM projects WHERE ward_id = ? AND project_id = ?")
+    .bind(c.var.ward.wardId, projectId).first<{ project_id: string; title: string; closed_at: string | null }>();
   if (!project) return c.notFound();
   const [answers, unanswered, helpers, deadline, districts, totals, offers] = await Promise.all([
     listAnswers(c.env.DB, c.var.ward.wardId, projectId),
@@ -247,11 +247,12 @@ admin.get("/answers/:projectId", async (c) => {
   return c.html(
     <Layout title={`回答 - ${project.title}`} siteName={c.var.ward.name} noindex adminHomeHref={adminPath(c.var.ward.slug, "/")}>
       <p><a href={adminPath(c.var.ward.slug, "/answers")}>回答の一覧へ</a></p>
-      <h1>{project.title} の回答 <Hint text="集まった回答と未回答の世帯を見ます。電話の回答は代理入力し、紙の回答票は写真から入れられます。" /></h1>
+      <h1>{project.title} の回答 <Hint text={project.closed_at ? "閉じたプロジェクトの回答と未回答の世帯を見る画面です。" : "集まった回答と未回答の世帯を見ます。電話の回答は代理入力し、紙の回答票は写真から入れられます。"} /></h1>
+      {project.closed_at ? <Notice>このプロジェクトは閉じました。回答を入力する時は「報告と閉じる」から「開き直す」を押してください。 <a href={adminPath(c.var.ward.slug, `/close/${projectId}`)}>報告と閉じるへ</a></Notice> : null}
       <p class="panel">世帯の回答: {answers.length} 件。参加人数: {totals.people} 人。世帯の回答にある手伝いの希望: {totals.helperRequests} 件。</p>
       <h2>手伝いだけの申し込み: {offers.length} 件 <Hint text="加入の手続きとは別の申し込みです。世帯の回答や参加人数には加えず、当番表の案を作る材料に入ります。名前と時間帯は、この行事を閉じる時に消します。" /></h2>
       {offers.length === 0 ? <p>手伝いだけの申し込みはまだありません。</p> : <div class="panel" style="overflow-x:auto"><table><thead><tr><th>名前</th><th>手伝える時間帯</th></tr></thead><tbody>{offers.map((offer) => <tr><td>{offer.name}</td><td>{offer.times}</td></tr>)}</tbody></table></div>}
-      <h2>電話の代理入力</h2>
+      {!project.closed_at ? <><h2>電話の代理入力</h2>
       <form method="post" action={adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(projectId)}/phone`)} class="panel">
         <label for="household">世帯名</label><input id="household" name="household" type="text" required maxLength={120} />
         <label for="district">班</label><DistrictSelect districts={districts} />
@@ -267,19 +268,31 @@ admin.get("/answers/:projectId", async (c) => {
         <input type="hidden" name="text" value="" /><input type="hidden" name="project_id" value={projectId} />
         <p id="send-status" class="notice" role="status"></p><button id="send-button" type="submit">回答票を送る</button>
       </form>
-      <script dangerouslySetInnerHTML={{ __html: SEND_SCRIPT }} />
+      <script dangerouslySetInnerHTML={{ __html: SEND_SCRIPT }} /></> : null}
       <h2>回答の一覧</h2>
       {answers.length === 0 ? <p class="panel">回答はまだありません。</p> : <div class="panel" style="overflow-x:auto"><table><thead><tr><th>世帯</th><th>班</th><th>人数</th><th>手伝い</th><th>受け方</th></tr></thead><tbody>{answers.map((a) => <tr><td>{a.household}</td><td>{a.district}</td><td>{a.peopleCount}</td><td>{a.helperName ? `${a.helperName} / ${a.helperTimes}` : ""}</td><td>{a.source === "web" ? "Web" : a.source === "phone" ? "電話" : a.source === "line" ? "LINE" : "回答票"}</td></tr>)}</tbody></table></div>}
       <h2>未回答（班ごと）</h2>
       {unanswered.length === 0 ? <p>名簿はまだありません。</p> : unanswered.map((group) => <section class="panel"><h3>{group.district}</h3>{group.households.length === 0 ? <p>未回答の世帯はありません。</p> : <ul>{group.households.map((name) => <li>{name}</li>)}</ul>}</section>)}
       <h2>催促の一覧（印刷）</h2><p>紙で班長に渡してください。</p><button type="button" onclick="window.print()">印刷する</button>
-      <h2>締切</h2><p>現在の締切: {deadline ?? "未設定"}</p><form method="post" action={adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(projectId)}/deadline`)}><label for="due">締切日（延長する場合は新しい日）</label><input id="due" name="due_on" type="date" value={deadline ?? ""} required /><button type="submit">締切を保存</button></form>
+      <h2>締切</h2><p>現在の締切: {deadline ?? "未設定"}</p>{!project.closed_at ? <form method="post" action={adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(projectId)}/deadline`)}><label for="due">締切日（延長する場合は新しい日）</label><input id="due" name="due_on" type="date" value={deadline ?? ""} required /><button type="submit">締切を保存</button></form> : null}
       <h2>世帯の回答にある手伝いの一覧</h2>
       {helpers.length === 0 ? <p>手伝いの希望はまだありません。</p> : <div class="panel" style="overflow-x:auto"><table><thead><tr><th>名前</th><th>時間帯</th><th>世帯</th><th>班</th></tr></thead><tbody>{helpers.map((helper) => <tr><td>{helper.name}</td><td>{helper.times}</td><td>{helper.household}</td><td>{helper.district}</td></tr>)}</tbody></table></div>}
       <h2>回答票の読み取り</h2>
-      {sheets.results.map((sheet) => <section class="panel"><h3>{sheet.filename}</h3><p><a href={adminPath(c.var.ward.slug, `/intake/originals/${encodeURIComponent(sheet.original_id)}`)}>回答票の原本を開く</a></p>{renderSheetRows(sheet.body, projectId, sheet.original_id, c.var.ward.slug)}</section>)}
+      {sheets.results.map((sheet) => <section class="panel"><h3>{sheet.filename}</h3><p><a href={adminPath(c.var.ward.slug, `/intake/originals/${encodeURIComponent(sheet.original_id)}`)}>回答票の原本を開く</a></p>{renderSheetRows(sheet.body, projectId, sheet.original_id, c.var.ward.slug, !!project.closed_at)}</section>)}
     </Layout>,
   );
+});
+
+admin.use("/answers/:projectId/*", async (c, next) => {
+  if (c.req.method === "POST") {
+    const project = await c.env.DB.prepare("SELECT closed_at FROM projects WHERE ward_id = ? AND project_id = ?")
+      .bind(c.var.ward.wardId, c.req.param("projectId")).first<{ closed_at: string | null }>();
+    if (project?.closed_at) {
+      const message = "このプロジェクトは回答を受け付けていません。回答を直す時は「開き直す」を押してください。";
+      return c.redirect(`${adminPath(c.var.ward.slug, `/close/${encodeURIComponent(c.req.param("projectId"))}`)}?error=${encodeURIComponent(message)}`, 303);
+    }
+  }
+  await next();
 });
 
 admin.post("/answers/:projectId/phone", async (c) => {
@@ -452,7 +465,7 @@ function RosterColumnPicker({ wardSlug, headers, rows }: { wardSlug: string; hea
   </form></Layout>;
 }
 
-function renderSheetRows(body: string | null, projectId: string, originalId: string, wardSlug: string) {
+function renderSheetRows(body: string | null, projectId: string, originalId: string, wardSlug: string, closed: boolean) {
   if (!body) return <p>読み取り中です。時間をおいて開き直してください。</p>;
   let parsed: unknown;
   try {
@@ -472,13 +485,13 @@ function renderSheetRows(body: string | null, projectId: string, originalId: str
       const endpoint = adminPath(wardSlug, `/answers/${encodeURIComponent(projectId)}/sheet/${encodeURIComponent(originalId)}/row/${index}`);
       return <form class="panel" method="post" action={endpoint}>
         <h4>回答 {index + 1}（{row.locator}）</h4>
-        <label for={`sheet-household-${originalId}-${index}`}>世帯名</label><input id={`sheet-household-${originalId}-${index}`} name="household" type="text" value={row.household_name} required maxlength={120} />
-        <label for={`sheet-district-${originalId}-${index}`}>班</label><input id={`sheet-district-${originalId}-${index}`} name="district" type="text" value={row.ward_group} required maxlength={80} />
-        <label for={`sheet-people-${originalId}-${index}`}>参加人数</label><input id={`sheet-people-${originalId}-${index}`} name="people_count" type="number" value={count} min="0" max="1000" required />
-        <label for={`sheet-helper-${originalId}-${index}`}>手伝う人の名前</label><input id={`sheet-helper-${originalId}-${index}`} name="helper_name" type="text" value={row.helper_names.join("、")} maxlength={240} />
-        <label for={`sheet-times-${originalId}-${index}`}>手伝える時間帯</label><input id={`sheet-times-${originalId}-${index}`} name="helper_times" type="text" value={row.helper_slots.join("、")} maxlength={240} />
-        <p>読み取った内容を確認し、必要なら直してから回答に入れてください。</p>
-        <button type="submit">回答に入れる</button>
+        <label for={`sheet-household-${originalId}-${index}`}>世帯名</label><input id={`sheet-household-${originalId}-${index}`} name="household" type="text" value={row.household_name} required maxlength={120} disabled={closed} />
+        <label for={`sheet-district-${originalId}-${index}`}>班</label><input id={`sheet-district-${originalId}-${index}`} name="district" type="text" value={row.ward_group} required maxlength={80} disabled={closed} />
+        <label for={`sheet-people-${originalId}-${index}`}>参加人数</label><input id={`sheet-people-${originalId}-${index}`} name="people_count" type="number" value={count} min="0" max="1000" required disabled={closed} />
+        <label for={`sheet-helper-${originalId}-${index}`}>手伝う人の名前</label><input id={`sheet-helper-${originalId}-${index}`} name="helper_name" type="text" value={row.helper_names.join("、")} maxlength={240} disabled={closed} />
+        <label for={`sheet-times-${originalId}-${index}`}>手伝える時間帯</label><input id={`sheet-times-${originalId}-${index}`} name="helper_times" type="text" value={row.helper_slots.join("、")} maxlength={240} disabled={closed} />
+        {!closed ? <><p>読み取った内容を確認し、必要なら直してから回答に入れてください。</p>
+        <button type="submit">回答に入れる</button></> : null}
       </form>;
     })}
   </>;
