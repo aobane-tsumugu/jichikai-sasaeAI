@@ -49,7 +49,7 @@ PM が二時間ごとの点検で更新します。実施を確認した物だ�
 | 依頼（Codex 宛て） | 触るファイル | 状態 |
 |---|---|---|
 | 手順書の言葉を今の画面に合わせる | docs/RUNBOOK.md | 未着手 |
-| 同じ文の問いを二度足さない | src/ai/mcp.ts、src/project/agent-api.ts、src/project/questions.ts | 未着手 |
+| 同じ文の問いを二度足さない | src/ai/mcp.ts、src/project/agent-api.ts、src/project/questions.ts | 着手（codex/deduplicate-open-questions） |
 | 空間と回答の画面の言葉と試験 | src/answers/index.tsx、src/space/ | 未着手 |
 | 入った物の見え方と今やること | src/intake/pages.tsx、src/project/index.tsx | 未着手 |
 | 来年の種の地図に去年の記録を出す | src/map/ | 未着手 |
