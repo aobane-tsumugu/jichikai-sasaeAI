@@ -48,8 +48,8 @@ admin.get("/answers", async (c) => {
   const rows = await c.env.DB.prepare("SELECT project_id, title, year FROM projects WHERE ward_id = ? ORDER BY year DESC, created_at DESC")
     .bind(c.var.ward.wardId).all<{ project_id: string; title: string; year: number }>();
   return c.html(
-    <Layout title="戻る" siteName={c.var.ward.name} noindex adminHomeHref={adminPath(c.var.ward.slug, "/")}>
-      <h1>戻る</h1>
+    <Layout title="回答" siteName={c.var.ward.name} noindex adminHomeHref={adminPath(c.var.ward.slug, "/")}>
+      <h1>回答</h1>
       <p><a href={`/${c.var.ward.slug}/`} aria-label="区のページ">区のページ</a></p>
       <p><a class="button" href={adminPath(c.var.ward.slug, "/answers/roster")}>名簿を入れる</a></p>
       <h2>回答を確認する</h2>
@@ -239,8 +239,8 @@ admin.get("/answers/:projectId", async (c) => {
      ORDER BY j.created_at DESC`,
   ).bind(c.var.ward.wardId, projectId).all<{ original_id: string; filename: string; job_id: string; body: string | null; status: string }>();
   return c.html(
-    <Layout title={`戻る - ${project.title}`} siteName={c.var.ward.name} noindex adminHomeHref={adminPath(c.var.ward.slug, "/")}>
-      <p><a href={adminPath(c.var.ward.slug, "/answers")}>戻る一覧</a></p>
+    <Layout title={`回答 - ${project.title}`} siteName={c.var.ward.name} noindex adminHomeHref={adminPath(c.var.ward.slug, "/")}>
+      <p><a href={adminPath(c.var.ward.slug, "/answers")}>回答の一覧へ</a></p>
       <h1>{project.title} の回答</h1>
       <p class="panel">参加人数: {totals.people} 人。手伝いの希望: {totals.helperRequests} 件。</p>
       <h2>電話の代理入力</h2>

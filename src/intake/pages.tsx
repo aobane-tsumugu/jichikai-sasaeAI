@@ -7,7 +7,7 @@ import type { AdminEnv } from "../env";
 import { receiveOriginal, ReceiveError, retryJob, withdrawJob } from "./api";
 import { SEND_SCRIPT } from "./browser-script";
 import { projectDirectory } from "./project-port";
-import { getOriginal, listJobs, type JobListItem } from "./store";
+import { getOriginal, getReadings, listJobs, type JobListItem } from "./store";
 import type { JobStatus, OriginalKind } from "./types";
 import { WardBucket } from "../core/storage";
 import type { ReceivePart } from "./receive";
@@ -55,8 +55,14 @@ function isKind(value: string): value is OriginalKind {
   return value === "photo" || value === "file" || value === "text";
 }
 
-function jobTitle(job: JobListItem): string {
-  if (job.first_kind === "text") return "一行の文";
+async function jobTitle(db: D1Database, wardId: string, job: JobListItem): Promise<string> {
+  if (job.first_kind === "text") {
+    const readings = await getReadings(db, wardId, job.job_id);
+    const text = readings.filter((r) => r.source === "direct")
+      .flatMap((r) => "text_blocks" in r.body ? r.body.text_blocks.map((block) => block.text) : [])
+      .join(" ").trim();
+    return text ? `${text.slice(0, 40)}${text.length > 40 ? "…" : ""}` : "一行の文";
+  }
   const name = job.first_filename || (job.first_kind === "photo" ? "撮った写真" : "ファイル");
   return job.original_count > 1 ? `${name} ほか ${job.original_count - 1} 件` : name;
 }
@@ -123,9 +129,9 @@ intakeAdmin.get("/intake", async (c) => {
 
       <h2>入った物</h2>
       {jobs.length === 0 ? <p class="muted">まだ何も入っていません。</p> : null}
-      {jobs.map((job) => (
+      {await Promise.all(jobs.map(async (job) => (
         <div class="panel">
-          <strong>{jobTitle(job)}</strong>
+          <strong>{await jobTitle(c.env.DB, ward.wardId, job)}</strong>
           <div class="muted">{formatTime(job.created_at)}</div>
           <div>{STATUS_LABEL[job.status]}</div>
           {job.status === "failed" ? (
@@ -143,7 +149,7 @@ intakeAdmin.get("/intake", async (c) => {
             </form>
           ) : null}
         </div>
-      ))}
+      )))}
     </Layout>,
   );
 });

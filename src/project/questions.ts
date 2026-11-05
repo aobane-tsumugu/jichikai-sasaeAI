@@ -15,13 +15,14 @@ const MAX_OPTIONS = 6;
 /**
  * 問いを書く。重複を弾く印は差分と同じ作り（原本の ID、包みの版、手の種類、問いの文）で、
  * 同じ問いは二度並ばない。同じ印で kind、target、options、出どころが違えば受けない。
+ * AI からは reuseOpenText を指定し、原本をまたいで未回答の同じ文をまとめる。
  */
 export async function addQuestion(
   db: D1Database,
   wardId: string,
   projectId: string,
   input: QuestionInput,
-  options: Pick<ApplyOptions, "verifyOriginal"> = {},
+  options: Pick<ApplyOptions, "verifyOriginal"> & { reuseOpenText?: boolean } = {},
 ): Promise<AddQuestionResult> {
   const project = await db
     .prepare("SELECT closed_at FROM projects WHERE ward_id = ? AND project_id = ?")
@@ -60,7 +61,16 @@ export async function addQuestion(
     source = normalizeSource(input.source);
   }
 
-  const ref = source?.ref ?? (source ? source.kind : `none:${input.requestId ?? ""}`);
+  if (options.reuseOpenText) {
+    const open = await db.prepare("SELECT question_id, text FROM project_questions WHERE ward_id = ? AND project_id = ? AND state IN ('open', 'later') ORDER BY created_at, question_id")
+      .bind(wardId, projectId).all<{ question_id: string; text: string }>();
+    const same = open.results.find((question) => question.text.trim() === text);
+    if (same) return { status: "same", questionId: same.question_id };
+  }
+
+  const questionId = newId();
+  // AI の問いは未回答の文でまとめる。答えた後には同じ入力からでも新しく作れる。
+  const ref = options.reuseOpenText ? questionId : source?.ref ?? (source ? source.kind : `none:${input.requestId ?? ""}`);
   const dedupeKey = await dedupeKeyOf({ ref, packVersion: input.packVersion, hand: "question", target: text });
   // 保存した形（kind, ref, locator, year）で比べる
   const contentHash = await hashOf({
@@ -71,7 +81,7 @@ export async function addQuestion(
     source: source ? { kind: source.kind, ref: source.ref, locator: source.locator, year: source.year } : null,
   });
 
-  const existing = await db
+  const existing = options.reuseOpenText ? null : await db
     .prepare("SELECT question_id, kind, text, target, detail, source_kind, source_ref, source_locator, source_year FROM project_questions WHERE ward_id = ? AND project_id = ? AND dedupe_key = ?")
     .bind(wardId, projectId, dedupeKey)
     .first<{
@@ -102,7 +112,6 @@ export async function addQuestion(
       : { status: "rejected", reason: "key_reused" };
   }
 
-  const questionId = newId();
   await db
     .prepare(
       `INSERT INTO project_questions
