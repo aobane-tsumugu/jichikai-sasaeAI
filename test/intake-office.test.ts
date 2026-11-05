@@ -148,6 +148,12 @@ describe("Excel の展開", () => {
     expect(await extractOffice((await makeZip(prefixed, false)).buffer as ArrayBuffer)).toEqual(plain);
   });
 
+  it("日付の型のセルを年月日で読む", async () => {
+    const sheet = XLSX["xl/worksheets/sheet1.xml"].replace("</sheetData>", '<row r="9"><c r="A9" t="d"><v>2026-10-22T00:00:00.000Z</v></c></row></sheetData>');
+    const result = await extractOffice(await makeZip({ ...XLSX, "xl/worksheets/sheet1.xml": sheet }, false)) as { tables: { rows: string[][] }[] };
+    expect(JSON.stringify(result.tables)).toContain("2026-10-22");
+  });
+
   it("zip でない物は開けない", async () => {
     await expect(extractOffice(new Uint8Array([1, 2, 3, 4]))).rejects.toThrow();
   });

@@ -198,6 +198,7 @@ export const SEND_SCRIPT = String.raw`(function (root) {
           if (type === 's') value = shared[parseInt(v[1], 10)] || '';
           else if (type === 'b') value = v[1] === '1' ? 'TRUE' : 'FALSE';
           else if (type === 'str' || type === 'e') value = unescapeXml(v[1]);
+          else if (type === 'd') value = v[1].slice(0, 10);
           else value = isDateFormat(xfFormat[style], codes) && v[1] !== '' ? serialToText(parseFloat(v[1])) : v[1];
         }
         if (value === '') continue;
