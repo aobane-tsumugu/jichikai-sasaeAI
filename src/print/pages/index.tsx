@@ -89,11 +89,11 @@ admin.get("/print/:projectId/:documentId/:versionNo/:kind", async (c) => {
   const state = kind === "duty" || kind === "sponsors" ? await getProjectState(c.env.DB, ward.wardId, projectId) : null;
   const current = (table: TableKey) => (state?.tables[table] ?? []).filter((entry) => entry.scope === "current");
   const tableRows = kind === "duty" ? [...current("duties"), ...current("layout")] : kind === "sponsors" ? current("sponsors") : [];
-  const listed = tableRows.slice(0, 20);
-  // 表の行は折り返すと高さが読めないので、表がある時の書き込む欄は残りの高さを埋める一つの欄にし、一枚から溢れないようにする。
-  const blankArea = (label: string, count: number) => listed.length === 0
-    ? Array.from({ length: count }, (_, index) => <FieldBox key={index} label={label} heightMm={16} />)
-    : <div class="field fill"><span class="field-label">書き足す欄（{label}）</span></div>;
+  // 表の行は折り返すと高くなるので、行ごとの高さを見積もり、一枚に入る行と記入欄の数を決める。
+  const fit = fitRows(tableRows);
+  const listed = fit.rows;
+  const blankArea = (label: string, count: number) =>
+    Array.from({ length: Math.min(count, fit.boxes) }, (_, index) => <FieldBox key={index} label={label} heightMm={16} />);
   const printTitle = `${row.title} ${kindLabel(kind)}`;
   return c.html(<PrintDocument title={printTitle}>
     {kind === "announcement" && onOneSheet ? (squads.length ? squads : [""]).map((squad) => <Sheet key={squad} footer={<><span>{ward.name} {squad}</span><span>案内 {versionNo}</span></>}>
@@ -118,7 +118,7 @@ admin.get("/print/:projectId/:documentId/:versionNo/:kind", async (c) => {
       <h1>班長へのお知らせ</h1><p>{row.title}</p><ArticleBody body={row.body} /><p>班: {squad}</p>
       <p>この案内を班の世帯へお渡しください。</p>{paperQr(squad)}
     </Sheet>) : null}
-    {kind === "duty" ? <Sheet fill footer={<>{ward.name} 当番表と配置図</>}>
+    {kind === "duty" ? <Sheet dense={fit.dense} footer={<>{ward.name} 当番表と配置図</>}>
       <div class="float-qr">{paperQr()}</div>
       <h1>{row.title} 当番表と配置図</h1>
       <RowsTable table="duties" rows={listed.filter((entry) => entry.table === "duties")} />
@@ -144,7 +144,7 @@ admin.get("/print/:projectId/:documentId/:versionNo/:kind", async (c) => {
         </>}
       </Sheet>;
     }) : null}
-    {kind === "sponsors" ? <Sheet fill footer={<>{ward.name} 協賛先</>}>
+    {kind === "sponsors" ? <Sheet dense={fit.dense} footer={<>{ward.name} 協賛先</>}>
       <div class="float-qr">{paperQr()}</div>
       <h1>{row.title} 協賛先の一覧</h1>
       <RowsTable table="sponsors" rows={listed} />
@@ -191,10 +191,41 @@ function fitsAboveAnswer(body: string): boolean {
   return bodyLines(body) <= 20;
 }
 
+/** 表に出す列（どれかの行に値がある列）。 */
+function shownFields(table: TableKey, rows: RowView[]) {
+  return Object.entries(TABLES[table].fields).filter(([key]) => rows.some((entry) => entry.data[key] !== undefined && entry.data[key] !== ""));
+}
+
+/**
+ * 一枚に入る表の行と記入欄の数の見積もり。
+ * 一行の高さは文字 10.5pt で 6.3mm、9pt で 5.4mm、枠と余白で 2mm。表の見出しと上の題で 1 表 20mm を見る。
+ */
+function fitRows(rows: RowView[]): { rows: RowView[]; boxes: number; dense: boolean } {
+  const budgetMm = 225;
+  const tables = [...new Set(rows.map((entry) => entry.table))];
+  const heightOf = (lineMm: number) => (entry: RowView) => {
+    // 表は長い中身の列を広げるので、行の文字の合計を一行 40 字で割った数を行数と見る。
+    const fields = shownFields(entry.table, rows.filter((other) => other.table === entry.table));
+    const chars = fields.reduce((sum, [key]) => sum + String(entry.data[key] ?? "").length, 0);
+    return 2 + Math.max(1, Math.ceil(chars / 40)) * lineMm;
+  };
+  const total = (lineMm: number) => tables.length * 20 + rows.reduce((sum, entry) => sum + heightOf(lineMm)(entry), 0);
+  const dense = total(6.3) > budgetMm;
+  const rowMm = heightOf(dense ? 5.4 : 6.3);
+  const kept: RowView[] = [];
+  let used = tables.length * 20;
+  for (const entry of rows) {
+    if (used + rowMm(entry) > budgetMm) break;
+    used += rowMm(entry);
+    kept.push(entry);
+  }
+  return { rows: kept, boxes: Math.max(0, Math.floor((budgetMm - used) / 18)), dense };
+}
+
 /** 今年の中身の表を紙に並べる。空なら何も出さない。 */
 function RowsTable({ table, rows }: { table: TableKey; rows: RowView[] }) {
   if (!rows.length) return null;
-  const fields = Object.entries(TABLES[table].fields).filter(([key]) => rows.some((entry) => entry.data[key] !== undefined && entry.data[key] !== ""));
+  const fields = shownFields(table, rows);
   return <>
     <h2>{TABLES[table].label}</h2>
     <table><thead><tr>{fields.map(([, field]) => <th>{field.label}</th>)}</tr></thead>
