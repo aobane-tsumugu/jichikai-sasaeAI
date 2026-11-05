@@ -48,7 +48,8 @@ admin.get("/projects/:projectId/map", async (c) => {
   return c.html(<Layout title={`地図: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, `/projects/${id}`)}>プロジェクトへ</a>}>
     <h1>{project.title} の地図 <Hint text="仕事の時期と進み具合を見る画面です。仕事の名前を押すと、その仕事や材料、案を開けます。" /></h1>
     <p>時期、仕事、担当を一枚で見られます。仕事を開くと、材料や案、答え、収支へ進めます。</p>
-    {!material ? <p>去年の案内や記録の紙、Word や Excel を、見つかった物から送ってください。全部そろえなくてかまいません。</p> : null}
+    {project.closedAt ? <Notice>このプロジェクトは閉じました。直す時は「報告と閉じる」から「開き直す」を押してください。</Notice>
+      : !material ? <p>去年の案内や記録の紙、Word や Excel を、見つかった物から送ってください。全部そろえなくてかまいません。</p> : null}
     <nav class="action-links">
       <a class="button secondary" href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}`)}>材料を送る</a>
       <a class="button secondary" href={adminPath(ward, `/projects/${id}/draft`)}>案を直す</a>
@@ -94,7 +95,7 @@ admin.get("/projects/:projectId/map", async (c) => {
         <a class="button secondary" href={adminPath(ward, `/space/${id}`)}>空間</a>
         <a class="button secondary" href={adminPath(ward, `/close/${id}`)}>報告と閉じる</a>
       </nav>
-      <details><summary>時期や担当を直す</summary><form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}`)}>
+      {!project.closedAt ? <details><summary>時期や担当を直す</summary><form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}`)}>
         <label for={`name-${task.taskId}`}>仕事</label><input id={`name-${task.taskId}`} name="name" value={task.name} maxlength={100} required />
         <label for={`start-${task.taskId}`}>始める日</label><input id={`start-${task.taskId}`} name="start" type="date" value={task.periodStart ?? ""} />
         <label for={`end-${task.taskId}`}>終わる日</label><input id={`end-${task.taskId}`} name="end" type="date" value={task.periodEnd ?? ""} />
@@ -102,13 +103,25 @@ admin.get("/projects/:projectId/map", async (c) => {
         <label for={`seat-${task.taskId}`}>担当する人</label><select id={`seat-${task.taskId}`} name="seat_id"><option value="">担当を選ぶ</option>{seats.results.map((seat) => <option value={seat.seat_id} selected={seat.seat_id === task.seatId}>{seat.name}</option>)}</select>
         <button class="secondary">保存</button>
       </form>
-      <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}/remove`)}><button class="danger">この仕事を地図から外す</button> {index === 0 ? <Hint text="送った材料やほかの仕事は残し、この仕事だけを今の地図から外します。" /> : null}</form></details>
+      <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}/remove`)}><button class="danger">この仕事を地図から外す</button> {index === 0 ? <Hint text="送った材料やほかの仕事は残し、この仕事だけを今の地図から外します。" /> : null}</form></details> : null}
     </section>)}
-    <h2>仕事を足す</h2><form method="post" action={adminPath(ward, `/projects/${id}/map/add`)}>
+    {!project.closedAt ? <><h2>仕事を足す</h2><form method="post" action={adminPath(ward, `/projects/${id}/map/add`)}>
       <label for="new-task">仕事の名前</label><input id="new-task" name="name" maxlength={100} required /><button>足す</button>
-    </form>
+    </form></> : null}
     <h2>地図から開く場所</h2><p><a href={adminPath(ward, `/projects/${id}`)}>材料、問い、今年の中身</a> / <a href={adminPath(ward, `/projects/${id}/check`)}>公開の下書きを確かめる</a></p>
   </Layout>);
+});
+
+admin.use("/projects/:projectId/map/*", async (c, next) => {
+  if (c.req.method === "POST") {
+    const { ward } = c.var; const id = c.req.param("projectId");
+    const project = await getProjectSummary(c.env.DB, ward.wardId, id);
+    if (project?.closedAt) {
+      const error = encodeURIComponent("このプロジェクトは閉じました。地図を直す時は「開き直す」を押してください。");
+      return c.redirect(`${adminPath(ward, `/close/${id}`)}?error=${error}`, 303);
+    }
+  }
+  await next();
 });
 
 admin.post("/projects/:projectId/map/add", async (c) => { const { ward } = c.var; const f = await c.req.formData(); const ok = await addMapTask(c.env.DB, ward.wardId, c.req.param("projectId"), String(f.get("name") ?? "")); return c.redirect(`${adminPath(ward, `/projects/${c.req.param("projectId")}/map`)}${ok ? "" : "?error=入力を確認してください"}`, 303); });
