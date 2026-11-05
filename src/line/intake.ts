@@ -9,6 +9,7 @@ import { addAnswer, getRoster, normalizeHousehold } from "../answers/api";
 export interface LineOriginal {
   eventId: string;
   senderId: string;
+  senderDisplayName?: string | null;
   sourceType: "user" | "group" | "room";
   receivedAt: string;
   kind: "text" | "image";
@@ -115,7 +116,7 @@ export function createLineIntakePorts(
         candidates,
         summary: item.kind === "text" ? (item.text ?? "") : "LINE から写真が届きました",
         ...(item.kind === "text" && item.text ? { excerpt: item.text } : {}),
-        senderLabel: item.senderId,
+        senderLabel: item.senderDisplayName || item.senderId,
       })))(wardId, original);
       if (result.choice === MATCH_UNRELATED) return { disposition: "unrelated", reason: result.reason };
       if (result.choice === MATCH_NEW) return { disposition: "unmatched", reason: result.reason };

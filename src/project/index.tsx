@@ -10,9 +10,11 @@ import { answerQuestion, renameProject } from "./actions";
 import { PROJECT_KINDS, PROJECT_KIND_LABEL, DEADLINE_LABEL, ITEM_LABEL, TABLES, displayFieldValue, DOCUMENT_KIND_LABEL, SCOPE_LABEL, CONFIDENCE_LABEL, type RowData } from "./model";
 import { setProjectApi } from "../ai/project-binding";
 import { agentApi } from "./agent-api";
+import { followupAdmin } from "./followup";
 
 const admin = new Hono<AdminEnv>();
 setProjectApi(agentApi);
+admin.route("/", followupAdmin);
 
 admin.get("/projects", async (c) => {
   const { ward } = c.var;
@@ -20,6 +22,7 @@ admin.get("/projects", async (c) => {
   return c.html(<Layout title="プロジェクト" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>プロジェクト</h1>
     <p><a class="button secondary" href={adminPath(ward, "/projects/today")}>今やること</a></p>
+    <p><a class="button secondary" href={adminPath(ward, "/requests/city")}>行政の依頼</a> <a class="button secondary" href={adminPath(ward, "/inquiries")}>問い合わせと要望</a> <a class="button secondary" href={adminPath(ward, "/ledger")}>帳簿</a></p>
     {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}
     {projects.map((p) => <section class="panel"><h2><a href={adminPath(ward, `/projects/${p.projectId}`)}>{p.title}</a></h2>
       <p>{PROJECT_KIND_LABEL[p.kind]} / {p.year}年</p>
@@ -94,6 +97,7 @@ admin.get("/projects/:projectId", async (c) => {
   ];
   return c.html(<Layout title={project.title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/projects")}>プロジェクト一覧</a>}>
     <h1>{project.title}</h1>
+    <p><a href={adminPath(ward, "/requests/city")}>行政の依頼</a> | <a href={adminPath(ward, "/inquiries")}>問い合わせと要望</a> | <a href={adminPath(ward, "/ledger")}>帳簿</a></p>
     <nav><a href={adminPath(ward, `/projects/${projectId}/map`)}>地図</a> | <a href={adminPath(ward, `/projects/${projectId}/draft`)}>案</a> | <a href={adminPath(ward, `/projects/${projectId}/check`)}>混入を確かめる</a> | <a href={adminPath(ward, `/publish/${projectId}`)}>配る</a></nav>
     <form method="post" action={adminPath(ward, `/projects/${projectId}/title`)}><label for="title">題を直す</label><input id="title" name="title" value={project.title} maxlength={100} required /><button class="secondary">保存</button></form>
     <p>{PROJECT_KIND_LABEL[project.kind]} / {project.year}年</p>
@@ -125,7 +129,8 @@ admin.get("/projects/:projectId", async (c) => {
     {changes.results.length === 0 ? <p>まだ変わった所はありません。</p> : null}
     <h2>今年の中身</h2>
     {state.items.map((item) => <section class="panel"><strong>{item.label}</strong><p>{item.current?.content ?? "まだ入っていません"}</p>{item.references.map((v) => <p>参考（{v.refYear ?? "年不明"}年）: {v.content}</p>)}</section>)}
-    <h2 id="ledger">収支（記録のみ）</h2>
+    <h2 id="ledger">収支</h2>
+    <p>領収書の読み取り結果はこの記録に入ります。年の集約、予算との比較、決算の下書きは <a href={adminPath(ward, "/ledger")}>帳簿</a> で確認できます。</p>
     <table><thead><tr><th>相手</th><th>収入か支出</th><th>額</th><th>日付</th><th>メモ</th></tr></thead><tbody>{ledgerRows.map((row) => <tr>{Object.keys(TABLES.ledger.fields).map((key) => <td>{displayFieldValue("ledger", key, row.data[key])}</td>)}</tr>)}</tbody></table>
     <h2>入った物と文書</h2>
     {state.documents.map((d) => <p>{DOCUMENT_KIND_LABEL[d.kind]} / {SCOPE_LABEL[d.scope]}{d.stale ? " / 新しい物が入っています" : ""}</p>)}

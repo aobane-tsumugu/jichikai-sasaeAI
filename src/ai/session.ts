@@ -2,6 +2,7 @@
 // プロジェクトの中は一つずつ（同じプロジェクトで繋げているのが無い時だけ、次を開く）。
 // agent に渡す手は MCP の五つだけで、read、bash などは付けない（agent_toolset を渡さない）。原本は渡さない。
 import { nowIso } from "../core/ids";
+import type Anthropic from "@anthropic-ai/sdk";
 import type { Env } from "../env";
 import { sha256Hex } from "../intake/media";
 import { projectDirectory } from "../intake/project-port";
@@ -19,6 +20,20 @@ export const SESSION_BUDGET_CENTS = 10_000;
 /** 繋げるの試行の上限。超えたら failed（役員が「もう一度」を押せる）。 */
 export const CONNECT_MAX_ATTEMPTS = 3;
 const SETUP_LEASE_MS = 120_000;
+
+function toolArguments(input: unknown, ticket: string): Record<string, unknown> {
+  const args: Record<string, unknown> = {};
+  if (input !== null && typeof input === "object" && !Array.isArray(input)) Object.assign(args, input);
+  args.ticket = ticket;
+  return args;
+}
+
+/** 区ごとの予備経路の設定。既定は Managed Agents。 */
+export async function setWorkersRoute(db: D1Database, wardId: string, enabled: boolean): Promise<void> {
+  await db.prepare(`INSERT INTO ward_ai_route_flags (ward_id, use_workers_route, updated_at) VALUES (?, ?, ?)
+    ON CONFLICT (ward_id) DO UPDATE SET use_workers_route = excluded.use_workers_route, updated_at = excluded.updated_at`)
+    .bind(wardId, enabled ? 1 : 0, nowIso()).run();
+}
 
 export class AiSetupBusy extends Error {
   constructor() {
@@ -205,10 +220,20 @@ export async function dispatchProject(env: Env, wardId: string, projectId: strin
       .first();
     return busy ? "busy" : "empty";
   }
-  const job = await env.DB.prepare("SELECT * FROM jobs WHERE ticket_hash = ?").bind(hash).first<JobRow>();
+  const job = await env.DB.prepare("SELECT * FROM jobs WHERE ward_id = ? AND ticket_hash = ?").bind(wardId, hash).first<JobRow>();
   if (!job) return "failed";
   try {
-    await openSession(env, job, ticket);
+    const fallback = await env.DB.prepare("SELECT use_workers_route FROM ward_ai_route_flags WHERE ward_id = ?")
+      .bind(wardId).first<{ use_workers_route: number }>();
+    if (fallback?.use_workers_route === 1) {
+      try {
+        await runWorkersRoute(env, job, ticket);
+      } catch {
+        return "failed";
+      }
+    } else {
+      await openSession(env, job, ticket);
+    }
     return "started";
   } catch (err) {
     console.error("セッションを開けませんでした", wardId, job.job_id, err instanceof Error ? `${err.name}: ${err.message}` : "不明な失敗");
@@ -221,6 +246,88 @@ export async function dispatchProject(env: Env, wardId: string, projectId: strin
       .bind(exhausted ? "failed" : "read", exhausted ? "connect" : "", exhausted ? nowIso() : null, nowIso(), wardId, job.job_id)
       .run();
     return exhausted ? "failed" : "retry";
+  }
+}
+
+/** 区の旗が立っている時は、同じ包みと五つの手を Messages API の手の呼び出しで回す。 */
+async function runWorkersRoute(env: Env, job: JobRow, ticket: string): Promise<void> {
+  const { callTool, TOOLS } = await import("./mcp");
+  const client = getClient(env);
+  const startedAt = nowIso();
+  await startRun(env.DB, {
+    wardId: job.ward_id,
+    jobId: job.job_id,
+    kind: "connect",
+    attempt: job.connect_attempt,
+    model: MODEL.main,
+  });
+  const messages: Anthropic.Messages.MessageParam[] = [
+    { role: "user", content: firstMessage({ ticket, task: job.task, instruction: job.instruction }) },
+  ];
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let toolCalls = 0;
+  let toolErrors = 0;
+  let lastMessage = "";
+  let finished = false;
+  try {
+    for (let turn = 0; turn < 12; turn += 1) {
+      const response = await client.messages.create({
+        model: MODEL.main,
+        max_tokens: 4096,
+        system: PACK_SYSTEM,
+        messages,
+        tools: TOOLS.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          input_schema: { ...tool.inputSchema, required: [...tool.inputSchema.required] },
+        })),
+      });
+      inputTokens += response.usage.input_tokens;
+      outputTokens += response.usage.output_tokens;
+      const content = response.content;
+      messages.push({ role: "assistant", content });
+      const calls = content.filter((block) => block.type === "tool_use");
+      const text = content.filter((block) => block.type === "text").map((block) => block.text).join(" ");
+      if (text) lastMessage = text.slice(0, 400);
+      if (calls.length === 0) {
+        finished = response.stop_reason === "end_turn";
+        break;
+      }
+      const results: Anthropic.Messages.ToolResultBlockParam[] = [];
+      for (const call of calls) {
+        const result = await callTool(env, job.ward_id, call.name, toolArguments(call.input, ticket));
+        toolCalls += 1;
+        if (result.isError) toolErrors += 1;
+        results.push({ type: "tool_result", tool_use_id: call.id, content: result.content[0]?.text ?? "", ...(result.isError ? { is_error: true } : {}) });
+      }
+      messages.push({ role: "user", content: results });
+    }
+    if (!finished) throw new Error("予備の列が完了前に手数の上限へ達しました");
+    const now = nowIso();
+    await env.DB.prepare(`UPDATE jobs SET status = 'done', failure = '', stop_reason = 'end_turn', ticket_hash = NULL,
+      finished_at = ?, updated_at = ? WHERE ward_id = ? AND job_id = ? AND status = 'connecting' AND ticket_hash = ?`)
+      .bind(now, now, job.ward_id, job.job_id, await sha256Hex(ticket)).run();
+    const cents = Math.round(inputTokens * 0.0002 + outputTokens * 0.001);
+    await env.DB.prepare(`UPDATE job_runs SET status = 'ok', input_tokens = ?, output_tokens = ?, list_cost_cents = ?,
+      agent_tool_calls = ?, agent_tool_errors = ?, agent_errors = '[]', agent_summary = ?, duration_ms = ?, ended_at = ?
+      WHERE ward_id = ? AND job_id = ? AND kind = 'connect' AND ended_at IS NULL`)
+      .bind(inputTokens, outputTokens, cents, toolCalls, toolErrors, lastMessage, Date.now() - Date.parse(startedAt), now, job.ward_id, job.job_id).run();
+    if (job.project_id) await dispatchProject(env, job.ward_id, job.project_id).catch((error) =>
+      console.error("予備の列の次の入力を始められませんでした", job.ward_id, error instanceof Error ? error.name : ""));
+  } catch (error) {
+    const now = nowIso();
+    await env.DB.prepare(`UPDATE jobs SET status = 'failed', failure = 'connect', stop_reason = 'workers_route_error',
+      ticket_hash = NULL, finished_at = ?, updated_at = ? WHERE ward_id = ? AND job_id = ? AND status = 'connecting'`)
+      .bind(now, now, job.ward_id, job.job_id).run();
+    await env.DB.prepare(`UPDATE job_runs SET status = 'error', error = ?, input_tokens = ?, output_tokens = ?,
+      list_cost_cents = ?, agent_tool_calls = ?, agent_tool_errors = ?, agent_summary = ?, duration_ms = ?, ended_at = ?
+      WHERE ward_id = ? AND job_id = ? AND kind = 'connect' AND ended_at IS NULL`)
+      .bind(error instanceof Error ? error.message.slice(0, 200) : "不明な失敗", inputTokens, outputTokens,
+        Math.round(inputTokens * 0.0002 + outputTokens * 0.001), toolCalls, toolErrors, lastMessage,
+        Date.now() - Date.parse(startedAt), now, job.ward_id, job.job_id).run();
+    if (job.project_id) await dispatchProject(env, job.ward_id, job.project_id).catch(() => undefined);
+    throw error;
   }
 }
 

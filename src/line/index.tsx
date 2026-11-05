@@ -18,11 +18,13 @@ interface InboxRow {
   disposition: "unmatched" | "matched";
   matched_project_name: string | null;
   match_reason: string | null;
+  sender_display_name: string | null;
+  sender_label: string | null;
 }
 
 export async function listInboxItems(db: D1Database, wardId: string): Promise<InboxRow[]> {
   const result = await db.prepare(`
-    SELECT item_id, original_kind, original_text, received_at, disposition,
+    SELECT item_id, original_kind, original_text, received_at, disposition, sender_display_name, sender_label,
       matched_project_name, match_reason
     FROM line_inbox_items
     WHERE ward_id = ?
@@ -80,6 +82,7 @@ admin.get("/inbox", async (c) => {
         <section class="panel" key={item.item_id}>
           <p><strong>{item.disposition === "matched" ? "AI が当てました" : "プロジェクト未定"}</strong></p>
           <p>{new Date(item.received_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}</p>
+          <p>投稿者: {item.sender_display_name || "名前を取得できませんでした"}（{item.sender_label || "LINE"}）</p>
           <p><a href={`/${slug}/admin/inbox/${encodeURIComponent(item.item_id)}/original`}>{item.original_kind === "text" ? "届いた文を開く" : "届いた写真を開く"}</a></p>
           {item.matched_project_name ? <p>当て先: {item.matched_project_name}</p> : null}
           {item.match_reason ? <p>{item.match_reason}</p> : null}
