@@ -10,6 +10,7 @@ const EXPORT_TABLES = [
   "jobs", "originals", "readings", "job_runs", "job_tool_calls", "paper_reading_slices",
   "projects", "project_deadlines", "project_changes", "project_item_values", "project_rows", "documents",
   "document_versions", "project_questions", "project_map_tasks", "publication_records", "project_activity_pages",
+  "inquiry_records", "city_request_details", "ward_annual_budgets",
   "ward_roster_entries", "ward_roster_settings", "project_answers", "project_spaces", "project_space_invites",
   "project_space_members", "line_channels", "line_webhook_receipts", "line_inbox_items", "line_unrelated_daily_counts",
   "project_close_map", "project_close_reports", "archive_search_entries",
