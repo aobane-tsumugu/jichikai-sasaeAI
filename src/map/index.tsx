@@ -29,9 +29,9 @@ admin.get("/projects/:projectId/map", async (c) => {
   const min = tasks.map((t) => t.periodStart).filter((x): x is string => !!x).sort()[0] ?? `${project.year}-01-01`;
   const max = tasks.map((t) => t.periodEnd).filter((x): x is string => !!x).sort().at(-1) ?? `${project.year}-12-31`;
   const start = Date.parse(`${min}T00:00:00Z`); const span = Math.max(1, Date.parse(`${max}T00:00:00Z`) - start);
-  const gutter = 230; const barWidth = 640;
-  const positions = tasks.map((t, i) => ({ task: t, y: 52 + i * 54, x: (d: string | null) => d ? gutter + (Date.parse(`${d}T00:00:00Z`) - start) / span * barWidth : gutter + i * 45 }));
-  const mapHeight = Math.max(120, tasks.length * 54 + 44);
+  const gutter = 270; const barWidth = 440;
+  const positions = tasks.map((t, i) => ({ task: t, y: 56 + i * 62, x: (d: string | null) => d ? gutter + (Date.parse(`${d}T00:00:00Z`) - start) / span * barWidth : gutter + i * 45 }));
+  const mapHeight = Math.max(120, tasks.length * 62 + 56);
   const todayX = today >= min && today <= max ? gutter + (Date.parse(`${today}T00:00:00Z`) - start) / span * barWidth : null;
   const monthDay = (d: string) => `${Number(d.slice(5, 7))}月${Number(d.slice(8, 10))}日`;
   return c.html(<Layout title={`地図: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, `/projects/${id}`)}>プロジェクトへ</a>}>
@@ -49,14 +49,14 @@ admin.get("/projects/:projectId/map", async (c) => {
     {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}
     <h2>今の時期に開いている仕事</h2>
     {currentTasks.length ? currentTasks.map((task) => <p><a href={`#task-${task.taskId}`}>{task.name}</a></p>) : <p>今の時期に開いている仕事はありません。</p>}
-    <div style="overflow-x:auto"><svg viewBox={`0 0 900 ${mapHeight}`} role="img" aria-label="プロジェクトの仕事の時期と進み具合" style="min-width:680px;width:100%;height:auto">
+    <div style="overflow-x:auto"><svg viewBox={`0 0 720 ${mapHeight}`} role="img" aria-label="プロジェクトの仕事の時期と進み具合" style="min-width:680px;width:100%;height:auto">
       <line x1={gutter} y1="24" x2={gutter + barWidth} y2="24" stroke="currentColor" />
-      <text x={gutter} y="16" font-size="14">{monthDay(min)}</text><text x={gutter + barWidth} y="16" font-size="14" text-anchor="end">{monthDay(max)}</text>
-      {todayX === null ? null : <g><line x1={todayX} y1="24" x2={todayX} y2={mapHeight} stroke="#b3452c" stroke-dasharray="4 4" /><text x={todayX} y="16" font-size="14" text-anchor="middle" fill="#b3452c">今日</text></g>}
+      <text x={gutter} y="16" font-size="16">{monthDay(min)}</text><text x={gutter + barWidth} y="16" font-size="16" text-anchor="end">{monthDay(max)}</text>
+      {todayX === null ? null : <g><line x1={todayX} y1="24" x2={todayX} y2={mapHeight - 20} stroke="#b3452c" stroke-dasharray="4 4" /><text x={todayX} y={mapHeight - 4} font-size="16" text-anchor="middle" fill="#b3452c">今日</text></g>}
       {positions.map(({ task, y, x }) => <a href={`#task-${task.taskId}`}>
-        <text x="8" y={y} font-size="15" font-weight="500">{task.name}</text>
-        <text x="8" y={y + 19} font-size="13" opacity="0.75">{task.progress === "done" ? "済み" : task.progress === "started" ? "進行中" : "これから"}{task.seatId ? ` / ${seats.results.find((s) => s.seat_id === task.seatId)?.name ?? "担当あり"}` : ""}</text>
-        <line x1={x(task.periodStart)} y1={y} x2={Math.max(x(task.periodStart) + 12, x(task.periodEnd))} y2={y} stroke={task.progress === "done" ? "#287a43" : task.progress === "started" ? "#2b6d9a" : "#9db4c4"} stroke-width="12" stroke-linecap="round" />
+        <text x="0" y={y} font-size="17" font-weight="500">{task.name}</text>
+        <text x="0" y={y + 22} font-size="15" opacity="0.75">{task.progress === "done" ? "済み" : task.progress === "started" ? "進行中" : "これから"}{task.seatId ? ` / ${seats.results.find((s) => s.seat_id === task.seatId)?.name ?? "担当あり"}` : ""}</text>
+        <line x1={x(task.periodStart)} y1={y} x2={Math.max(x(task.periodStart) + 12, x(task.periodEnd))} y2={y} stroke={task.progress === "done" ? "#287a43" : task.progress === "started" ? "#2b6d9a" : "#9db4c4"} stroke-width="14" stroke-linecap="round" />
       </a>)}
     </svg></div>
     {tasks.map((task) => <section class="panel" id={`task-${task.taskId}`}><h2>{task.name}</h2><p>{task.periodStart ?? "時期未定"} から {task.periodEnd ?? "時期未定"}</p>
