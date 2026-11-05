@@ -7,7 +7,7 @@ import type { AdminEnv } from "../env";
 import { createProject, getProjectSummary, listProjects, ProjectInputError } from "../project/api";
 import { PROJECT_KINDS, PROJECT_KIND_LABEL, type ProjectKind } from "../project/model";
 import { addDays } from "../map/template";
-import { ARCHIVE_RECORD_TYPES, searchArchive } from "./search";
+import { ARCHIVE_RECORD_TYPES, findFragments, searchArchive } from "./search";
 import type { ArchiveRecordType } from "./search";
 import { createAnthropic, MODEL } from "../ai/anthropic";
 import { runSnapshotCron } from "./snapshot";
@@ -72,22 +72,22 @@ admin.get("/archive/search", async (c) => {
   const rawProjectKind = c.req.query("kind");
   const projectKind = PROJECT_KINDS.includes(rawProjectKind as ProjectKind) ? rawProjectKind as ProjectKind : undefined;
   const counterpart = c.req.query("counterpart") ?? "";
-  const results = query.trim().length >= 3 ? await searchArchive(c.env.DB, ward.wardId, { query, year, recordType, projectKind, counterpart, limit: 30 }) : [];
+  const results = query.trim().length >= 2 ? await searchArchive(c.env.DB, ward.wardId, { query, year, recordType, projectKind, counterpart, limit: 30 }) : [];
   const years = [...new Set((await listProjects(c.env.DB, ward.wardId, { includeClosed: true })).map((p) => p.year))].sort((a, b) => b - a);
   const labels: Record<ArchiveRecordType, string> = { reading: "読み取り", decision: "決めたこと", report: "報告", map: "地図" };
   return c.html(<Layout title="記録を探す" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/archive")}>記録</a>}>
     <h1>記録を探す</h1>
-    <p>三文字以上で探します。年、種類、相手の名前で絞れます。</p>
+    <p>二文字以上で探します。年、種類、相手の名前で絞れます。</p>
     <form method="get" action={adminPath(ward, "/archive/search")}>
-      <label for="q">言葉</label><input id="q" name="q" type="text" value={query} minlength={3} required />
+      <label for="q">言葉</label><input id="q" name="q" type="text" value={query} minlength={2} required />
       <label for="year">年</label><select id="year" name="year"><option value="">すべて</option>{years.map((value) => <option value={value} selected={year === value}>{value}年</option>)}</select>
       <label for="kind">プロジェクトの種類</label><select id="kind" name="kind"><option value="">すべて</option>{PROJECT_KINDS.map((value) => <option value={value} selected={projectKind === value}>{PROJECT_KIND_LABEL[value]}</option>)}</select>
       <label for="type">記録の種類</label><select id="type" name="type"><option value="">すべて</option>{ARCHIVE_RECORD_TYPES.map((value) => <option value={value} selected={recordType === value}>{labels[value]}</option>)}</select>
       <label for="counterpart">相手の名前</label><input id="counterpart" name="counterpart" type="text" value={counterpart} />
       <p><button>探す</button></p>
     </form>
-    {query.trim().length > 0 && query.trim().length < 3 ? <p class="notice">三文字以上入れてください。</p> : null}
-    {query.trim().length >= 3 ? <h2>見つかった記録（最大30件）</h2> : null}
+    {query.trim().length === 1 ? <p class="notice">二文字以上入れてください。</p> : null}
+    {query.trim().length >= 2 ? <h2>見つかった記録（最大30件）</h2> : null}
     {results.map((result) => <article class="panel">
       <p>{result.year}年 / {PROJECT_KIND_LABEL[result.project_kind as ProjectKind]} / {labels[result.record_type]}</p>
       <h2><a href={adminPath(ward, `/archive/${result.project_id}`)}>{result.title}</a></h2>
@@ -95,7 +95,7 @@ admin.get("/archive/search", async (c) => {
       <p>{result.excerpt}</p>
       {result.source_id ? <p><a href={adminPath(ward, `/intake/originals/${result.source_id}`)}>元の箇所へ戻る</a>{result.locator ? `（${result.locator}）` : null}</p> : null}
     </article>)}
-    {query.trim().length >= 3 && results.length === 0 ? <p>見つかりませんでした。</p> : null}
+    {query.trim().length >= 2 && results.length === 0 ? <p>見つかりませんでした。</p> : null}
     <h2>記録に聞く</h2>
     <p>記録から分かることを尋ねます。元の箇所も一緒に表示します。</p>
     <form method="post" action={adminPath(ward, "/archive/ask")}>
@@ -110,7 +110,7 @@ admin.post("/archive/ask", async (c) => {
   const form = await c.req.formData();
   const question = String(form.get("question") ?? "").trim().slice(0, 300);
   if (question.length < 3) return c.redirect(adminPath(ward, "/archive/search"), 303);
-  const fragments = await searchArchive(c.env.DB, ward.wardId, { query: question, limit: 8 });
+  const fragments = await findFragments(c.env.DB, ward.wardId, question, 8);
   if (fragments.length === 0) return c.html(<Layout title="記録に聞く" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>記録に聞く</h1><p>記録の中に答えは見つかりませんでした。</p><p><a href={adminPath(ward, "/archive/search")}>記録を探す</a></p>
   </Layout>);
