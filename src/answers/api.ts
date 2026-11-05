@@ -194,11 +194,14 @@ export async function addAnswer(db: D1Database, wardId: string, input: AnswerInp
       "SELECT answer_id FROM project_answers WHERE ward_id = ? AND project_id = ? AND original_id = ? AND sheet_row_index = ?",
     ).bind(wardId, input.projectId, input.originalId, input.sheetRowIndex).first<{ answer_id: string }>();
     if (existing) {
-      await db.prepare(
+      const result = await db.prepare(
         `UPDATE project_answers SET household = ?, district = ?, people_count = ?, helper_name = ?, helper_times = ?, created_by_account_id = ?
-         WHERE ward_id = ? AND project_id = ? AND original_id = ? AND sheet_row_index = ?`,
+         WHERE ward_id = ? AND project_id = ? AND original_id = ? AND sheet_row_index = ?
+           AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = project_answers.ward_id
+             AND p.project_id = project_answers.project_id AND p.closed_at IS NULL)`,
       ).bind(input.household.trim(), input.district.trim(), input.peopleCount, input.helperName?.trim() ?? "", input.helperTimes?.trim() ?? "",
         input.accountId ?? null, wardId, input.projectId, input.originalId, input.sheetRowIndex).run();
+      if ((result.meta.changes ?? 0) === 0) throw new Error("このプロジェクトは回答を受け付けていません。");
       return existing.answer_id;
     }
   }

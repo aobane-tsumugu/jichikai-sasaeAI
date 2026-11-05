@@ -319,9 +319,16 @@ admin.post("/answers/:projectId/sheet/:originalId/row/:rowIndex", async (c) => {
   const rowIndex = Number(c.req.param("rowIndex"));
   if (!household || !district || !Number.isInteger(peopleCount) || peopleCount < 0 || peopleCount > 1000 || !Number.isInteger(rowIndex) || rowIndex < 0) return c.text("読み取りを確認してください。", 400);
   const originalId = c.req.param("originalId");
-  const link = await c.env.DB.prepare("SELECT o.original_id FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id WHERE o.ward_id = ? AND o.original_id = ? AND j.project_id = ? AND j.read_kind = 'answer_sheet'")
-    .bind(c.var.ward.wardId, originalId, c.req.param("projectId")).first();
+  const link = await c.env.DB.prepare(`SELECT o.original_id, p.closed_at FROM originals o
+    JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
+    JOIN projects p ON p.ward_id = j.ward_id AND p.project_id = j.project_id
+    WHERE o.ward_id = ? AND o.original_id = ? AND j.project_id = ? AND j.read_kind = 'answer_sheet'`)
+    .bind(c.var.ward.wardId, originalId, c.req.param("projectId")).first<{ original_id: string; closed_at: string | null }>();
   if (!link) return c.notFound();
+  if (link.closed_at) {
+    const message = "このプロジェクトは回答を受け付けていません。回答を直す時は「開き直す」を押してください。";
+    return c.redirect(`${adminPath(c.var.ward.slug, `/close/${encodeURIComponent(c.req.param("projectId"))}`)}?error=${encodeURIComponent(message)}`, 303);
+  }
   await addAnswer(c.env.DB, c.var.ward.wardId, {
     projectId: c.req.param("projectId"), household, district, peopleCount, helperName, helperTimes,
     source: "sheet", originalId, sheetRowIndex: rowIndex, accountId: c.var.account.accountId,
