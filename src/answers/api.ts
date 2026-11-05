@@ -1,5 +1,6 @@
 import { newId, nowIso } from "../core/ids";
 import { SETTING_KEYS } from "../settings/keys";
+import { listHelpOffers } from "./help";
 
 export interface RosterEntry {
   household: string;
@@ -284,8 +285,9 @@ export async function getAnswerTotals(db: D1Database, wardId: string, projectId:
 }
 
 /** 束 3 の当番表の下書きが受け取る、回答から集めた手伝い希望。 */
-export function getDutyDraftHelpers(db: D1Database, wardId: string, projectId: string): Promise<HelperRequest[]> {
-  return listHelperRequests(db, wardId, projectId);
+export async function getDutyDraftHelpers(db: D1Database, wardId: string, projectId: string): Promise<HelperRequest[]> {
+  const [helpers, offers] = await Promise.all([listHelperRequests(db, wardId, projectId), listHelpOffers(db, wardId, projectId)]);
+  return [...helpers, ...offers.map((offer) => ({ name: offer.name, times: offer.times, household: "", district: "", answerId: offer.offerId }))];
 }
 
 export async function setAnswerDeadline(db: D1Database, wardId: string, projectId: string, dueOn: string, accountId: string): Promise<void> {

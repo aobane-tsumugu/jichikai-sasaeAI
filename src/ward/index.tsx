@@ -1,9 +1,10 @@
 import { Hono } from "hono";
-import { Layout } from "../core/ui";
+import { Hint, Layout } from "../core/ui";
 import type { Bundle } from "../core/bundle";
 import type { WardEnv } from "../env";
-import { getPublicContact, getSetting } from "../settings/store";
+import { getOfficialLineUrl, getPublicContact, getSetting } from "../settings/store";
 import { ArticleBody } from "../publish";
+import { listHelpOpportunities } from "../answers/help";
 
 interface PublicProject {
   project_id: string;
@@ -17,7 +18,6 @@ interface PublicProject {
 }
 
 interface PublicActivity { project_id: string; title: string; published_at: string; published_body: string; }
-interface HelpOpportunity { project_id: string; title: string; }
 interface ActivityTask { taskId: string; name: string; period: string; }
 interface ActivityBody { introduction: string; membershipBurden: string; membershipBenefit: string; tasks: ActivityTask[]; }
 
@@ -51,7 +51,7 @@ async function pageFooter(c: { env: { DB: D1Database }; var: { ward: { wardId: s
   const contact = await getPublicContact(c.env.DB, c.var.ward.wardId);
   const [purpose, lineUrl] = await Promise.all([
     getSetting(c.env.DB, c.var.ward.wardId, "privacy_notice"),
-    getSetting(c.env.DB, c.var.ward.wardId, "official_line_url"),
+    getOfficialLineUrl(c.env.DB, c.var.ward.wardId),
   ]);
   return <>
     <h2>回答する</h2>
@@ -68,12 +68,14 @@ async function pageFooter(c: { env: { DB: D1Database }; var: { ward: { wardId: s
 const pub = new Hono<WardEnv>();
 
 pub.get("/", async (c) => {
-  const [items, activities] = await Promise.all([
+  const [items, activities, opportunities, lineUrl] = await Promise.all([
     listPublic(c.env.DB, c.var.ward.wardId),
     c.env.DB.prepare(`SELECT a.project_id, p.title, a.published_at, a.published_body
       FROM project_activity_pages a JOIN projects p ON p.ward_id = a.ward_id AND p.project_id = a.project_id
       WHERE a.ward_id = ? AND a.published_at IS NOT NULL AND a.published_body IS NOT NULL ORDER BY a.published_at DESC`)
       .bind(c.var.ward.wardId).all<PublicActivity>(),
+    listHelpOpportunities(c.env.DB, c.var.ward.wardId),
+    getOfficialLineUrl(c.env.DB, c.var.ward.wardId),
   ]);
   const uniqueItems = new Map<string, PublicProject>();
   for (const item of items) if (!uniqueItems.has(item.project_id)) uniqueItems.set(item.project_id, item);
@@ -81,6 +83,15 @@ pub.get("/", async (c) => {
   return c.html(<Layout title={`${c.var.ward.name}のお知らせ`} siteName={c.var.ward.name}>
     <h1>{c.var.ward.name}のお知らせ</h1>
     {c.env.DEMO_NOTICE ? <p class="muted">{c.env.DEMO_NOTICE}</p> : null}
+    {opportunities.length ? <section class="panel">
+      <h2><a href={`/${c.var.ward.slug}/help`}>一回だけ手伝える募集</a> <Hint text="自治会に加入していない人も、名前と手伝える時間帯だけで申し込めます。" /></h2>
+      <p>加入せずに、一回だけ手伝えます。募集中の行事を見て、関わり方を選べます。</p>
+    </section> : null}
+    {lineUrl ? <section class="panel">
+      <h2>新しい案内や変更を受け取る</h2>
+      <p><a href={lineUrl}>区の公式 LINE を友だちに追加する（任意）</a></p>
+      <p>友だち追加は任意です。名前や世帯を登録する必要はありません。</p>
+    </section> : null}
     {unique.length === 0 ? <p>公開中のお知らせはありません。</p> : unique.map((item) => <section class="panel" key={item.project_id}>
       <h2><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(item.project_id)}`}>{item.title}</a></h2>
       <p>更新: {new Date(item.published_at).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}</p>
@@ -124,22 +135,14 @@ pub.get("/work/:projectId", async (c) => {
 });
 
 pub.get("/help", async (c) => {
-  const today = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date());
-  const opportunities = await c.env.DB.prepare(`SELECT DISTINCT p.project_id, p.title
-    FROM projects p JOIN documents d ON d.ward_id = p.ward_id AND d.project_id = p.project_id
-    JOIN publication_records r ON r.ward_id = d.ward_id AND r.project_id = d.project_id AND r.document_id = d.document_id
-    LEFT JOIN project_deadlines deadline ON deadline.ward_id = p.ward_id AND deadline.project_id = p.project_id AND deadline.kind = 'answer_due'
-    WHERE p.ward_id = ? AND p.closed_at IS NULL AND d.kind = 'recruitment' AND d.scope = 'public' AND r.unpublished_at IS NULL
-      AND (deadline.due_on IS NULL OR deadline.due_on >= ?)
-    ORDER BY p.title`)
-    .bind(c.var.ward.wardId, today).all<HelpOpportunity>();
+  const opportunities = await listHelpOpportunities(c.env.DB, c.var.ward.wardId);
   return c.html(<Layout title="一回だけ手伝える募集" siteName={c.var.ward.name}>
     <p><a href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のページへ</a></p>
     <h1>一回だけ手伝える募集</h1>
     <p>自治会への加入は必要ありません。手伝える行事を選んでください。</p>
-    {opportunities.results.length ? opportunities.results.map((item) => <section class="panel">
+    {opportunities.length ? opportunities.map((item) => <section class="panel">
       <h2>{item.title}</h2>
-      <p><a href={`/${c.var.ward.slug}/answer/${encodeURIComponent(item.project_id)}`}>この行事に手伝いを申し込む</a></p>
+      <p><a href={`/${c.var.ward.slug}/help/${encodeURIComponent(item.projectId)}`}>この行事に手伝いを申し込む</a></p>
     </section>) : <p>現在、手伝いを募集中の行事はありません。</p>}
   </Layout>);
 });
