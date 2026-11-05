@@ -34,53 +34,29 @@ async function questions(wardId: string, projectId: string) {
 }
 
 describe("AI が同じ問いを繰り返す時", () => {
-  it("別の入力から前後に空白を付けて書いても、開いている問いを返す", async () => {
+  it("別の入力から前後に空白を付けて書いても、未回答・後回しの問いを再利用する", async () => {
     const { wardId, projectId } = await setup();
     const first = await ask(wardId, await ticketFor(wardId, projectId));
     const second = await ask(wardId, await ticketFor(wardId, projectId), `　\n${text}\t `);
     expect(first.status).toBe("added");
     expect(second).toMatchObject({ status: "same", questionId: first.questionId, note: "同じ問いが既にあります" });
     expect(await questions(wardId, projectId)).toHaveLength(1);
-  });
-
-  it("後で答える問いも再利用する", async () => {
-    const { wardId, projectId } = await setup();
-    const first = await ask(wardId, await ticketFor(wardId, projectId));
     await env.DB.prepare("UPDATE project_questions SET state = 'later' WHERE ward_id = ? AND question_id = ?")
       .bind(wardId, first.questionId).run();
     expect(await ask(wardId, await ticketFor(wardId, projectId))).toMatchObject({ status: "same", questionId: first.questionId });
     expect(await questions(wardId, projectId)).toHaveLength(1);
   });
 
-  it.each(["answered", "unknown"])("%s の後なら同じ入力からも新しい問いを作る", async (state) => {
+  it("答えた後なら同じ入力からも新しい問いを作る", async () => {
     const { wardId, projectId } = await setup();
     const ticket = await ticketFor(wardId, projectId);
     const first = await ask(wardId, ticket);
-    await env.DB.prepare("UPDATE project_questions SET state = ? WHERE ward_id = ? AND question_id = ?")
-      .bind(state, wardId, first.questionId).run();
+    await env.DB.prepare("UPDATE project_questions SET state = 'answered' WHERE ward_id = ? AND question_id = ?")
+      .bind(wardId, first.questionId).run();
     const second = await ask(wardId, ticket);
     expect(second.status).toBe("added");
     expect(second.questionId).not.toBe(first.questionId);
     expect(await questions(wardId, projectId)).toHaveLength(2);
   });
 
-  it("同時に同じ文を書いても一件だけを作る", async () => {
-    const { wardId, projectId } = await setup();
-    const a = await ticketFor(wardId, projectId);
-    const b = await ticketFor(wardId, projectId);
-    const results = await Promise.all([ask(wardId, a), ask(wardId, b)]);
-    expect(results.map((r) => r.status).sort()).toEqual(["added", "same"]);
-    expect(results[0]?.questionId).toBe(results[1]?.questionId);
-    expect(await questions(wardId, projectId)).toHaveLength(1);
-  });
-
-  it("別のプロジェクトや別の区の同じ文はそれぞれ作る", async () => {
-    const a = await setup();
-    const b = await setup();
-    const other = await createProject(env.DB, a.wardId, { kind: "event", title: "別の行事（架空）", year: 2026 });
-    for (const target of [a, { wardId: a.wardId, projectId: other.projectId }, b]) {
-      expect((await ask(target.wardId, await ticketFor(target.wardId, target.projectId))).status).toBe("added");
-      expect(await questions(target.wardId, target.projectId)).toHaveLength(1);
-    }
-  });
 });

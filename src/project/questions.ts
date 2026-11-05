@@ -81,7 +81,7 @@ export async function addQuestion(
     source: source ? { kind: source.kind, ref: source.ref, locator: source.locator, year: source.year } : null,
   });
 
-  const existing = await db
+  const existing = options.reuseOpenText ? null : await db
     .prepare("SELECT question_id, kind, text, target, detail, source_kind, source_ref, source_locator, source_year FROM project_questions WHERE ward_id = ? AND project_id = ? AND dedupe_key = ?")
     .bind(wardId, projectId, dedupeKey)
     .first<{
@@ -112,15 +112,12 @@ export async function addQuestion(
       : { status: "rejected", reason: "key_reused" };
   }
 
-  const insert = db
+  await db
     .prepare(
       `INSERT INTO project_questions
          (question_id, ward_id, project_id, kind, text, target, detail, state, source_kind, source_ref, source_locator, source_year,
           pack_version, dedupe_key, created_at)
-       SELECT ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?
-       WHERE ? = 0 OR NOT EXISTS (
-         SELECT 1 FROM project_questions WHERE ward_id = ? AND project_id = ? AND state IN ('open', 'later') AND text = ?
-       )`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       questionId,
@@ -137,22 +134,7 @@ export async function addQuestion(
       input.packVersion,
       dedupeKey,
       nowIso(),
-      options.reuseOpenText ? 1 : 0,
-      wardId,
-      projectId,
-      text,
-    );
-  if (options.reuseOpenText) {
-    // 同時に書かれても追加は一件にし、その問いを同じ処理の中で引く。
-    const [saved, found] = await db.batch<{ question_id: string }>([
-      insert,
-      db.prepare("SELECT question_id FROM project_questions WHERE ward_id = ? AND project_id = ? AND state IN ('open', 'later') AND text = ? ORDER BY created_at, question_id LIMIT 1")
-        .bind(wardId, projectId, text),
-    ]);
-    const question = found?.results[0];
-    if (!question) throw new Error("書いた問いが見つかりません");
-    return { status: saved?.meta.changes ? "added" : "same", questionId: question.question_id };
-  }
-  await insert.run();
+    )
+    .run();
   return { status: "added", questionId };
 }
