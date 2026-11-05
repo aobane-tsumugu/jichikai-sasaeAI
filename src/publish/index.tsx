@@ -11,8 +11,10 @@ import { getDistrictCopies, getRoster, parseDistribution } from "../answers/api"
 import { checkPublicDraft } from "./check";
 import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, isItemKey, type DocumentKind } from "../project/model";
 import { applyChange } from "../project/apply";
+import { currentPublicationTables, publicationTablesDiffer, publicationTablesSql } from "../space/publication-tables";
 
 interface DraftRow {
+  tables_snapshot: string | null;
   document_id: string;
   kind: string;
   title: string;
@@ -34,6 +36,8 @@ interface ProjectRow {
 }
 
 interface PublicationRow {
+  scope: string;
+  tables_snapshot: string | null;
   publication_id: string;
   document_id: string;
   version_no: number;
@@ -84,7 +88,7 @@ async function getProject(db: D1Database, wardId: string, projectId: string): Pr
 
 async function getDrafts(db: D1Database, wardId: string, projectId: string): Promise<DraftRow[]> {
   const result = await db.prepare(`SELECT d.document_id, d.kind, d.title, d.scope, d.stale_since_version,
-      v.version_id, v.version_no, v.body, v.based_on_state_version, v.published_at,
+      v.version_id, v.version_no, v.body, v.based_on_state_version, v.published_at, v.tables_snapshot,
       p.state_version AS latest_state
     FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
     JOIN projects p ON p.ward_id = d.ward_id AND p.project_id = d.project_id
@@ -124,9 +128,20 @@ admin.get("/publish/:projectId", async (c) => {
   const districtCopies = await getDistrictCopies(c.env.DB, ward.wardId);
   const roster = await getRoster(c.env.DB, ward.wardId);
   const records = await c.env.DB.prepare(`SELECT publication_id, document_id, version_no, published_at, unpublished_at,
-      line_status, line_recipients, line_sent_at, line_error, recipient_scope, distribution
-    FROM publication_records WHERE ward_id = ? AND project_id = ? ORDER BY published_at DESC`)
+      line_status, line_recipients, line_sent_at, line_error, recipient_scope, distribution,
+      (SELECT tables_snapshot FROM document_versions v WHERE v.ward_id = publication_records.ward_id AND v.version_id = publication_records.version_id) AS tables_snapshot,
+      (SELECT scope FROM document_versions v WHERE v.ward_id = publication_records.ward_id AND v.version_id = publication_records.version_id) AS scope
+    FROM publication_records WHERE ward_id = ? AND project_id = ? ORDER BY published_at DESC, rowid DESC`)
     .bind(ward.wardId, projectId).all<PublicationRow>();
+  // 空間の配布は公開用の記録に入れない。区のページは公開用の記録だけを読む。
+  const spaceRecords = await c.env.DB.prepare(`SELECT v.version_id AS publication_id, v.document_id, v.version_no,
+      v.published_at, NULL AS unpublished_at, 'not_sent' AS line_status, NULL AS line_recipients,
+      NULL AS line_sent_at, NULL AS line_error, 'member_households' AS recipient_scope, '{}' AS distribution,
+      v.tables_snapshot, v.scope
+    FROM document_versions v WHERE v.ward_id = ? AND v.project_id = ? AND v.scope = 'space' AND v.published_at IS NOT NULL
+    ORDER BY v.published_at DESC, v.rowid DESC`).bind(ward.wardId, projectId).all<PublicationRow>();
+  const allRecords = [...records.results, ...spaceRecords.results].sort((a, b) => b.published_at.localeCompare(a.published_at) || b.version_no - a.version_no);
+  const currentTables = await currentPublicationTables(c.env.DB, ward.wardId, projectId);
   const firstPublishedId = records.results.find((record) => !record.unpublished_at)?.publication_id;
   let allowance = null;
   let allowanceError = "";
@@ -144,10 +159,17 @@ admin.get("/publish/:projectId", async (c) => {
       {allowance ? <p>公式 LINE の友だち {allowance.friends ?? "確認中"} 人、今月の残り {allowance.remaining ?? "制限なし"} 通です。</p> : null}
       {allowanceError ? <Notice error>{allowanceError}</Notice> : null}
       {drafts.length === 0 ? <Notice>配れる案内はありません。案内の下書きを先に用意してください。</Notice> : null}
-      {drafts.map((draft) => (
+      {drafts.map((draft) => {
+        const previous = allRecords.find((record) => record.document_id === draft.document_id && !record.unpublished_at);
+        const tablesChanged = draft.scope === "space" && (draft.kind === "duty_roster" || draft.kind === "procedure") &&
+          (!!previous || !!draft.published_at) && publicationTablesDiffer(previous?.tables_snapshot ?? null, currentTables);
+        return (
         <section class="panel" key={draft.document_id}>
           <h2>{draft.title}</h2>
           <p>{draft.published_at ? "すでに出しています。" : "まだ出していません。"}</p>
+          {tablesChanged ? <Notice>{previous?.tables_snapshot === null
+            ? "配った時の表の記録がありません。今の表を空間に配り直せます。"
+            : "配った時から表が変わっています。今の表を空間に配り直せます。"}</Notice> : null}
           {draft.stale_since_version !== null
             ? <Notice error>新しい物が入っています。案を直すか、このまま配るか選んでください。</Notice>
             : null}
@@ -160,11 +182,11 @@ admin.get("/publish/:projectId", async (c) => {
           })}</details> : null}
           {draft.scope === "space" ? <>
             <p>実行委員と班長に見せる物です。公開ページには出ません。</p>
-            {!project.closed_at && !draft.published_at ? <form method="post" action={adminPath(ward, `/publish/${projectId}/space`)}>
+            {!project.closed_at && (!draft.published_at || tablesChanged) ? <form method="post" action={adminPath(ward, `/publish/${projectId}/space`)}>
               <input type="hidden" name="documentId" value={draft.document_id} />
               <input type="hidden" name="versionId" value={draft.version_id} />
               <input type="hidden" name="versionNo" value={draft.version_no} />
-              <button type="submit">空間に配る</button> <Hint text={`${DOCUMENT_KIND_LABEL[draft.kind as DocumentKind]}を、区のページに載せず実行委員と班長の空間に出します。`} />
+              <button type="submit">{draft.published_at ? "空間に配り直す" : "空間に配る"}</button> <Hint text={`${DOCUMENT_KIND_LABEL[draft.kind as DocumentKind]}と、今の当番・配置・協賛先の表を実行委員と班長に配ります。配った後に表を直しても、次に配るまでは空間と紙は変わりません。`} />
             </form> : null}
           </> : null}
           {draft.scope === "public" && !project.closed_at ? <form method="post" action={adminPath(ward, `/publish/${projectId}/confirm`)}>
@@ -191,16 +213,18 @@ admin.get("/publish/:projectId", async (c) => {
             <p><button type="submit">配る内容を確認する</button> <Hint text={`${DOCUMENT_KIND_LABEL[draft.kind as DocumentKind]}の本文と配る相手を確認する画面を開くだけで、まだ配りません。`} /></p>
           </form> : null}
         </section>
-      ))}
-      <h2>これまでに配った案内</h2>
-      {records.results.length === 0 ? <p>まだ配っていません。</p> : records.results.map((record) => (
+      ); })}
+      <h2>これまでに配った物</h2>
+      {allRecords.length === 0 ? <p>まだ配っていません。</p> : allRecords.map((record) => (
         <section class="panel" key={record.publication_id}>
           <p>{new Date(record.published_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}に配りました。</p>
+          {record.scope === "space" ? <p>実行委員と班長に配りました。</p> : <>
           <p>紙の配布先: {paperTargetLabel(record.distribution)}</p>
           <p>配る相手: {record.recipient_scope === "all_households" ? "全戸" : "加入世帯"}</p>
           <p>公式 LINE: {record.line_status === "sent" ? `${record.line_recipients ?? 0} 人に送信済み` : record.line_status === "failed" ? "送信できませんでした" : record.line_status === "not_sent" ? "今回は送っていません" : record.line_status === "not_configured" ? "接続設定なし" : "送信待ち"}</p>
           {record.line_error ? <p>{record.line_error}</p> : null}
           {record.unpublished_at ? <p>現在は公開を下げています。</p> : <form class="inline" method="post" action={adminPath(ward, `/publish/${projectId}/lower/${record.publication_id}`)}><button class="danger" type="submit">公開を下げる</button> {record.publication_id === firstPublishedId ? <Hint text="配った記録を残したまま、この案内を区のページから下げます。" /> : null}</form>}
+          </>}
           <p><a href={adminPath(ward, `/print/${projectId}/${record.document_id}/${record.version_no}`)}>印刷用ページを開く</a></p>
         </section>
       ))}
@@ -218,22 +242,40 @@ admin.post("/publish/:projectId/space", async (c) => {
   const versionNo = Number(form.get("versionNo"));
   const project = await getProject(c.env.DB, ward.wardId, projectId);
   if (!project || project.closed_at) return c.notFound();
-  const row = await c.env.DB.prepare(`SELECT d.kind, d.scope, d.stale_since_version, v.version_id, v.version_no, v.published_at
+  const row = await c.env.DB.prepare(`SELECT d.kind, d.scope, d.stale_since_version, v.version_id, v.version_no, v.published_at, v.tables_snapshot
     FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
     WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_id = ? AND v.version_no = ?`)
     .bind(ward.wardId, projectId, documentId, versionId, versionNo)
-    .first<{ kind: string; scope: string; stale_since_version: number | null; version_id: string; version_no: number; published_at: string | null }>();
-  if (!row || row.scope !== "space" || !["duty_roster", "procedure"].includes(row.kind) || row.published_at) return c.notFound();
+    .first<{ kind: string; scope: string; stale_since_version: number | null; version_id: string; version_no: number; published_at: string | null; tables_snapshot: string | null }>();
+  if (!row || row.scope !== "space" || !["duty_roster", "procedure"].includes(row.kind)) return c.notFound();
+  if (row.published_at) {
+    const current = await currentPublicationTables(c.env.DB, ward.wardId, projectId);
+    if (!publicationTablesDiffer(row.tables_snapshot, current)) return c.redirect(adminPath(ward, `/publish/${projectId}`), 303);
+  }
   const now = nowIso();
-  const result = await c.env.DB.prepare(`UPDATE document_versions SET published_at = ?, published_by_account_id = ?
-    WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_id = ? AND version_no = ? AND published_at IS NULL
+  const publishedVersionId = row.published_at ? newId() : versionId;
+  const publish = row.published_at
+    ? c.env.DB.prepare(`INSERT INTO document_versions (version_id, ward_id, project_id, document_id, version_no,
+        scope, body, based_on_state_version, origin, created_at, created_by_account_id, published_at, published_by_account_id, tables_snapshot)
+      SELECT ?, v.ward_id, v.project_id, v.document_id, v.version_no + 1, v.scope, v.body,
+        p.state_version, 'person', ?, ?, ?, ?, ${publicationTablesSql}
+      FROM document_versions v JOIN projects p ON p.ward_id = v.ward_id AND p.project_id = v.project_id
+      JOIN documents d ON d.ward_id = v.ward_id AND d.document_id = v.document_id
+      WHERE v.ward_id = ? AND v.project_id = ? AND v.document_id = ? AND v.version_id = ? AND v.version_no = ?
+        AND v.version_no = (SELECT MAX(v2.version_no) FROM document_versions v2 WHERE v2.ward_id = v.ward_id AND v2.document_id = v.document_id)
+        AND p.closed_at IS NULL AND d.scope = 'space' AND v.scope = 'space'`)
+      .bind(publishedVersionId, now, account.accountId, now, account.accountId, ward.wardId, projectId,
+        ward.wardId, projectId, documentId, versionId, versionNo)
+    : c.env.DB.prepare(`UPDATE document_versions SET published_at = ?, published_by_account_id = ?, tables_snapshot = ${publicationTablesSql}
+    WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_id = ? AND version_no = ? AND published_at IS NULL AND scope = 'space'
       AND version_no = (SELECT MAX(v.version_no) FROM document_versions v WHERE v.ward_id = ? AND v.document_id = ?)
       AND EXISTS (SELECT 1 FROM documents d WHERE d.ward_id = ? AND d.document_id = ? AND d.scope = 'space')
       AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL)`)
-    .bind(now, account.accountId, ward.wardId, projectId, documentId, versionId, versionNo,
-      ward.wardId, documentId, ward.wardId, documentId, ward.wardId, projectId).run();
-  if ((result.meta.changes ?? 0) !== 1) return c.text("案の内容が変わったか、すでに配っています。配る画面で内容を確かめてください。", 409);
-  if (row.kind === "duty_roster") await markDistributedTask(c.env.DB, ward.wardId, projectId, account.accountId, "duty_roster", versionId);
+    .bind(now, account.accountId, ward.wardId, projectId, ward.wardId, projectId, documentId, versionId, versionNo,
+      ward.wardId, documentId, ward.wardId, documentId, ward.wardId, projectId);
+  const result = await publish.run();
+  if (result.meta.changes !== 1) return c.text("案の内容が変わったか、すでに配っています。配る画面で内容を確かめてください。", 409);
+  if (row.kind === "duty_roster") await markDistributedTask(c.env.DB, ward.wardId, projectId, account.accountId, "duty_roster", publishedVersionId);
   return c.redirect(adminPath(ward, `/publish/${projectId}?space=sent`), 303);
 });
 
@@ -347,13 +389,13 @@ admin.post("/publish/:projectId/send", async (c) => {
   }
   if (!distribution) return c.text("紙の配布先が名簿と合いません。配布内容を選び直してください。", 400);
   const publication = await c.env.DB.batch([
-    c.env.DB.prepare(`UPDATE document_versions SET published_at = ?, published_by_account_id = ?
+    c.env.DB.prepare(`UPDATE document_versions SET published_at = ?, published_by_account_id = ?, tables_snapshot = ${publicationTablesSql}
       WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_id = ? AND version_no = ?
         AND published_at IS NULL
         AND version_no = (SELECT MAX(v.version_no) FROM document_versions v WHERE v.ward_id = ? AND v.document_id = ?)
         AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL)
         AND EXISTS (SELECT 1 FROM documents d WHERE d.ward_id = ? AND d.document_id = ? AND d.scope = 'public')`)
-      .bind(now, account.accountId, ward.wardId, projectId, documentId, versionId, versionNo,
+      .bind(now, account.accountId, ward.wardId, projectId, ward.wardId, projectId, documentId, versionId, versionNo,
         ward.wardId, documentId, ward.wardId, projectId, ward.wardId, documentId),
     c.env.DB.prepare(`INSERT INTO publication_records
       (ward_id, publication_id, project_id, document_id, version_id, version_no, recipient_scope, distribution, line_status, published_at, published_by_account_id)

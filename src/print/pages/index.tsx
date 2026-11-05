@@ -12,11 +12,13 @@ import { getProjectState, getProjectSummary } from "../../project/api";
 import { createInvite, getSpace } from "../../space/api";
 import { TABLES, displayFieldValue, type TableKey } from "../../project/model";
 import type { RowView } from "../../project/types";
+import { readPublicationTables } from "../../space/publication-tables";
 
 const printKinds = ["announcement", "answer", "leader", "duty", "meeting", "sponsors"] as const;
 type PrintKind = (typeof printKinds)[number];
 
 interface PrintData {
+  tables_snapshot: string | null;
   project_id: string;
   title: string;
   closed_at: string | null;
@@ -111,11 +113,12 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   const versionNo = Number(c.req.param("versionNo"));
   if (!printKinds.includes(kind) || !Number.isInteger(versionNo)) return c.notFound();
   const row = await c.env.DB.prepare(`SELECT p.project_id, p.title, p.closed_at, d.document_id, d.title AS document_title,
-      v.version_id, v.version_no, v.body, d.kind
-    FROM publication_records r JOIN projects p ON p.ward_id = r.ward_id AND p.project_id = r.project_id
-    JOIN documents d ON d.ward_id = r.ward_id AND d.document_id = r.document_id
-    JOIN document_versions v ON v.ward_id = r.ward_id AND v.version_id = r.version_id
-    WHERE r.ward_id = ? AND r.project_id = ? AND r.document_id = ? AND v.version_no = ?
+      v.version_id, v.version_no, v.body, d.kind, v.tables_snapshot
+    FROM document_versions v JOIN projects p ON p.ward_id = v.ward_id AND p.project_id = v.project_id
+    JOIN documents d ON d.ward_id = v.ward_id AND d.document_id = v.document_id
+    LEFT JOIN publication_records r ON r.ward_id = v.ward_id AND r.version_id = v.version_id
+    WHERE v.ward_id = ? AND v.project_id = ? AND v.document_id = ? AND v.version_no = ?
+      AND (r.publication_id IS NOT NULL OR (v.scope = 'space' AND v.published_at IS NOT NULL))
     ORDER BY r.published_at DESC LIMIT 1`).bind(ward.wardId, projectId, documentId, versionNo).first<PrintData>();
   if (!row) return c.notFound();
   if (kind === "meeting" || kind === "sponsors") return c.redirect(adminPath(ward, `/print/${projectId}/paper/${kind}`), 303);
@@ -150,8 +153,8 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   </div>;
   const onOneSheet = fitsAboveAnswer(row.body);
   const dense = bodyLines(row.body) > 30;
-  const state = kind === "duty" ? await getProjectState(c.env.DB, ward.wardId, projectId) : null;
-  const current = (table: TableKey) => (state?.tables[table] ?? []).filter((entry) => entry.scope === "current");
+  const tables = readPublicationTables(row.tables_snapshot);
+  const published = (table: TableKey) => (tables ?? []).filter((entry) => entry.kind === table);
   const printTitle = `${row.title} ${kindLabel(kind)}`;
   return c.html(<PrintDocument title={printTitle}>
     {kind === "announcement" && onOneSheet ? (squads.length ? squads : [""]).map((squad) => <Sheet key={squad} footer={<><span>{ward.name} {squad}</span><span>案内 {versionNo}</span></>}>
@@ -180,8 +183,10 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
     {kind === "duty" ? <Sheet footer={<>{ward.name} 当番表と配置図 {paperCode}</>}>
       <h1>{row.title} 当番表と配置図</h1>
       <p>紙の番号: {paperCode}</p>{paperQr()}
-      <RowsTable table="duties" rows={current("duties")} paperCode={paperCode} />
-      <RowsTable table="layout" rows={current("layout")} paperCode={paperCode} />
+      {tables === null ? <p>配った時の表の記録がありません。表を確かめて配り直してください。</p> : <>
+        <RowsTable table="duties" rows={published("duties")} paperCode={paperCode} />
+        <RowsTable table="layout" rows={published("layout")} paperCode={paperCode} />
+      </>}
       {Array.from({ length: 3 }, (_, index) => <FieldBox key={index} label={"時間帯・持ち場・担当、配置・場所・メモ　" + (paperCode ?? "")} heightMm={22} />)}
     </Sheet> : null}
   </PrintDocument>);
@@ -197,14 +202,16 @@ async function PrintChooser({ c }: { c: import("hono").Context<AdminEnv> }) {
   const projectId = c.req.param("projectId");
   const documentId = c.req.param("documentId");
   const versionNo = c.req.param("versionNo");
-  const row = await c.env.DB.prepare(`SELECT d.title FROM documents d JOIN publication_records r
-    ON r.ward_id = d.ward_id AND r.document_id = d.document_id
-    WHERE r.ward_id = ? AND r.project_id = ? AND r.document_id = ? AND r.version_no = ?`)
-    .bind(ward.wardId, projectId, documentId, Number(versionNo)).first<{ title: string }>();
+  const row = await c.env.DB.prepare(`SELECT d.title, v.scope FROM documents d JOIN document_versions v
+    ON v.ward_id = d.ward_id AND v.document_id = d.document_id
+    LEFT JOIN publication_records r ON r.ward_id = v.ward_id AND r.version_id = v.version_id
+    WHERE v.ward_id = ? AND v.project_id = ? AND v.document_id = ? AND v.version_no = ?
+      AND (r.publication_id IS NOT NULL OR (v.scope = 'space' AND v.published_at IS NOT NULL))`)
+    .bind(ward.wardId, projectId, documentId, Number(versionNo)).first<{ title: string; scope: string }>();
   if (!row) return c.notFound();
   return c.html(<AdminPage ward={ward} account={account} title="印刷用ページ" back={{ href: adminPath(ward, `/publish/${projectId}`), label: "配る画面へ戻る" }}>
     <h1>{row.title} 印刷用ページ</h1>
-    <ul>{printKinds.map((kind) => <li key={kind}><a href={adminPath(ward, `/print/${projectId}/${documentId}/${versionNo}/${kind}`)}>{kindLabel(kind)}</a></li>)}</ul>
+    <ul>{(row.scope === "space" ? ["duty"] as const : printKinds).map((kind) => <li key={kind}><a href={adminPath(ward, `/print/${projectId}/${documentId}/${versionNo}/${kind}`)}>{kindLabel(kind)}</a></li>)}</ul>
   </AdminPage>);
 }
 
@@ -228,12 +235,12 @@ function fitsAboveAnswer(body: string): boolean {
 }
 
 /** 表に出す列（どれかの行に値がある列）。 */
-function shownFields(table: TableKey, rows: RowView[]) {
+function shownFields(table: TableKey, rows: Pick<RowView, "data">[]) {
   return Object.entries(TABLES[table].fields).filter(([key]) => rows.some((entry) => entry.data[key] !== undefined && entry.data[key] !== ""));
 }
 
 /** 今年の中身の表を紙に並べる。空なら何も出さない。 */
-function RowsTable({ table, rows, paperCode }: { table: TableKey; rows: RowView[]; paperCode?: string | null }) {
+function RowsTable({ table, rows, paperCode }: { table: TableKey; rows: Pick<RowView, "data">[]; paperCode?: string | null }) {
   if (!rows.length && table !== "sponsors") return null;
   const fields = table === "sponsors" ? Object.entries(TABLES.sponsors.fields) : shownFields(table, rows);
   return <>

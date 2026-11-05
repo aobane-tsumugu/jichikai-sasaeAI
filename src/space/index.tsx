@@ -185,8 +185,10 @@ async function renderSpace(c: Context<WardEnv>, direct: string | null) {
       {c.req.query("sent") === "answer" ? <p role="status">回答票を受け取りました。読み取った内容は、役員画面と同じ回答の集計に入ります。</p> : c.req.query("sent") === "paper" ? <p role="status">紙を受け取りました。役員が配り直すまで、配った文書は変わりません。</p> : null}
       <h2>出欠</h2>
       {data.attendance.length ? <div class="panel"><table><thead><tr><th>班</th><th>世帯</th><th>人数</th></tr></thead><tbody>{data.attendance.map((row) => <tr><td>{row.district}</td><td>{row.household}</td><td>{row.people_count}</td></tr>)}</tbody></table></div> : <p>回答はまだありません。</p>}
-      <h2>協賛先と打診</h2><MaterialsTable table="sponsors" items={data.items} />
-      <h2>当番表と配置図</h2><MaterialsTable table="duties" items={data.items} /><MaterialsTable table="layout" items={data.items} />
+      <h2>協賛先と打診</h2>{data.tablesRecorded ? <MaterialsTable table="sponsors" items={data.items} /> : <p>{data.tablesPublished ? "配った時の表の記録がありません。役員に聞いてください。" : "まだ配っていません。"}</p>}
+      <h2>当番表と配置図 <Hint text="配った時の当番表と配置図です。役員が配り直すまで変わりません。" /></h2>
+      {data.tablesRecorded ? <><MaterialsTable table="duties" items={data.items} /><MaterialsTable table="layout" items={data.items} /></>
+        : <p>{data.tablesPublished ? "配った時の表の記録がありません。役員に聞いてください。" : "まだ配っていません。"}</p>}
       <h2>配った文書 <Hint text="役員が実行委員と班長に配った文書です。役員が作り直している途中の文書は出ません。" /></h2>
       {data.documents.length ? data.documents.map((doc) => <section class="panel"><h3>{doc.title}</h3>{articleParagraphs(doc.body).map((text, index) => <p key={index} style="white-space:pre-wrap;overflow-wrap:anywhere">{text}</p>)}</section>) : <p>文書はまだ配っていません。</p>}
       <h2>写真と入った物</h2>{data.originals.map((file) => <p><a href={`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/file/${encodeURIComponent(file.original_id)}`}>{file.filename}</a></p>)}

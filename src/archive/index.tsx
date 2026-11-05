@@ -15,6 +15,8 @@ import type { ArchiveRecordType, ArchiveSearchResult } from "./search";
 import { createAnthropic, MODEL } from "../ai/anthropic";
 import { runSnapshotCron } from "./snapshot";
 import { runDeletionCron } from "../ops/lifecycle";
+import { MaterialsTable } from "../space/materials";
+import { readPublicationTables } from "../space/publication-tables";
 
 interface SeedTask { task_id: string; task_key: string | null; name: string; period_start: string | null; period_end: string | null; offset_start_days: number | null; offset_end_days: number | null; sort_order: number; }
 const admin = new Hono<AdminEnv>();
@@ -157,19 +159,21 @@ admin.get("/archive/:projectId", async (c) => {
   const { ward } = c.var; const id = c.req.param("projectId");
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
   if (!project?.closedAt) return c.notFound();
-  const [reports, map, originals, documents, answers, state] = await Promise.all([
+  const [reports, map, originals, documents, answers, state, helpCount] = await Promise.all([
     c.env.DB.prepare("SELECT scope, body FROM project_close_reports WHERE ward_id = ? AND project_id = ? ORDER BY scope").bind(ward.wardId, id).all<{ scope: string; body: string }>(),
     c.env.DB.prepare("SELECT task_id, name, period, progress, requested_by, difficulty, next_year FROM project_close_map WHERE ward_id = ? AND project_id = ? ORDER BY period, task_id").bind(ward.wardId, id).all<{ task_id: string; name: string; period: string; progress: string; requested_by: string; difficulty: string; next_year: string }>(),
     c.env.DB.prepare(`SELECT o.original_id, o.filename, o.kind FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
       WHERE o.ward_id = ? AND j.project_id = ? AND o.withdrawn_at IS NULL ORDER BY o.received_at`).bind(ward.wardId, id).all<{ original_id: string; filename: string; kind: string }>(),
-    c.env.DB.prepare(`SELECT d.title, v.version_no, v.body, v.scope, COALESCE(r.published_at, v.published_at) AS published_at, r.unpublished_at
+    c.env.DB.prepare(`SELECT d.title, d.kind, v.version_no, v.body, v.scope, COALESCE(r.published_at, v.published_at) AS published_at, r.unpublished_at, v.tables_snapshot
       FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id AND v.project_id = d.project_id
       LEFT JOIN publication_records r ON r.ward_id = v.ward_id AND r.version_id = v.version_id
       WHERE d.ward_id = ? AND d.project_id = ? AND (v.published_at IS NOT NULL OR r.publication_id IS NOT NULL)
       ORDER BY COALESCE(r.published_at, v.published_at), d.document_id, v.version_no`)
-      .bind(ward.wardId, id).all<{ title: string; version_no: number; body: string; scope: string; published_at: string; unpublished_at: string | null }>(),
+      .bind(ward.wardId, id).all<{ title: string; kind: string; version_no: number; body: string; scope: string; published_at: string; unpublished_at: string | null; tables_snapshot: string | null }>(),
     listAnswers(c.env.DB, ward.wardId, id),
     getProjectState(c.env.DB, ward.wardId, id),
+    c.env.DB.prepare("SELECT help_offer_count_on_close FROM projects WHERE ward_id = ? AND project_id = ?")
+      .bind(ward.wardId, id).first<{ help_offer_count_on_close: number | null }>(),
   ]);
   const totals = new Map<string, { people: number; helpers: number }>();
   for (const answer of answers) {
@@ -188,10 +192,15 @@ admin.get("/archive/:projectId", async (c) => {
       <h3>{document.title}</h3>
       <p>{document.published_at.slice(0, 10)} / {document.scope === "public" ? "公開" : document.scope === "space" ? "実行委員と班長向け" : "役員向け"}{document.unpublished_at ? " / 公開を下げました" : ""}</p>
       <ArticleBody body={document.body} />
+      {document.scope === "space" && (document.kind === "duty_roster" || document.kind === "procedure") ? <>
+        <h4>配った時の当番表と配置図</h4>
+        <RecordedPublicationTables raw={document.tables_snapshot} />
+      </> : null}
     </section>)}
     {!documents.results.length ? <p>配った物はありません。</p> : null}
     <h2>答えの集計 <Hint text="紙、電話、Web から集めた答えを一緒に数えています。人数の下で、答えと手伝いの希望を読めます。" /></h2>
     <p>参加人数 {answers.reduce((sum, answer) => sum + answer.peopleCount, 0)} 人 / 手伝いの申し出 {answers.filter((answer) => answer.helperName).length} 件</p>
+    <p>手伝いだけの申し込み（閉じた時）: {helpCount?.help_offer_count_on_close === null || !helpCount ? "人数の記録がありません" : `${helpCount.help_offer_count_on_close} 人`}</p>
     {[...totals].map(([district, total]) => <p>{district || "班の記入なし"}: 参加 {total.people} 人 / 手伝い {total.helpers} 件</p>)}
     {answers.map((answer) => <section class="panel">
       <h3>{answer.household || answer.helperName || "手伝いの申し出"}</h3><p>{answer.district || "班の記入なし"} / 参加 {answer.peopleCount} 人</p>
@@ -214,6 +223,14 @@ admin.get("/archive/:projectId", async (c) => {
     <p><a href={adminPath(ward, "/archive")}>記録の一覧へ</a></p>
   </Layout>);
 });
+
+function RecordedPublicationTables({ raw }: { raw: string | null }) {
+  const tables = readPublicationTables(raw);
+  return tables === null ? <p>配った時の表の記録がありません。</p> : <>
+    <MaterialsTable table="duties" items={tables} />
+    <MaterialsTable table="layout" items={tables} />
+  </>;
+}
 
 function RecordedRows({ table, rows, ward }: { table: TableKey; rows: RowView[]; ward: { slug: string } }) {
   return rows.length ? <>{rows.map((row) => <article class="panel">
