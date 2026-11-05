@@ -16,6 +16,23 @@ interface PublicProject {
   unpublished_at: string | null;
 }
 
+interface PublicActivity { project_id: string; title: string; published_at: string; published_body: string; }
+interface HelpOpportunity { project_id: string; title: string; }
+interface ActivityTask { taskId: string; name: string; period: string; }
+interface ActivityBody { introduction: string; membershipBurden: string; membershipBenefit: string; tasks: ActivityTask[]; }
+
+function parseActivity(raw: string): ActivityBody | null {
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+    const body = value as Partial<ActivityBody>;
+    if (typeof body.introduction !== "string" || typeof body.membershipBurden !== "string" || typeof body.membershipBenefit !== "string" || !Array.isArray(body.tasks)) return null;
+    const tasks = body.tasks.filter((task): task is ActivityTask => typeof task === "object" && task !== null &&
+      typeof task.taskId === "string" && typeof task.name === "string" && typeof task.period === "string");
+    return { introduction: body.introduction, membershipBurden: body.membershipBurden, membershipBenefit: body.membershipBenefit, tasks };
+  } catch { return null; }
+}
+
 async function listPublic(db: D1Database, wardId: string, projectId?: string, includeLowered = false): Promise<PublicProject[]> {
   const sql = `SELECT p.project_id, p.title, v.version_no, d.document_id, d.title AS document_title,
       v.body, r.published_at, r.unpublished_at
@@ -51,7 +68,13 @@ async function pageFooter(c: { env: { DB: D1Database }; var: { ward: { wardId: s
 const pub = new Hono<WardEnv>();
 
 pub.get("/", async (c) => {
-  const items = await listPublic(c.env.DB, c.var.ward.wardId);
+  const [items, activities] = await Promise.all([
+    listPublic(c.env.DB, c.var.ward.wardId),
+    c.env.DB.prepare(`SELECT a.project_id, p.title, a.published_at, a.published_body
+      FROM project_activity_pages a JOIN projects p ON p.ward_id = a.ward_id AND p.project_id = a.project_id
+      WHERE a.ward_id = ? AND a.published_at IS NOT NULL AND a.published_body IS NOT NULL ORDER BY a.published_at DESC`)
+      .bind(c.var.ward.wardId).all<PublicActivity>(),
+  ]);
   const uniqueItems = new Map<string, PublicProject>();
   for (const item of items) if (!uniqueItems.has(item.project_id)) uniqueItems.set(item.project_id, item);
   const unique = [...uniqueItems.values()];
@@ -61,12 +84,69 @@ pub.get("/", async (c) => {
       <h2><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(item.project_id)}`}>{item.title}</a></h2>
       <p>更新: {new Date(item.published_at).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}</p>
     </section>)}
+    <h2>役員の仕事と活動</h2>
+    {activities.results.length === 0 ? <p>掲載中の活動紹介はありません。</p> : activities.results.map((item) => <section class="panel" key={item.project_id}>
+      <h3><a href={`/${c.var.ward.slug}/work/${encodeURIComponent(item.project_id)}`}>{item.title}の活動</a></h3>
+      <p>掲載: {new Date(item.published_at).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}</p>
+    </section>)}
+  </Layout>);
+});
+
+pub.get("/work/:projectId", async (c) => {
+  const projectId = c.req.param("projectId");
+  const activity = await c.env.DB.prepare(`SELECT a.project_id, p.title, a.published_at, a.published_body
+    FROM project_activity_pages a JOIN projects p ON p.ward_id = a.ward_id AND p.project_id = a.project_id
+    WHERE a.ward_id = ? AND a.project_id = ? AND a.published_at IS NOT NULL AND a.published_body IS NOT NULL`)
+    .bind(c.var.ward.wardId, projectId).first<PublicActivity>();
+  if (!activity) return c.notFound();
+  const body = parseActivity(activity.published_body);
+  if (!body) return c.notFound();
+  const listed = body.tasks;
+  return c.html(<Layout title={`${activity.title}の活動`} siteName={c.var.ward.name}>
+    <p><a href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のページへ</a></p>
+    <h1>{activity.title}で役員がしたこと</h1>
+    <p>この紹介は、役員が直して掲載したものです。掲載: {new Date(activity.published_at).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}</p>
+    {body.introduction ? <p style="white-space:pre-wrap">{body.introduction}</p> : null}
+    <h2>活動の一覧</h2>
+    <p>記録にある仕事 {listed.length} 件です。この件数は仕事の記録数で、作業時間や効果を測った数ではありません。</p>
+    {listed.length ? <ul>{listed.map((task) => <li>{task.period || "時期の記録なし"}　{task.name}</li>)}</ul> : <p>紹介する仕事はありません。</p>}
+    <h2>加入すると担うこと</h2><p style="white-space:pre-wrap">{body.membershipBurden || "この項目の説明はありません。"}</p>
+    <h2>加入すると得られること</h2><p style="white-space:pre-wrap">{body.membershipBenefit || "この項目の説明はありません。"}</p>
+    <h2>一回だけ手伝う</h2>
+    <p>加入せずに手伝える募集を見て、一回だけ申し込めます。</p>
+    <p><a href={`/${c.var.ward.slug}/help`}>一回だけ手伝える募集を見る</a></p>
+    <p><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>この行事の案内を見る</a></p>
+  </Layout>);
+});
+
+pub.get("/help", async (c) => {
+  const today = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date());
+  const opportunities = await c.env.DB.prepare(`SELECT DISTINCT p.project_id, p.title
+    FROM projects p JOIN documents d ON d.ward_id = p.ward_id AND d.project_id = p.project_id
+    JOIN publication_records r ON r.ward_id = d.ward_id AND r.project_id = d.project_id AND r.document_id = d.document_id
+    LEFT JOIN project_deadlines deadline ON deadline.ward_id = p.ward_id AND deadline.project_id = p.project_id AND deadline.kind = 'answer_due'
+    WHERE p.ward_id = ? AND p.closed_at IS NULL AND d.kind = 'recruitment' AND d.scope = 'public' AND r.unpublished_at IS NULL
+      AND (deadline.due_on IS NULL OR deadline.due_on >= ?)
+    ORDER BY p.title`)
+    .bind(c.var.ward.wardId, today).all<HelpOpportunity>();
+  return c.html(<Layout title="一回だけ手伝える募集" siteName={c.var.ward.name}>
+    <p><a href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のページへ</a></p>
+    <h1>一回だけ手伝える募集</h1>
+    <p>自治会への加入は必要ありません。手伝える行事を選んでください。</p>
+    {opportunities.results.length ? opportunities.results.map((item) => <section class="panel">
+      <h2>{item.title}</h2>
+      <p><a href={`/${c.var.ward.slug}/answer/${encodeURIComponent(item.project_id)}`}>この行事に手伝いを申し込む</a></p>
+    </section>) : <p>現在、手伝いを募集中の行事はありません。</p>}
   </Layout>);
 });
 
 pub.get("/p/:projectId", async (c) => {
   const projectId = c.req.param("projectId");
-  const items = await listPublic(c.env.DB, c.var.ward.wardId, projectId, true);
+  const [items, activity] = await Promise.all([
+    listPublic(c.env.DB, c.var.ward.wardId, projectId, true),
+    c.env.DB.prepare("SELECT published_at FROM project_activity_pages WHERE ward_id = ? AND project_id = ? AND published_at IS NOT NULL")
+      .bind(c.var.ward.wardId, projectId).first<{ published_at: string }>(),
+  ]);
   if (items.length === 0) return c.notFound();
   const details = await pageFooter(c, projectId);
   return c.html(<Layout title={items[0]!.title} siteName={c.var.ward.name}>
@@ -77,6 +157,7 @@ pub.get("/p/:projectId", async (c) => {
       <p>掲載日: {new Date(item.published_at).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}{item.unpublished_at ? "（掲載終了）" : ""}</p>
       <ArticleBody body={item.body} />
     </article>)}
+    {activity ? <p><a href={`/${c.var.ward.slug}/work/${encodeURIComponent(projectId)}`}>役員の仕事と活動を見る</a></p> : null}
     {details}
   </Layout>);
 });

@@ -466,14 +466,21 @@ opsRoutes.get("/wards/:slug/budget", async (c) => {
   const current = metrics.months.find((row) => row.month === thisMonth);
   const currentCost = (current?.readEstimateCents ?? 0) + (current?.actualRunCostCents ?? 0);
   const ratio = metrics.monthlyLimitCents > 0 ? currentCost / metrics.monthlyLimitCents : 0;
+  const sessionBudget = await c.env.DB.prepare("SELECT session_budget_cents FROM ops_ward_limits WHERE ward_id = ?")
+    .bind(ward.wardId).first<{ session_budget_cents: number }>();
   return c.html(
     <OpsPage title={`${ward.name} の予算`} loggedIn>
       <p><a href={`/ops/wards/${ward.slug}`}>{ward.name} の画面</a></p>
       <h1>{ward.name} の予算</h1>
       <section class="panel">
         <h2>一回の処理</h2>
-        <p>現在の上限: {SESSION_BUDGET_CENTS} USD</p>
-        <p class="muted">一回の処理の上限変更は、AI の処理側に設定が必要です。</p>
+        <p>現在の上限: {((sessionBudget?.session_budget_cents ?? SESSION_BUDGET_CENTS) / 100).toFixed(2)} USD</p>
+        <form method="post" action={`/ops/wards/${ward.slug}/budget`}>
+          <label for="sessionBudget">一回の処理の上限（USD）</label>
+          <input id="sessionBudget" name="sessionBudget" type="number" min="0.01" max="10000" step="0.01" required value={((sessionBudget?.session_budget_cents ?? SESSION_BUDGET_CENTS) / 100).toFixed(2)} />
+          <input type="hidden" name="saveSessionBudget" value="1" />
+          <p><button type="submit">一回の上限を保存</button></p>
+        </form>
       </section>
       <section class="panel">
         <h2>今月</h2>
@@ -496,6 +503,19 @@ opsRoutes.post("/wards/:slug/budget", async (c) => {
   const ward = await wardOrNull(c, c.req.param("slug"));
   if (!ward) return c.html(<WardNotFound />, 404);
   const form = await c.req.parseBody();
+  if (form["saveSessionBudget"] === "1") {
+    const rawSession = typeof form["sessionBudget"] === "string" ? form["sessionBudget"] : "";
+    const sessionAmount = Number(rawSession);
+    if (!Number.isFinite(sessionAmount) || sessionAmount < 0.01 || sessionAmount > 10_000) {
+      return c.html(<OpsPage title="予算を保存できません" loggedIn><h1>金額を確認してください</h1><p><a href={`/ops/wards/${ward.slug}/budget`}>戻る</a></p></OpsPage>, 400);
+    }
+    const sessionCents = Math.round(sessionAmount * 100);
+    await c.env.DB.prepare(
+      `INSERT INTO ops_ward_limits (ward_id, monthly_limit_cents, session_budget_cents, updated_at) VALUES (?, 0, ?, ?)
+       ON CONFLICT (ward_id) DO UPDATE SET session_budget_cents = excluded.session_budget_cents, updated_at = excluded.updated_at`,
+    ).bind(ward.wardId, sessionCents, new Date().toISOString()).run();
+    return c.redirect(`/ops/wards/${ward.slug}/budget`, 303);
+  }
   const raw = typeof form["monthlyLimit"] === "string" ? form["monthlyLimit"] : "";
   const amount = Number(raw);
   if (!Number.isFinite(amount) || amount < 0 || amount > 10_000_000) {

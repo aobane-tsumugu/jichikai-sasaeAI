@@ -7,7 +7,7 @@ import { Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { getLineAllowance, lineAccessToken, sendLineTitleAndUrl } from "../line/api";
 import { getPublicContact } from "../settings/store";
-import { getDistrictCopies, getDistricts, parseDistribution } from "../answers/api";
+import { getDistrictCopies, getRoster, parseDistribution } from "../answers/api";
 import { checkPublicDraft } from "./check";
 import { DOCUMENT_KINDS, type DocumentKind } from "../project/model";
 
@@ -61,6 +61,26 @@ function bodyLines(body: string): string[] {
   } catch { return [body]; }
 }
 
+function paperTargetLabel(raw: string): string {
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (typeof value === "object" && value !== null && !Array.isArray(value) && Array.isArray((value as { targets?: unknown }).targets)) {
+      const targets = (value as { targets: unknown[] }).targets;
+      return targets.map((entry) => {
+        if (typeof entry !== "object" || entry === null) return "";
+        const row = entry as { district?: unknown; household?: unknown; copies?: unknown };
+        return typeof row.household === "string" && typeof row.district === "string"
+          ? `${row.district} / ${row.household}`
+          : typeof row.district === "string" && typeof row.copies === "number" ? `${row.district}（${row.copies} 部）` : "";
+      }).filter(Boolean).join("、") || "指定なし";
+    }
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+      return Object.entries(value as Record<string, unknown>).map(([district, copies]) => `${district}（${String(copies)} 部）`).join("、") || "指定なし";
+    }
+  } catch { /* 古い記録の形式は個別表示しない */ }
+  return "指定なし";
+}
+
 async function getProject(db: D1Database, wardId: string, projectId: string): Promise<ProjectRow | null> {
   return db.prepare(`SELECT project_id, title, state_version, closed_at FROM projects
     WHERE ward_id = ? AND project_id = ?`).bind(wardId, projectId).first<ProjectRow>();
@@ -92,6 +112,7 @@ admin.get("/publish/:projectId", async (c) => {
   const historyByDocument = new Map<string, DraftHistoryRow[]>();
   for (const row of history.results) historyByDocument.set(row.document_id, [...(historyByDocument.get(row.document_id) ?? []), row]);
   const districtCopies = await getDistrictCopies(c.env.DB, ward.wardId);
+  const roster = await getRoster(c.env.DB, ward.wardId);
   const records = await c.env.DB.prepare(`SELECT publication_id, document_id, version_no, published_at, unpublished_at,
       line_status, line_recipients, line_sent_at, line_error, recipient_scope, distribution
     FROM publication_records WHERE ward_id = ? AND project_id = ? ORDER BY published_at DESC`)
@@ -139,10 +160,16 @@ admin.get("/publish/:projectId", async (c) => {
             <input type="hidden" name="documentId" value={draft.document_id} />
             <input type="hidden" name="versionId" value={draft.version_id} />
             <input type="hidden" name="versionNo" value={draft.version_no} />
-            <label for={`recipient-${draft.document_id}`}>配布先</label>
-            <select id={`recipient-${draft.document_id}`} name="recipientScope"><option value="member_households">加入世帯</option><option value="all_households">全戸</option></select>
-            <label for={`copies-${draft.document_id}`}>班ごとの部数（班名と部数を一行ずつ）</label>
-            <textarea id={`copies-${draft.document_id}`} name="distribution" rows={4} style="width:100%;font:inherit;padding:0.5rem">{districtCopies.map((row) => `${row.district} ${row.copies}`).join("\n")}</textarea>
+            <label for={`targetMode-${draft.document_id}`}>紙の配布先</label>
+            <select id={`targetMode-${draft.document_id}`} name="targetMode"><option value="district">班を選ぶ</option><option value="household">世帯を選ぶ</option></select>
+            <fieldset><legend>班ごとの部数</legend>{districtCopies.map((row, index) => <p>
+              <label><input type="checkbox" name="district" value={row.district} /> {row.district}（名簿 {row.copies} 世帯）</label>
+              部数 <input type="number" name={`copies_${index}`} min="0" max={row.copies} value={row.copies} style="width:6rem" />
+            </p>)}</fieldset>
+            <details><summary>世帯を選ぶ</summary>{roster.map((entry, index) => <label>
+              <input type="checkbox" name="household" value={JSON.stringify([entry.district, entry.household])} /> {entry.district} / {entry.household}
+            </label>)}</details>
+            <p>紙の部数と配る相手の指定は、公開ページに表示されません。</p>
             <label for={`line-${draft.document_id}`}>公式 LINE</label>
             <select id={`line-${draft.document_id}`} name="lineDelivery"><option value="send">題と URL を送る</option><option value="skip">今回は送らない</option></select>
             <p><button type="submit">配る内容を確認する</button></p>
@@ -153,7 +180,7 @@ admin.get("/publish/:projectId", async (c) => {
       {records.results.length === 0 ? <p>まだ配っていません。</p> : records.results.map((record) => (
         <section class="panel" key={record.publication_id}>
           <p>{new Date(record.published_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}に配りました。</p>
-          <p>配布先: {record.recipient_scope === "all_households" ? "全戸" : "加入世帯"}</p>
+          <p>紙の配布先: {paperTargetLabel(record.distribution)}</p>
           <p>公式 LINE: {record.line_status === "sent" ? `${record.line_recipients ?? 0} 人に送信済み` : record.line_status === "failed" ? "送信できませんでした" : record.line_status === "not_sent" ? "今回は送っていません" : record.line_status === "not_configured" ? "接続設定なし" : "送信待ち"}</p>
           {record.line_error ? <p>{record.line_error}</p> : null}
           {record.unpublished_at ? <p>現在は公開を下げています。</p> : <form class="inline" method="post" action={adminPath(ward, `/publish/${projectId}/lower/${record.publication_id}`)}><button class="danger" type="submit">公開を下げる</button></form>}
@@ -203,21 +230,16 @@ admin.get("/publish/:projectId/preview/:documentId/:versionNo", async (c) => {
     <h1>{row.title}</h1><ArticleBody body={row.body} />
     <p><a href={adminPath(ward, `/print/${c.req.param("projectId")}/${c.req.param("documentId")}/${row.version_no}/preview`)}>印刷用ページで見る</a></p>
     <p>見せるだけの確認用ページです。配る操作をするまで、出した内容にはなりません。</p>
-    {row.scope === "public" ? <form method="post" action={adminPath(ward, `/publish/${c.req.param("projectId")}/confirm`)}>
-      <input type="hidden" name="documentId" value={c.req.param("documentId")} />
-      <input type="hidden" name="versionNo" value={row.version_no} />
-      <p>この内容を見た上で、公開と公式 LINE の送信に進みます。</p>
-      <button type="submit">配る内容を確認する</button>
-    </form> : <p>この物は実行委員と班長に配る内容です。</p>}
+    {row.scope === "public" ? <p>配る相手と紙の部数は、配る画面から選んでください。</p> : <p>この物は実行委員と班長に配る内容です。</p>}
   </AdminPage>);
 });
 
 admin.post("/publish/:projectId/confirm", async (c) => {
   const { ward, account } = c.var;
-  const form = await c.req.parseBody();
-  const documentId = typeof form.documentId === "string" ? form.documentId : "";
-  const requestedVersionId = typeof form.versionId === "string" ? form.versionId : "";
-  const requestedVersionNo = Number(form.versionNo);
+  const form = await c.req.formData();
+  const documentId = String(form.get("documentId") ?? "");
+  const requestedVersionId = String(form.get("versionId") ?? "");
+  const requestedVersionNo = Number(form.get("versionNo"));
   const project = await getProject(c.env.DB, ward.wardId, c.req.param("projectId"));
   if (!project || project.closed_at) return c.notFound();
   const draft = await c.env.DB.prepare(`SELECT d.kind, d.title, d.scope, d.stale_since_version, v.version_id, v.version_no,
@@ -232,9 +254,22 @@ admin.post("/publish/:projectId/confirm", async (c) => {
   if (!(DOCUMENT_KINDS as readonly string[]).includes(draft.kind)) return c.text("文書の種類を確認できません。", 400);
   const warnings = await checkPublicDraft(c.env.DB, ward.wardId, project.project_id, draft.kind as DocumentKind, draft.body);
   if (warnings.length > 0) return c.text(warnings.join("\n"), 400);
-  const distribution = typeof form.distribution === "string" ? form.distribution.slice(0, 5000) : "";
-  const recipientScope = form.recipientScope === "all_households" ? "all_households" : "member_households";
-  const lineDelivery = form.lineDelivery === "skip" ? "skip" : "send";
+  const roster = await getRoster(c.env.DB, ward.wardId);
+  const targetMode = form.get("targetMode");
+  let distribution: PaperDistribution | null;
+  if (targetMode === null) {
+    const districts = [...new Set(roster.map((entry) => entry.district))];
+    const legacy = parseDistribution(String(form.get("distribution") ?? ""), districts);
+    distribution = { mode: "district", targets: Object.entries(legacy).map(([district, copies]) => ({ district, copies })) };
+  } else {
+    const selectedDistricts = new Set(form.getAll("district").map(String));
+    const selectedHouseholds = new Set(form.getAll("household").map(String));
+    distribution = buildDistribution(roster, String(targetMode), selectedDistricts, selectedHouseholds,
+      (index) => Number(form.get(`copies_${index}`)));
+  }
+  if (!distribution) return c.text("名簿にある班か世帯を選んでください。", 400);
+  const recipientScope = form.get("recipientScope") === "all_households" ? "all_households" : "member_households";
+  const lineDelivery = form.get("lineDelivery") === "skip" ? "skip" : "send";
   const contacts = await getPublicContact(c.env.DB, ward.wardId);
   let allowance = null;
   try { allowance = await getLineAllowance(lineAccessToken(c.env)); } catch { /* 送信結果として記録する */ }
@@ -242,14 +277,15 @@ admin.post("/publish/:projectId/confirm", async (c) => {
     <h1>配る内容の確認</h1>
     <ArticleBody body={draft.body} />
     <p>配ります。区のページに載ります。{lineDelivery === "skip" ? "今回は公式 LINE に送りません。" : `公式 LINE は${allowance?.friends === null || allowance === null ? "人数確認後" : `${allowance.friends} 人`}に届きます。`}</p>
-    <p>紙の配布先: {recipientScope === "all_households" ? "全戸" : "加入世帯"}</p>
+    <p>紙の配布先を指定しました。</p>
+    <p>指定した相手: {paperTargetLabel(JSON.stringify(distribution))}</p>
     <p>公開用の連絡先: {contacts || "未設定"}</p>
     <form method="post" action={adminPath(ward, `/publish/${project.project_id}/send`)}>
       <input type="hidden" name="documentId" value={documentId} />
       <input type="hidden" name="versionId" value={draft.version_id} />
       <input type="hidden" name="versionNo" value={draft.version_no} />
-      <input type="hidden" name="distribution" value={distribution} />
-      <input type="hidden" name="recipientScope" value={typeof form.recipientScope === "string" ? form.recipientScope : "member_households"} />
+      <input type="hidden" name="distribution" value={JSON.stringify(distribution)} />
+      <input type="hidden" name="recipientScope" value={recipientScope} />
       <input type="hidden" name="lineDelivery" value={lineDelivery} />
       <button type="submit">配る</button>
     </form>
@@ -283,9 +319,15 @@ admin.post("/publish/:projectId/send", async (c) => {
   if (warnings.length > 0) return c.text(warnings.join("\n"), 400);
   const now = nowIso();
   const publicationId = newId();
+  const roster = await getRoster(c.env.DB, ward.wardId);
   const rawDistribution = typeof form.distribution === "string" ? form.distribution : "";
-  const squads = await getDistricts(c.env.DB, ward.wardId);
-  const distribution = parseDistribution(rawDistribution, squads);
+  let distribution = validateDistribution(rawDistribution, roster);
+  if (!distribution && !rawDistribution.trim().startsWith("{")) {
+    const districts = [...new Set(roster.map((entry) => entry.district))];
+    const legacy = parseDistribution(rawDistribution, districts);
+    distribution = { mode: "district", targets: Object.entries(legacy).map(([district, copies]) => ({ district, copies })) };
+  }
+  if (!distribution) return c.text("紙の配布先が名簿と合いません。配布内容を選び直してください。", 400);
   const publication = await c.env.DB.batch([
     c.env.DB.prepare(`UPDATE document_versions SET published_at = ?, published_by_account_id = ?
       WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_id = ? AND version_no = ?
@@ -342,6 +384,58 @@ export function ArticleBody({ body }: { body: string }) {
   try { parsed = JSON.parse(body) as unknown; } catch { parsed = body; }
   const strings = collectText(parsed);
   return <div>{strings.map((text, index) => <p key={index}>{text}</p>)}</div>;
+}
+
+interface DistributionTarget { district: string; copies: number; household?: string; }
+interface PaperDistribution { mode: "district" | "household"; targets: DistributionTarget[]; }
+
+function buildDistribution(
+  roster: Array<{ district: string; household: string }>, mode: string, districts: Set<string>, households: Set<string>, copyCount: (index: number) => number,
+): PaperDistribution | null {
+  if (mode === "household") {
+    const targets = roster.filter((entry) => households.has(JSON.stringify([entry.district, entry.household])))
+      .map((entry) => ({ district: entry.district, household: entry.household, copies: 1 }));
+    return targets.length ? { mode, targets } : null;
+  }
+  if (mode !== "district") return null;
+  const names = [...new Set(roster.map((entry) => entry.district))];
+  const targets: DistributionTarget[] = [];
+  for (const [index, district] of names.entries()) {
+    if (!districts.has(district)) continue;
+    const copies = copyCount(index);
+    const available = roster.filter((entry) => entry.district === district).length;
+    if (!Number.isInteger(copies) || copies < 1 || copies > available) return null;
+    targets.push({ district, copies });
+  }
+  return targets.length ? { mode, targets } : null;
+}
+
+function validateDistribution(raw: string, roster: Array<{ district: string; household: string }>): PaperDistribution | null {
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+    const input = value as { mode?: unknown; targets?: unknown };
+    if (!Array.isArray(input.targets)) return null;
+    const households = new Set(roster.map((entry) => JSON.stringify([entry.district, entry.household])));
+    const districts = new Set(roster.map((entry) => entry.district));
+    const targets: DistributionTarget[] = [];
+    for (const item of input.targets) {
+      if (typeof item !== "object" || item === null || Array.isArray(item)) return null;
+      const target = item as { district?: unknown; household?: unknown; copies?: unknown };
+      if (typeof target.district !== "string" || !districts.has(target.district) || !Number.isInteger(target.copies) || (target.copies as number) < 1) return null;
+      if (input.mode === "household") {
+        if (typeof target.household !== "string" || !households.has(JSON.stringify([target.district, target.household])) || target.copies !== 1) return null;
+        targets.push({ district: target.district, household: target.household, copies: 1 });
+      } else if (input.mode === "district") {
+        const available = roster.filter((entry) => entry.district === target.district).length;
+        if (target.household !== undefined || (target.copies as number) > available) return null;
+        targets.push({ district: target.district, copies: target.copies as number });
+      } else return null;
+    }
+    return (input.mode === "district" || input.mode === "household") && (targets.length > 0 || input.mode === "district")
+      ? { mode: input.mode, targets }
+      : null;
+  } catch { return null; }
 }
 
 function collectText(value: unknown): string[] {

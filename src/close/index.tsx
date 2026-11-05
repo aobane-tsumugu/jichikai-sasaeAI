@@ -9,10 +9,26 @@ import { startTask } from "../ai/api";
 import { getProjectSummary } from "../project/api";
 import { saveDocument } from "../project/actions";
 import { MAP_PROGRESS_LABEL, type MapProgress } from "../project/model";
+import { checkPublicDraft } from "../check";
 
 interface CloseTask { task_id: string; name: string; period_start: string | null; period_end: string | null; progress: MapProgress; }
 interface CloseEntry extends CloseTask { period: string; requested_by: string; difficulty: string; next_year: string; }
+interface ActivityTaskEdit { taskId: string; name: string; period: string; }
+interface ActivityBody { introduction: string; membershipBurden: string; membershipBenefit: string; tasks: ActivityTaskEdit[]; }
 const admin = new Hono<AdminEnv>();
+
+function parseActivityBody(raw: string | null | undefined): ActivityBody | null {
+  if (!raw) return null;
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+    const body = value as Partial<ActivityBody>;
+    if (typeof body.introduction !== "string" || typeof body.membershipBurden !== "string" || typeof body.membershipBenefit !== "string" || !Array.isArray(body.tasks)) return null;
+    const tasks = body.tasks.filter((task): task is ActivityTaskEdit => typeof task === "object" && task !== null &&
+      typeof task.taskId === "string" && typeof task.name === "string" && typeof task.period === "string");
+    return { introduction: body.introduction, membershipBurden: body.membershipBurden, membershipBenefit: body.membershipBenefit, tasks };
+  } catch { return null; }
+}
 
 /** Hono のテスト用 request には ExecutionContext が無い場合がある。 */
 function waitableContext(context: { executionCtx: Waitable }): Waitable {
@@ -44,8 +60,8 @@ admin.get("/close/:projectId", async (c) => {
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
   if (!project) return c.notFound();
   if (!project.closedAt && !(await prepareDrafts(c.env.DB, ward.wardId, id, c.var.account.accountId))) return c.notFound();
-  const [tasks, reports, status, generatedReport] = await Promise.all([
-    c.env.DB.prepare("SELECT task_id, name, period, progress, requested_by, difficulty, next_year FROM project_close_map WHERE ward_id = ? AND project_id = ?")
+  const [tasks, reports, status, generatedReport, activityPage] = await Promise.all([
+    c.env.DB.prepare("SELECT task_id, name, period, progress, requested_by, difficulty, next_year FROM project_close_map WHERE ward_id = ? AND project_id = ? ORDER BY period, task_id")
       .bind(ward.wardId, id).all<CloseEntry>(),
     c.env.DB.prepare("SELECT scope, body FROM project_close_reports WHERE ward_id = ? AND project_id = ? ORDER BY scope")
       .bind(ward.wardId, id).all<{ scope: "public" | "staff"; body: string }>(),
@@ -54,6 +70,8 @@ admin.get("/close/:projectId", async (c) => {
     c.env.DB.prepare(`SELECT v.body FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
       WHERE d.ward_id = ? AND d.project_id = ? AND d.kind = 'report' AND d.scope = 'public' AND v.scope = 'public'
       ORDER BY v.version_no DESC LIMIT 1`).bind(ward.wardId, id).first<{ body: string }>(),
+    c.env.DB.prepare("SELECT draft_body, published_at FROM project_activity_pages WHERE ward_id = ? AND project_id = ?")
+      .bind(ward.wardId, id).first<{ draft_body: string; published_at: string | null }>(),
   ]);
   let generatedText = "";
   if (generatedReport?.body) {
@@ -63,10 +81,15 @@ admin.get("/close/:projectId", async (c) => {
     } catch { generatedText = ""; }
   }
   const report = (scope: "public" | "staff") => reports.results?.find((r) => r.scope === scope)?.body || (scope === "public" ? generatedText : "");
+  const savedActivity = parseActivityBody(activityPage?.draft_body);
+  const activity = savedActivity ?? { introduction: generatedText, membershipBurden: "", membershipBenefit: "", tasks: tasks.results.map((task) => ({ taskId: task.task_id, name: task.name, period: task.period })) };
   const root = adminPath(ward, `/close/${id}`);
   return c.html(<Layout title={`報告と閉じる: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>{project.title} の報告と閉じる</h1>
     {project.closedAt ? <Notice>このプロジェクトは凍結しています。読むことはできます。</Notice> : <form method="post" action={`${root}/prepare`}><button class="secondary">報告と地図の下書きを起こす</button></form>}
+    {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}
+    {c.req.query("activity") === "saved" ? <Notice>仕事紹介の下書きを保存しました。</Notice> : null}
+    {c.req.query("activity") === "published" ? <Notice>仕事紹介を区のページに載せました。</Notice> : null}
     {status.results?.map((job) => <p>{job.task === "report" ? "報告" : "地図"}: {job.status === "done" ? "できました" : job.status === "failed" ? "止まりました" : "準備中"}</p>)}
     <h2>報告の下書き</h2>
     {(["public", "staff"] as const).map((scope) => <form class="panel" method="post" action={`${root}/report/${scope}`}>
@@ -88,9 +111,62 @@ admin.get("/close/:projectId", async (c) => {
       <label for={`next-${task.task_id}`}>来年変えること</label><textarea id={`next-${task.task_id}`} name="nextYear" rows={2} maxlength={1200} disabled={!!project.closedAt} style="width:100%;font:inherit">{task.next_year}</textarea>
       {!project.closedAt ? <p><button>この仕事を保存</button></p> : null}
     </form>)}
+    <h2>役員の仕事と活動を紹介する</h2>
+    <p>AIが起こした報告と地図をもとに、役員が直してから区のページに載せます。記録に残った仕事の件数を示します。時間数や効果は測っていないため、書きません。</p>
+    {activityPage?.published_at ? <Notice>区のページに掲載中です。直した内容を反映するには、もう一度掲載してください。</Notice> : null}
+    <form class="panel" method="post" action={`${root}/activity`}>
+      <label for="activity-intro">この活動で役員がしたこと</label><textarea id="activity-intro" name="introduction" rows={6} maxlength={5000} style="width:100%;font:inherit">{activity.introduction}</textarea>
+      <label for="activity-burden">加入すると担うこと</label><textarea id="activity-burden" name="membershipBurden" rows={4} maxlength={3000} style="width:100%;font:inherit">{activity.membershipBurden}</textarea>
+      <label for="activity-benefit">加入すると得られること</label><textarea id="activity-benefit" name="membershipBenefit" rows={4} maxlength={3000} style="width:100%;font:inherit">{activity.membershipBenefit}</textarea>
+      <fieldset><legend>活動の一覧に載せる仕事</legend>{tasks.results.map((task) => { const saved = activity.tasks.find((entry) => entry.taskId === task.task_id); return <div class="panel">
+        <label><input type="checkbox" name="taskId" value={task.task_id} checked={!!saved} /> 活動の一覧に載せる</label>
+        <label for={`activity-name-${task.task_id}`}>仕事の名前</label><input id={`activity-name-${task.task_id}`} name={`activityName_${task.task_id}`} value={saved?.name ?? task.name} maxlength={120} />
+        <label for={`activity-period-${task.task_id}`}>時期</label><input id={`activity-period-${task.task_id}`} name={`activityPeriod_${task.task_id}`} value={saved?.period ?? task.period} maxlength={80} />
+      </div>; })}</fieldset>
+      <p><button name="action" value="save">下書きを保存</button></p>
+      <p><button name="action" value="publish" disabled={!project.closedAt || !activity.introduction.trim() || !activity.membershipBurden.trim() || !activity.membershipBenefit.trim()}>区のページに載せる</button></p>
+    </form>
+    {activityPage?.published_at ? <p><a href={`/${ward.slug}/work/${encodeURIComponent(id)}`}>区のページで確認する</a></p> : null}
     {!project.closedAt ? <form method="post" action={`${root}/finalize`}><p><button class="danger">閉じて記録に残す</button></p></form> : null}
     <p><a href={adminPath(ward, "/archive")}>記録を開く</a></p>
   </Layout>);
+});
+
+admin.post("/close/:projectId/activity", async (c) => {
+  const { ward, account } = c.var; const projectId = c.req.param("projectId"); const form = await c.req.formData();
+  const project = await getProjectSummary(c.env.DB, ward.wardId, projectId);
+  if (!project) return c.notFound();
+  const action = String(form.get("action") ?? "save");
+  if (action !== "save" && action !== "publish") return c.notFound();
+  if (action === "publish" && !project.closedAt) return c.text("プロジェクトを閉じてから掲載できます。", 400);
+  const rows = await c.env.DB.prepare("SELECT task_id, name, period FROM project_close_map WHERE ward_id = ? AND project_id = ? ORDER BY period, task_id")
+    .bind(ward.wardId, projectId).all<{ task_id: string; name: string; period: string }>();
+  const selectedIds = new Set(form.getAll("taskId").map(String));
+  const includedTasks = rows.results.filter((row) => selectedIds.has(row.task_id)).map((row) => ({
+    taskId: row.task_id,
+    name: String(form.get(`activityName_${row.task_id}`) ?? row.name).trim().slice(0, 120),
+    period: String(form.get(`activityPeriod_${row.task_id}`) ?? row.period).trim().slice(0, 80),
+  }));
+  const introduction = String(form.get("introduction") ?? "").trim().slice(0, 5000);
+  const membershipBurden = String(form.get("membershipBurden") ?? "").trim().slice(0, 3000);
+  const membershipBenefit = String(form.get("membershipBenefit") ?? "").trim().slice(0, 3000);
+  if (action === "publish" && (!introduction || !membershipBurden || !membershipBenefit)) return c.redirect(`${adminPath(ward, `/close/${projectId}`)}?error=${encodeURIComponent("活動の紹介、加入で担うこと、得られることを入力してください")}`, 303);
+  if (action === "publish") {
+    const text = [introduction, membershipBurden, membershipBenefit, ...includedTasks.flatMap((task) => [task.period, task.name])].join("\n");
+    const warnings = await checkPublicDraft(c.env.DB, ward.wardId, projectId, "report", { text, items: [] });
+    if (warnings.length) return c.redirect(`${adminPath(ward, `/close/${projectId}`)}?error=${encodeURIComponent("公開に出せない情報が含まれる可能性があります。文章と仕事の一覧を見直してください")}`, 303);
+  }
+  const body = JSON.stringify({ introduction, membershipBurden, membershipBenefit, tasks: includedTasks });
+  const now = nowIso();
+  await c.env.DB.prepare(`INSERT INTO project_activity_pages (ward_id, project_id, draft_body, published_body, published_at, updated_at, updated_by_account_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (ward_id, project_id) DO UPDATE SET draft_body = excluded.draft_body,
+      published_body = CASE WHEN ? = 1 THEN excluded.published_body ELSE project_activity_pages.published_body END,
+      published_at = CASE WHEN ? = 1 THEN excluded.published_at ELSE project_activity_pages.published_at END,
+      updated_at = excluded.updated_at, updated_by_account_id = excluded.updated_by_account_id`)
+    .bind(ward.wardId, projectId, body, action === "publish" ? body : null, action === "publish" ? now : null, now, account.accountId,
+      action === "publish" ? 1 : 0, action === "publish" ? 1 : 0).run();
+  return c.redirect(`${adminPath(ward, `/close/${projectId}`)}?activity=${action === "publish" ? "published" : "saved"}`, 303);
 });
 
 admin.post("/close/:projectId/prepare", async (c) => {
