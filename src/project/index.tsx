@@ -7,10 +7,24 @@ import { listUnansweredByDistrict } from "../answers/api";
 import { getReadings, listOriginals, listJobs } from "../intake/store";
 import { createProject, getProjectState, getProjectSummary, listProjects, ProjectInputError } from "./api";
 import { answerQuestion, renameProject } from "./actions";
-import { PROJECT_KINDS, PROJECT_KIND_LABEL, isItemKey, DEADLINE_LABEL, ITEM_LABEL, TABLES, displayFieldValue, DOCUMENT_KIND_LABEL, SCOPE_LABEL, CONFIDENCE_LABEL, type RowData } from "./model";
+import { PROJECT_KINDS, PROJECT_KIND_LABEL, TABLE_KEYS, type TableKey, isItemKey, DEADLINE_LABEL, ITEM_LABEL, TABLES, displayFieldValue, DOCUMENT_KIND_LABEL, SCOPE_LABEL, CONFIDENCE_LABEL, type RowData } from "./model";
 import { setProjectApi } from "../ai/project-binding";
 import { agentApi } from "./agent-api";
+import { MAP_TEMPLATES } from "../map/template";
 import { followupAdmin } from "./followup";
+
+/** 変わった所の対象を、内部の鍵ではなく画面の言葉で示す。 */
+function changeTargetLabel(kind: string, target: string): string {
+  if (isItemKey(target)) return ITEM_LABEL[target];
+  if (kind === "map_task") {
+    const task = Object.values(MAP_TEMPLATES).flat().find((entry) => entry.key === target);
+    return `地図: ${task?.name ?? target}`;
+  }
+  const at = target.indexOf(":");
+  const table = at > 0 ? target.slice(0, at) : "";
+  if ((TABLE_KEYS as readonly string[]).includes(table)) return `${TABLES[table as TableKey].label}: ${target.slice(at + 1).replaceAll("|", " ")}`;
+  return target.replaceAll("|", " ");
+}
 
 const admin = new Hono<AdminEnv>();
 setProjectApi(agentApi);
@@ -91,7 +105,7 @@ admin.post("/projects", async (c) => {
 
 admin.get("/projects/:projectId", async (c) => {
   const { ward } = c.var; const projectId = c.req.param("projectId");
-  const [project, state, jobs, changes] = await Promise.all([getProjectSummary(c.env.DB, ward.wardId, projectId), getProjectState(c.env.DB, ward.wardId, projectId), listJobs(c.env.DB, ward.wardId, { projectId, limit: 40 }), c.env.DB.prepare("SELECT target, status, reason, source_locator FROM project_changes WHERE ward_id = ? AND project_id = ? ORDER BY created_at DESC LIMIT 30").bind(ward.wardId, projectId).all<{ target: string; status: string; reason: string | null; source_locator: string | null }>()]);
+  const [project, state, jobs, changes] = await Promise.all([getProjectSummary(c.env.DB, ward.wardId, projectId), getProjectState(c.env.DB, ward.wardId, projectId), listJobs(c.env.DB, ward.wardId, { projectId, limit: 40 }), c.env.DB.prepare("SELECT kind, target, status, reason, source_locator FROM project_changes WHERE ward_id = ? AND project_id = ? ORDER BY created_at DESC LIMIT 30").bind(ward.wardId, projectId).all<{ kind: string; target: string; status: string; reason: string | null; source_locator: string | null }>()]);
   if (!project || !state) return c.notFound();
   const ledgerRows: Array<{ data: RowData }> = [
     ...state.tables.sponsors.map((row) => ({ data: { counterpart: row.data.name ?? "", direction: "income", amount: row.data.amount ?? "", date: "", note: row.data.reply ?? "" } })),
@@ -139,13 +153,15 @@ admin.get("/projects/:projectId", async (c) => {
     }))}
     {jobs.length === 0 ? <p>まだ材料は入っていません。</p> : null}
     <h2>入った物の影響</h2>
-    {changes.results.map((change) => <p>{change.target} — {change.status === "applied" ? "中身に入りました" : change.status === "same" ? "同じ物でした" : change.status === "conflict" ? "食い違いとして並びました" : change.status === "kept" ? "今の中身を残しました" : change.status === "held" ? "確認待ちです" : change.status === "dropped" ? `取り込めませんでした${change.reason ? `: ${change.reason}` : ""}` : "記録しました"}{change.source_locator ? `（${change.source_locator}）` : ""}</p>)}
+    {changes.results.map((change) => <p>{changeTargetLabel(change.kind, change.target)} — {change.status === "applied" ? "中身に入りました" : change.status === "same" ? "同じ物でした" : change.status === "conflict" ? "食い違いとして並びました" : change.status === "kept" ? "今の中身を残しました" : change.status === "held" ? "確認待ちです" : change.status === "dropped" ? `取り込めませんでした${change.reason ? `: ${change.reason}` : ""}` : "記録しました"}{change.source_locator ? `（${change.source_locator}）` : ""}</p>)}
     {changes.results.length === 0 ? <p>まだ変わった所はありません。</p> : null}
     <h2>今年の中身</h2>
     {state.items.map((item) => <section class="panel"><strong>{item.label}</strong><p>{item.current?.content ?? "まだ入っていません"}</p>{item.references.map((v) => <p>参考（{v.refYear ?? "年不明"}年）: {v.content}</p>)}</section>)}
     <h2 id="ledger">収支</h2>
     <p>領収書の読み取り結果はこの記録に入ります。年の集約、予算との比較、決算の下書きは <a href={adminPath(ward, "/ledger")}>帳簿</a> で確認できます。</p>
-    <table><thead><tr><th>相手</th><th>収入か支出</th><th>額</th><th>日付</th><th>メモ</th></tr></thead><tbody>{ledgerRows.map((row) => <tr>{Object.keys(TABLES.ledger.fields).map((key) => <td>{displayFieldValue("ledger", key, row.data[key])}</td>)}</tr>)}</tbody></table>
+    {ledgerRows.length === 0 ? <p>収支の記録はまだありません。</p> : <div style="overflow-x:auto"><table><thead><tr>{Object.entries(TABLES.ledger.fields).map(([key, field]) => <th>{key === "receiptOriginalId" ? "領収書" : field.label}</th>)}</tr></thead><tbody>{ledgerRows.map((row) => <tr>{Object.keys(TABLES.ledger.fields).map((key) => <td>{key === "receiptOriginalId"
+      ? (row.data[key] ? <a href={adminPath(ward, `/intake/originals/${encodeURIComponent(String(row.data[key]))}`)}>元の物を開く</a> : "")
+      : displayFieldValue("ledger", key, row.data[key])}</td>)}</tr>)}</tbody></table></div>}
     <h2>入った物と文書</h2>
     {state.documents.map((d) => <p>{DOCUMENT_KIND_LABEL[d.kind]} / {SCOPE_LABEL[d.scope]}{d.stale ? " / 新しい物が入っています" : ""}</p>)}
   </Layout>);

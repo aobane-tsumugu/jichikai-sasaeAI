@@ -10,6 +10,8 @@ import { getProjectSummary } from "../project/api";
 import { saveDocument } from "../project/actions";
 import { MAP_PROGRESS_LABEL, type MapProgress } from "../project/model";
 import { checkPublicDraft } from "../check";
+import { getDraftPack } from "../draft/packs";
+import { getPublicContact } from "../settings/store";
 
 interface CloseTask { task_id: string; name: string; period_start: string | null; period_end: string | null; progress: MapProgress; }
 interface CloseEntry extends CloseTask { period: string; requested_by: string; difficulty: string; next_year: string; }
@@ -55,6 +57,17 @@ async function prepareDrafts(db: D1Database, wardId: string, projectId: string, 
   return true;
 }
 
+/**
+ * 閉じる時の報告の指示。案の部品と同じ包み（下書きの形と based_on_state_version の決め）を使う。
+ * 形を書かない指示では、AI の下書きが保存の検査で捨てられ、報告が空のまま残った。
+ */
+function reportInstruction(contact: string): string {
+  const pack = getDraftPack("report");
+  return `${pack.instruction}
+閉じる時の実施報告です。住民に向けた公開の報告だけを書きます。役員だけの記録は書かず、役員が自分で書きます。人数や出来事は状態にある今年の事実だけにし、分からない所は空欄のまま役員への問いにします。${contact ? `\n区の公開用の連絡先（問い合わせ先に使う）: ${contact}` : ""}
+対象の文書: ${pack.kind}。範囲: ${pack.scope}。data に pack_version を ${pack.version}、based_on_state_version を引いた状態の番号として含めてください。`;
+}
+
 admin.get("/close/:projectId", async (c) => {
   const { ward } = c.var; const id = c.req.param("projectId");
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
@@ -90,7 +103,9 @@ admin.get("/close/:projectId", async (c) => {
     {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}
     {c.req.query("activity") === "saved" ? <Notice>仕事紹介の下書きを保存しました。</Notice> : null}
     {c.req.query("activity") === "published" ? <Notice>仕事紹介を区のページに載せました。</Notice> : null}
-    {status.results?.map((job) => <p>{job.task === "report" ? "報告" : "地図"}: {job.status === "done" ? "できました" : job.status === "failed" ? "止まりました" : "準備中"}</p>)}
+    {status.results?.map((job) => <p>{job.task === "report" ? "報告" : "地図"}: {job.status === "done"
+      ? (job.task === "report" && !report("public") ? "下書きを書けませんでした。下の欄に直接書けます" : "できました")
+      : job.status === "failed" ? "止まりました。下の欄に直接書けます" : "準備中"}</p>)}
     <h2>報告の下書き</h2>
     {(["public", "staff"] as const).map((scope) => <form class="panel" method="post" action={`${root}/report/${scope}`}>
       <h3>{scope === "public" ? "公開する部分" : "役員だけの部分"}</h3>
@@ -124,7 +139,8 @@ admin.get("/close/:projectId", async (c) => {
         <label for={`activity-period-${task.task_id}`}>時期</label><input id={`activity-period-${task.task_id}`} name={`activityPeriod_${task.task_id}`} value={saved?.period ?? task.period} maxlength={80} />
       </div>; })}</fieldset>
       <p><button name="action" value="save">下書きを保存</button></p>
-      <p><button name="action" value="publish" disabled={!project.closedAt || !activity.introduction.trim() || !activity.membershipBurden.trim() || !activity.membershipBenefit.trim()}>区のページに載せる</button></p>
+      {!project.closedAt ? <p class="muted">区のページに載せるのは、プロジェクトを閉じた後です。</p> : null}
+      <p><button name="action" value="publish" disabled={!project.closedAt}>区のページに載せる</button></p>
     </form>
     {activityPage?.published_at ? <p><a href={`/${ward.slug}/work/${encodeURIComponent(id)}`}>区のページで確認する</a></p> : null}
     {!project.closedAt ? <form method="post" action={`${root}/finalize`}><p><button class="danger">閉じて記録に残す</button></p></form> : null}
@@ -172,10 +188,11 @@ admin.post("/close/:projectId/activity", async (c) => {
 admin.post("/close/:projectId/prepare", async (c) => {
   const { ward, account } = c.var; const id = c.req.param("projectId");
   if (!(await prepareDrafts(c.env.DB, ward.wardId, id, account.accountId))) return c.notFound();
+  const contact = await getPublicContact(c.env.DB, ward.wardId);
   try {
     await Promise.all([
       startTask(c.env, waitableContext(c), { wardId: ward.wardId, projectId: id, task: "report", accountId: account.accountId,
-        instruction: "住民向けの実施報告と役員向けの記録を分けて下書きする。状態にある今年の事実だけを使い、参考の中身を今年の実績として書かない。公開する文は年配の人にも読みやすい短い文にする。人数や出来事は確認できる内容だけにし、分からない所は空欄のまま役員への問いにする。公開部分に個人名、電話番号、協賛額、収支、個人の連絡先を含めない。空欄や問いを埋めるために事実を作らない。配る操作はしない。文書: report。" }),
+        instruction: reportInstruction(contact) }),
       startTask(c.env, waitableContext(c), { wardId: ward.wardId, projectId: id, task: "map_draft", accountId: account.accountId,
         instruction: "閉じる時の地図の下書きを状態から作る。原本は読まない。状態にある仕事を一つずつ保ち、task_id、period、name、progress（open/started/done）、requested_by、difficulty、next_year を記録する。時期、進み具合、頼んだ相手、困ったこと、来年変えることは状態にある内容だけを書き、分からない欄は空にして役員への問いにする。仕事を省いたり、過去の参考情報を今年の実績にしたり、内容を補って作らない。write_change で kind=map_draft、target=map、data={tasks:[...] } を一度書く。" }),
     ]);

@@ -149,15 +149,34 @@ pub.get("/p/:projectId", async (c) => {
       .bind(c.var.ward.wardId, projectId).first<{ published_at: string }>(),
   ]);
   if (items.length === 0) return c.notFound();
+  // items は掲載日の新しい順。文書ごとに最新の掲載が今の案内で、それを下げていれば文書ごと掲載を終えた扱いにする。
+  // 古い掲載は今の案内と取り違えないよう畳んで後ろに置き、下げた古い掲載は出さない。
+  const documents = new Map<string, { latest: PublicProject; earlier: PublicProject[] }>();
+  for (const item of items) {
+    const entry = documents.get(item.document_id);
+    if (!entry) documents.set(item.document_id, { latest: item, earlier: [] });
+    else if (!entry.latest.unpublished_at && !item.unpublished_at) entry.earlier.push(item);
+  }
   const details = await pageFooter(c, projectId);
   return c.html(<Layout title={items[0]!.title} siteName={c.var.ward.name}>
     <p><a href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のお知らせ</a></p>
     <h1>{items[0]!.title}</h1>
-    {items.map((item) => <article class="panel" key={`${item.document_id}-${item.version_no}`}>
-      <h2>{item.document_title}</h2>
-      <p>掲載日: {new Date(item.published_at).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}{item.unpublished_at ? "（掲載終了）" : ""}</p>
-      <ArticleBody body={item.body} />
-    </article>)}
+    {[...documents.values()].map(({ latest, earlier }) => {
+      const date = (item: PublicProject) => new Date(item.published_at).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" });
+      if (latest.unpublished_at) return <article class="panel" key={latest.document_id}>
+        <p>{date(latest)} に載せた案内は、掲載を終えました。</p>
+      </article>;
+      return <article class="panel" key={latest.document_id}>
+        <h2>{latest.document_title}</h2>
+        <p>掲載日: {date(latest)}</p>
+        <ArticleBody body={latest.body} />
+        {earlier.map((older) => <details>
+          <summary>変更前の案内（{date(older)} 掲載）</summary>
+          <p class="muted">この内容は変更されています。上の案内をご覧ください。</p>
+          <ArticleBody body={older.body} />
+        </details>)}
+      </article>;
+    })}
     {activity ? <p><a href={`/${c.var.ward.slug}/work/${encodeURIComponent(projectId)}`}>役員の仕事と活動を見る</a></p> : null}
     {details}
   </Layout>);

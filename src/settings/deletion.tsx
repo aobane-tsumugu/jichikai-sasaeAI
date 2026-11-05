@@ -3,7 +3,7 @@ import { AdminPage } from "../core/admin-ui";
 import { adminPath } from "../core/auth";
 import { Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
-import { requestJobDeletion } from "../ops/lifecycle";
+import { requestAnswerDeletion, requestJobDeletion } from "../ops/lifecycle";
 
 export const deletion = new Hono<AdminEnv>();
 
@@ -16,9 +16,14 @@ deletion.get("/", async (c) => {
     GROUP BY j.job_id ORDER BY j.created_at DESC LIMIT 100`).bind(ward.wardId)
     .all<{ job_id: string; created_at: string; via: string; filename: string; kind: string; title: string | null }>();
   const queue = await c.env.DB.prepare(`SELECT state, COUNT(*) AS count FROM ops_deletion_queue
-    WHERE ward_id = ? AND target_type = 'job' GROUP BY state`).bind(ward.wardId)
+    WHERE ward_id = ? AND target_type IN ('job', 'answer') GROUP BY state`).bind(ward.wardId)
     .all<{ state: string; count: number }>();
   const counts = new Map(queue.results.map((row) => [row.state, row.count]));
+  // Web と電話で受けた回答は原本を持たないので、記録の消去とは別に一件ずつ消す。
+  const answers = await c.env.DB.prepare(`SELECT a.answer_id, a.household, a.district, a.source, a.created_at, p.title
+    FROM project_answers a JOIN projects p ON p.ward_id = a.ward_id AND p.project_id = a.project_id
+    WHERE a.ward_id = ? AND a.original_id IS NULL ORDER BY a.created_at DESC LIMIT 200`).bind(ward.wardId)
+    .all<{ answer_id: string; household: string; district: string; source: string; created_at: string; title: string }>();
   return c.html(<AdminPage ward={ward} account={account} title="消す求め" back={{ href: adminPath(ward, "/settings"), label: "区の設定" }}>
     <h1>消す求め</h1>
     {c.req.query("queued") === "1" ? <Notice>消去を受け付けました。処理は続きから進みます。</Notice> : null}
@@ -32,8 +37,24 @@ deletion.get("/", async (c) => {
       </form>
     </section>)}
     {jobs.results.length === 0 ? <p>消去できる記録はありません。</p> : null}
+    {c.req.query("answer") === "1" ? <Notice>回答を消しました。毎日の写しからも、続けて消します。</Notice> : null}
+    <h2>Web と電話で受けた回答</h2>
+    <p>回答票の写真から入った回答は、上の記録を消すと一緒に消えます。</p>
+    {answers.results.map((answer) => <section class="panel">
+      <p>{answer.title} / {answer.district} / {answer.household} / {answer.source === "phone" ? "電話" : answer.source === "line" ? "LINE" : "Web"} / {answer.created_at}</p>
+      <form method="post" action={adminPath(ward, `/settings/deletion/answers/${answer.answer_id}`)} onsubmit="return confirm('この回答を消します。続けますか？')">
+        <button class="danger">この回答を消す</button>
+      </form>
+    </section>)}
+    {answers.results.length === 0 ? <p>消去できる回答はありません。</p> : null}
     <p><a href={adminPath(ward, "/settings")}>区の設定へ戻る</a></p>
   </AdminPage>);
+});
+
+deletion.post("/answers/:answerId", async (c) => {
+  const { ward } = c.var;
+  if (!(await requestAnswerDeletion(c.env.DB, ward.wardId, c.req.param("answerId")))) return c.notFound();
+  return c.redirect(adminPath(ward, "/settings/deletion?answer=1"), 303);
 });
 
 deletion.post("/:jobId", async (c) => {

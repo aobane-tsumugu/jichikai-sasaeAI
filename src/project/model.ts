@@ -331,7 +331,7 @@ export type QuestionState = (typeof QUESTION_STATES)[number];
 export const MAP_PROGRESS = ["open", "started", "done"] as const;
 export type MapProgress = (typeof MAP_PROGRESS)[number];
 
-export const MAP_PROGRESS_LABEL: Record<MapProgress, string> = { open: "これから", started: "進んでいる", done: "済み" };
+export const MAP_PROGRESS_LABEL: Record<MapProgress, string> = { open: "これから", started: "進行中", done: "済み" };
 
 // ---- 照合 ----
 

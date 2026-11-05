@@ -39,13 +39,13 @@ const agentApi: ProjectApi = {
     const source = sourceFor(change);
     if (change.kind === "draft") {
       if (!Number.isInteger(data.based_on_state_version) || (data.based_on_state_version as number) < 0) {
-        return { status: "rejected", note: "下書きの元にした状態がありません" };
+        return { status: "rejected", note: "下書きの元にした状態がありません。data に based_on_state_version（引いた状態の番号）を入れてください" };
       }
       const kind = documentKind(change.target, data);
       if (!kind) return { status: "rejected", note: "文書の種類を特定できませんでした" };
       const packVersion = typeof data.pack_version === "string" ? data.pack_version.slice(0, 100) : ctx.packVersion;
       const ok = await saveAIDraft(env.DB, ctx.wardId, ctx.projectId, kind, packVersion, data);
-      return { status: ok ? "applied" : "rejected", ...(ok ? {} : { note: "下書きを保存できませんでした" }) };
+      return { status: ok ? "applied" : "rejected", ...(ok ? {} : { note: "下書きを保存できませんでした。data は {text: 本文の文字列, items: [{key: 状態の項目の鍵, content: 文字列}], pack_version, based_on_state_version} にしてください" }) };
     }
     if (change.kind === "map_draft") {
       const rawTasks = data.tasks;
