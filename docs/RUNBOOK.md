@@ -113,3 +113,31 @@
 ## 合成画像について
 
 `fixtures/` の写真風画像はプログラムで作った合成で、実際の写真や手書きではありません。合成画像での読み取り結果は、本物の手書き・スマートフォン写真での結果とは別に記録します。fixture の説明は [fixtures/README.md](../fixtures/README.md) を参照してください。
+
+## 日次の写しから戻す
+
+写しは DAILY の Cron で毎日作られます。区ごとに `snapshots/daily/YYYY-MM-DD.json` へ保存され、原本や配布記録などの正本を含みます。読み取り結果、実行記録、検索用の索引など、元の情報から作り直せる内容は含みません。原本ファイル本体は写しの JSON ではなく、同じ区の R2 にある原本のままです。
+
+1. 戻し先の D1 と R2 を用意し、現在の `migrations/` を適用します。区のデータが空であることを確かめます。既存データへそのまま流すと重複や衝突になります。
+2. 使う区の ID と日付を選び、次の形で R2 から JSON を取得します。`<ward-id>` と日付は実値に置き換えます。
+
+   ```powershell
+   npx wrangler r2 object get jichikai-sasae-staging/<ward-id>/snapshots/daily/YYYY-MM-DD.json --remote --file .\ward-snapshot.json
+   ```
+
+3. 取得した JSON を確認して SQL にします。
+
+   ```powershell
+   node scripts/snapshot-to-sql.mjs .\ward-snapshot.json .\ward-restore.sql
+   ```
+
+   この変換は、全行の `ward_id` が写しの区 ID と一致することを確かめ、表と行の順に `INSERT` 文を書きます。生成した SQL は個人情報を含むので、作業後に安全に消します。
+4. 新しい空のデータベースへ実行します。
+
+   ```powershell
+   npx wrangler d1 execute jichikai-sasae-staging --remote --file .\ward-restore.sql
+   ```
+
+5. 件数と代表的なプロジェクト、役員アカウント、公開記録を確認します。別の D1 に戻す場合は、その区の原本 R2 も同じ区 ID のキーを保って復元してください。原本の写しも必要な場合は `originals` 表の `r2_path` を参照し、対象キーだけを同じ `WardBucket` の区内に戻します。
+
+復元後に `readings`、実行記録、検索索引は空です。検索索引は記録の再構築処理で作り直します。日次写しと復元は、この作業区ではまだ実機で確認していません。

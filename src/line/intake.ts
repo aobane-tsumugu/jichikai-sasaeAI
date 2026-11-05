@@ -4,6 +4,7 @@ import { projectApi } from "../ai/project-binding";
 import { assignProject as assignIntakeProject, receiveOriginal as receiveIntakeOriginal, withdrawJob as withdrawIntakeJob } from "../intake/api";
 import type { Waitable } from "../intake/types";
 import type { Env } from "../env";
+import { addAnswer, getRoster, normalizeHousehold } from "../answers/api";
 
 export interface LineOriginal {
   eventId: string;
@@ -28,6 +29,34 @@ export interface LineIntakePorts {
   matchInboxItem: (wardId: string, original: LineOriginal) => Promise<InboxMatch>;
   assignProject: (wardId: string, jobId: string, projectId: string) => Promise<void>;
   discard: (wardId: string, jobId: string) => Promise<void>;
+  saveAnswerReply?: (wardId: string, projectId: string, original: LineOriginal, jobId: string) => Promise<void>;
+}
+
+async function saveLineAnswer(db: D1Database, wardId: string, projectId: string, original: LineOriginal, jobId: string): Promise<void> {
+  const text = original.text ?? "";
+  const roster = await getRoster(db, wardId);
+  const household = roster.filter((entry) => text.includes(entry.household)).sort((a, b) => b.household.length - a.household.length)[0];
+  if (!household) return;
+  const adults = /大人\s*(\d+)\s*人/.exec(text);
+  const children = /子ども\s*(\d+)\s*人/.exec(text);
+  const total = /来場(?:は|が)?\s*(\d+)\s*人/.exec(text);
+  const peopleCount = adults || children ? Number(adults?.[1] ?? 0) + Number(children?.[1] ?? 0) : Number(total?.[1]);
+  if (!Number.isInteger(peopleCount) || peopleCount < 0) return;
+  const existing = await db.prepare("SELECT answer_id, household FROM project_answers WHERE ward_id = ? AND project_id = ?")
+    .bind(wardId, projectId).all<{ answer_id: string; household: string }>();
+  if (existing.results.some((answer) => normalizeHousehold(answer.household) === normalizeHousehold(household.household))) return;
+  const sourceOriginal = await db.prepare("SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ? AND withdrawn_at IS NULL ORDER BY position LIMIT 1")
+    .bind(wardId, jobId).first<{ original_id: string }>();
+  const helperPhrase = /([^。\n]{1,40}?)(?:なら|は)(?:手伝え|手伝い|手伝)/.exec(text)?.[1]?.trim() ?? "";
+  await addAnswer(db, wardId, {
+    projectId,
+    household: household.household,
+    district: household.district,
+    peopleCount,
+    ...(helperPhrase ? { helperName: household.household, helperTimes: helperPhrase } : {}),
+    source: "line",
+    ...(sourceOriginal ? { originalId: sourceOriginal.original_id } : {}),
+  });
 }
 
 /** 役員が関係ない物として消した時、受け箱から外して日ごとの数だけ残す。原本は呼び出し側で取り下げる。 */
@@ -71,6 +100,9 @@ export function createLineIntakePorts(
     },
     async discard(wardId, jobId) {
       await withdrawIntakeJob(env, wardId, jobId);
+    },
+    async saveAnswerReply(wardId, projectId, original, jobId) {
+      if (original.kind === "text") await saveLineAnswer(env.DB, wardId, projectId, original, jobId);
     },
     async matchInboxItem(wardId, original) {
       const open = await projectApi().listOpenProjects(env, wardId);

@@ -20,7 +20,6 @@ export const AdminPage: FC<
     noindex
     headerRight={
       <>
-        <a href={adminPath(ward, "/")}>役員画面</a>{" "}
         <form class="inline" method="post" action={adminPath(ward, "/logout")}>
           <span class="muted">{account.name} </span>
           <button type="submit" class="secondary">
