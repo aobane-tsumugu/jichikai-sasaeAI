@@ -45,10 +45,11 @@ PM が二時間ごとの点検で更新します。実施を確認した物だ�
 
 ## cloud で続ける時
 
-cloud のセッションにはこのリポジトリしかありません。手元の設計の正本、資格情報のファイル、デモ資料の原本、Codex はありません。設計は docs/DESIGN.md、守ることは CLAUDE.md を見ます。
+cloud のセッションにあるのはこのリポジトリです。資格情報のファイルと Codex はありません。設計の要約は docs/DESIGN.md、守ることは CLAUDE.md を見ます。
 
 - cloud 環境 jichikai-sasaeAI では `npx wrangler deploy` と `npx wrangler d1 execute DB --remote` が使えます。鍵はネットワークシークレットで、環境変数の CLOUDFLARE_API_TOKEN は目印の文字列です。読み取りは cloud で確認済み、配備は同じ鍵を手元で確認済みです。
 - 役員画面に入る資格情報は cloud にありません。
+- 管理用の文書とデモ資料の原本は、staging の R2 の `_handoff/admin-docs.tgz` と `_handoff/mixed-harvest-inputs.zip` にあります。`npx wrangler r2 object get jichikai-sasae-staging/_handoff/admin-docs.tgz --remote --file /tmp/admin-docs.tgz` で取り、リポジトリの外に展開します。リポジトリに入れないでください。
 - 秘密の値を書かない、一斉送信をしない、GitHub を公開にしない、は cloud でも同じです。
 - 検査は `npm run typecheck` と `npx vitest run`。
 
