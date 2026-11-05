@@ -1,0 +1,41 @@
+import { env } from "cloudflare:workers";
+import { expect, it } from "vitest";
+import { seedAdmin } from "../src/core/testing";
+import { receive } from "../src/intake/receive";
+import { createProject } from "../src/project/api";
+import { get, realApp } from "./helpers";
+
+it("入った物を名前と文で見分け、材料の文を読み、今やることに過ぎた行事の日を出さない", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const jstNow = Date.now() + 9 * 60 * 60 * 1000;
+  const yesterday = new Date(jstNow - 86400000).toISOString().slice(0, 10);
+  const tomorrow = new Date(jstNow + 86400000).toISOString().slice(0, 10);
+  const project = await createProject(env.DB, ward.wardId, {
+    kind: "event", title: "済んだ行事（架空）", year: 2026, eventDay: yesterday, accountId: account.accountId,
+  });
+  await createProject(env.DB, ward.wardId, { kind: "event", title: "次の行事（架空）", year: 2026, eventDay: tomorrow });
+  await env.DB.prepare("INSERT INTO project_deadlines (ward_id, project_id, kind, due_on) VALUES (?, ?, 'answer_due', ?)")
+    .bind(ward.wardId, project.projectId, yesterday).run();
+  const filename = "会場のメモ（架空）.txt";
+  const text = "受付は東側の入口に移します。担当の実行委員には会場の鍵と机の置き場を伝えます（すべて架空の資料）。";
+  await receive(env, { wardId: ward.wardId, projectId: project.projectId, via: "admin", parts: [
+    { kind: "file", filename, mediaType: "text/plain", bytes: new TextEncoder().encode("架空の会場のメモです") },
+  ] });
+  await receive(env, { wardId: ward.wardId, projectId: project.projectId, via: "admin", parts: [
+    { kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode(text) },
+  ] });
+  const root = `/${ward.slug}/admin`;
+  const intake = await get(realApp, `${root}/intake`, cookie);
+  const intakeHtml = await intake.text();
+  expect(intakeHtml).toContain(filename);
+  expect(intakeHtml).toContain(`<strong>${text.slice(0, 40)}…</strong>`);
+  const materials = await get(realApp, `${root}/projects/${project.projectId}`, cookie);
+  const materialHtml = await materials.text();
+  const beforeReadings = materialHtml.slice(materialHtml.indexOf('<h2 id="materials"')).split("<details>")[0];
+  expect(beforeReadings).toContain(text);
+  const today = await get(realApp, `${root}/projects/today`, cookie);
+  const todayHtml = await today.text();
+  expect(todayHtml).not.toContain(`${yesterday}　行事の日`);
+  expect(todayHtml).toContain(`${tomorrow}　行事の日`);
+  expect(todayHtml).toContain(`${yesterday}　回答の締切`);
+});
