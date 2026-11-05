@@ -129,8 +129,9 @@ export async function replaceRoster(db: D1Database, wardId: string, entries: Ros
   const now = nowIso();
   const setId = newId();
   const districts = [...new Set(entries.map((entry) => entry.district))].sort();
-  for (let start = 0; start < entries.length; start += 80) {
-    const batch = entries.slice(start, start + 80);
+  // D1 は一文の値の数が 100 までなので、一行 7 値で 14 行ずつ送る。
+  for (let start = 0; start < entries.length; start += 14) {
+    const batch = entries.slice(start, start + 14);
     const values = batch.map(() => "(?, ?, ?, ?, ?, ?, ?)").join(", ");
     const statement = db.prepare(
       `INSERT INTO ward_roster_entries (roster_entry_id, ward_id, roster_set_id, household, household_key, district, created_at) VALUES ${values}`,
