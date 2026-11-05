@@ -34,12 +34,16 @@ admin.get("/", async (c) => {
       </section>)}
       {projects.length === 0 ? <p>開いているプロジェクトはありません。</p> : null}
       <nav class="action-links">
-        <a class="button" href={adminPath(ward, "/projects")}>新しいプロジェクト</a>
+        <a class="button" href={adminPath(ward, "/projects/today")}>今やること</a>
+        <a class="button secondary" href={adminPath(ward, "/projects")}>新しいプロジェクト</a>
         <a class="button secondary" href={adminPath(ward, "/inbox")}>受け箱（{inboxCount}件）</a>
         <a class="button secondary" href={adminPath(ward, "/answers/roster")}>名簿</a>
         <a class="button secondary" href={adminPath(ward, "/archive")}>記録</a>
         <a class="button secondary" href={adminPath(ward, "/settings")}>区の設定</a>
         <a class="button secondary" href={adminPath(ward, "/intake")}>材料を送る</a>
+        <a class="button secondary" href={adminPath(ward, "/requests/city")}>行政の依頼</a>
+        <a class="button secondary" href={adminPath(ward, "/inquiries")}>問い合わせと要望</a>
+        <a class="button secondary" href={adminPath(ward, "/ledger")}>帳簿</a>
       </nav>
     </AdminPage>,
   );

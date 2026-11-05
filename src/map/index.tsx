@@ -29,7 +29,11 @@ admin.get("/projects/:projectId/map", async (c) => {
   const min = tasks.map((t) => t.periodStart).filter((x): x is string => !!x).sort()[0] ?? `${project.year}-01-01`;
   const max = tasks.map((t) => t.periodEnd).filter((x): x is string => !!x).sort().at(-1) ?? `${project.year}-12-31`;
   const start = Date.parse(`${min}T00:00:00Z`); const span = Math.max(1, Date.parse(`${max}T00:00:00Z`) - start);
-  const positions = tasks.map((t, i) => ({ task: t, y: 38 + i * 58, x: (d: string | null) => d ? 120 + (Date.parse(`${d}T00:00:00Z`) - start) / span * 640 : 120 + i * 45 }));
+  const gutter = 230; const barWidth = 640;
+  const positions = tasks.map((t, i) => ({ task: t, y: 52 + i * 54, x: (d: string | null) => d ? gutter + (Date.parse(`${d}T00:00:00Z`) - start) / span * barWidth : gutter + i * 45 }));
+  const mapHeight = Math.max(120, tasks.length * 54 + 44);
+  const todayX = today >= min && today <= max ? gutter + (Date.parse(`${today}T00:00:00Z`) - start) / span * barWidth : null;
+  const monthDay = (d: string) => `${Number(d.slice(5, 7))}月${Number(d.slice(8, 10))}日`;
   return c.html(<Layout title={`地図: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, `/projects/${id}`)}>プロジェクトへ</a>}>
     <h1>{project.title} の地図</h1>
     <p>時期、仕事、担当を一枚で見られます。仕事を開くと、材料や案、答え、収支へ進めます。</p>
@@ -45,15 +49,15 @@ admin.get("/projects/:projectId/map", async (c) => {
     {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}
     <h2>今の時期に開いている仕事</h2>
     {currentTasks.length ? currentTasks.map((task) => <p><a href={`#task-${task.taskId}`}>{task.name}</a></p>) : <p>今の時期に開いている仕事はありません。</p>}
-    <div style="overflow-x:auto"><svg viewBox={`0 0 800 ${Math.max(120, tasks.length * 58 + 24)}`} role="img" aria-label="プロジェクトの仕事の時期と進み具合" style="min-width:680px;width:100%;height:auto">
-      <line x1="120" y1="18" x2="760" y2="18" stroke="currentColor" />
-      <text x="120" y="14" font-size="13">{min}</text><text x="700" y="14" font-size="13">{max}</text>
-      {positions.map(({ task, y, x }) => <g>
-        <text x="8" y={y + 5} font-size="14">{task.name}</text>
-        <line x1={x(task.periodStart)} y1={y} x2={Math.max(x(task.periodStart) + 12, x(task.periodEnd))} y2={y} stroke={task.progress === "done" ? "#287a43" : "#2b6d9a"} stroke-width="10" stroke-linecap="round" />
-        <circle cx={x(task.periodStart)} cy={y} r="7" fill="currentColor" />
-        <text x="120" y={y + 19} font-size="12">{task.progress === "done" ? "済み" : task.progress === "started" ? "進行中" : "これから"}{task.seatId ? ` / ${seats.results.find((s) => s.seat_id === task.seatId)?.name ?? "担当あり"}` : " / 担当未記入"}</text>
-      </g>)}
+    <div style="overflow-x:auto"><svg viewBox={`0 0 900 ${mapHeight}`} role="img" aria-label="プロジェクトの仕事の時期と進み具合" style="min-width:680px;width:100%;height:auto">
+      <line x1={gutter} y1="24" x2={gutter + barWidth} y2="24" stroke="currentColor" />
+      <text x={gutter} y="16" font-size="14">{monthDay(min)}</text><text x={gutter + barWidth} y="16" font-size="14" text-anchor="end">{monthDay(max)}</text>
+      {todayX === null ? null : <g><line x1={todayX} y1="24" x2={todayX} y2={mapHeight} stroke="#b3452c" stroke-dasharray="4 4" /><text x={todayX} y="16" font-size="14" text-anchor="middle" fill="#b3452c">今日</text></g>}
+      {positions.map(({ task, y, x }) => <a href={`#task-${task.taskId}`}>
+        <text x="8" y={y} font-size="15" font-weight="500">{task.name}</text>
+        <text x="8" y={y + 19} font-size="13" opacity="0.75">{task.progress === "done" ? "済み" : task.progress === "started" ? "進行中" : "これから"}{task.seatId ? ` / ${seats.results.find((s) => s.seat_id === task.seatId)?.name ?? "担当あり"}` : ""}</text>
+        <line x1={x(task.periodStart)} y1={y} x2={Math.max(x(task.periodStart) + 12, x(task.periodEnd))} y2={y} stroke={task.progress === "done" ? "#287a43" : task.progress === "started" ? "#2b6d9a" : "#9db4c4"} stroke-width="12" stroke-linecap="round" />
+      </a>)}
     </svg></div>
     {tasks.map((task) => <section class="panel" id={`task-${task.taskId}`}><h2>{task.name}</h2><p>{task.periodStart ?? "時期未定"} から {task.periodEnd ?? "時期未定"}</p>
       <p>状態: {task.progress === "done" ? "済み" : task.progress === "started" ? "進行中" : "これから"} / {task.progressSource ? `出どころ: ${SOURCE_KIND_LABEL[task.progressSource.kind]}${task.progressSource.locator ? ` (${task.progressSource.locator})` : ""}` : "人の入力"}</p>
@@ -62,7 +66,7 @@ admin.get("/projects/:projectId/map", async (c) => {
         <a class="button secondary" href={adminPath(ward, `/space/${id}`)}>空間</a>
         <a class="button secondary" href={adminPath(ward, `/close/${id}`)}>報告と閉じる</a>
       </nav>
-      <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}`)}>
+      <details><summary>時期や担当を直す</summary><form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}`)}>
         <label for={`name-${task.taskId}`}>仕事</label><input id={`name-${task.taskId}`} name="name" value={task.name} maxlength={100} required />
         <label for={`start-${task.taskId}`}>始める日</label><input id={`start-${task.taskId}`} name="start" type="date" value={task.periodStart ?? ""} />
         <label for={`end-${task.taskId}`}>終わる日</label><input id={`end-${task.taskId}`} name="end" type="date" value={task.periodEnd ?? ""} />
@@ -70,7 +74,7 @@ admin.get("/projects/:projectId/map", async (c) => {
         <label for={`seat-${task.taskId}`}>担当する人</label><select id={`seat-${task.taskId}`} name="seat_id"><option value="">担当を選ぶ</option>{seats.results.map((seat) => <option value={seat.seat_id} selected={seat.seat_id === task.seatId}>{seat.name}</option>)}</select>
         <button class="secondary">保存</button>
       </form>
-      <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}/remove`)}><button class="danger">この仕事を地図から外す</button></form>
+      <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}/remove`)}><button class="danger">この仕事を地図から外す</button></form></details>
     </section>)}
     <h2>仕事を足す</h2><form method="post" action={adminPath(ward, `/projects/${id}/map/add`)}>
       <label for="new-task">仕事の名前</label><input id="new-task" name="name" maxlength={100} required /><button>足す</button>

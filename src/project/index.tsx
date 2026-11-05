@@ -102,18 +102,23 @@ admin.get("/projects/:projectId", async (c) => {
   const sortedQuestions = [...state.questions].sort((a, b) => questionRank(a) - questionRank(b));
   const firstQuestions = sortedQuestions.slice(0, 5);
   const laterQuestions = sortedQuestions.slice(5);
-  const questionPanel = (q: (typeof state.questions)[number]) => <section class="panel" id={`question-${q.questionId}`}><strong>{q.text}</strong>{q.options?.length ? <ul>{q.options.map((o) => <li>{o}</li>)}</ul> : null}
+  const questionPanel = (q: (typeof state.questions)[number]) => <section class="panel" id={`question-${q.questionId}`}><strong>{q.text}</strong>
       <form method="post" action={adminPath(ward, `/projects/${projectId}/questions/${q.questionId}`)}>
-        {q.options?.length ? <><label for={`answer-${q.questionId}`}>一つ選ぶ</label><select id={`answer-${q.questionId}`} name="answer">{q.options.map((o) => <option>{o}</option>)}</select></> : <><label for={`answer-${q.questionId}`}>答え</label><input id={`answer-${q.questionId}`} name="answer" maxlength={2000} /></>}
-        <button name="action" value="answer">答える</button> <button class="secondary" name="action" value="unknown">分からない</button> <button class="secondary" name="action" value="later">後で</button>
+        {q.options?.length ? <p class="action-links">{q.options.map((o) => <button name="answer" value={o}>{o}</button>)}</p> : <><label for={`answer-${q.questionId}`}>答え</label><input id={`answer-${q.questionId}`} name="answer" maxlength={2000} /></>}
+        {q.options?.length ? null : <button name="action" value="answer">答える</button>}{" "}<button class="secondary" name="action" value="unknown">分からない</button> <button class="secondary" name="action" value="later">後で</button>
       </form>
     </section>;
   return c.html(<Layout title={project.title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/projects")}>プロジェクト一覧</a>}>
     <h1>{project.title}</h1>
-    <p><a href={adminPath(ward, "/requests/city")}>行政の依頼</a> | <a href={adminPath(ward, "/inquiries")}>問い合わせと要望</a> | <a href={adminPath(ward, "/ledger")}>帳簿</a></p>
-    <nav><a href={adminPath(ward, `/projects/${projectId}/map`)}>地図</a> | <a href={adminPath(ward, `/projects/${projectId}/draft`)}>案</a> | <a href={adminPath(ward, `/projects/${projectId}/check`)}>混入を確かめる</a> | <a href={adminPath(ward, `/publish/${projectId}`)}>配る</a></nav>
-    <form method="post" action={adminPath(ward, `/projects/${projectId}/title`)}><label for="title">題を直す</label><input id="title" name="title" value={project.title} maxlength={100} required /><button class="secondary">保存</button></form>
+    <nav class="action-links">
+      <a class="button secondary" href={adminPath(ward, `/projects/${projectId}/map`)}>地図</a>
+      <a class="button secondary" href={adminPath(ward, `/intake?project=${encodeURIComponent(projectId)}`)}>材料を送る</a>
+      <a class="button secondary" href={adminPath(ward, `/projects/${projectId}/draft`)}>案</a>
+      <a class="button secondary" href={adminPath(ward, `/projects/${projectId}/check`)}>混入を確かめる</a>
+      <a class="button" href={adminPath(ward, `/publish/${projectId}`)}>配る</a>
+    </nav>
     <p>{PROJECT_KIND_LABEL[project.kind]} / {project.year}年</p>
+    <details><summary>題を直す</summary><form method="post" action={adminPath(ward, `/projects/${projectId}/title`)}><label for="title">題</label><input id="title" name="title" value={project.title} maxlength={100} required /> <button class="secondary">保存</button></form></details>
     <h2>問い</h2>
     {firstQuestions.map(questionPanel)}
     {laterQuestions.length ? <details><summary>ほかの問い（{laterQuestions.length} 件）</summary>{laterQuestions.map(questionPanel)}</details> : null}
@@ -147,7 +152,7 @@ admin.get("/projects/:projectId", async (c) => {
 });
 
 admin.post("/projects/:projectId/title", async (c) => { const { ward } = c.var; const f = await c.req.formData(); await renameProject(c.env.DB, ward.wardId, c.req.param("projectId"), String(f.get("title") ?? "")); return c.redirect(adminPath(ward, `/projects/${c.req.param("projectId")}`), 303); });
-admin.post("/projects/:projectId/questions/:questionId", async (c) => { const { ward, account } = c.var; const f = await c.req.formData(); const action = String(f.get("action")); if (["answer", "unknown", "later"].includes(action)) await answerQuestion(c.env.DB, ward.wardId, c.req.param("projectId"), c.req.param("questionId"), action as "answer" | "unknown" | "later", String(f.get("answer") ?? ""), account.accountId); return c.redirect(adminPath(ward, `/projects/${c.req.param("projectId")}`), 303); });
+admin.post("/projects/:projectId/questions/:questionId", async (c) => { const { ward, account } = c.var; const f = await c.req.formData(); const action = f.get("action") ? String(f.get("action")) : "answer"; if (["answer", "unknown", "later"].includes(action)) await answerQuestion(c.env.DB, ward.wardId, c.req.param("projectId"), c.req.param("questionId"), action as "answer" | "unknown" | "later", String(f.get("answer") ?? ""), account.accountId); return c.redirect(adminPath(ward, `/projects/${c.req.param("projectId")}`), 303); });
 
 export { admin as projectAdmin };
 export const project: Bundle = { admin };
