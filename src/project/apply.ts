@@ -248,7 +248,7 @@ function insertChangeStatement(
       ctx.projectId,
       bump ? 1 : 0,
       ctx.now,
-      known && n.source.kind === "person" ? (n.source.accountId ?? null) : null,
+      known ? (n.source.kind === "person" ? n.source.accountId ?? null : ctx.options.actorAccountId ?? null) : null,
     );
 }
 
@@ -378,10 +378,24 @@ async function planItem(ctx: Ctx, n: Normalized, change: ItemChange): Promise<Pl
       : [];
 
   if (placement.scope === "reference") {
+    const current = active.results.find((r) => r.scope === "current");
+    const unknownYear = placement.refYear === null;
+    const questions: NewQuestion[] = unknownYear
+      ? change.maybeThisYear === true && current && !sameText(current.content, content)
+        ? [{
+            kind: "conflict",
+            text: `「${label}」が食い違っています。今は「${quote(current.content)}」です。年の書いていない資料には「${quote(content)}」とあります。どちらにしますか。`,
+            target: change.itemKey,
+            detail: { itemKey: change.itemKey, options: [current.content, content], currentValueId: current.value_id, changeId: ctx.changeId },
+            suffix: "conflict",
+            source: n.source,
+          }]
+        : []
+      : lowQuestions();
     // 参考の中身は年ごとに一つ。同じ年の新しい読みは古い読みに入れ替える（食い違いにはしない）
     const sameYear = active.results.find((r) => r.scope === "reference" && (r.ref_year ?? 0) === (placement.refYear ?? 0));
     if (sameYear && sameText(sameYear.content, content)) {
-      return { status: "same", statements: [], questions: [], bump: false, staleKinds: [] };
+      return { status: unknownYear && questions.length ? "conflict" : "same", statements: [], questions: unknownYear ? questions : [], bump: false, staleKinds: [] };
     }
     const statements: D1PreparedStatement[] = [];
     if (sameYear) statements.push(supersedeValueStatement(ctx, sameYear.value_id));
@@ -389,7 +403,7 @@ async function planItem(ctx: Ctx, n: Normalized, change: ItemChange): Promise<Pl
     const hasCurrent = active.results.some((r) => r.scope === "current");
     // 今年の中身が無い間、下書きは参考から取るので、参考が変われば頼っている文書が古くなる
     const staleKinds = hasCurrent ? [] : await documentsDependingOn(ctx, { item: change.itemKey });
-    return { status: "applied", statements, questions: lowQuestions(), bump: true, staleKinds };
+    return { status: "applied", statements, questions, bump: true, staleKinds };
   }
 
   const current = active.results.find((r) => r.scope === "current");
@@ -424,7 +438,7 @@ async function planItem(ctx: Ctx, n: Normalized, change: ItemChange): Promise<Pl
       : { status: "kept", statements: [], questions: [], bump: false, staleKinds: [] };
   }
   // 資料や Web の回答の中身。今ある中身が案なら入れ替え、決まった中身なら食い違いとして並べる
-  if (current.source_kind === "ai_proposal") return replace();
+  if (current.source_kind === "ai_proposal" && !ctx.options.compareCurrent) return replace();
   return {
     status: "conflict",
     statements: [],
@@ -533,7 +547,7 @@ async function planRow(ctx: Ctx, n: Normalized, change: RowChange): Promise<Plan
         } else {
           kept = true;
         }
-      } else if (personFields.has(field)) {
+      } else if (personFields.has(field) || ctx.options.compareCurrent) {
         conflicts.push({ field, current: before, incoming: value });
       } else {
         next[field] = value;

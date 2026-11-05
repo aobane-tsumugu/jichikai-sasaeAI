@@ -30,6 +30,8 @@ export interface ChangeInput {
   locator: string;
   /** 資料の年（読み取りの document_year）。今年の中身になるか参考になるかを、束 3 がこれと出どころから決める */
   year: number | null;
+  /** 年不明の項目が今年の話に見える印。年を決めず、今年の中身との食い違いだけを問う。 */
+  maybeThisYear?: boolean;
   /** 書く対象。項目の名前、表と相手、地図の仕事の名前、文書の種類など */
   target: string;
   /** 種類ごとの中身。束 3 が形を決めて検査する */

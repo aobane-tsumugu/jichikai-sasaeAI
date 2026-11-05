@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import type { Env, WardEnv } from "../env";
 import { sha256Hex } from "../intake/media";
 import { newId, nowIso } from "../core/ids";
-import { getReadings, originalInProject } from "../intake/store";
+import { getReadings, listOriginals, originalInProject } from "../intake/store";
 import type { JobRow } from "../intake/types";
 import { PACK_VERSION } from "./pack";
 import { projectApi } from "./project-binding";
@@ -43,7 +43,8 @@ export const TOOLS = [
       properties: {
         ticket: ticketProp,
         kind: { type: "string", enum: ["item", "row", "decision", "conflict", "map_task", "draft", "map_draft"] },
-        year: { type: "integer", description: "資料の年（get_reading の document_year）。資料に年が無ければ書かない" },
+        year: { type: "integer", description: "資料の中か名前に書かれた年を西暦で渡す。Word と Excel は本文も読む。書かれていなければ省略し、曜日や内容から推測しない" },
+        maybe_this_year: { type: "boolean", description: "年不明の item が今年の話に見える時だけ true。年不明の参考に留め、今年の中身と違う時だけ問いになる。表の行には付けない" },
         original_id: { type: "string", description: "出どころの原本の ID（get_reading の original_id）" },
         locator: { type: "string", description: "元の箇所（get_reading の locator）" },
         target: { type: "string", description: "書く対象。項目の名前、表と相手、地図の仕事の名前、文書の種類など" },
@@ -154,13 +155,16 @@ async function runTool(env: Env, wardId: string, job: JobRow | null, name: strin
     case "get_project_state":
       return ok(await api.getProjectState(env, wardId, job.project_id));
     case "get_reading": {
+      const originals = (await listOriginals(env.DB, wardId, job.job_id))
+        .filter((original) => !original.withdrawn_at)
+        .map((original) => ({ original_id: original.original_id, filename: original.filename }));
       if (job.paper_source_job_id) {
         const slice = await env.DB.prepare("SELECT body FROM paper_reading_slices WHERE ward_id = ? AND job_id = ? AND source_job_id = ?")
           .bind(wardId, job.job_id, job.paper_source_job_id).first<{ body: string }>();
-        return slice ? ok({ job_task: job.task, instruction: job.instruction, readings: [{ body: JSON.parse(slice.body) }] }) : fail("紙の該当欄を開けませんでした。");
+        return slice ? ok({ job_task: job.task, instruction: job.instruction, originals, readings: [{ body: JSON.parse(slice.body) }] }) : fail("紙の該当欄を開けませんでした。");
       }
       const readings = await getReadings(env.DB, wardId, job.job_id);
-      return ok({ job_task: job.task, instruction: job.instruction, readings });
+      return ok({ job_task: job.task, instruction: job.instruction, originals, readings });
     }
     case "write_change": {
       const kind = asString(args.kind, 20) as ChangeKind;
@@ -186,6 +190,7 @@ async function runTool(env: Env, wardId: string, job: JobRow | null, name: strin
         originalId: originalId || null,
         locator: asString(args.locator, 200),
         year: Number.isInteger(args.year) ? (args.year as number) : null,
+        ...(kind === "item" && args.maybe_this_year === true ? { maybeThisYear: true } : {}),
         target: asString(args.target, 200),
         data: args.data ?? {},
         confidence,

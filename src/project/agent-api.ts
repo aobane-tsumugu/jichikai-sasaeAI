@@ -13,10 +13,7 @@ function record(value: unknown): Record<string, unknown> {
 
 function sourceFor(change: ChangeInput): Source | null {
   if (!change.originalId) return null;
-  const data = record(change.data);
-  const year = typeof data.source_year === "number" && Number.isInteger(data.source_year)
-    ? data.source_year
-    : change.year !== null && Number.isInteger(change.year) ? change.year : undefined;
+  const year = change.year !== null && Number.isInteger(change.year) ? change.year : undefined;
   return { kind: "original", ref: change.originalId, locator: change.locator || "全体", ...(year !== undefined ? { year } : {}) };
 }
 
@@ -87,7 +84,8 @@ const agentApi: ProjectApi = {
       const key = isItemKey(change.target) ? change.target : Object.entries(ITEM_LABEL).find(([, label]) => label === change.target)?.[0];
       const value = typeof data.value === "string" ? data.value : "";
       if (!key || !isItemKey(key) || !value) return { status: "rejected", note: "項目の中身がありません" };
-      const result = await applyChange(env.DB, ctx.wardId, ctx.projectId, { kind: "item", itemKey: key, value, source, confidence: change.confidence, packVersion: ctx.packVersion, ticketId: ctx.jobId });
+      const result = await applyChange(env.DB, ctx.wardId, ctx.projectId, { kind: "item", itemKey: key, value, source, confidence: change.confidence, packVersion: ctx.packVersion, ticketId: ctx.jobId,
+        ...(change.maybeThisYear === true ? { maybeThisYear: true } : {}) });
       return { status: result.status, ...(result.status !== "rejected" ? { duplicate: result.duplicate } : {}) };
     }
     if (change.kind === "row") {
