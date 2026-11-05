@@ -44,7 +44,7 @@ async function saveLineAnswer(db: D1Database, wardId: string, projectId: string,
   const household = candidates[0];
   if (!household || candidates.some((entry) => entry.district !== household.district || normalizeHousehold(entry.household) !== normalizeHousehold(household.household))) return;
   const adults = /大人\s*(\d+)\s*人/.exec(text);
-  const children = /子ども\s*(\d+)\s*人/.exec(text);
+  const children = /子(?:ども|供)\s*(\d+)\s*人/.exec(text);
   const total = /来場(?:は|が)?\s*(\d+)\s*人/.exec(text);
   const peopleCount = adults || children ? Number(adults?.[1] ?? 0) + Number(children?.[1] ?? 0) : Number(total?.[1]);
   if (!Number.isInteger(peopleCount) || peopleCount < 0) return;
