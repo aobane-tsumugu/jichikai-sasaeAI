@@ -17,13 +17,14 @@ const EXPORT_TABLES = [
 
 const WARD_DELETE_TABLES = [
   "archive_search_entries", "project_activity_pages", "project_close_reports", "project_close_map",
+  "inquiry_records", "city_request_details", "ward_annual_budgets",
   "project_answers", "project_space_members", "project_space_invites", "project_spaces",
   "ward_roster_entries", "ward_roster_settings", "line_inbox_items",
-  "line_webhook_receipts", "line_channels", "line_unrelated_daily_counts", "publication_records",
+  "line_webhook_receipts", "line_channels", "line_unrelated_daily_counts", "line_group_notices", "publication_records",
   "document_versions", "documents", "project_questions", "project_rows", "project_item_values",
-  "project_changes", "project_map_tasks", "project_deadlines", "projects", "paper_reading_slices",
+  "project_map_tasks", "project_changes", "project_deadlines", "projects", "paper_reading_slices",
   "job_tool_calls", "job_runs", "readings", "originals", "jobs", "ward_ai",
-  "ops_ward_limits", "devices", "ward_settings",
+  "ops_ward_limits", "ward_ai_route_flags", "devices", "ward_settings",
 ] as const;
 
 interface QueueRow {
@@ -302,8 +303,8 @@ async function eraseWardData(env: Env, wardId: string): Promise<void> {
   statements.unshift(env.DB.prepare("UPDATE projects SET seed_project_id = NULL WHERE ward_id = ?").bind(wardId));
   statements.unshift(env.DB.prepare("UPDATE accounts SET created_by_account_id = NULL, removed_by_account_id = NULL WHERE ward_id = ?").bind(wardId));
   statements.push(env.DB.prepare("DELETE FROM login_attempts WHERE ward_id = ?").bind(wardId));
-  statements.push(env.DB.prepare("DELETE FROM seats WHERE ward_id = ?").bind(wardId));
   statements.push(env.DB.prepare("DELETE FROM accounts WHERE ward_id = ?").bind(wardId));
+  statements.push(env.DB.prepare("DELETE FROM seats WHERE ward_id = ?").bind(wardId));
   statements.push(env.DB.prepare("DELETE FROM wards WHERE ward_id = ?").bind(wardId));
   await env.DB.batch(statements);
 }
