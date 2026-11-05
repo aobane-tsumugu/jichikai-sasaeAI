@@ -45,6 +45,8 @@ PM が二時間ごとの点検で更新します。実施を確認した物だ�
 
 ## cloud で続ける時
 
+Claude と Codex の連絡網は GitHub の Issue #1 です。作業の前と区切りごとに読みます。
+
 cloud のセッションにあるのはこのリポジトリです。資格情報のファイルと Codex はありません。設計の要約は docs/DESIGN.md、守ることは CLAUDE.md を見ます。
 
 - cloud 環境 jichikai-sasaeAI では `npx wrangler deploy` と `npx wrangler d1 execute DB --remote` が使えます。鍵はネットワークシークレットで、環境変数の CLOUDFLARE_API_TOKEN は目印の文字列です。読み取りは cloud で確認済み、配備は同じ鍵を手元で確認済みです。

@@ -78,3 +78,7 @@ main が受入先です。作る手は自分のブランチで作業し、PM が
 ## 報告の分け方
 
 実装済み（コードが main にある）、正式未確認（コードはあるが確かめる手の実機の証拠が無い）、実行失敗（確かめたが止まった。何がどう）、対象外（この束に入らない）。ローカルで通った事と実機で通った事は別に書きます。現在地は [docs/STATE.md](docs/STATE.md) です。
+
+## 連絡網
+
+Claude と Codex のクラウドセッションの連絡網は GitHub の Issue #1 です。作業を始める前と、区切りごとに `gh issue view 1 --comments` で読み、`gh issue comment 1` で書きます。書き方は Issue の本文に従います。Codex の決まりは AGENTS.md です。この Issue は GitHub を公開する前に消します。
