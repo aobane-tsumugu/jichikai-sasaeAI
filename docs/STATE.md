@@ -4,7 +4,8 @@ PM が二時間ごとの点検で更新します。実施を確認した物だ�
 
 - 固定（確かめる手に渡す commit）: まだ無い
 - main: 束 1〜8、接続、続けて作る物（顔のマスクを除く）を取り込み済み（試験 224 件）。2026-11-05 夕方に cloud の PM が割り当て 1〜3 の直しを取り込み、staging に配備した
-- staging: https://jichikai.aobane-tsumugu.com （デモの区はクロード区 /demoku/。架空の区です）
+- staging: https://jichikai.aobane-tsumugu.com （デモの区はクロード区 /demoku/。架空の区です）。staging では確認用のプロジェクトを作るなど自由に試してよい（本人、2026-11-05）。デモの前にきれいにする
+- 今ある名前と消す: プロジェクトの題は開いている間だけ直せる。プロジェクトを消す操作と、活動紹介を下げる操作は無い（Codex に依頼中）
 
 ## 段ごとの状態
 
@@ -52,6 +53,8 @@ PM が二時間ごとの点検で更新します。実施を確認した物だ�
 | 空間と回答の画面の言葉と試験 | src/answers/index.tsx、src/space/ | 未着手 |
 | 入った物の見え方と今やること | src/intake/pages.tsx、src/project/index.tsx | 未着手 |
 | 来年の種の地図に去年の記録を出す | src/map/ | 未着手 |
+| プロジェクトを消す | src/settings/deletion.tsx、src/ops/lifecycle.ts、migrations/0107、一覧の問い合わせ（src/project/api.ts、src/archive/index.tsx） | 未着手 |
+| 活動紹介を区のページから下げる | src/close/index.tsx、src/ward/index.tsx | 未着手 |
 
 PM が持つ物: 収支の表に協賛の表を混ぜて見せている作りの見直し、空間を staging で開いて確かめる、取り込んだ依頼の staging での確かめ。
 
