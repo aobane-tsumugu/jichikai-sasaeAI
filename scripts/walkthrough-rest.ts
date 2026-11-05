@@ -413,7 +413,7 @@ else {
   try {
     const peoplePage = await get(admin + "/settings/people");
     if (!peoplePage.response.ok) throw new Error("役員の席とアカウントを開けません");
-    const testName = FIRST_SLICE.firstOfficer + " " + stamp.slice(0, 12);
+    const testName = FIRST_SLICE.firstOfficer + " " + stamp;
     const created = await post(admin + "/settings/people/accounts", { name: testName, seatId: "" });
     const credentialsHtml = await created.text();
     const loginId = unescapeHtml(/ID:\s*<strong>([^<]+)<\/strong>/.exec(credentialsHtml)?.[1] ?? "");
