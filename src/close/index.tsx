@@ -146,7 +146,8 @@ admin.get("/close/:projectId", async (c) => {
       {project.closedAt ? <p><button name="action" value="publish">区のページに載せる</button></p> : null}
     </form>
     {activityPage?.published_at ? <p><a href={`/${ward.slug}/work/${encodeURIComponent(id)}`}>区のページで確認する</a></p> : null}
-    {!project.closedAt ? <form method="post" action={`${root}/finalize`} onsubmit="return confirm('閉じると、報告と地図は記録になり書き直せません。実行委員と班長は空間を開けなくなります。閉じますか？')"><p><button class="danger">閉じて記録に残す</button></p></form> : null}
+    {!project.closedAt ? <form method="post" action={`${root}/finalize`}><p><button class="danger">閉じて記録に残す</button></p></form>
+      : <form method="post" action={`${root}/reopen`}><p><button>開き直す</button></p></form>}
     <p><a href={adminPath(ward, "/archive")}>記録を開く</a></p>
   </Layout>);
 });
@@ -245,6 +246,13 @@ admin.post("/close/:projectId/finalize", async (c) => {
     c.env.DB.prepare("UPDATE projects SET closed_at = ?, closed_by_account_id = ? WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL")
       .bind(now, account.accountId, ward.wardId, id),
   ]);
+  return c.redirect(adminPath(ward, `/close/${id}`), 303);
+});
+
+admin.post("/close/:projectId/reopen", async (c) => {
+  const { ward } = c.var; const id = c.req.param("projectId");
+  await c.env.DB.prepare("UPDATE projects SET closed_at = NULL, closed_by_account_id = NULL WHERE ward_id = ? AND project_id = ? AND closed_at IS NOT NULL")
+    .bind(ward.wardId, id).run();
   return c.redirect(adminPath(ward, `/close/${id}`), 303);
 });
 
