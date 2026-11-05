@@ -32,6 +32,7 @@ admin.get("/projects", async (c) => {
     <h2>プロジェクトを開く</h2>
     <form method="post" action={adminPath(ward, "/projects")}>
       <label for="kind">種類</label><select id="kind" name="kind" required>{PROJECT_KINDS.map((kind) => <option value={kind}>{PROJECT_KIND_LABEL[kind]}</option>)}</select>
+      <label for="title">題（後で直せます）</label><input id="title" name="title" maxlength={100} placeholder="秋の収穫祭" />
       <input type="hidden" name="year" value={new Date().getFullYear()} />
       <p><button type="submit">開く</button></p>
     </form>
@@ -79,7 +80,7 @@ admin.post("/projects", async (c) => {
   const kind = String(form.get("kind"));
   if (!(PROJECT_KINDS as readonly string[]).includes(kind)) return c.redirect(`${adminPath(ward, "/projects")}?error=${encodeURIComponent("種類を選んでください")}`, 303);
   try {
-    const project = await createProject(c.env.DB, ward.wardId, { kind: kind as (typeof PROJECT_KINDS)[number], title: PROJECT_KIND_LABEL[kind as (typeof PROJECT_KINDS)[number]], year: Number(form.get("year")), accountId: account.accountId });
+    const project = await createProject(c.env.DB, ward.wardId, { kind: kind as (typeof PROJECT_KINDS)[number], title: String(form.get("title") ?? "").trim() || PROJECT_KIND_LABEL[kind as (typeof PROJECT_KINDS)[number]], year: Number(form.get("year")), accountId: account.accountId });
     return c.redirect(adminPath(ward, `/projects/${project.projectId}/map`), 303);
   } catch (e) {
     const msg = e instanceof ProjectInputError ? e.message : "プロジェクトを開けませんでした";

@@ -191,7 +191,7 @@ if (projectId && publicLive) {
     const sent = await req(admin + "/answers/" + projectId + "/sheet", { method: "POST", body: form });
     if (sent.status !== 303) throw new Error("回答票を送れません");
     const answerPath = admin + "/answers/" + projectId;
-    const page = await waitPage(answerPath, html => html.includes("回答票の読み取り") && /name="household"/.test(html), html => html.includes("読めませんでした"));
+    const page = await waitPage(answerPath, html => html.includes("/sheet/") && html.includes("/row/0"), html => html.includes("読めませんでした"));
     const original = /\/answers\/[^/]+\/sheet\/([^/]+)\/row\/0/.exec(page.html)?.[1];
     if (!original) throw new Error("確認できる回答行がありません");
     sheetOriginal = original;
@@ -232,7 +232,7 @@ else {
       const term = unescapeHtml(/<h3>([^<]{3,})<\/h3>/.exec(mapHtml)?.[1] ?? "").trim();
       if (!term) throw new Error("検索語を記録から選べません");
       const search = await get(admin + "/archive/search?q=" + encodeURIComponent(term));
-      if (!search.response.ok || !search.html.includes("元の箇所へ戻る")) throw new Error("全文検索から元の箇所へ戻れません");
+      if (!search.response.ok || !search.html.includes("見つかった記録") || search.html.includes("見つかりませんでした")) throw new Error("全文検索で記録が見つかりません");
       const ask = readForm(search.html, "/archive/ask");
       ask.fields.question = term + "について教えてください";
       const answer = await post(ask.action, ask.fields, 360_000);
@@ -381,10 +381,8 @@ else {
   try {
     const peoplePage = await get(admin + "/settings/people");
     if (!peoplePage.response.ok) throw new Error("役員の席とアカウントを開けません");
-    const form = readForm(peoplePage.html, "/accounts");
     const testName = FIRST_SLICE.firstOfficer + " " + stamp.slice(0, 12);
-    form.fields.name = testName;
-    const created = await post(form.action, form.fields);
+    const created = await post(admin + "/settings/people/accounts", { name: testName, seatId: "" });
     const credentialsHtml = await created.text();
     const loginId = unescapeHtml(/ID:\s*<strong>([^<]+)<\/strong>/.exec(credentialsHtml)?.[1] ?? "");
     const password = unescapeHtml(/<p class="secret">([^<]+)<\/p>/.exec(credentialsHtml)?.[1] ?? "");
