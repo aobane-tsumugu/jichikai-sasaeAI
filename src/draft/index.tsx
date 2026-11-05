@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
-import { Layout, Notice } from "../core/ui";
+import { Hint, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { startTask } from "../ai/api";
 import { getProjectState, getProjectSummary } from "../project/api";
@@ -28,7 +28,7 @@ admin.get("/projects/:projectId/draft", async (c) => {
   const { ward } = c.var; const id = c.req.param("projectId"); const project = await getProjectSummary(c.env.DB, ward.wardId, id);
   if (!project) return c.notFound();
   return c.html(<Layout title={`案: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, `/projects/${id}`)}>プロジェクトへ</a>}>
-    <h1>{project.title} の案</h1><p>文書を選び、必要ならAIに案を起こさせます。AIが止まっている時も、ここで書いて保存できます。</p>
+    <h1>{project.title} の案 <Hint text="作りたい文書を選んでください。今ある資料から AI に案を頼むか、自分で書き始められます。" /></h1><p>文書を選び、必要ならAIに案を起こさせます。AIが止まっている時も、ここで書いて保存できます。</p>
     {c.req.query("notice") === "saved" ? <Notice>保存しました。今年の中身にも反映しました。</Notice> : null}
     {c.req.query("notice") === "started" ? <Notice>案を起こす依頼を受けました。画面を閉じても処理は続きます。</Notice> : null}
     {c.req.query("notice") === "restored" ? <Notice>前の案を戻して、新しい案として保存しました。</Notice> : null}
@@ -63,7 +63,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
   const templates = kindRaw === "notice" ? await getTemplates(c.env.DB, ward.wardId) : [];
   const versions = document ? await c.env.DB.prepare("SELECT version_no, body, created_at, origin FROM document_versions WHERE ward_id = ? AND project_id = ? AND document_id = ? ORDER BY version_no DESC LIMIT 8").bind(ward.wardId, id, document.documentId).all<{ version_no: number; body: string; created_at: string; origin: string }>() : { results: [] };
   return c.html(<Layout title={`${pack.title}を直す`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, `/projects/${id}/draft`)}>案の一覧</a>}>
-    <h1>{pack.title}を直す</h1>
+    <h1>{pack.title}を直す <Hint text="本文や今年の中身を直し、「直した中身を保存」を押してください。保存しただけでは配られません。" /></h1>
     {taskNotice ? <Notice><span data-ai-status={taskNotice.status}>{taskNotice.message}</span> 画面を閉じても処理は続きます。ここで書いて保存することもできます。</Notice> : null}
     {document?.stale ? <Notice>新しい物が入りました。<a href={adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}>案を直す</a> / このまま</Notice> : null}
     <form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/save`)}>

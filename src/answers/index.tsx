@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
-import { Layout } from "../core/ui";
+import { Hint, Layout } from "../core/ui";
 import type { AdminEnv, WardEnv } from "../env";
 import type { AnswerSheetReading } from "../ai/schema";
 import type { Reading } from "../ai/schema";
@@ -49,7 +49,7 @@ admin.get("/answers", async (c) => {
     .bind(c.var.ward.wardId).all<{ project_id: string; title: string; year: number }>();
   return c.html(
     <Layout title="回答" siteName={c.var.ward.name} noindex adminHomeHref={adminPath(c.var.ward.slug, "/")}>
-      <h1>回答</h1>
+      <h1>回答 <Hint text="回答を見るプロジェクトを選んでください。Web、電話、回答票で受けた内容を同じ一覧で見られます。" /></h1>
       <p><a href={`/${c.var.ward.slug}/`} aria-label="区のページ">区のページ</a></p>
       <p><a class="button" href={adminPath(c.var.ward.slug, "/answers/roster")}>名簿を入れる</a></p>
       <h2>回答を確認する</h2>
@@ -66,7 +66,7 @@ admin.get("/answers/roster", async (c) => {
   const copies = await getDistrictCopies(c.env.DB, c.var.ward.wardId);
   return c.html(
     <Layout title="名簿" siteName={c.var.ward.name} noindex adminHomeHref={adminPath(c.var.ward.slug, "/")}>
-      <h1>名簿</h1>
+      <h1>名簿 <Hint text="世帯名と班の一覧を入れる画面です。CSV や Excel を選ぶか、紙の名簿を撮って送ってください。" /></h1>
       <p>CSV または Excel の一覧を選んでください。先頭の行から世帯名と班を見つけます。見つからない時だけ項目を選びます。</p>
       <form method="post" action={adminPath(c.var.ward.slug, "/answers/roster/photo")} enctype="multipart/form-data">
         <label for="roster-photo">見出しのない紙の名簿</label><input id="roster-photo" name="photo" type="file" accept="image/*,.pdf" capture="environment" required />
@@ -241,7 +241,7 @@ admin.get("/answers/:projectId", async (c) => {
   return c.html(
     <Layout title={`回答 - ${project.title}`} siteName={c.var.ward.name} noindex adminHomeHref={adminPath(c.var.ward.slug, "/")}>
       <p><a href={adminPath(c.var.ward.slug, "/answers")}>回答の一覧へ</a></p>
-      <h1>{project.title} の回答</h1>
+      <h1>{project.title} の回答 <Hint text="集まった回答と未回答の世帯を見ます。電話の回答は代理入力し、紙の回答票は写真から入れられます。" /></h1>
       <p class="panel">参加人数: {totals.people} 人。手伝いの希望: {totals.helperRequests} 件。</p>
       <h2>電話の代理入力</h2>
       <form method="post" action={adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(projectId)}/phone`)} class="panel">
@@ -349,7 +349,7 @@ pub.get("/answer/:projectId", async (c) => {
   const closed = project.closed_at !== null || (project.due_on !== null && project.due_on < today);
   return c.html(
     <Layout title={`回答 - ${project.title}`} siteName={c.var.ward.name}>
-      <h1>{project.title} の回答</h1>
+      <h1>{project.title} の回答 <Hint text="世帯名、班、参加人数を入れて回答を送ってください。手伝いの希望は、書ける場合だけでかまいません。" /></h1>
       {closed ? <p class="notice">回答の受付は終わりました。</p> : <form method="post" action={`/${encodeURIComponent(c.var.ward.slug)}/answer/${encodeURIComponent(projectId)}`}>
         <label for="household">世帯名</label><input id="household" name="household" type="text" maxLength={120} required />
         <label for="district">班</label>{squads.length ? <select id="district" name="district" required><option value="">選んでください</option>{squads.map((squad) => <option value={squad}>{squad}</option>)}</select> : <input id="district" name="district" type="text" maxLength={80} required />}
@@ -390,7 +390,7 @@ function DistrictSelect({ districts }: { districts: string[] }) {
 }
 
 function RosterColumnPicker({ wardSlug, headers, rows }: { wardSlug: string; headers: string[]; rows: string[][] }) {
-  return <Layout title="名簿の項目を選ぶ"><h1>世帯名と班の項目を選んでください</h1><p>先頭の行から項目を見つけられませんでした。</p><form method="post" action={adminPath(wardSlug, "/answers/roster")}>
+  return <Layout title="名簿の項目を選ぶ"><h1>世帯名と班の項目を選んでください <Hint text="名簿の見出しに合わせて世帯名と班の項目を選び、「名簿を入れる」を押してください。" /></h1><p>先頭の行から項目を見つけられませんでした。</p><form method="post" action={adminPath(wardSlug, "/answers/roster")}>
     <input type="hidden" name="rows_json" value={JSON.stringify(rows)} />
     <label for="household-column">世帯名</label><select id="household-column" name="household_column">{headers.map((header, index) => <option value={index}>{header || `${index + 1} 番目`}</option>)}</select>
     <label for="district-column">班</label><select id="district-column" name="district_column">{headers.map((header, index) => <option value={index}>{header || `${index + 1} 番目`}</option>)}</select>

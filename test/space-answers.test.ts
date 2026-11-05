@@ -16,7 +16,7 @@ it("役員が空間を開き、実行委員が合言葉で回答を見て、閉�
   const admin = `/${ward.slug}/admin`;
   const space = `/${ward.slug}/space/${project.projectId}`;
   const answerList = await get(realApp, `${admin}/answers`, cookie);
-  expect(await answerList.text()).toContain("<h1>回答</h1>");
+  expect(await answerList.text()).toMatch(/<h1>回答(?:\s|<)/);
   const answer = await get(realApp, `${admin}/answers/${project.projectId}`, cookie);
   expect(await answer.text()).toContain("回答の一覧へ");
 
