@@ -155,8 +155,7 @@ admin.get("/publish/:projectId", async (c) => {
             <input type="hidden" name="documentId" value={draft.document_id} />
             <input type="hidden" name="versionId" value={draft.version_id} />
             <input type="hidden" name="versionNo" value={draft.version_no} />
-            <label for={`targetMode-${draft.document_id}`}>紙の配布先</label>
-            <select id={`targetMode-${draft.document_id}`} name="targetMode"><option value="district">班を選ぶ</option><option value="household">世帯を選ぶ</option></select>
+            <input type="hidden" name="targetMode" value="district" />
             <fieldset><legend>班ごとの部数</legend>{districtCopies.map((row, index) => <p>
               <label><input type="checkbox" name="district" value={row.district} checked /> {row.district}（名簿 {row.copies} 世帯）</label>
               部数 <input type="number" name={`copies_${index}`} min="0" max={row.copies} value={row.copies} style="width:6rem" />

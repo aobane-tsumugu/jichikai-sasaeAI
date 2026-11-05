@@ -175,7 +175,6 @@ pub.get("/p/:projectId", async (c) => {
         <ArticleBody body={latest.body} />
         {earlier.map((older) => <details>
           <summary>変更前の案内（{date(older)} 掲載）</summary>
-          <p class="muted">この内容は変更されています。上の案内をご覧ください。</p>
           <ArticleBody body={older.body} />
         </details>)}
       </article>;

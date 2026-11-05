@@ -53,6 +53,20 @@ describe("区のページ", () => {
 });
 
 describe("報告と閉じる", () => {
+  it("報告を別に保存しなくても、閉じた時に欄に出ていた報告が記録に残る", async () => {
+    const { ward, account, cookie } = await seedAdmin(env.DB);
+    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
+    const closePage = `/${ward.slug}/admin/close/${project.projectId}`;
+    await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
+      kind: "report", title: "実施報告", scope: "public", body: JSON.stringify({ text: "架空の報告の下書き", items: [] }), basedOn: 0,
+    });
+    expect(await (await get(realApp, closePage, cookie)).text()).toContain("架空の報告の下書き");
+    expect((await postForm(realApp, `${closePage}/finalize`, {}, cookie)).status).toBe(303);
+    const saved = await env.DB.prepare("SELECT body FROM project_close_reports WHERE ward_id = ? AND project_id = ? AND scope = 'public'")
+      .bind(ward.wardId, project.projectId).first<{ body: string }>();
+    expect(saved?.body).toBe("架空の報告の下書き");
+  });
+
   it("報告の下書きを頼む時は、保存できる下書きの形と元にした状態の番号を AI に伝える", async () => {
     const { ward, account, cookie } = await seedAdmin(env.DB);
     const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
