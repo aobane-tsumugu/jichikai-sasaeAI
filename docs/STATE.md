@@ -4,7 +4,7 @@ PM が二時間ごとの点検で更新します。実施を確認した物だ�
 
 - 固定（確かめる手に渡す commit）: まだ無い
 - main: 束 1〜8 と接続、設計書との差の直しを取り込み済み（試験 209 件）
-- staging: https://jichikai.aobane-tsumugu.com （架空の区 kakuu を開いた）
+- staging: https://jichikai.aobane-tsumugu.com （デモの区はクロード区 /claude/。架空の区です）
 
 ## 段ごとの状態
 
