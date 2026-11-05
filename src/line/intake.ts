@@ -43,9 +43,11 @@ async function saveLineAnswer(db: D1Database, wardId: string, projectId: string,
   // 同名の世帯は、班も使って一つの候補に絞れた時だけ回答に入れる。
   const household = candidates[0];
   if (!household || candidates.some((entry) => entry.district !== household.district || normalizeHousehold(entry.household) !== normalizeHousehold(household.household))) return;
-  const adults = /大人\s*(\d+)\s*人/.exec(text);
-  const children = /子(?:ども|供)\s*(\d+)\s*人/.exec(text);
-  const total = /来場(?:は|が)?\s*(\d+)\s*人/.exec(text);
+  // 人数だけ文字の幅をそろえる。原本や手伝える時間の文は書き換えない。
+  const countText = text.normalize("NFKC");
+  const adults = /大人\s*(\d+)\s*人/.exec(countText);
+  const children = /子(?:ども|供)\s*(\d+)\s*人/.exec(countText);
+  const total = /来場(?:は|が)?\s*(\d+)\s*人/.exec(countText);
   const peopleCount = adults || children ? Number(adults?.[1] ?? 0) + Number(children?.[1] ?? 0) : Number(total?.[1]);
   if (!Number.isInteger(peopleCount) || peopleCount < 0) return;
   const existing = await db.prepare("SELECT answer_id, household, district FROM project_answers WHERE ward_id = ? AND project_id = ?")
