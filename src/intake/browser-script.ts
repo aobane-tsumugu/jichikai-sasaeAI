@@ -139,11 +139,19 @@ export const SEND_SCRIPT = String.raw`(function (root) {
     return /[ymdhs]/i.test(code.replace(/"[^"]*"/g, '').replace(/\[[^\]]*\]/g, ''));
   }
 
-  function serialToText(serial, date1904) {
+  function serialToText(serial, date1904, formatId, codes) {
     // Excel の日付の起点から1970年1月1日までの日数を引く。
     var d = new Date(Math.round((serial - (date1904 ? 24107 : 25569)) * 86400000));
     if (isNaN(d.getTime())) return String(serial);
     var iso = d.toISOString();
+    // 時刻だけの書式には、資料にない日付を付けない。秒のある書式は秒も残す。
+    var format = codes[formatId] || (formatId === 18 || formatId === 20 ? 'h:mm' : formatId === 19 || formatId === 21 ? 'h:mm:ss' : '');
+    var clock = format.replace(/"[^"]*"|\\./g, '');
+    // [h] などの経過時間は、時計の時刻とは分ける。
+    if (!/\[[hms]+\]/i.test(clock)) {
+      clock = clock.replace(/\[[^\]]*\]/g, '');
+      if (!/[yd]/i.test(clock) && /[hs]/i.test(clock)) return iso.slice(11, /s/i.test(clock) ? 19 : 16);
+    }
     return serial % 1 === 0 ? iso.slice(0, 10) : iso.slice(0, 16).replace('T', ' ');
   }
 
@@ -201,7 +209,7 @@ export const SEND_SCRIPT = String.raw`(function (root) {
           else if (type === 'b') value = v[1] === '1' ? 'TRUE' : 'FALSE';
           else if (type === 'str' || type === 'e') value = unescapeXml(v[1]);
           else if (type === 'd') value = v[1].slice(0, 10);
-          else value = isDateFormat(xfFormat[style], codes) && v[1] !== '' ? serialToText(parseFloat(v[1]), date1904) : v[1];
+          else value = isDateFormat(xfFormat[style], codes) && v[1] !== '' ? serialToText(parseFloat(v[1]), date1904, xfFormat[style], codes) : v[1];
         }
         if (value === '') continue;
         var rowMatch = /\d+$/.exec(ref);
