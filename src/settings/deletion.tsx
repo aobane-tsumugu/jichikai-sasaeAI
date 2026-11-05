@@ -7,6 +7,12 @@ import { requestAnswerDeletion, requestJobDeletion } from "../ops/lifecycle";
 
 export const deletion = new Hono<AdminEnv>();
 
+/** 受けた日時を日本時間で出す。 */
+function shownAt(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 deletion.get("/", async (c) => {
   const { ward, account } = c.var;
   const jobs = await c.env.DB.prepare(`SELECT j.job_id, j.created_at, j.via, o.filename, o.kind, p.title
@@ -31,7 +37,7 @@ deletion.get("/", async (c) => {
     <p>受付 {counts.get("pending") ?? 0} 件、処理中 {counts.get("running") ?? 0} 件、要対応 {counts.get("error") ?? 0} 件</p>
     <h2>対象の記録</h2>
     {jobs.results.map((job) => <section class="panel">
-      <p>{job.title ? `${job.title} / ` : ""}{job.filename || (job.kind === "text" ? "一行の文" : "名前のない記録")} / {job.created_at}</p>
+      <p>{job.title ? `${job.title} / ` : ""}{job.filename || (job.kind === "text" ? "一行の文" : "名前のない記録")} / {shownAt(job.created_at)}</p>
       <form method="post" action={adminPath(ward, `/settings/deletion/${job.job_id}`)} onsubmit="return confirm('この記録の原本と読み取った内容を消します。続けますか？')">
         <button class="danger">消去を進める</button>
       </form>
@@ -41,7 +47,7 @@ deletion.get("/", async (c) => {
     <h2>Web と電話で受けた回答</h2>
     <p>回答票の写真から入った回答は、上の記録を消すと一緒に消えます。</p>
     {answers.results.map((answer) => <section class="panel">
-      <p>{answer.title} / {answer.district} / {answer.household} / {answer.source === "phone" ? "電話" : answer.source === "line" ? "LINE" : "Web"} / {answer.created_at}</p>
+      <p>{answer.title} / {answer.district} / {answer.household} / {answer.source === "phone" ? "電話" : answer.source === "line" ? "LINE" : "Web"} / {shownAt(answer.created_at)}</p>
       <form method="post" action={adminPath(ward, `/settings/deletion/answers/${answer.answer_id}`)} onsubmit="return confirm('この回答を消します。続けますか？')">
         <button class="danger">この回答を消す</button>
       </form>
