@@ -256,6 +256,13 @@ export const SEND_SCRIPT = String.raw`(function (root) {
       fd.append('text', text);
       for (var i = 0; i < picked.length; i++) {
         var f = picked[i].file;
+        if (picked[i].kind === 'photo' && typeof BarcodeDetector !== 'undefined') {
+          try {
+            var detector = new BarcodeDetector({ formats: ['qr_code'] });
+            var codes = await detector.detect(f);
+            for (var q = 0; q < codes.length; q++) if (codes[q].rawValue) fd.append('paper_qr', codes[q].rawValue);
+          } catch (ignored) { /* この端末で読めない時は符号を送らず、読み取りへ進む */ }
+        }
         var extracted = '';
         if (/\.(docx|xlsx)$/i.test(f.name)) {
           try { extracted = JSON.stringify(await extractOffice(await f.arrayBuffer())); }

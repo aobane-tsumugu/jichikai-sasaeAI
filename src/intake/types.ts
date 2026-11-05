@@ -27,6 +27,7 @@ export type FailureKind = "" | "unsupported" | "too_large" | "unreadable" | "ref
 export interface JobRow {
   job_id: string;
   ward_id: string;
+  paper_source_job_id?: string | null;
   project_id: string | null;
   via: Via;
   read_kind: ReadKind;

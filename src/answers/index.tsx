@@ -8,6 +8,7 @@ import type { Waitable } from "../intake/types";
 import { receiveOriginal, getReadings } from "../intake/api";
 import { SEND_SCRIPT } from "../intake/browser-script";
 import { getSquads } from "../settings/store";
+import { lookupPrintQr } from "../print/qr";
 import {
   addAnswer,
   chooseRosterColumns,
@@ -246,18 +247,22 @@ admin.post("/answers/:projectId/sheet", async (c) => {
   const form = await c.req.formData();
   const file = form.get("part");
   if (!(file instanceof File)) return c.text("回答票を選んでください。", 400);
+  const qrMatches = (await Promise.all(form.getAll("paper_qr").map((value) => lookupPrintQr(c.env.DB, c.var.ward.wardId, c.var.ward.slug, String(value)))))
+    .filter((value): value is NonNullable<typeof value> => value !== null);
+  const qrProjects = [...new Set(qrMatches.map((value) => value.projectId))];
+  const projectId = qrProjects.length === 1 ? qrProjects[0] as string : c.req.param("projectId");
   const extractedRaw = form.get("part_extracted");
   let extracted: unknown;
   if (typeof extractedRaw === "string" && extractedRaw) extracted = JSON.parse(extractedRaw);
   await receiveOriginal(c.env, waitableContext(c), {
     wardId: c.var.ward.wardId,
-    projectId: c.req.param("projectId"),
+    projectId,
     via: "admin",
     readKind: "answer_sheet",
     accountId: c.var.account.accountId,
     parts: [{ kind: "photo", filename: file.name, mediaType: file.type, bytes: new Uint8Array(await file.arrayBuffer()), ...(extracted ? { extracted } : {}) }],
   });
-  return c.redirect(adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(c.req.param("projectId"))}`), 303);
+  return c.redirect(adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(projectId)}`), 303);
 });
 
 admin.post("/answers/:projectId/sheet/:originalId/row/:rowIndex", async (c) => {

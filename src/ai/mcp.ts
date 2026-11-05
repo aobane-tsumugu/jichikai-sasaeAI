@@ -154,6 +154,11 @@ async function runTool(env: Env, wardId: string, job: JobRow | null, name: strin
     case "get_project_state":
       return ok(await api.getProjectState(env, wardId, job.project_id));
     case "get_reading": {
+      if (job.paper_source_job_id) {
+        const slice = await env.DB.prepare("SELECT body FROM paper_reading_slices WHERE ward_id = ? AND job_id = ? AND source_job_id = ?")
+          .bind(wardId, job.job_id, job.paper_source_job_id).first<{ body: string }>();
+        return slice ? ok({ job_task: job.task, instruction: job.instruction, readings: [{ body: JSON.parse(slice.body) }] }) : fail("紙の該当欄を開けませんでした。");
+      }
       const readings = await getReadings(env.DB, wardId, job.job_id);
       return ok({ job_task: job.task, instruction: job.instruction, readings });
     }

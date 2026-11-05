@@ -14,8 +14,10 @@ export async function getJob(db: D1Database, wardId: string, jobId: string): Pro
 
 export async function listOriginals(db: D1Database, wardId: string, jobId: string): Promise<OriginalRow[]> {
   const res = await db
-    .prepare("SELECT * FROM originals WHERE ward_id = ? AND job_id = ? ORDER BY position")
-    .bind(wardId, jobId)
+    .prepare(`SELECT * FROM originals WHERE ward_id = ?
+      AND (job_id = ? OR job_id = (SELECT paper_source_job_id FROM jobs WHERE ward_id = ? AND job_id = ?))
+      ORDER BY position`)
+    .bind(wardId, jobId, wardId, jobId)
     .all<OriginalRow>();
   return res.results;
 }
@@ -37,10 +39,11 @@ export async function originalInProject(
   if (!originalId) return false;
   const row = await db
     .prepare(
-      `SELECT 1 AS x FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
-        WHERE o.ward_id = ? AND o.original_id = ? AND o.withdrawn_at IS NULL AND j.project_id = ?`,
+      `SELECT 1 AS x FROM jobs j JOIN originals o ON o.ward_id = j.ward_id
+        AND (o.job_id = j.job_id OR o.job_id = j.paper_source_job_id)
+        WHERE j.ward_id = ? AND j.project_id = ? AND o.original_id = ? AND o.withdrawn_at IS NULL`,
     )
-    .bind(wardId, originalId, projectId)
+    .bind(wardId, projectId, originalId)
     .first();
   return !!row;
 }
@@ -298,7 +301,9 @@ export async function listJobs(
             COALESCE((SELECT o.filename FROM originals o WHERE o.ward_id = j.ward_id AND o.job_id = j.job_id ORDER BY o.position LIMIT 1), '') AS first_filename,
             COALESCE((SELECT o.kind FROM originals o WHERE o.ward_id = j.ward_id AND o.job_id = j.job_id ORDER BY o.position LIMIT 1), '') AS first_kind
        FROM jobs j
-      WHERE j.ward_id = ? ${where}
+      WHERE j.ward_id = ? AND j.paper_source_job_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM jobs routed WHERE routed.ward_id = j.ward_id AND routed.paper_source_job_id = j.job_id)
+        ${where}
       ORDER BY j.created_at DESC
       LIMIT ?`,
   );
