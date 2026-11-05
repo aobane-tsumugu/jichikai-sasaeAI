@@ -2,7 +2,7 @@ import { Hono, type Context } from "hono";
 import { AdminPage } from "../core/admin-ui";
 import { adminPath } from "../core/auth";
 import { formatJst } from "../core/time";
-import { Credentials, Notice } from "../core/ui";
+import { Credentials, Hint, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import {
   addAccount,
@@ -65,7 +65,7 @@ const PeoplePage = (props: {
   const base = (rest: string) => adminPath(ward, `/settings/people${rest}`);
   return (
     <AdminPage ward={ward} account={me} title="役員の席とアカウント" back={{ href: adminPath(ward, "/settings"), label: "区の設定" }}>
-      <h1>役員の席とアカウント</h1>
+      <h1>役員の席とアカウント <Hint text="役員が入るための ID や、会長・書記などの席を管理する画面です。人を足す時は、下のアカウントの欄に表示名を入れてください。" /></h1>
       <p class="muted">
         席は「会長」「書記」などの名札です。席があるかないかで、できることは変わりません。アカウントは一人に一つで、ID とパスワードで入ります。表示名は漢字のまま使えます。
       </p>
@@ -74,7 +74,7 @@ const PeoplePage = (props: {
 
       <h2>席</h2>
       {seats.length === 0 ? <p class="muted">席はまだありません。席は無くても使えます。</p> : null}
-      {seats.map((s) => {
+      {seats.map((s, index) => {
         const holders = accounts.filter((a) => a.seatId === s.seatId).map((a) => a.name);
         return (
           <div class="panel">
@@ -88,7 +88,7 @@ const PeoplePage = (props: {
             >
               <button type="submit" class="secondary">
                 席を外す
-              </button>
+              </button> {index === 0 ? <Hint text="この席を外し、そこにいた役員は席なしになりますが、アカウントは残ります。" /> : null}
             </form>
           </div>
         );
@@ -102,7 +102,7 @@ const PeoplePage = (props: {
       </form>
 
       <h2>アカウント</h2>
-      {accounts.map((a) => {
+      {accounts.map((a, index) => {
         const mine = a.accountId === me.accountId;
         return (
           <div class="panel">
@@ -167,7 +167,7 @@ const PeoplePage = (props: {
               >
                 <button type="submit" class="secondary">
                   初期化（パスワードを作り直す）
-                </button>
+                </button> {index === 0 ? <Hint text="古いパスワードを使えなくして新しいパスワードを表示するので、本人に渡してください。" /> : null}
               </form>{" "}
               <form
                 class="inline"
@@ -177,7 +177,7 @@ const PeoplePage = (props: {
               >
                 <button type="submit" class="danger">
                   外す
-                </button>
+                </button> {index === 0 ? <Hint text="この人が役員画面に入れなくなり、使っている端末からも締め出されます。" /> : null}
               </form>
             </div>
           </div>
@@ -239,7 +239,7 @@ const CredentialsPage = (props: { c: Context<AdminEnv>; title: string; loginId: 
     title={props.title}
     back={{ href: adminPath(props.c.var.ward, "/settings/people"), label: "役員の席とアカウントへ戻る" }}
   >
-    <h1>{props.title}</h1>
+    <h1>{props.title} <Hint text="役員画面に入るための ID とパスワードです。表示されているうちに、その人に渡してください。" /></h1>
     <Credentials loginId={props.loginId} name={props.name} password={props.password} />
   </AdminPage>
 );

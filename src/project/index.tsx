@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
-import { Layout, Notice } from "../core/ui";
+import { Hint, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { listUnansweredByDistrict } from "../answers/api";
 import { getReadings, listOriginals, listJobs } from "../intake/store";
@@ -44,7 +44,7 @@ admin.get("/projects", async (c) => {
   const projects = allProjects.filter((project) => !project.closedAt);
   const seeds = allProjects.filter((project) => project.closedAt);
   return c.html(<Layout title="プロジェクト" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>プロジェクト</h1>
+    <h1>プロジェクト <Hint text="行事や総会など、仕事ごとのプロジェクトを開く画面です。去年の地図があればそこから、無ければ下の欄から開いてください。" /></h1>
     <p><a class="button secondary" href={adminPath(ward, "/projects/today")}>今やること</a></p>
     <p><a class="button secondary" href={adminPath(ward, "/requests/city")}>行政の依頼</a> <a class="button secondary" href={adminPath(ward, "/inquiries")}>問い合わせと要望</a> <a class="button secondary" href={adminPath(ward, "/ledger")}>帳簿</a></p>
     {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}
@@ -63,7 +63,7 @@ admin.get("/projects", async (c) => {
       <label for="title">題（後で直せます）</label><input id="title" name="title" maxlength={100} placeholder="秋の収穫祭" />
       <label for="eventDay">行事の日（分かれば。地図の時期に使います）</label><input id="eventDay" name="eventDay" type="date" />
       <input type="hidden" name="year" value={new Date().getFullYear()} />
-      <p><button type="submit">開く</button></p>
+      <p><button type="submit">開く</button> <Hint text="選んだ種類の仕事の地図を用意し、新しいプロジェクトを開きます。" /></p>
     </form>
   </Layout>);
 });
@@ -94,7 +94,7 @@ admin.get("/projects/today", async (c) => {
   }
   entries.sort((a, b) => (a.date ?? "9999-99-99").localeCompare(b.date ?? "9999-99-99") || a.project.localeCompare(b.project, "ja"));
   return c.html(<Layout title="今やること" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/projects")}>プロジェクト一覧</a>}>
-    <h1>今やること</h1>
+    <h1>今やること <Hint text="期限の近い仕事や、残っている問いを見る画面です。取りかかる項目のプロジェクト名を押してください。" /></h1>
     <p>期限の近い順に並べています。期限のない問いと足りない物は後ろに表示します。</p>
     {entries.map((entry) => <article class="panel">
       <p>{entry.date ?? "日付なし"}　{entry.label}</p>
@@ -139,7 +139,7 @@ admin.get("/projects/:projectId", async (c) => {
       </form>
     </section>;
   return c.html(<Layout title={project.title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/projects")}>プロジェクト一覧</a>}>
-    <h1>{project.title}</h1>
+    <h1>{project.title} <Hint text="入った材料と、今年の中身や問いを見る画面です。分かる問いに答えるか、案を開いて直してください。" /></h1>
     <nav class="action-links">
       <a class="button secondary" href={adminPath(ward, `/projects/${projectId}/map`)}>地図</a>
       <a class="button secondary" href={adminPath(ward, `/intake?project=${encodeURIComponent(projectId)}`)}>材料を送る</a>
