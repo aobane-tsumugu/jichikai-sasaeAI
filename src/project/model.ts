@@ -229,8 +229,8 @@ export function cleanRowData(table: TableKey, raw: unknown): { ok: true; data: R
     if (value === null || value === undefined || value === "") continue;
     switch (field.def.type) {
       case "text":
-        if (typeof value !== "string") return { ok: false, reason: `${def.label}の「${field.label}」は文字で入れてください` };
-        if (value.trim() !== "") data[name] = value.trim();
+        if (typeof value !== "string" && typeof value !== "number") return { ok: false, reason: `${def.label}の「${field.label}」は文字で入れてください` };
+        if (String(value).trim() !== "") data[name] = String(value).trim();
         break;
       case "amount":
         if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {

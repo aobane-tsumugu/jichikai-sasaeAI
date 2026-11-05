@@ -7,7 +7,7 @@ import { listUnansweredByDistrict } from "../answers/api";
 import { getReadings, listOriginals, listJobs } from "../intake/store";
 import { createProject, getProjectState, getProjectSummary, listProjects, ProjectInputError } from "./api";
 import { answerQuestion, renameProject } from "./actions";
-import { PROJECT_KINDS, PROJECT_KIND_LABEL, DEADLINE_LABEL, ITEM_LABEL, TABLES, displayFieldValue, DOCUMENT_KIND_LABEL, SCOPE_LABEL, CONFIDENCE_LABEL, type RowData } from "./model";
+import { PROJECT_KINDS, PROJECT_KIND_LABEL, isItemKey, DEADLINE_LABEL, ITEM_LABEL, TABLES, displayFieldValue, DOCUMENT_KIND_LABEL, SCOPE_LABEL, CONFIDENCE_LABEL, type RowData } from "./model";
 import { setProjectApi } from "../ai/project-binding";
 import { agentApi } from "./agent-api";
 import { followupAdmin } from "./followup";
@@ -97,7 +97,8 @@ admin.get("/projects/:projectId", async (c) => {
     ...state.tables.ledger,
   ];
   const questionOrder: Record<string, number> = { conflict: 0, decide: 1, unreadable: 2, map_gap: 3, discarded: 4 };
-  const sortedQuestions = [...state.questions].sort((a, b) => (questionOrder[a.kind] ?? 5) - (questionOrder[b.kind] ?? 5));
+  const questionRank = (q: (typeof state.questions)[number]) => (questionOrder[q.kind] ?? 5) * 2 + (isItemKey(q.target) ? 0 : 1);
+  const sortedQuestions = [...state.questions].sort((a, b) => questionRank(a) - questionRank(b));
   const firstQuestions = sortedQuestions.slice(0, 5);
   const laterQuestions = sortedQuestions.slice(5);
   const questionPanel = (q: (typeof state.questions)[number]) => <section class="panel" id={`question-${q.questionId}`}><strong>{q.text}</strong>{q.options?.length ? <ul>{q.options.map((o) => <li>{o}</li>)}</ul> : null}

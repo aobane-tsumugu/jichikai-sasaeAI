@@ -471,6 +471,15 @@ function isNearKey(a: string, b: string): boolean {
   return short.length >= 2 && long.includes(short);
 }
 
+/** 鍵の違いが、片方の空の列だけか（日付の無い行と有る行など）。 */
+function differsOnlyByBlank(a: string, b: string): boolean {
+  const pa = a.split("|");
+  const pb = b.split("|");
+  if (pa.length !== pb.length) return false;
+  const differing = pa.map((part, i) => [part, pb[i] ?? ""] as const).filter(([x, y]) => x !== y);
+  return differing.length === 1 && differing.some(([x, y]) => x === "" || y === "");
+}
+
 function sameFieldValue(a: string | number, b: string | number): boolean {
   return typeof a === "number" || typeof b === "number" ? a === b : normalizeKey(a) === normalizeKey(b);
 }
@@ -495,7 +504,9 @@ async function planRow(ctx: Ctx, n: Normalized, change: RowChange): Promise<Plan
 
   const staleKinds = () => documentsDependingOn(ctx, { table });
   // 行ごとの読み違いの確かめは頼まない（前提 1）。確かさは行に残る
-  const exact = existing.results.find((r) => r.match_key === matchKey);
+  // 空の列だけが違う相手が一つなら同じ相手として扱う。読み取りの書き方の揺れを問いにしない（前提 1）
+  const blankOnly = existing.results.filter((r) => differsOnlyByBlank(r.match_key, matchKey));
+  const exact = existing.results.find((r) => r.match_key === matchKey) ?? (blankOnly.length === 1 ? blankOnly[0] : undefined);
   if (exact) {
     const old = JSON.parse(exact.data) as RowData;
     const personFields = new Set(JSON.parse(exact.person_fields) as string[]);
