@@ -143,7 +143,8 @@ admin.get("/close/:projectId", async (c) => {
       <p><button name="action" value="publish" disabled={!project.closedAt}>区のページに載せる</button></p>
     </form>
     {activityPage?.published_at ? <p><a href={`/${ward.slug}/work/${encodeURIComponent(id)}`}>区のページで確認する</a></p> : null}
-    {!project.closedAt ? <form method="post" action={`${root}/finalize`}><p><button class="danger">閉じて記録に残す</button></p></form> : null}
+    {!project.closedAt && !reports.results?.find((r) => r.scope === "public")?.body ? <Notice>報告の公開する部分がまだ保存されていません。上の欄で直して「保存」を押すと、記録に残ります。</Notice> : null}
+    {!project.closedAt ? <form method="post" action={`${root}/finalize`} onsubmit="return confirm('閉じると、報告と地図は記録になり書き直せません。実行委員と班長は空間を開けなくなります。閉じますか？')"><p><button class="danger">閉じて記録に残す</button></p></form> : null}
     <p><a href={adminPath(ward, "/archive")}>記録を開く</a></p>
   </Layout>);
 });

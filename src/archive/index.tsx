@@ -5,7 +5,7 @@ import { newId, nowIso } from "../core/ids";
 import { Layout } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { createProject, getProjectSummary, listProjects, ProjectInputError } from "../project/api";
-import { PROJECT_KINDS, PROJECT_KIND_LABEL, type ProjectKind } from "../project/model";
+import { MAP_PROGRESS_LABEL, PROJECT_KINDS, PROJECT_KIND_LABEL, type MapProgress, type ProjectKind } from "../project/model";
 import { addDays } from "../map/template";
 import { ARCHIVE_RECORD_TYPES, findFragments, searchArchive } from "./search";
 import type { ArchiveRecordType } from "./search";
@@ -157,16 +157,16 @@ admin.get("/archive/:projectId", async (c) => {
   ]);
   return c.html(<Layout title={`記録: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>{project.title}</h1><p>{project.year}年に閉じたプロジェクト</p>
-    <h2>地図</h2>{map.results?.map((task) => <section class="panel"><h3>{task.name}</h3><p>{task.period} / {task.progress === "done" ? "済み" : task.progress === "started" ? "進行中" : "これから"}</p>
+    <h2>地図</h2>{map.results?.map((task) => <section class="panel"><h3>{task.name}</h3><p>{task.period} / {MAP_PROGRESS_LABEL[task.progress as MapProgress] ?? "これから"}</p>
       {task.requested_by ? <p>頼んだ人: {task.requested_by}</p> : null}{task.difficulty ? <p>困ったこと: {task.difficulty}</p> : null}{task.next_year ? <p>来年変えること: {task.next_year}</p> : null}</section>)}
     <h2>報告</h2>{reports.results?.map((report) => <section class="panel"><h3>{report.scope === "public" ? "公開する部分" : "役員だけの部分"}</h3><p style="white-space:pre-wrap">{report.body || "まだ記入されていません"}</p></section>)}
-    <h2>原本へ戻る</h2>{originals.results?.map((o) => <p><a href={adminPath(ward, `/intake/originals/${o.original_id}`)}>{o.filename || "一行の文"}（{o.kind}）</a></p>)}
+    <h2>原本へ戻る</h2>{originals.results?.map((o) => <p><a href={adminPath(ward, `/intake/originals/${o.original_id}`)}>{o.filename || "一行の文"}（{o.kind === "photo" ? "写真" : o.kind === "file" ? "ファイル" : "文"}）</a></p>)}
     {originals.results?.length === 0 ? <p>原本はありません。</p> : null}
     <h2>来年の種</h2><p>去年の地図と状態を参考に、新しい年のプロジェクトを開きます。仕事を全部点検する必要はありません。</p>
     <form method="post" action={adminPath(ward, `/archive/${id}/seed`)}>
       <label for="title">新しいプロジェクトの題</label><input id="title" name="title" type="text" value={project.title} maxlength={100} required />
       <label for="year">年</label><input id="year" name="year" type="number" value={project.year + 1} min="1900" max="2200" required />
-      <label for="eventDay">行事の日</label><input id="eventDay" name="eventDay" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" required={project.kind === "event"} />
+      <label for="eventDay">行事の日</label><input id="eventDay" name="eventDay" type="date" required={project.kind === "event"} />
       <p><button>この地図を種に開く</button></p>
     </form>
     <p><a href={adminPath(ward, "/archive")}>記録の一覧へ</a></p>
