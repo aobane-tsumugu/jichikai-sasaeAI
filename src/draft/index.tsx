@@ -45,7 +45,12 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
   if (!isKind(kindRaw)) return c.notFound();
   const [project, state, document] = await Promise.all([getProjectSummary(c.env.DB, ward.wardId, id), getProjectState(c.env.DB, ward.wardId, id), getEditableDocument(c.env.DB, ward.wardId, id, kindRaw)]);
   if (!project || !state) return c.notFound();
-  const pack = getDraftPack(kindRaw); const body = document ? parseBody(document.body) : { text: "", items: state.items.map((item) => ({ key: item.key, content: item.current?.content ?? "" })) };
+  const pack = getDraftPack(kindRaw);
+  const body: DraftBody = document ? parseBody(document.body) : { text: "", items: state.items.map((item) => {
+    if (item.current?.content.trim()) return { key: item.key, content: item.current.content };
+    const reference = item.references.find((ref) => ref.content.trim());
+    return { key: item.key, content: reference?.content ?? "", ...(reference ? { source: `参考（${reference.refYear === null ? "年不明" : `${reference.refYear}年`}）` } : {}) };
+  }) };
   const scope = document?.scope ?? pack.scope; const baseVersion = document?.stateVersion ?? project.stateVersion;
   const task = await c.env.DB.prepare(`SELECT status FROM jobs WHERE ward_id = ? AND project_id = ? AND task = 'draft'
     AND instruction LIKE ? ORDER BY created_at DESC LIMIT 1`).bind(ward.wardId, id, `%対象の文書: ${kindRaw}。%`).first<{ status: string }>();
@@ -71,10 +76,14 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
       <label for="title">文書の題</label><input id="title" name="title" value={document?.title ?? pack.title} maxlength={100} required />
       {kindRaw === "duty_roster" ? <><input type="hidden" name="scope" value="space" /><p>当番表は実行委員と班長にだけ見えます。</p></> : <><label for="scope">見られる範囲</label><select id="scope" name="scope">{SCOPES.map((v) => <option value={v} selected={v === scope}>{SCOPE_LABEL[v]}</option>)}</select></>}
       <label for="text">文</label><textarea id="text" name="text" rows={12} maxlength={20000} style="width:100%;font:inherit;padding:.65rem">{body.text}</textarea>
-      <h2>今年の中身</h2>
-      {ITEMS_BY_KIND[project.kind].map((key) => { const value = body.items.find((x) => x.key === key)?.content ?? ""; const item = state.items.find((x) => x.key === key); return <div>
+      <h2>案の中身 <Hint text="今年の記録に中身があればそれを使い、無い項目には去年までの資料から入れています。直して保存すると今年の中身に反映されます。" /></h2>
+      {ITEMS_BY_KIND[project.kind].map((key) => { const draftItem = body.items.find((x) => x.key === key); const value = draftItem?.content ?? ""; const item = state.items.find((x) => x.key === key);
+        const reference = item?.references.find((ref) => ref.content === value && (item.current?.content !== value || item.current.source.kind === "ai_proposal"));
+        return <div>
         <label for={`item-${key}`}>{ITEM_LABEL[key]}</label><input id={`item-${key}`} name={`item_${key}`} value={value} maxlength={2000} />
-        {item?.references.map((ref) => <p class="muted">参考（{ref.refYear ?? "年不明"}年）: {ref.content}</p>)}
+        {reference ? <p>この項目は{reference.refYear === null ? "年不明の資料" : `${reference.refYear}年の資料`}から案に入れました。</p> : null}
+        {draftItem?.source ? <p class="muted">出どころ: {draftItem.source}</p> : null}
+        {item?.references.map((ref) => <p class="muted">参考（{ref.refYear === null ? "年不明" : `${ref.refYear}年`}）: {ref.content}</p>)}
       </div>; })}
       <p><button type="submit">直した中身を保存</button></p>
     </form>

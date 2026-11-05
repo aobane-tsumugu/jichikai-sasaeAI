@@ -144,7 +144,6 @@ admin.get("/projects/:projectId", async (c) => {
       <a class="button secondary" href={adminPath(ward, `/projects/${projectId}/map`)}>地図</a>
       <a class="button secondary" href={adminPath(ward, `/intake?project=${encodeURIComponent(projectId)}`)}>材料を送る</a>
       <a class="button secondary" href={adminPath(ward, `/projects/${projectId}/draft`)}>案</a>
-      <a class="button secondary" href={adminPath(ward, `/projects/${projectId}/check`)}>混入を確かめる</a>
       <a class="button" href={adminPath(ward, `/publish/${projectId}`)}>配る</a>
     </nav>
     <p>{PROJECT_KIND_LABEL[project.kind]} / {project.year}年</p>
