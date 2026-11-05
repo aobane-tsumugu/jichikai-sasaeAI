@@ -99,7 +99,7 @@ admin.get("/close/:projectId", async (c) => {
   const root = adminPath(ward, `/close/${id}`);
   return c.html(<Layout title={`報告と閉じる: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>{project.title} の報告と閉じる</h1>
-    {project.closedAt ? <Notice>このプロジェクトは凍結しています。読むことはできます。</Notice> : <form method="post" action={`${root}/prepare`}><button class="secondary">報告と地図の下書きを起こす</button></form>}
+    {project.closedAt ? <Notice>このプロジェクトは閉じました。記録として読めます。</Notice> : <form method="post" action={`${root}/prepare`}><button class="secondary">報告と地図の下書きを起こす</button></form>}
     {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}
     {c.req.query("activity") === "saved" ? <Notice>仕事紹介の下書きを保存しました。</Notice> : null}
     {c.req.query("activity") === "published" ? <Notice>仕事紹介を区のページに載せました。</Notice> : null}

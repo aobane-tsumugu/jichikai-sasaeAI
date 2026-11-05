@@ -89,6 +89,8 @@ describe("役員の仕事と活動の紹介", () => {
     expect(html).toContain("記録にある仕事 1 件");
     expect(html).toContain(chosen!.name);
     expect(html).not.toContain(skipped!.name);
+    // 案内を載せていない行事なので、案内のページへのリンクは出さない。
+    expect(html).not.toContain("この行事の案内を見る");
     expect(await (await get(realApp, `/${ward.slug}/`)).text()).toContain(`/${ward.slug}/work/${project.projectId}`);
   });
 });

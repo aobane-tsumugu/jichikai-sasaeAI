@@ -151,7 +151,7 @@ admin.get("/archive/:projectId", async (c) => {
   if (!project?.closedAt) return c.notFound();
   const [reports, map, originals] = await Promise.all([
     c.env.DB.prepare("SELECT scope, body FROM project_close_reports WHERE ward_id = ? AND project_id = ? ORDER BY scope").bind(ward.wardId, id).all<{ scope: string; body: string }>(),
-    c.env.DB.prepare("SELECT task_id, name, period, progress, requested_by, difficulty, next_year FROM project_close_map WHERE ward_id = ? AND project_id = ?").bind(ward.wardId, id).all<{ task_id: string; name: string; period: string; progress: string; requested_by: string; difficulty: string; next_year: string }>(),
+    c.env.DB.prepare("SELECT task_id, name, period, progress, requested_by, difficulty, next_year FROM project_close_map WHERE ward_id = ? AND project_id = ? ORDER BY period, task_id").bind(ward.wardId, id).all<{ task_id: string; name: string; period: string; progress: string; requested_by: string; difficulty: string; next_year: string }>(),
     c.env.DB.prepare(`SELECT o.original_id, o.filename, o.kind FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
       WHERE o.ward_id = ? AND j.project_id = ? AND o.withdrawn_at IS NULL ORDER BY o.received_at`).bind(ward.wardId, id).all<{ original_id: string; filename: string; kind: string }>(),
   ]);

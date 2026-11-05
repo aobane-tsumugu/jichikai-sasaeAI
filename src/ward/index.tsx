@@ -103,6 +103,9 @@ pub.get("/work/:projectId", async (c) => {
   const body = parseActivity(activity.published_body);
   if (!body) return c.notFound();
   const listed = body.tasks;
+  // 案内を一度も載せていない行事では、案内のページが無いのでリンクを出さない。
+  const notices = await c.env.DB.prepare("SELECT 1 AS found FROM publication_records WHERE ward_id = ? AND project_id = ? AND unpublished_at IS NULL LIMIT 1")
+    .bind(c.var.ward.wardId, projectId).first<{ found: number }>();
   return c.html(<Layout title={`${activity.title}の活動`} siteName={c.var.ward.name}>
     <p><a href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のページへ</a></p>
     <h1>{activity.title}で役員がしたこと</h1>
@@ -116,7 +119,7 @@ pub.get("/work/:projectId", async (c) => {
     <h2>一回だけ手伝う</h2>
     <p>加入せずに手伝える募集を見て、一回だけ申し込めます。</p>
     <p><a href={`/${c.var.ward.slug}/help`}>一回だけ手伝える募集を見る</a></p>
-    <p><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>この行事の案内を見る</a></p>
+    {notices ? <p><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>この行事の案内を見る</a></p> : null}
   </Layout>);
 });
 
