@@ -102,6 +102,7 @@ export const requireAdmin: MiddlewareHandler<AdminEnv> = async (c, next) => {
       `SELECT d.device_id, d.last_seen_at, a.account_id, a.name, a.seat_id
          FROM devices d
          JOIN accounts a ON a.ward_id = d.ward_id AND a.account_id = d.account_id
+         JOIN wards w ON w.ward_id = d.ward_id AND w.is_active = 1
         WHERE d.ward_id = ? AND d.token_hash = ? AND a.removed_at IS NULL`,
     )
       .bind(ward.wardId, await sha256Hex(token))

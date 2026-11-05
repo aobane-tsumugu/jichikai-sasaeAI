@@ -48,6 +48,24 @@ export function createApp(bundles: Bundle[]) {
   );
 
   const hooks = new Hono<AppEnv>();
+  hooks.use("/line", async (c, next) => {
+    let destination = "";
+    try {
+      const body: unknown = await c.req.raw.clone().json();
+      if (typeof body === "object" && body !== null && typeof (body as { destination?: unknown }).destination === "string") {
+        destination = (body as { destination: string }).destination;
+      }
+    } catch {
+      return next();
+    }
+    if (!destination) return next();
+    const state = await c.env.DB.prepare(`SELECT w.is_active FROM line_channels l
+      JOIN wards w ON w.ward_id = l.ward_id
+      WHERE w.ward_id IS NOT NULL AND l.destination = ? LIMIT 1`).bind(destination)
+      .first<{ is_active: number }>();
+    if (state?.is_active === 0) return c.text("停止中", 503);
+    return next();
+  });
   for (const bundle of bundles) if (bundle.hooks) hooks.route("/", bundle.hooks);
   app.route("/hooks", hooks);
 
@@ -56,6 +74,16 @@ export function createApp(bundles: Bundle[]) {
 
   const ward = new Hono<WardEnv>();
   ward.use("*", resolveWard);
+  ward.use("*", async (c, next) => {
+    if (["GET", "HEAD", "OPTIONS"].includes(c.req.method)) return next();
+    const state = await c.env.DB.prepare("SELECT is_active FROM wards WHERE ward_id = ?")
+      .bind(c.var.ward.wardId).first<{ is_active: number }>();
+    if (state?.is_active === 1) return next();
+    return c.html(<Layout title="区の運用は停止中" siteName={c.var.ward.name}>
+      <h1>区の運用は停止中です</h1>
+      <p>区のページの読み取りは続いています。書き込みは受け付けていません。</p>
+    </Layout>, 503);
+  });
   ward.use("*", csrf());
   ward.route("/admin", loginRoutes);
   const admin = new Hono<AdminEnv>();

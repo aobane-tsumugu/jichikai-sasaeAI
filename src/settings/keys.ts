@@ -8,7 +8,12 @@ export const SETTING_KEYS = {
   squads: "squads",
   /** 定型文（JSON の {id, name, body} の配列）。雨天の変更の知らせなど。 */
   templates: "templates",
+  privacyNotice: "privacy_notice",
 } as const;
+
+/** 区のページで一律に案内する、利用目的・委託先・消し方。 */
+export const PUBLIC_PRIVACY_NOTICE =
+  "運営支援は、自治会の行事や連絡、回答の受付のために利用します。提供側が自治会から委託を受けて記録を預かり、文章の読み取りを AI 事業者 Anthropic に委託します。委託と安全管理の根拠は提供側が確認します。消す希望や個人情報の問い合わせは、公開用の連絡先へお知らせください。住民から消す希望が届いたときは、役員が対象を確かめ、原本、読み取った内容、記録を探す索引を一緒に消します。自治会が運営支援を終えるときは、原本、配布した物、記録をお渡しした後、保管物と Anthropic 側の処理を消し、AI の設定を停止して保管庫を削除します。Anthropic API に送った内容は通常、受信・生成から30日以内に削除されます。利用ポリシーへの対応、法令、契約条件により長く保持される場合があります。";
 
 export const LIMITS = {
   publicContact: 500,
