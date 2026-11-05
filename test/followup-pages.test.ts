@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { expect, it } from "vitest";
 import { seedAdmin } from "../src/core/testing";
 import { receive } from "../src/intake/receive";
+import { listJobs } from "../src/intake/store";
 import { createProject } from "../src/project/api";
 import { get, realApp } from "./helpers";
 
@@ -38,4 +39,14 @@ it("入った物を名前と文で見分け、材料の文を読み、今やる�
   expect(todayHtml).not.toContain(`${yesterday}　行事の日`);
   expect(todayHtml).toContain(`${tomorrow}　行事の日`);
   expect(todayHtml).toContain(`${yesterday}　回答の締切`);
+});
+
+it("AI に頼んだ下書きの仕事は、入った物の一覧に出さない", async () => {
+  const { ward, account } = await seedAdmin(env.DB);
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
+  await env.DB.prepare(`INSERT INTO jobs (job_id, ward_id, project_id, via, task, instruction, account_id, status, created_at, updated_at, read_at)
+    VALUES ('system-draft', ?, ?, 'system', 'report', '架空の指示', ?, 'done', ?, ?, ?)`)
+    .bind(ward.wardId, project.projectId, account.accountId, "2026-11-05T00:00:00.000Z", "2026-11-05T00:00:00.000Z", "2026-11-05T00:00:00.000Z").run();
+  const jobs = await listJobs(env.DB, ward.wardId, { projectId: project.projectId });
+  expect(jobs.map((job) => job.job_id)).not.toContain("system-draft");
 });
