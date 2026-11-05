@@ -7,6 +7,9 @@ import { ArticleBody, articleParagraphs } from "../../publish";
 import type { AdminEnv } from "../../env";
 import { CutLine, FieldBox, PrintDocument, PrintQr, Sheet } from "../a4";
 import { makePaperCode, printQrUrl } from "../qr";
+import { getProjectState } from "../../project/api";
+import { TABLES, displayFieldValue, type TableKey } from "../../project/model";
+import type { RowView } from "../../project/types";
 
 const printKinds = ["announcement", "answer", "leader", "duty", "meeting", "sponsors"] as const;
 type PrintKind = (typeof printKinds)[number];
@@ -81,6 +84,14 @@ admin.get("/print/:projectId/:documentId/:versionNo/:kind", async (c) => {
     {paperQr(squad)}
   </div>;
   const onOneSheet = fitsAboveAnswer(row.body);
+  const dense = bodyLines(row.body) > 30;
+  // 当番表と協賛先の紙は、案内の本文ではなく今年の中身の表から作る。
+  const state = kind === "duty" || kind === "sponsors" ? await getProjectState(c.env.DB, ward.wardId, projectId) : null;
+  const current = (table: TableKey) => (state?.tables[table] ?? []).filter((entry) => entry.scope === "current");
+  const tableRows = kind === "duty" ? [...current("duties"), ...current("layout")] : kind === "sponsors" ? current("sponsors") : [];
+  const listed = tableRows.slice(0, 20);
+  // 表の行が多いほど書き込む欄を減らし、一枚から溢れないようにする。
+  const blankBoxes = (max: number) => Math.max(2, Math.min(max, Math.floor((200 - (listed.length + 2) * 7.5) / 18)));
   const printTitle = `${row.title} ${kindLabel(kind)}`;
   return c.html(<PrintDocument title={printTitle}>
     {kind === "announcement" && onOneSheet ? (squads.length ? squads : [""]).map((squad) => <Sheet key={squad} footer={<><span>{ward.name} {squad}</span><span>案内 {versionNo}</span></>}>
@@ -89,9 +100,9 @@ admin.get("/print/:projectId/:documentId/:versionNo/:kind", async (c) => {
       <p>QR を読むと案内のページが開き、Web でも回答できます。</p>
     </Sheet>) : null}
     {kind === "announcement" && !onOneSheet ? <>
-      <Sheet footer={<><span>{ward.name}</span><span>案内 {versionNo}</span></>}>
+      <Sheet dense={dense} footer={<><span>{ward.name}</span><span>案内 {versionNo}</span></>}>
+        <div class="float-qr">{paperQr()}</div>
         <h1>{row.document_title}</h1><ArticleBody body={row.body} />
-        {paperQr()}
       </Sheet>
       {squads.map((squad) => <Sheet key={squad} footer={<><span>{ward.name} {squad}</span><span>回答票</span></>}>
         <h1>{row.title} 回答票</h1><p>班: {squad}</p>{answerSheet(squad, 28)}
@@ -106,9 +117,12 @@ admin.get("/print/:projectId/:documentId/:versionNo/:kind", async (c) => {
       <p>この案内を班の世帯へお渡しください。</p>{paperQr(squad)}
     </Sheet>) : null}
     {kind === "duty" ? <Sheet footer={<>{ward.name} 当番表と配置図</>}>
-      <h1>{row.title} 当番表と配置図</h1><ArticleBody body={row.body} />
-      {Array.from({ length: 8 }, (_, index) => <FieldBox key={index} label={index < 5 ? `時間帯 ${index + 1}・持ち場・担当` : `配置 ${index - 4}・場所・メモ`} heightMm={16} />)}
-      {paperQr()}
+      <div class="float-qr">{paperQr()}</div>
+      <h1>{row.title} 当番表と配置図</h1>
+      <RowsTable table="duties" rows={listed.filter((entry) => entry.table === "duties")} />
+      <RowsTable table="layout" rows={listed.filter((entry) => entry.table === "layout")} />
+      {tableRows.length > listed.length ? <p>ほかに {tableRows.length - listed.length} 行あります。役員画面で見られます。</p> : null}
+      {Array.from({ length: blankBoxes(8) }, (_, index) => <FieldBox key={index} label={index % 2 === 0 ? "時間帯・持ち場・担当" : "配置・場所・メモ"} heightMm={16} />)}
     </Sheet> : null}
     {kind === "meeting" ? Array.from({ length: Math.max(1, Math.ceil(meetingSheets.length / 3)) }, (_, page) => {
       const targets = meetingSheets.slice(page * 3, page * 3 + 3);
@@ -129,9 +143,11 @@ admin.get("/print/:projectId/:documentId/:versionNo/:kind", async (c) => {
       </Sheet>;
     }) : null}
     {kind === "sponsors" ? <Sheet footer={<>{ward.name} 協賛先</>}>
-      <h1>{row.title} 協賛先の一覧</h1><ArticleBody body={row.body} />
-      {Array.from({ length: 10 }, (_, index) => <FieldBox key={index} label={`協賛先 ${index + 1}・返事・連絡`} heightMm={18} />)}
-      {paperQr()}
+      <div class="float-qr">{paperQr()}</div>
+      <h1>{row.title} 協賛先の一覧</h1>
+      <RowsTable table="sponsors" rows={listed} />
+      {tableRows.length > listed.length ? <p>ほかに {tableRows.length - listed.length} 行あります。役員画面で見られます。</p> : null}
+      {Array.from({ length: blankBoxes(10) }, (_, index) => <FieldBox key={index} label="協賛先・返事・連絡" heightMm={16} />)}
     </Sheet> : null}
   </PrintDocument>);
 });
@@ -162,10 +178,26 @@ function kindLabel(kind: PrintKind): string {
 export const printPages: Bundle = { admin };
 
 /** 案内と切り取る回答票を一枚に載せられるか。A4 の文字幅で約 42 字、案内に使える高さで約 20 行。 */
-function fitsAboveAnswer(body: string): boolean {
+/** 本文が一枚の中で何行分になるかの見積もり（一行は全角 42 字、段落の間を 0.4 行）。 */
+function bodyLines(body: string): number {
   const paragraphs = articleParagraphs(body);
   const lines = paragraphs.flatMap((paragraph) => paragraph.split("\n")).reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / 42)), 0);
-  return lines + paragraphs.length * 0.4 <= 20;
+  return lines + paragraphs.length * 0.4;
+}
+
+function fitsAboveAnswer(body: string): boolean {
+  return bodyLines(body) <= 20;
+}
+
+/** 今年の中身の表を紙に並べる。空なら何も出さない。 */
+function RowsTable({ table, rows }: { table: TableKey; rows: RowView[] }) {
+  if (!rows.length) return null;
+  const fields = Object.entries(TABLES[table].fields).filter(([key]) => rows.some((entry) => entry.data[key] !== undefined && entry.data[key] !== ""));
+  return <>
+    <h2>{TABLES[table].label}</h2>
+    <table><thead><tr>{fields.map(([, field]) => <th>{field.label}</th>)}</tr></thead>
+      <tbody>{rows.map((entry) => <tr>{fields.map(([key]) => <td>{displayFieldValue(table, key, entry.data[key])}</td>)}</tr>)}</tbody></table>
+  </>;
 }
 
 function PaperField({ label, heightMm, code, text }: { label: string; heightMm: number; code: string | null; text: string }) {
