@@ -64,10 +64,12 @@ admin.get("/projects", async (c) => {
 
 admin.get("/projects/today", async (c) => {
   const { ward } = c.var;
+  const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const projects = await listProjects(c.env.DB, ward.wardId);
   const entries: Array<{ date: string | null; projectId: string; project: string; label: string; detail: string; href: string }> = [];
   for (const project of projects) {
     for (const [kind, date] of Object.entries(project.deadlines)) {
+      if (kind === "event_day" && date < today) continue;
       entries.push({ date, projectId: project.projectId, project: project.title, label: DEADLINE_LABEL[kind as keyof typeof DEADLINE_LABEL], detail: date, href: `/projects/${project.projectId}/map` });
     }
     const state = await getProjectState(c.env.DB, ward.wardId, project.projectId);
@@ -151,7 +153,7 @@ admin.get("/projects/:projectId", async (c) => {
       const readings = await getReadings(c.env.DB, ward.wardId, job.job_id);
       return <section class="panel" id="materials"><h3>{job.first_filename || "一行の文"}</h3><p>{job.status === "done" ? "反映しました" : job.status === "failed" ? "読めませんでした" : "処理中または確認中"}</p>
         {originals.map((original) => { const target = adminPath(ward, `/intake/originals/${original.original_id}`); const related = readings.filter((r) => "fields" in r.body ? r.body.fields.some((f) => f.original_id === original.original_id) || r.body.text_blocks.some((b) => b.original_id === original.original_id) : r.body.rows.some((row) => row.original_id === original.original_id)); return <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:1rem;align-items:start;margin:1rem 0">
-          <div><a href={target} target="_blank">元の物を開く: {original.filename || "一行の文"}</a>{original.media_type.startsWith("image/") ? <a href={target} target="_blank"><img src={target} alt="入った元の写真" loading="lazy" style="display:block;width:100%;height:auto;margin-top:.5rem" /></a> : null}</div>
+          <div><a href={target} target="_blank">元の物を開く: {original.filename || "一行の文"}</a>{original.kind === "text" ? <p style="white-space:pre-wrap">{readings.filter((r) => r.source === "direct").flatMap((r) => "text_blocks" in r.body ? r.body.text_blocks.filter((block) => block.original_id === original.original_id).map((block) => block.text) : []).join("\n")}</p> : null}{original.media_type.startsWith("image/") ? <a href={target} target="_blank"><img src={target} alt="入った元の写真" loading="lazy" style="display:block;width:100%;height:auto;margin-top:.5rem" /></a> : null}</div>
           <div>{related.map((r) => <details><summary>読み取った中身</summary><p>{r.body.summary}</p>
             {"fields" in r.body ? <>{r.body.fields.filter((f) => f.original_id === original.original_id).map((f) => <p><a href={target} target="_blank">{f.name}: {f.value}</a>（写真全体・{f.locator} / 確かさ{CONFIDENCE_LABEL[f.confidence]}）</p>)}{r.body.text_blocks.filter((b) => b.original_id === original.original_id).map((b) => <p><a href={target} target="_blank">{b.text}</a>（写真全体・{b.locator}）</p>)}</> : r.body.rows.filter((row) => row.original_id === original.original_id).map((row) => <p><a href={target} target="_blank">{row.household_name} / {row.ward_group}</a>（写真全体・{row.locator}）</p>)}
           </details>)}</div>
