@@ -29,9 +29,20 @@ const WARD_DELETE_TABLES = [
 interface QueueRow {
   queue_id: string;
   ward_id: string;
-  target_type: "job" | "ward" | "answer";
+  target_type: "job" | "ward" | "answer" | "project";
   target_id: string | null;
   cursor: string | null;
+}
+
+export async function requestProjectDeletion(db: D1Database, wardId: string, projectId: string): Promise<boolean> {
+  const project = await db.prepare("SELECT project_id FROM projects WHERE ward_id = ? AND project_id = ?")
+    .bind(wardId, projectId).first();
+  if (!project) return false;
+  await db.prepare(`INSERT INTO ops_deletion_queue (queue_id, ward_id, target_type, target_id, requested_at)
+    SELECT ?, ?, 'project', ?, ? WHERE NOT EXISTS (
+      SELECT 1 FROM ops_deletion_queue WHERE ward_id = ? AND target_type = 'project' AND target_id = ? AND state IN ('pending', 'running', 'error')
+    )`).bind(newId(), wardId, projectId, nowIso(), wardId, projectId).run();
+  return true;
 }
 
 export async function requestJobDeletion(db: D1Database, wardId: string, jobId: string): Promise<string> {
@@ -270,22 +281,24 @@ async function rewriteJobSnapshots(env: Env, wardId: string, jobId: string, curs
   return page.truncated ? page.cursor ?? null : null;
 }
 
-async function eraseJob(env: Env, item: QueueRow): Promise<"continue" | "done"> {
+async function eraseJob(env: Env, item: QueueRow, projectJob?: { jobId: string; cursor: string | null }): Promise<"continue" | "done"> {
   const wardId = item.ward_id;
-  const jobId = item.target_id ?? "";
+  const jobId = projectJob?.jobId ?? item.target_id ?? "";
+  const cursor = projectJob ? projectJob.cursor : item.cursor;
+  const nextCursor = (value: string) => projectJob ? `job:${jobId}:${value}` : value;
   const job = await env.DB.prepare("SELECT session_id FROM jobs WHERE ward_id = ? AND job_id = ?")
     .bind(wardId, jobId).first<{ session_id: string | null }>();
-  if (item.cursor === null) {
+  if (cursor === null) {
     if (job?.session_id && !(await deleteSession(env, wardId, jobId, job.session_id))) throw new Error("AI 側の処理を消せませんでした");
-    await env.DB.prepare("UPDATE ops_deletion_queue SET cursor = 'snapshots', state = 'running', last_error = '' WHERE queue_id = ? AND ward_id = ?")
-      .bind(item.queue_id, wardId).run();
+    await env.DB.prepare("UPDATE ops_deletion_queue SET cursor = ?, state = 'running', last_error = '' WHERE queue_id = ? AND ward_id = ?")
+      .bind(nextCursor("snapshots"), item.queue_id, wardId).run();
     return "continue";
   }
-  if (item.cursor === "snapshots" || item.cursor.startsWith("snapshots:")) {
-    const token = item.cursor.startsWith("snapshots:") ? item.cursor.slice("snapshots:".length) : undefined;
+  if (cursor === "snapshots" || cursor.startsWith("snapshots:")) {
+    const token = cursor.startsWith("snapshots:") ? cursor.slice("snapshots:".length) : undefined;
     const next = await rewriteJobSnapshots(env, wardId, jobId, token);
     await env.DB.prepare("UPDATE ops_deletion_queue SET cursor = ?, state = 'running', last_error = '' WHERE queue_id = ? AND ward_id = ?")
-      .bind(next ? `snapshots:${next}` : "record", item.queue_id, wardId).run();
+      .bind(nextCursor(next ? `snapshots:${next}` : "record"), item.queue_id, wardId).run();
     return "continue";
   }
 
@@ -298,20 +311,23 @@ async function eraseJob(env: Env, item: QueueRow): Promise<"continue" | "done"> 
   for (const entry of inbox.results) await bucket.delete(entry.original_object_key);
   const statements = [
     env.DB.prepare("DELETE FROM archive_search_entries WHERE ward_id = ? AND record_type = 'reading' AND (source_id IN (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?) OR content IN (SELECT body FROM readings WHERE ward_id = ? AND job_id = ?))").bind(wardId, wardId, jobId, wardId, jobId),
-    env.DB.prepare("DELETE FROM project_item_values WHERE ward_id = ? AND source_ref IN (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)").bind(wardId, wardId, jobId),
-    env.DB.prepare("DELETE FROM project_rows WHERE ward_id = ? AND source_ref IN (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)").bind(wardId, wardId, jobId),
-    env.DB.prepare(`DELETE FROM project_questions WHERE ward_id = ? AND (
-      source_ref IN (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?) OR
-      change_id IN (SELECT change_id FROM project_changes WHERE ward_id = ? AND source_ref IN
-        (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)))`)
-      .bind(wardId, wardId, jobId, wardId, wardId, jobId),
-    env.DB.prepare(`UPDATE project_map_tasks SET progress = 'open', progress_source_kind = NULL, progress_source_ref = NULL,
-      progress_source_locator = NULL, progress_confidence = NULL, progress_change_id = NULL WHERE ward_id = ? AND (
-      progress_source_ref IN (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?) OR
-      progress_change_id IN (SELECT change_id FROM project_changes WHERE ward_id = ? AND source_ref IN
-        (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)))`)
-      .bind(wardId, wardId, jobId, wardId, wardId, jobId),
-    env.DB.prepare("DELETE FROM project_changes WHERE ward_id = ? AND source_ref IN (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)").bind(wardId, wardId, jobId),
+    // プロジェクトごとの消去では、差分への参照を持つ問い・地図と一緒に後で消す。
+    ...(!projectJob ? [
+      env.DB.prepare("DELETE FROM project_item_values WHERE ward_id = ? AND source_ref IN (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)").bind(wardId, wardId, jobId),
+      env.DB.prepare("DELETE FROM project_rows WHERE ward_id = ? AND source_ref IN (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)").bind(wardId, wardId, jobId),
+      env.DB.prepare(`DELETE FROM project_questions WHERE ward_id = ? AND (
+        source_ref IN (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?) OR
+        change_id IN (SELECT change_id FROM project_changes WHERE ward_id = ? AND source_ref IN
+          (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)))`)
+        .bind(wardId, wardId, jobId, wardId, wardId, jobId),
+      env.DB.prepare(`UPDATE project_map_tasks SET progress = 'open', progress_source_kind = NULL, progress_source_ref = NULL,
+        progress_source_locator = NULL, progress_confidence = NULL, progress_change_id = NULL WHERE ward_id = ? AND (
+        progress_source_ref IN (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?) OR
+        progress_change_id IN (SELECT change_id FROM project_changes WHERE ward_id = ? AND source_ref IN
+          (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)))`)
+        .bind(wardId, wardId, jobId, wardId, wardId, jobId),
+      env.DB.prepare("DELETE FROM project_changes WHERE ward_id = ? AND source_ref IN (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)").bind(wardId, wardId, jobId),
+    ] : []),
     env.DB.prepare("DELETE FROM project_answers WHERE ward_id = ? AND original_id IN (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)").bind(wardId, wardId, jobId),
     env.DB.prepare("DELETE FROM line_inbox_items WHERE ward_id = ? AND job_id = ?").bind(wardId, jobId),
     env.DB.prepare("DELETE FROM paper_reading_slices WHERE ward_id = ? AND (job_id = ? OR source_job_id = ?)").bind(wardId, jobId, jobId),
@@ -322,12 +338,73 @@ async function eraseJob(env: Env, item: QueueRow): Promise<"continue" | "done"> 
     env.DB.prepare("DELETE FROM jobs WHERE ward_id = ? AND job_id = ?").bind(wardId, jobId),
   ];
   await env.DB.batch(statements);
+  if (projectJob) {
+    await env.DB.prepare("UPDATE ops_deletion_queue SET cursor = NULL WHERE ward_id = ? AND queue_id = ?")
+      .bind(wardId, item.queue_id).run();
+    return "done";
+  }
   const at = nowIso();
   await env.DB.batch([
     env.DB.prepare("DELETE FROM ops_deletion_queue WHERE queue_id = ? AND ward_id = ?").bind(item.queue_id, wardId),
     env.DB.prepare("INSERT INTO ops_deletion_marks (mark_id, ward_id, scope, deleted_at) VALUES (?, ?, 'record', ?)").bind(newId(), wardId, at),
   ]);
   return "done";
+}
+
+const PROJECT_DELETE_TABLES = [
+  "archive_search_entries", "project_activity_pages", "project_close_reports", "project_close_map",
+  "project_answers", "project_space_members", "project_space_invites", "project_spaces", "city_request_details",
+  "publication_records", "document_versions", "documents", "project_questions", "project_rows", "project_item_values",
+  "project_map_tasks", "project_changes", "project_deadlines", "projects",
+] as const;
+
+async function eraseProject(env: Env, item: QueueRow): Promise<void> {
+  const wardId = item.ward_id;
+  const projectId = item.target_id ?? "";
+  if (item.cursor === null || item.cursor.startsWith("job:")) {
+    const resumed = /^job:([^:]+):(.*)$/s.exec(item.cursor ?? "");
+    const job = resumed ? { job_id: resumed[1]! } : await env.DB.prepare("SELECT job_id FROM jobs WHERE ward_id = ? AND project_id = ? ORDER BY created_at, job_id LIMIT 1")
+      .bind(wardId, projectId).first<{ job_id: string }>();
+    if (job) {
+      await env.DB.prepare("UPDATE jobs SET status = 'withdrawn', ticket_hash = NULL, withdrawn_at = COALESCE(withdrawn_at, ?), updated_at = ? WHERE ward_id = ? AND job_id = ?")
+        .bind(nowIso(), nowIso(), wardId, job.job_id).run();
+      await eraseJob(env, item, { jobId: job.job_id, cursor: resumed?.[2] ?? null });
+      return;
+    }
+    await env.DB.batch([
+      env.DB.prepare("UPDATE projects SET seed_project_id = NULL WHERE ward_id = ? AND seed_project_id = ?").bind(wardId, projectId),
+      ...PROJECT_DELETE_TABLES.map((table) => env.DB.prepare(`DELETE FROM ${table} WHERE ward_id = ? AND project_id = ?`).bind(wardId, projectId)),
+      env.DB.prepare("UPDATE ops_deletion_queue SET cursor = 'snapshots' WHERE ward_id = ? AND queue_id = ?").bind(wardId, item.queue_id),
+    ]);
+    return;
+  }
+  if (item.cursor === "snapshots" || item.cursor.startsWith("snapshots:")) {
+    const bucket = new WardBucket(env.ORIGINALS, wardId);
+    const cursor = item.cursor.startsWith("snapshots:") ? item.cursor.slice("snapshots:".length) : undefined;
+    const page = await bucket.list("snapshots/daily/", { limit: 100, cursor });
+    for (const entry of page.keys) {
+      const object = await bucket.get(entry.key);
+      if (!object) continue;
+      const value: unknown = await object.json().catch(() => null);
+      if (typeof value !== "object" || value === null || Array.isArray(value)) { await bucket.delete(entry.key); continue; }
+      const doc = value as { format?: unknown; wardId?: unknown; tables?: Record<string, unknown> };
+      if (doc.format !== 1 || doc.wardId !== wardId || typeof doc.tables !== "object" || doc.tables === null || Array.isArray(doc.tables)) { await bucket.delete(entry.key); continue; }
+      for (const [table, rows] of Object.entries(doc.tables)) {
+        if (!Array.isArray(rows)) continue;
+        doc.tables[table] = (rows as unknown[]).filter((row) => typeof row !== "object" || row === null || (row as Record<string, unknown>).project_id !== projectId)
+          .map((row) => table === "projects" && typeof row === "object" && row !== null && (row as Record<string, unknown>).seed_project_id === projectId
+            ? { ...row, seed_project_id: null } : row);
+      }
+      await bucket.put(entry.key, JSON.stringify(doc), { httpMetadata: { contentType: "application/json; charset=utf-8" } });
+    }
+    await env.DB.prepare("UPDATE ops_deletion_queue SET cursor = ? WHERE ward_id = ? AND queue_id = ?")
+      .bind(page.truncated && page.cursor ? `snapshots:${page.cursor}` : "mark", wardId, item.queue_id).run();
+    return;
+  }
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM ops_deletion_queue WHERE ward_id = ? AND queue_id = ?").bind(wardId, item.queue_id),
+    env.DB.prepare("INSERT INTO ops_deletion_marks (mark_id, ward_id, scope, deleted_at) VALUES (?, ?, 'record', ?)").bind(newId(), wardId, nowIso()),
+  ]);
 }
 
 async function eraseWardData(env: Env, wardId: string): Promise<void> {
@@ -343,6 +420,10 @@ async function eraseWardData(env: Env, wardId: string): Promise<void> {
 
 async function finishDeletion(env: Env, item: QueueRow): Promise<void> {
   const at = nowIso();
+  if (item.target_type === "project" && item.target_id) {
+    await eraseProject(env, item);
+    return;
+  }
   if (item.target_type === "job" && item.target_id) {
     await eraseJob(env, item);
     return;
