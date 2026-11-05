@@ -223,7 +223,10 @@ intakeAdmin.post("/intake", async (c) => {
 
 intakeAdmin.post("/intake/:jobId/withdraw", async (c) => {
   const { ward } = c.var;
-  await withdrawJob(c.env, ward.wardId, c.req.param("jobId"));
+  if (!(await withdrawJob(c.env, ward.wardId, c.req.param("jobId")))) {
+    const message = "取り下げられませんでした。消す時は区の設定の「消す求め」から対象を選んでください。";
+    return c.redirect(`${adminPath(ward, "/intake")}?error=${encodeURIComponent(message)}`, 303);
+  }
   return c.redirect(`${adminPath(ward, "/intake")}?n=withdrawn`, 303);
 });
 
