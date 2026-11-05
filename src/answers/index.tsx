@@ -10,6 +10,8 @@ import { getOriginal } from "../intake/store";
 import { SEND_SCRIPT } from "../intake/browser-script";
 import { getSquads } from "../settings/store";
 import { lookupPrintQr } from "../print/qr";
+import { ArticleBody } from "../publish";
+import { addHelpOffer, helpTimeChoices, listHelpOffers, listHelpOpportunities } from "./help";
 import {
   addAnswer,
   chooseRosterColumns,
@@ -226,13 +228,14 @@ admin.get("/answers/:projectId", async (c) => {
   const project = await c.env.DB.prepare("SELECT project_id, title FROM projects WHERE ward_id = ? AND project_id = ?")
     .bind(c.var.ward.wardId, projectId).first<{ project_id: string; title: string }>();
   if (!project) return c.notFound();
-  const [answers, unanswered, helpers, deadline, districts, totals] = await Promise.all([
+  const [answers, unanswered, helpers, deadline, districts, totals, offers] = await Promise.all([
     listAnswers(c.env.DB, c.var.ward.wardId, projectId),
     listUnansweredByDistrict(c.env.DB, c.var.ward.wardId, projectId),
     listHelperRequests(c.env.DB, c.var.ward.wardId, projectId),
     getAnswerDeadline(c.env.DB, c.var.ward.wardId, projectId),
     getDistricts(c.env.DB, c.var.ward.wardId),
     getAnswerTotals(c.env.DB, c.var.ward.wardId, projectId),
+    listHelpOffers(c.env.DB, c.var.ward.wardId, projectId),
   ]);
   const sheets = await c.env.DB.prepare(
     `SELECT o.original_id, o.filename, o.job_id, r.body, j.status
@@ -245,7 +248,9 @@ admin.get("/answers/:projectId", async (c) => {
     <Layout title={`回答 - ${project.title}`} siteName={c.var.ward.name} noindex adminHomeHref={adminPath(c.var.ward.slug, "/")}>
       <p><a href={adminPath(c.var.ward.slug, "/answers")}>回答の一覧へ</a></p>
       <h1>{project.title} の回答 <Hint text="集まった回答と未回答の世帯を見ます。電話の回答は代理入力し、紙の回答票は写真から入れられます。" /></h1>
-      <p class="panel">参加人数: {totals.people} 人。手伝いの希望: {totals.helperRequests} 件。</p>
+      <p class="panel">世帯の回答: {answers.length} 件。参加人数: {totals.people} 人。世帯の回答にある手伝いの希望: {totals.helperRequests} 件。</p>
+      <h2>手伝いだけの申し込み: {offers.length} 件 <Hint text="加入の手続きとは別の申し込みです。世帯の回答や参加人数には加えず、当番表の案を作る材料に入ります。名前と時間帯は、この行事を閉じる時に消します。" /></h2>
+      {offers.length === 0 ? <p>手伝いだけの申し込みはまだありません。</p> : <div class="panel" style="overflow-x:auto"><table><thead><tr><th>名前</th><th>手伝える時間帯</th></tr></thead><tbody>{offers.map((offer) => <tr><td>{offer.name}</td><td>{offer.times}</td></tr>)}</tbody></table></div>}
       <h2>電話の代理入力</h2>
       <form method="post" action={adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(projectId)}/phone`)} class="panel">
         <label for="household">世帯名</label><input id="household" name="household" type="text" required maxLength={120} />
@@ -269,7 +274,7 @@ admin.get("/answers/:projectId", async (c) => {
       {unanswered.length === 0 ? <p>名簿はまだありません。</p> : unanswered.map((group) => <section class="panel"><h3>{group.district}</h3>{group.households.length === 0 ? <p>未回答の世帯はありません。</p> : <ul>{group.households.map((name) => <li>{name}</li>)}</ul>}</section>)}
       <h2>催促の一覧（印刷）</h2><p>紙で班長に渡してください。</p><button type="button" onclick="window.print()">印刷する</button>
       <h2>締切</h2><p>現在の締切: {deadline ?? "未設定"}</p><form method="post" action={adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(projectId)}/deadline`)}><label for="due">締切日（延長する場合は新しい日）</label><input id="due" name="due_on" type="date" value={deadline ?? ""} required /><button type="submit">締切を保存</button></form>
-      <h2>手伝いの一覧</h2>
+      <h2>世帯の回答にある手伝いの一覧</h2>
       {helpers.length === 0 ? <p>手伝いの希望はまだありません。</p> : <div class="panel" style="overflow-x:auto"><table><thead><tr><th>名前</th><th>時間帯</th><th>世帯</th><th>班</th></tr></thead><tbody>{helpers.map((helper) => <tr><td>{helper.name}</td><td>{helper.times}</td><td>{helper.household}</td><td>{helper.district}</td></tr>)}</tbody></table></div>}
       <h2>回答票の読み取り</h2>
       {sheets.results.map((sheet) => <section class="panel"><h3>{sheet.filename}</h3><p><a href={adminPath(c.var.ward.slug, `/intake/originals/${encodeURIComponent(sheet.original_id)}`)}>回答票の原本を開く</a></p>{renderSheetRows(sheet.body, projectId, sheet.original_id, c.var.ward.slug)}</section>)}
@@ -344,6 +349,45 @@ admin.post("/answers/:projectId/deadline", async (c) => {
     return c.text(error instanceof Error ? error.message : "締切を保存できませんでした。", 400);
   }
   return c.redirect(adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(c.req.param("projectId"))}`), 303);
+});
+
+pub.get("/help/:projectId", async (c) => {
+  const projectId = c.req.param("projectId");
+  const [opportunity] = await listHelpOpportunities(c.env.DB, c.var.ward.wardId, projectId);
+  if (!opportunity) return c.html(<Layout title="手伝いの申し込み" siteName={c.var.ward.name}><h1>現在、この行事の手伝いは受け付けていません。</h1><p><a href={`/${c.var.ward.slug}/help`}>募集中の行事を見る</a></p></Layout>);
+  const choices = helpTimeChoices(opportunity.body);
+  return c.html(<Layout title={`${opportunity.title}の手伝い`} siteName={c.var.ward.name}>
+    <p><a href={`/${c.var.ward.slug}/help`}>募集の一覧へ</a></p>
+    <h1>{opportunity.title}の手伝い <Hint text="名前と手伝える時間帯だけで申し込めます。自治会への加入や登録は必要ありません。" /></h1>
+    <ArticleBody body={opportunity.body} />
+    <p>自治会への加入は必要ありません。名前と時間帯は、この行事の準備と運営に使い、行事を閉じる時に消します。</p>
+    <p>送ると、役員が申し込みを確認し、当番表を作る時に使います。</p>
+    <form method="post" action={`/${c.var.ward.slug}/help/${encodeURIComponent(projectId)}`}>
+      <label for="helper-name">名前</label><input id="helper-name" name="helper_name" type="text" maxlength={120} required />
+      <label for="helper-times">手伝える時間帯</label>
+      {choices.length ? <select id="helper-times" name="helper_times" required><option value="">選んでください</option>{choices.map((time) => <option value={time}>{time}</option>)}</select>
+        : <input id="helper-times" name="helper_times" type="text" maxlength={240} required />}
+      <button type="submit">手伝いを申し込む</button>
+    </form>
+  </Layout>);
+});
+
+pub.post("/help/:projectId", async (c) => {
+  const projectId = c.req.param("projectId");
+  const form = await c.req.parseBody();
+  const name = asString(form.helper_name).trim();
+  const times = asString(form.helper_times).trim();
+  if (!name || !times || name.length > 120 || times.length > 240) return c.text("名前と手伝える時間帯を入れてください。", 400);
+  const [opportunity] = await listHelpOpportunities(c.env.DB, c.var.ward.wardId, projectId);
+  if (!opportunity) return c.text("手伝いの受付は終わりました。", 400);
+  const choices = helpTimeChoices(opportunity.body);
+  if (choices.length && !choices.includes(times)) return c.text("募集にある時間帯を選んでください。", 400);
+  if (!await addHelpOffer(c.env.DB, c.var.ward.wardId, projectId, name, times)) return c.text("手伝いの受付は終わりました。", 400);
+  return c.html(<Layout title="手伝いの申し込みを受け付けました" siteName={c.var.ward.name}>
+    <h1>手伝いの申し込みを受け付けました</h1>
+    <p>役員が申し込みを確認し、当番表を作る時に使います。</p>
+    <p><a href={`/${c.var.ward.slug}/`}>区のページへ</a></p>
+  </Layout>);
 });
 
 pub.get("/answer/:projectId", async (c) => {

@@ -4,6 +4,8 @@
 export const SETTING_KEYS = {
   /** 公開用の連絡先（文）。区のページが出す（束 4）。役員個人の連絡先は書かない。 */
   publicContact: "public_contact",
+  /** 公式 LINE の友だち追加の URL。公開してよい入口だけを持つ。 */
+  officialLineUrl: "official_line_url",
   /** 班の名前（JSON の文字列の配列）。名簿の取り込み（束 5）も書き、区の設定で直す。 */
   squads: "squads",
   /** 定型文（JSON の {id, name, body} の配列）。雨天の変更の知らせなど。 */

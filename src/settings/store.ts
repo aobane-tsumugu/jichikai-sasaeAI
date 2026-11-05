@@ -40,6 +40,10 @@ export async function getPublicContact(db: D1Database, wardId: string): Promise<
   return (await getSetting(db, wardId, SETTING_KEYS.publicContact)) ?? "";
 }
 
+export async function getOfficialLineUrl(db: D1Database, wardId: string): Promise<string> {
+  return (await getSetting(db, wardId, SETTING_KEYS.officialLineUrl)) ?? "";
+}
+
 export async function getSquads(db: D1Database, wardId: string): Promise<string[]> {
   return parseSquads(await getSetting(db, wardId, SETTING_KEYS.squads));
 }
