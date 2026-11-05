@@ -22,7 +22,15 @@ function changeTargetLabel(kind: string, target: string): string {
   }
   const at = target.indexOf(":");
   const table = at > 0 ? target.slice(0, at) : "";
-  if ((TABLE_KEYS as readonly string[]).includes(table)) return `${TABLES[table as TableKey].label}: ${target.slice(at + 1).replaceAll("|", " ")}`;
+  if ((TABLE_KEYS as readonly string[]).includes(table)) {
+    // 行の鍵は列の値を | で繋いだ物。選びの列の値（expense など）は画面の言葉にする。
+    const fields = Object.values(TABLES[table as TableKey].fields);
+    const words = target.slice(at + 1).split("|").map((part) => {
+      for (const field of fields) if (field.def.type === "enum" && field.def.values.includes(part)) return field.def.labels[part] ?? part;
+      return part;
+    });
+    return `${TABLES[table as TableKey].label}: ${words.join(" ")}`;
+  }
   return target.replaceAll("|", " ");
 }
 
