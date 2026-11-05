@@ -27,6 +27,7 @@ import {
   releaseRead,
   startRun,
   setJobProject,
+  withdrawJob as withdrawStoredJob,
 } from "./store";
 import type { Waitable } from "./types";
 
@@ -137,7 +138,7 @@ async function performRead(
     // 読みの間に当て先が付いた場合も、最新の入った物から当て先を拾う。
     const latest = placed && job.read_kind !== "answer_sheet" ? await getJob(env.DB, wardId, jobId) : null;
     if (latest?.project_id) await dispatchProject(env, wardId, latest.project_id).catch((e) => console.error("繋げるの起動に失敗しました", describe(e)));
-    else if (latest?.via === "admin") await matchUnassignedAdminJob(env, wardId, jobId, client).catch((e) => console.error("受け箱の当てに失敗しました", describe(e)));
+    else if (latest?.via === "admin" || latest?.via === "line_direct" || latest?.via === "line_group") await matchUnassignedAdminJob(env, wardId, jobId, client).catch((e) => console.error("受け箱の当てに失敗しました", describe(e)));
     return placed ? "read" : "skipped";
   } catch (err) {
     const read = err instanceof ReadError ? err : null;
@@ -159,7 +160,7 @@ async function performRead(
 /** 役員画面から受け箱へ送られた写真を、読み終わってから自動で当てる。 */
 async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, client: Anthropic): Promise<void> {
   const current = await getJob(env.DB, wardId, jobId);
-  if (!current || current.project_id || current.via !== "admin" || current.status !== "read") return;
+  if (!current || current.project_id || !["admin", "line_direct", "line_group"].includes(current.via) || current.status !== "read") return;
   const candidates = (await projectApi().listOpenProjects(env, wardId)).map((project) => ({
     id: project.projectId,
     title: project.title,
@@ -179,6 +180,24 @@ async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, 
   } else if (result.choice === MATCH_NEW || result.choice === MATCH_MULTIPLE || result.choice === MATCH_UNRELATED) {
     await env.DB.prepare("UPDATE jobs SET ai_match_reason = ? WHERE ward_id = ? AND job_id = ? AND project_id IS NULL")
       .bind(result.reason, wardId, jobId).run();
+  }
+  if (current.via === "line_direct" || current.via === "line_group") {
+    if (selected) {
+      await env.DB.prepare(`UPDATE line_inbox_items SET disposition = 'matched', matched_project_id = ?, matched_project_name = ?, match_reason = ?
+        WHERE ward_id = ? AND job_id = ?`).bind(selected.id, selected.title, result.reason, wardId, jobId).run();
+    } else if (result.choice === MATCH_UNRELATED) {
+      const item = await env.DB.prepare("SELECT item_id, received_at FROM line_inbox_items WHERE ward_id = ? AND job_id = ?")
+        .bind(wardId, jobId).first<{ item_id: string; received_at: string }>();
+      if (item) {
+        await env.DB.prepare(`INSERT INTO line_unrelated_daily_counts (ward_id, day, item_count) VALUES (?, ?, 1)
+          ON CONFLICT (ward_id, day) DO UPDATE SET item_count = item_count + 1`).bind(wardId, item.received_at.slice(0, 10)).run();
+        await withdrawStoredJob(env, wardId, jobId).catch(() => false);
+        await env.DB.prepare("DELETE FROM line_inbox_items WHERE ward_id = ? AND item_id = ?").bind(wardId, item.item_id).run();
+      }
+    } else {
+      await env.DB.prepare("UPDATE line_inbox_items SET match_reason = ? WHERE ward_id = ? AND job_id = ?")
+        .bind(result.reason, wardId, jobId).run();
+    }
   }
 }
 

@@ -145,20 +145,20 @@ export async function acceptLineWebhook(
         original.bytes = content.bytes;
         original.contentType = content.contentType;
       }
-      let match: InboxMatch;
-      try {
-        match = await ports.matchInboxItem(wardId, original);
-      } catch (error) {
-        console.error("LINE の当て先を確認できませんでした", wardId, eventId, error instanceof Error ? error.name : "");
-        match = { disposition: "unmatched", reason: "当て先を確認できませんでした" };
+      // テキストは受信ジョブを作る前に分類する。無関係な文はジョブや原本を残さず、日次集計だけに加える。
+      let match: InboxMatch | null = null;
+      if (original.kind === "text") {
+        try {
+          match = await ports.matchInboxItem(wardId, original);
+        } catch (error) {
+          console.error("LINE の当て先を確認できませんでした", wardId, eventId, error instanceof Error ? error.name : "");
+          match = { disposition: "unmatched", reason: "当て先を確認できませんでした" };
+        }
       }
-      if (match.disposition === "unrelated") {
+      if (match?.disposition === "unrelated") {
         const day = original.receivedAt.slice(0, 10);
-        await db.prepare(`
-          INSERT INTO line_unrelated_daily_counts (ward_id, day, item_count)
-          VALUES (?, ?, 1)
-          ON CONFLICT (ward_id, day) DO UPDATE SET item_count = item_count + 1
-        `).bind(wardId, day).run();
+        await db.prepare(`INSERT INTO line_unrelated_daily_counts (ward_id, day, item_count)
+          VALUES (?, ?, 1) ON CONFLICT (ward_id, day) DO UPDATE SET item_count = item_count + 1`).bind(wardId, day).run();
         continue;
       }
       const itemId = await ports.receiveOriginal(wardId, original);
@@ -172,12 +172,16 @@ export async function acceptLineWebhook(
       `).bind(
         wardId, itemId, eventId, original.senderId, original.kind, original.receivedAt, itemId,
       ).run();
-      if (match.disposition === "matched" && match.projectId) await ports.assignProject(wardId, itemId, match.projectId);
+      // 文は届いた文そのもので当てる。写真は束 2 が読み取りを終えてから当てる。
+      if (match?.disposition === "matched" && match.projectId) {
+        await ports.saveAnswerReply?.(wardId, match.projectId, original, itemId);
+        await ports.assignProject(wardId, itemId, match.projectId);
+      }
       await db.prepare(`
         UPDATE line_inbox_items SET disposition = ?, matched_project_id = ?, matched_project_name = ?, match_reason = ?
         WHERE ward_id = ? AND item_id = ?
-      `).bind(match.disposition === "matched" && match.projectId ? "matched" : "unmatched",
-        match.projectId ?? null, match.projectName ?? null, match.reason ?? null, wardId, itemId).run();
+      `).bind(match?.disposition === "matched" && match.projectId ? "matched" : "unmatched",
+        match?.projectId ?? null, match?.projectName ?? null, match?.reason ?? null, wardId, itemId).run();
     } catch (error) {
       await db.prepare(`
         DELETE FROM line_webhook_receipts WHERE ward_id = ? AND event_id = ?
