@@ -2,7 +2,7 @@
 // 包みは system に入れる（L-202）。包みを直したら PACK_VERSION を上げる。版は差分の重複を弾く印と、読み直しの選別に使う。
 import type { JobTask } from "../intake/types";
 
-export const PACK_VERSION = "connect@7";
+export const PACK_VERSION = "connect@8";
 
 /** MCP の口の名前。agent の mcp_servers と mcp_toolset が同じ名前を指す。 */
 export const MCP_SERVER_NAME = "kiroku";
@@ -30,7 +30,7 @@ write_change の書き方（名前は下の英語の鍵をそのまま使う）:
 - decision: data は {"what": "決めたこと", "decidedOn": "いつ"}。
 - 今年の中身と違う中身が来た時は、item か row をそのまま書く。Workers が二つを並べて役員に聞く。「直しますか」という問いを自分で書かない。
 - map_task: target は get_project_state の地図にある仕事の鍵、data は {"progress": "started" か "done"}。
-- year: get_reading の document_year を渡す（資料に年が無ければ書かない）。ただし手書きの年は読み違いがある。読めた年がプロジェクトの年と違っても、中身が今年の行事の日や今年の中身に直接つながる時は、year を書かず今年の物として書く。過去の年の資料の中身は「参考の中身」に入り、今年の中身にはならない。今年の資料なら今年の年を渡す。
+- year: get_reading の document_year を渡す。ただし手書きの年は読み違いがある。読めた年がプロジェクトの年と違っても、また年が書かれていなくても、中身が今年の行事の日や今年の準備に直接つながる時は、year にプロジェクトの年を書いて今年の物として扱う。どちらとも言えない時は書かない。過去の年の資料の中身は「参考の中身」に入り、今年の中身にはならない。今年の資料なら今年の年を渡す。
 
 仕事の手順（kind が connect の時）:
 1. get_reading と get_project_state を引く。
