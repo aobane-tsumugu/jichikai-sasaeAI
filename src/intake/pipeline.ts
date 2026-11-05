@@ -285,7 +285,9 @@ async function createPaperRouteJobs(
     const child = await env.DB.prepare("SELECT job_id FROM jobs WHERE ward_id = ? AND paper_source_job_id = ? AND project_id = ?")
       .bind(source.ward_id, source.job_id, projectId).first<{ job_id: string }>();
     if (!child) continue;
-    const body = { ...reading, fields, text_blocks: [], tables: [], decisions: [], unreadable: [] };
+    const body = { ...reading, fields,
+      original_years: reading.original_years.filter((entry) => fields.some((field) => field.original_id === entry.original_id)),
+      text_blocks: [], tables: [], decisions: [], unreadable: [] };
     await env.DB.prepare(`INSERT OR IGNORE INTO paper_reading_slices (ward_id, job_id, source_job_id, body, created_at)
       VALUES (?, ?, ?, ?, ?)`)
       .bind(source.ward_id, child.job_id, source.job_id, JSON.stringify(body), now).run();

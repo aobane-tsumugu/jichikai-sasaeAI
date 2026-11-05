@@ -207,8 +207,8 @@ export async function receive(
   let needsModelRead = false;
   for (const r of rows) {
     if (r.p.mediaClass === "image" || r.p.mediaClass === "pdf") needsModelRead = true;
-    else if (r.p.extracted) direct.push({ originalId: r.originalId, extracted: r.p.extracted });
-    else direct.push({ originalId: r.originalId, text: r.p.text });
+    else if (r.p.extracted) direct.push({ originalId: r.originalId, filename: r.p.part.filename, extracted: r.p.extracted });
+    else direct.push({ originalId: r.originalId, filename: r.p.part.filename, text: r.p.text });
   }
   const readKind: ReadKind = input.readKind ?? "general";
   const directReading = direct.length > 0 ? buildDirectReading(direct) : null;

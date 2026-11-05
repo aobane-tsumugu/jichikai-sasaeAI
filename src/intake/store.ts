@@ -3,7 +3,7 @@
 import { WardBucket } from "../core/storage";
 import { newId, nowIso } from "../core/ids";
 import type { Env } from "../env";
-import type { ReadingBody } from "../ai/schema";
+import { normalizeOriginalYears, type ReadingBody } from "../ai/schema";
 import type { JobRow, JobStatus, OriginalRow } from "./types";
 
 export const MAX_READ_ATTEMPTS = 3;
@@ -284,7 +284,15 @@ export async function getReadings(db: D1Database, wardId: string, jobId: string)
     .prepare("SELECT source, pack_version, model, body FROM readings WHERE ward_id = ? AND job_id = ? ORDER BY source")
     .bind(wardId, jobId)
     .all<{ source: "model" | "direct"; pack_version: string; model: string; body: string }>();
-  return res.results.map((r) => ({ ...r, body: JSON.parse(r.body) as ReadingBody }));
+  if (res.results.length === 0) return [];
+  const originals = await listOriginals(db, wardId, jobId);
+  return res.results.map((r) => {
+    const ids = originals.filter((original) => {
+      const model = original.media_type.startsWith("image/") || original.media_type === "application/pdf";
+      return r.source === "model" ? model : !model;
+    }).map((original) => original.original_id);
+    return { ...r, body: normalizeOriginalYears(JSON.parse(r.body) as ReadingBody, ids) };
+  });
 }
 
 export interface JobListItem extends JobRow {

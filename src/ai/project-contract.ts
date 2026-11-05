@@ -28,7 +28,7 @@ export interface ChangeInput {
   originalId: string | null;
   /** 元の箇所（ページ、行、セル） */
   locator: string;
-  /** 資料の年（読み取りの document_year）。今年の中身になるか参考になるかを、束 3 がこれと出どころから決める */
+  /** 出どころの原本の年（読み取りの original_years）。今年の中身になるか参考になるかを、束 3 がこれと出どころから決める */
   year: number | null;
   /** 年不明の項目が今年の話に見える印。年を決めず、今年の中身との食い違いだけを問う。 */
   maybeThisYear?: boolean;

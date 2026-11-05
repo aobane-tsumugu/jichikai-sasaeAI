@@ -8,6 +8,7 @@ import {
   GENERAL_READING_SCHEMA,
   READ_PACK_VERSION,
   isAnswerSheetReading,
+  normalizeOriginalYears,
   type ReadingBody,
 } from "./schema";
 
@@ -62,13 +63,14 @@ const COMMON_RULES = `あなたは自治会の役員が送った資料（写真�
 - 名前、電話番号、住所、金額も、伏せずに書かれたまま写してください。個人情報を理由に省略したり言い換えたりしないでください（役員の前処理を求めない設計です）。
 - 読めない所、自信が低い所を推測で埋めないでください。unreadable に入れるか、confidence を low にしてください。
 - 各原本の前に「原本 ID」の行があります。出どころの original_id には、必ずその ID をそのまま書いてください。locator には、元の箇所（例「1 枚目 上から 3 行目」「2 ページ」「表の 4 行目」）を日本語で短く書いてください。
-- 和暦は西暦に直した年を document_year や値に書いてください。資料の中に年や年度が書かれていなければ document_year は null にしてください。書かれていない年を、曜日、内容、現在の日付から推測したり補ったりしないでください。
+- 和暦は西暦に直してください。書かれていない年を、曜日、内容、現在の日付から推測したり補ったりしないでください。一緒に送られた別の原本の年を使わないでください。
 - 返すのは指定された形の JSON だけです。説明や前置きは書かないでください。`;
 
 const GENERAL_SYSTEM = `${COMMON_RULES}
 
 読み取りの作り方（一般）:
 - document_kind は資料の種類の見立てです。分からなければ other にしてください。
+- original_years は、送られた原本ごとに original_id と year を一組ずつ入れてください。year はその原本の中かファイル名に書かれた年や年度だけを西暦で入れ、書かれていなければ null にしてください。年がある原本と無い原本が一緒でも、年が無い原本には null を入れてください。
 - summary は一行の要約です。
 - text_blocks は、資料の文字を元の箇所つきで写したものです。読める文字は落とさずに入れてください。
 - fields は、項目に当てはまる中身です。name は次のいずれかを使ってください: 日時、場所、雨天時、行事の中身、持ち物、手伝いの時間帯、締切、公開用の連絡先。当てはまらない物は、資料に書かれた見出しをそのまま name にしてください。value は書かれたままの文字です。
@@ -89,7 +91,7 @@ const ANSWER_SHEET_SYSTEM = `${COMMON_RULES}
 
 const RESTORE_SYSTEM = `${GENERAL_SYSTEM}
 
-これは過去の年の資料の復元です。資料の年は、資料の中の日付や年度から読んで document_year に入れてください。年が分からなければ null にしてください。今年の中身と混ざらないよう、読み取りに年を必ず付けます。`;
+これは過去の年の資料の復元です。原本ごとの年は、その原本に書かれた日付や年度から読んで original_years に入れてください。年が分からなければ null にしてください。今年の中身と混ざらないよう、原本ごとに年を分けます。`;
 
 export function systemFor(kind: ReadKind): string {
   if (kind === "answer_sheet") return ANSWER_SHEET_SYSTEM;
@@ -153,6 +155,7 @@ export function buildContent(originals: ReadableOriginal[]): Anthropic.ContentBl
 
 /** モデルが付けた original_id が、この入った物の原本に無ければ直す（原本が一つならそれ、複数なら空に）。 */
 export function fixOriginalIds(body: ReadingBody, validIds: string[]): ReadingBody {
+  body = normalizeOriginalYears(body, validIds);
   const valid = new Set(validIds);
   const fallback = validIds.length === 1 ? (validIds[0] as string) : "";
   const fix = <T extends { original_id: string }>(item: T): T =>
