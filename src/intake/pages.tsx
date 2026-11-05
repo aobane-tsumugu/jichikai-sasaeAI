@@ -210,11 +210,12 @@ intakeAdmin.post("/intake", async (c) => {
       parts,
     });
     if (!projectId && !wantsJson) return c.redirect(adminPath(ward, "/inbox"), 303);
+    const nextPage = projectId ? {} : { redirectTo: adminPath(ward, "/inbox") };
     if (!outcome.jobId) {
-      return reply(true, "同じ物でした。", { jobId: null, duplicates: outcome.duplicates.length });
+      return reply(true, "同じ物でした。", { jobId: null, duplicates: outcome.duplicates.length, ...nextPage });
     }
     const dup = outcome.duplicates.length > 0 ? `（${outcome.duplicates.length} 件は同じ物でした）` : "";
-    return reply(true, `${RECEIVED_MESSAGE}${dup}`, { jobId: outcome.jobId, duplicates: outcome.duplicates.length });
+    return reply(true, `${RECEIVED_MESSAGE}${dup}`, { jobId: outcome.jobId, duplicates: outcome.duplicates.length, ...nextPage });
   } catch (err) {
     if (err instanceof ReceiveError) return reply(false, ERROR_MESSAGE[err.code](err.filename), {}, 400);
     throw err;
