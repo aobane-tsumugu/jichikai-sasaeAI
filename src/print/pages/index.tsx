@@ -1,13 +1,15 @@
 import { Hono } from "hono";
 import { AdminPage } from "../../core/admin-ui";
+import { Hint } from "../../core/ui";
 import { adminPath } from "../../core/auth";
 import type { Bundle } from "../../core/bundle";
 import { getSquads } from "../../settings/store";
 import { ArticleBody, articleParagraphs } from "../../publish";
 import type { AdminEnv } from "../../env";
 import { CutLine, FieldBox, PrintDocument, PrintQr, Sheet } from "../a4";
-import { makePaperCode, printQrUrl } from "../qr";
-import { getProjectState } from "../../project/api";
+import { makePaperCode, makeProjectPaperCode, printQrUrl, projectPaperQrUrl } from "../qr";
+import { getProjectState, getProjectSummary } from "../../project/api";
+import { createInvite, getSpace } from "../../space/api";
 import { TABLES, displayFieldValue, type TableKey } from "../../project/model";
 import type { RowView } from "../../project/types";
 
@@ -17,6 +19,7 @@ type PrintKind = (typeof printKinds)[number];
 interface PrintData {
   project_id: string;
   title: string;
+  closed_at: string | null;
   document_id: string;
   document_title: string;
   version_id: string;
@@ -26,6 +29,65 @@ interface PrintData {
 }
 
 const admin = new Hono<AdminEnv>();
+
+admin.get("/print/:projectId", async (c) => {
+  const { ward, account } = c.var;
+  const id = c.req.param("projectId");
+  const project = await getProjectSummary(c.env.DB, ward.wardId, id);
+  if (!project) return c.notFound();
+  return c.html(<AdminPage ward={ward} account={account} title="紙を印刷する" back={{ href: adminPath(ward, `/projects/${id}/map`), label: "地図へ戻る" }}>
+    <h1>紙を印刷する <Hint text="案内を配る前から使えます。電話や役員会で決まったことを紙に書き、番号と一緒に撮って送ってください。" /></h1>
+    <p>{project.title}</p>
+    <ul>{(["meeting", "sponsors"] as const).map((kind) => <li><a href={adminPath(ward, `/print/${id}/paper/${kind}`)}>{kindLabel(kind)}</a></li>)}</ul>
+    <p><a href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>書いた紙を撮って送る</a></p>
+    <p><a href={adminPath(ward, `/publish/${id}`)}>配った案内や回答票を印刷する</a></p>
+  </AdminPage>);
+});
+
+admin.get("/print/:projectId/paper/:kind", async (c) => {
+  const { ward } = c.var;
+  const id = c.req.param("projectId");
+  const kind = c.req.param("kind");
+  if (kind !== "meeting" && kind !== "sponsors") return c.notFound();
+  const state = await getProjectState(c.env.DB, ward.wardId, id);
+  if (!state) return c.notFound();
+  const baseUrl = c.env.PUBLIC_BASE_URL || new URL(c.req.url).origin;
+  if (kind === "meeting") {
+    const projects = await c.env.DB.prepare(`SELECT project_id, title FROM projects
+      WHERE ward_id = ? AND (closed_at IS NULL OR project_id = ?) ORDER BY created_at, project_id`)
+      .bind(ward.wardId, id).all<{ project_id: string; title: string }>();
+    const papers = await Promise.all(projects.results.map(async (project) => ({ ...project,
+      code: await makeProjectPaperCode(c.env.DB, ward.wardId, project.project_id),
+      url: projectPaperQrUrl(baseUrl, ward.slug, project.project_id),
+    })));
+    return c.html(<PrintDocument title="役員会の記入欄">{papers.map((paper) => <Sheet footer={<>{ward.name} 役員会の記入欄</>}>
+      <h1>{paper.title}</h1><h2>役員会の記入欄</h2>
+      <p>決まったことを書き、紙の番号と一緒に撮って送ってください。</p>
+      <PaperField label="決めたこと" heightMm={42} code={paper.code} text={paper.url} />
+      <PaperField label="日時・場所・変更" heightMm={42} code={paper.code} text={paper.url} />
+      <PaperField label="次にすること" heightMm={42} code={paper.code} text={paper.url} />
+    </Sheet>)}</PrintDocument>);
+  }
+  const code = await makeProjectPaperCode(c.env.DB, ward.wardId, id);
+  const url = projectPaperQrUrl(baseUrl, ward.slug, id);
+  const rows = state.tables.sponsors.filter((entry) => entry.scope === "current");
+  // 去年しか無い相手も打診できるように載せる。去年の返事や額を今年の返事にしない。
+  const names = new Set(rows.map((entry) => entry.matchKey));
+  for (const entry of state.tables.sponsors.filter((entry) => entry.scope === "reference").sort((a, b) => (b.refYear ?? 0) - (a.refYear ?? 0))) {
+    if (names.has(entry.matchKey)) continue;
+    names.add(entry.matchKey);
+    rows.push({ ...entry, data: { name: entry.data.name ?? "", lastYearAmount: entry.data.amount ?? entry.data.lastYearAmount ?? "" } });
+  }
+  return c.html(<PrintDocument title={`${state.project.title} 協賛先の一覧`}>
+    <Sheet footer={<>{ward.name} 協賛先の一覧 {code}</>}>
+      <h1>{state.project.title} 協賛先の一覧</h1>
+      <p>電話しながら返事と額を書き、紙の番号と一緒に撮って送ってください。紙の番号: {code}</p>
+      <PrintQr text={url} sizeMm={26} />
+      <RowsTable table="sponsors" rows={rows} paperCode={code} />
+      {Array.from({ length: 3 }, (_, index) => <FieldBox key={index} label={`協賛先・返事・額・メモ　${code ?? ""}`} heightMm={22} />)}
+    </Sheet>
+  </PrintDocument>);
+});
 
 admin.get("/print/:projectId/:documentId/:versionNo/preview", async (c) => {
   const { ward } = c.var;
@@ -40,14 +102,15 @@ admin.get("/print/:projectId/:documentId/:versionNo/preview", async (c) => {
   </PrintDocument>);
 });
 
-admin.get("/print/:projectId/:documentId/:versionNo/:kind", async (c) => {
+const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   const { ward } = c.var;
   const projectId = c.req.param("projectId");
   const documentId = c.req.param("documentId");
-  const kind = c.req.param("kind") as PrintKind;
+  if (!projectId || !documentId) return c.notFound();
+  const kind = (c.req.method === "POST" ? "leader" : c.req.param("kind")) as PrintKind;
   const versionNo = Number(c.req.param("versionNo"));
   if (!printKinds.includes(kind) || !Number.isInteger(versionNo)) return c.notFound();
-  const row = await c.env.DB.prepare(`SELECT p.project_id, p.title, d.document_id, d.title AS document_title,
+  const row = await c.env.DB.prepare(`SELECT p.project_id, p.title, p.closed_at, d.document_id, d.title AS document_title,
       v.version_id, v.version_no, v.body, d.kind
     FROM publication_records r JOIN projects p ON p.ward_id = r.ward_id AND p.project_id = r.project_id
     JOIN documents d ON d.ward_id = r.ward_id AND d.document_id = r.document_id
@@ -55,28 +118,30 @@ admin.get("/print/:projectId/:documentId/:versionNo/:kind", async (c) => {
     WHERE r.ward_id = ? AND r.project_id = ? AND r.document_id = ? AND v.version_no = ?
     ORDER BY r.published_at DESC LIMIT 1`).bind(ward.wardId, projectId, documentId, versionNo).first<PrintData>();
   if (!row) return c.notFound();
+  if (kind === "meeting" || kind === "sponsors") return c.redirect(adminPath(ward, `/print/${projectId}/paper/${kind}`), 303);
   const squads = await getSquads(c.env.DB, ward.wardId);
   const baseUrl = c.env.PUBLIC_BASE_URL || new URL(c.req.url).origin;
-  const url = printQrUrl(baseUrl, ward.slug, { projectId, documentId: row.document_id, version: versionNo });
+  const leaderUrls = new Map<string, string>();
+  if (kind === "leader") {
+    if (row.closed_at) return c.html(<AdminPage ward={ward} account={c.var.account} title="班長への一枚"><h1>この行事の受付は終わりました</h1><p>班長の専用 QR は使えません。</p></AdminPage>);
+    const space = await getSpace(c.env.DB, ward.wardId, projectId);
+    if (c.req.method !== "POST" || !space || space.closed_at || !squads.length) {
+      return c.html(<AdminPage ward={ward} account={c.var.account} title="班長への一枚">
+        <h1>班長への一枚 <Hint text="班長が自分の班の答えを見たり、回答票を撮って送ったりできる専用の QR を印刷します。その班長にだけ渡してください。" /></h1>
+        {!space || space.closed_at ? <p><a href={adminPath(ward, `/space/${projectId}`)}>空間を開いてから印刷する</a></p>
+          : !squads.length ? <p><a href={adminPath(ward, "/settings")}>区の設定で班の名前を入れる</a></p>
+          : <form method="post"><button>班長の専用 QR を作って印刷する</button></form>}
+      </AdminPage>);
+    }
+    for (const squad of squads) {
+      const token = await createInvite(c.env.DB, ward.wardId, projectId, "leader", squad, c.var.account.accountId, true);
+      leaderUrls.set(squad, `${baseUrl.replace(/\/+$/, "")}/${encodeURIComponent(ward.slug)}/space/${encodeURIComponent(projectId)}/person/${token}`);
+    }
+  }
   const named = (squad?: string) => printQrUrl(baseUrl, ward.slug, {
     projectId, documentId: row.document_id, version: versionNo, ...(squad ? { squad } : {}),
   });
   const paperCode = await makePaperCode(c.env.DB, ward.wardId, projectId, row.document_id, versionNo);
-  const meetingTargets = kind === "meeting" ? await c.env.DB.prepare(`SELECT p.project_id, p.title, d.document_id, r.version_no
-    FROM projects p JOIN publication_records r ON r.ward_id = p.ward_id AND r.project_id = p.project_id
-    JOIN documents d ON d.ward_id = r.ward_id AND d.document_id = r.document_id
-    WHERE p.ward_id = ? AND p.closed_at IS NULL AND r.unpublished_at IS NULL
-      AND r.publication_id = (SELECT latest.publication_id FROM publication_records latest
-        WHERE latest.ward_id = p.ward_id AND latest.project_id = p.project_id AND latest.unpublished_at IS NULL
-        ORDER BY latest.published_at DESC, latest.publication_id DESC LIMIT 1)
-    ORDER BY p.created_at, p.project_id`).bind(ward.wardId).all<{
-      project_id: string; title: string; document_id: string; version_no: number;
-    }>() : { results: [] };
-  const meetingSheets = await Promise.all(meetingTargets.results.map(async (target) => ({
-    ...target,
-    paperCode: await makePaperCode(c.env.DB, ward.wardId, target.project_id, target.document_id, target.version_no),
-    url: printQrUrl(baseUrl, ward.slug, { projectId: target.project_id, documentId: target.document_id, version: target.version_no }),
-  })));
   const paperQr = (squad?: string) => <div style="text-align:center"><PrintQr text={named(squad)} sizeMm={26} />
     <div class="paper-code">{paperCode}</div></div>;
   const answerSheet = (squad: string, helperMm: number) => <div style="display:flex;gap:4mm;align-items:flex-start">
@@ -85,15 +150,8 @@ admin.get("/print/:projectId/:documentId/:versionNo/:kind", async (c) => {
   </div>;
   const onOneSheet = fitsAboveAnswer(row.body);
   const dense = bodyLines(row.body) > 30;
-  // 当番表と協賛先の紙は、案内の本文ではなく今年の中身の表から作る。
-  const state = kind === "duty" || kind === "sponsors" ? await getProjectState(c.env.DB, ward.wardId, projectId) : null;
+  const state = kind === "duty" ? await getProjectState(c.env.DB, ward.wardId, projectId) : null;
   const current = (table: TableKey) => (state?.tables[table] ?? []).filter((entry) => entry.scope === "current");
-  const tableRows = kind === "duty" ? [...current("duties"), ...current("layout")] : kind === "sponsors" ? current("sponsors") : [];
-  // 表の行は折り返すと高くなるので、行ごとの高さを見積もり、一枚に入る行と記入欄の数を決める。
-  const fit = fitRows(tableRows);
-  const listed = fit.rows;
-  const blankArea = (label: string, count: number) =>
-    Array.from({ length: Math.min(count, fit.boxes) }, (_, index) => <FieldBox key={index} label={label} heightMm={16} />);
   const printTitle = `${row.title} ${kindLabel(kind)}`;
   return c.html(<PrintDocument title={printTitle}>
     {kind === "announcement" && onOneSheet ? (squads.length ? squads : [""]).map((squad) => <Sheet key={squad} footer={<><span>{ward.name} {squad}</span><span>案内 {versionNo}</span></>}>
@@ -116,43 +174,21 @@ admin.get("/print/:projectId/:documentId/:versionNo/:kind", async (c) => {
     </Sheet>) : null}
     {kind === "leader" ? squads.map((squad) => <Sheet key={squad} footer={<>{ward.name} {squad}</>}>
       <h1>班長へのお知らせ</h1><p>{row.title}</p><ArticleBody body={row.body} /><p>班: {squad}</p>
-      <p>この案内を班の世帯へお渡しください。</p>{paperQr(squad)}
+      <p>この案内を班の世帯へお渡しください。下の QR は班長だけが使います。ほかの人には渡さないでください。</p>
+      <PrintQr text={leaderUrls.get(squad)!} sizeMm={32} /><p>QR から班の答えを見たり、回答票を撮って送ったりできます。</p>
     </Sheet>) : null}
-    {kind === "duty" ? <Sheet dense={fit.dense} footer={<>{ward.name} 当番表と配置図</>}>
-      <div class="float-qr">{paperQr()}</div>
+    {kind === "duty" ? <Sheet footer={<>{ward.name} 当番表と配置図 {paperCode}</>}>
       <h1>{row.title} 当番表と配置図</h1>
-      <RowsTable table="duties" rows={listed.filter((entry) => entry.table === "duties")} />
-      <RowsTable table="layout" rows={listed.filter((entry) => entry.table === "layout")} />
-      {tableRows.length > listed.length ? <p>ほかに {tableRows.length - listed.length} 行あります。役員画面で見られます。</p> : null}
-      {blankArea("時間帯・持ち場・担当、配置・場所・メモ", 8)}
-    </Sheet> : null}
-    {kind === "meeting" ? Array.from({ length: Math.max(1, Math.ceil(meetingSheets.length / 3)) }, (_, page) => {
-      const targets = meetingSheets.slice(page * 3, page * 3 + 3);
-      return <Sheet key={page} footer={<>{ward.name} 役員会の記入欄</>}>
-        <h1>役員会の記入欄</h1><p>{row.title}</p>{paperQr()}
-        {targets.length ? targets.map((target) => {
-          return <section key={target.project_id} style="margin:2mm 0">
-            <h2>{target.title}</h2>
-            <PaperField label="決めたこと" heightMm={16} code={target.paperCode} text={target.url} />
-            <PaperField label="日時・場所・変更" heightMm={16} code={target.paperCode} text={target.url} />
-            <PaperField label="次にすること" heightMm={16} code={target.paperCode} text={target.url} />
-          </section>;
-        }) : <>
-          <PaperField label="決めたこと" heightMm={30} code={paperCode} text={url} />
-          <PaperField label="日時・場所・変更" heightMm={30} code={paperCode} text={url} />
-          <PaperField label="次にすること" heightMm={30} code={paperCode} text={url} />
-        </>}
-      </Sheet>;
-    }) : null}
-    {kind === "sponsors" ? <Sheet dense={fit.dense} footer={<>{ward.name} 協賛先</>}>
-      <div class="float-qr">{paperQr()}</div>
-      <h1>{row.title} 協賛先の一覧</h1>
-      <RowsTable table="sponsors" rows={listed} />
-      {tableRows.length > listed.length ? <p>ほかに {tableRows.length - listed.length} 行あります。役員画面で見られます。</p> : null}
-      {blankArea("協賛先・返事・連絡", 10)}
+      <p>紙の番号: {paperCode}</p>{paperQr()}
+      <RowsTable table="duties" rows={current("duties")} paperCode={paperCode} />
+      <RowsTable table="layout" rows={current("layout")} paperCode={paperCode} />
+      {Array.from({ length: 3 }, (_, index) => <FieldBox key={index} label={"時間帯・持ち場・担当、配置・場所・メモ　" + (paperCode ?? "")} heightMm={22} />)}
     </Sheet> : null}
   </PrintDocument>);
-});
+};
+
+admin.get("/print/:projectId/:documentId/:versionNo/:kind", renderPublishedPaper);
+admin.post("/print/:projectId/:documentId/:versionNo/leader", renderPublishedPaper);
 
 admin.get("/print/:projectId/:documentId/:versionNo", async (c) => PrintChooser({ c }));
 
@@ -196,40 +232,14 @@ function shownFields(table: TableKey, rows: RowView[]) {
   return Object.entries(TABLES[table].fields).filter(([key]) => rows.some((entry) => entry.data[key] !== undefined && entry.data[key] !== ""));
 }
 
-/**
- * 一枚に入る表の行と記入欄の数の見積もり。
- * 一行の高さは文字 10.5pt で 6.3mm、9pt で 5.4mm、枠と余白で 2mm。表の見出しと上の題で 1 表 20mm を見る。
- */
-function fitRows(rows: RowView[]): { rows: RowView[]; boxes: number; dense: boolean } {
-  const budgetMm = 225;
-  const tables = [...new Set(rows.map((entry) => entry.table))];
-  const heightOf = (lineMm: number) => (entry: RowView) => {
-    // 表は長い中身の列を広げるので、行の文字の合計を一行 40 字で割った数を行数と見る。
-    const fields = shownFields(entry.table, rows.filter((other) => other.table === entry.table));
-    const chars = fields.reduce((sum, [key]) => sum + String(entry.data[key] ?? "").length, 0);
-    return 2 + Math.max(1, Math.ceil(chars / 40)) * lineMm;
-  };
-  const total = (lineMm: number) => tables.length * 20 + rows.reduce((sum, entry) => sum + heightOf(lineMm)(entry), 0);
-  const dense = total(6.3) > budgetMm;
-  const rowMm = heightOf(dense ? 5.4 : 6.3);
-  const kept: RowView[] = [];
-  let used = tables.length * 20;
-  for (const entry of rows) {
-    if (used + rowMm(entry) > budgetMm) break;
-    used += rowMm(entry);
-    kept.push(entry);
-  }
-  return { rows: kept, boxes: Math.max(0, Math.floor((budgetMm - used) / 18)), dense };
-}
-
 /** 今年の中身の表を紙に並べる。空なら何も出さない。 */
-function RowsTable({ table, rows }: { table: TableKey; rows: RowView[] }) {
-  if (!rows.length) return null;
-  const fields = shownFields(table, rows);
+function RowsTable({ table, rows, paperCode }: { table: TableKey; rows: RowView[]; paperCode?: string | null }) {
+  if (!rows.length && table !== "sponsors") return null;
+  const fields = table === "sponsors" ? Object.entries(TABLES.sponsors.fields) : shownFields(table, rows);
   return <>
     <h2>{TABLES[table].label}</h2>
-    <table><thead><tr>{fields.map(([, field]) => <th>{field.label}</th>)}</tr></thead>
-      <tbody>{rows.map((entry) => <tr>{fields.map(([key]) => <td>{displayFieldValue(table, key, entry.data[key])}</td>)}</tr>)}</tbody></table>
+    <table><thead>{paperCode ? <tr><th colspan={fields.length}>紙の番号: {paperCode}</th></tr> : null}<tr>{fields.map(([, field]) => <th>{field.label}</th>)}</tr></thead>
+      <tbody>{rows.map((entry) => <tr style={table === "sponsors" ? "height:18mm" : undefined}>{fields.map(([key]) => <td>{displayFieldValue(table, key, entry.data[key])}</td>)}</tr>)}</tbody></table>
   </>;
 }
 

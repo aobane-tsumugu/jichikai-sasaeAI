@@ -75,10 +75,17 @@ describe("秋の収穫祭の最初の一片", () => {
     const mapPage = await get(realApp, mapLocation, cookie);
     const mapHtml = await mapPage.text();
     expect(mapPage.status).toBe(200);
-    expect(mapHtml).toContain(`/admin/projects/${projectId}#materials`);
+    const materialPath = `/${ward.slug}/admin/intake?project=${encodeURIComponent(projectId as string)}#send-form`;
+    expect(mapHtml).toContain(`href="${materialPath}"`);
     expect(mapHtml).toContain(`/admin/projects/${projectId}/draft`);
     expect(mapHtml).toContain(`/admin/answers?project=${encodeURIComponent(projectId as string)}`);
     expect(mapHtml).toContain(`/admin/projects/${projectId}#ledger`);
+    // 地図から送る画面を開き、送り先を選び直さずに材料を送れる。
+    const materialPage = await get(realApp, materialPath, cookie);
+    expect(materialPage.status).toBe(200);
+    const materialHtml = await materialPage.text();
+    expect(materialHtml).toContain('<form id="send-form"');
+    expect(materialHtml).toContain(`<option value="${projectId}" selected="">`);
     const material = await postForm(realApp, `/${ward.slug}/admin/intake`, { project_id: projectId as string, text: FIRST_SLICE.previousMaterial }, cookie);
     expect(material.status).toBe(303);
     const original = await env.DB.prepare(`SELECT o.original_id FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
