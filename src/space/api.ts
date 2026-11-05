@@ -1,4 +1,5 @@
 import { newId, nowIso } from "../core/ids";
+import { DOCUMENT_KIND_LABEL, type DocumentKind } from "../project/model";
 
 export type SpaceRole = "member" | "leader";
 export interface SpaceCredential {
@@ -11,6 +12,18 @@ export interface SpaceCredential {
 export function makeToken(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+/** 読み上げて伝えられる合言葉。保存には既存のハッシュを使う。 */
+export function makePassphrase(): string {
+  const words = [
+    "さくら", "ひなた", "こむぎ", "つばめ", "あさひ", "こもれび", "すずかぜ", "なないろ",
+    "ひまわり", "たんぽぽ", "どんぐり", "まつぼっくり", "あおぞら", "ほしぞら", "みかづき", "はるかぜ",
+    "わかば", "ふたば", "せせらぎ", "しらかば", "かわせみ", "しろくま", "しらゆき", "ゆきだるま",
+    "おひさま", "なのはな", "あじさい", "あさがお", "すずらん", "かたつむり", "はなみずき", "やまびこ",
+  ];
+  const random = crypto.getRandomValues(new Uint16Array(4));
+  return `${words[random[0]! % words.length]}・${words[random[1]! % words.length]}・${words[random[2]! % words.length]}・${String(random[3]!).padStart(5, "0")}`;
 }
 
 export async function tokenHash(token: string): Promise<string> {
@@ -160,12 +173,13 @@ export async function getSpaceMaterials(db: D1Database, wardId: string, projectI
       ? db.prepare("SELECT district, household, people_count FROM project_answers WHERE ward_id = ? AND project_id = ? ORDER BY district, household").bind(wardId, projectId).all<{ district: string; household: string; people_count: number }>()
       : db.prepare("SELECT district, household, people_count FROM project_answers WHERE ward_id = ? AND project_id = ? AND district = ? ORDER BY household").bind(wardId, projectId, district).all<{ district: string; household: string; people_count: number }>(),
     db.prepare(
-      `SELECT d.document_id, d.title, v.body FROM documents d JOIN document_versions v
-       ON v.ward_id = d.ward_id AND v.document_id = d.document_id AND v.version_no =
-        (SELECT MAX(v2.version_no) FROM document_versions v2 WHERE v2.ward_id = d.ward_id AND v2.document_id = d.document_id)
-       WHERE d.ward_id = ? AND d.project_id = ? AND d.scope = 'space' AND v.scope = 'space'
+      `SELECT d.document_id, d.kind, v.body FROM documents d JOIN document_versions v
+       ON v.ward_id = d.ward_id AND v.project_id = d.project_id AND v.document_id = d.document_id AND v.version_no =
+        (SELECT MAX(v2.version_no) FROM document_versions v2 WHERE v2.ward_id = d.ward_id
+          AND v2.project_id = d.project_id AND v2.document_id = d.document_id AND v2.published_at IS NOT NULL)
+       WHERE d.ward_id = ? AND d.project_id = ? AND v.scope = 'space' AND v.published_at IS NOT NULL
        ORDER BY d.created_at`,
-    ).bind(wardId, projectId).all<{ document_id: string; title: string; body: string }>(),
+    ).bind(wardId, projectId).all<{ document_id: string; kind: DocumentKind; body: string }>(),
     db.prepare(
       `SELECT o.original_id, o.filename, o.media_type FROM originals o JOIN jobs j
        ON j.ward_id = o.ward_id AND j.job_id = o.job_id
@@ -182,5 +196,7 @@ export async function getSpaceMaterials(db: D1Database, wardId: string, projectI
     }
     return { kind: row.table_key, data };
   });
-  return { title: project?.title ?? "", items, attendance: answers.results, documents: docs.results, originals: originals.results };
+  // 題は文書ごとの現在の値しか保存されていないため、作業中の題を出さず種類を見出しにする。
+  const documents = docs.results.map((doc) => ({ document_id: doc.document_id, title: DOCUMENT_KIND_LABEL[doc.kind], body: doc.body }));
+  return { title: project?.title ?? "", items, attendance: answers.results, documents, originals: originals.results };
 }
