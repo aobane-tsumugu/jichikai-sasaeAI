@@ -3,13 +3,14 @@ import { AdminPage } from "../core/admin-ui";
 import { adminPath } from "../core/auth";
 import type { Bundle } from "../core/bundle";
 import { newId, nowIso } from "../core/ids";
-import { Hint, Layout, Notice } from "../core/ui";
+import { Hint, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { getLineAllowance, lineAccessToken, sendLineTitleAndUrl } from "../line/api";
 import { getPublicContact } from "../settings/store";
 import { getDistrictCopies, getRoster, parseDistribution } from "../answers/api";
 import { checkPublicDraft } from "./check";
 import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, isItemKey, type DocumentKind } from "../project/model";
+import { applyChange } from "../project/apply";
 
 interface DraftRow {
   document_id: string;
@@ -96,6 +97,20 @@ async function getDrafts(db: D1Database, wardId: string, projectId: string): Pro
 
 const admin = new Hono<AdminEnv>();
 
+const canSendLine = (kind: string) => ["announcement", "recruitment", "notice"].includes(kind);
+
+async function markDistributedTask(db: D1Database, wardId: string, projectId: string, accountId: string, taskKey: string, versionId: string) {
+  const task = await db.prepare(`SELECT progress_source_kind FROM project_map_tasks
+    WHERE ward_id = ? AND project_id = ? AND task_key = ? AND removed_at IS NULL`)
+    .bind(wardId, projectId, taskKey).first<{ progress_source_kind: string | null }>();
+  // 人が直した進み具合は、そのまま残す。
+  if (!task || task.progress_source_kind === "person") return;
+  await applyChange(db, wardId, projectId, {
+    kind: "map_task", taskKey, progress: "done", packVersion: "publish-map@1", requestId: versionId,
+    source: { kind: "person", accountId, ref: versionId, locator: "配る操作" }, confidence: "high",
+  }, { actorAccountId: accountId });
+}
+
 admin.get("/publish/:projectId", async (c) => {
   const { ward, account } = c.var;
   const projectId = c.req.param("projectId");
@@ -115,7 +130,7 @@ admin.get("/publish/:projectId", async (c) => {
   const firstPublishedId = records.results.find((record) => !record.unpublished_at)?.publication_id;
   let allowance = null;
   let allowanceError = "";
-  try {
+  if (drafts.some((draft) => canSendLine(draft.kind))) try {
     allowance = await getLineAllowance(lineAccessToken(c.env));
   } catch {
     allowanceError = "公式 LINE の通数を読み取れません。配る操作後に送信結果を確認してください。";
@@ -145,7 +160,7 @@ admin.get("/publish/:projectId", async (c) => {
           })}</details> : null}
           {draft.scope === "space" ? <>
             <p>実行委員と班長に見せる物です。公開ページには出ません。</p>
-            {!project.closed_at && draft.stale_since_version === null && !draft.published_at ? <form method="post" action={adminPath(ward, `/publish/${projectId}/space`)}>
+            {!project.closed_at && !draft.published_at ? <form method="post" action={adminPath(ward, `/publish/${projectId}/space`)}>
               <input type="hidden" name="documentId" value={draft.document_id} />
               <input type="hidden" name="versionId" value={draft.version_id} />
               <input type="hidden" name="versionNo" value={draft.version_no} />
@@ -157,16 +172,22 @@ admin.get("/publish/:projectId", async (c) => {
             <input type="hidden" name="versionId" value={draft.version_id} />
             <input type="hidden" name="versionNo" value={draft.version_no} />
             <input type="hidden" name="targetMode" value="district" />
+            <label for={`recipients-${draft.document_id}`}>紙を配る相手</label>
+            <select id={`recipients-${draft.document_id}`} name="recipientScope"><option value="member_households">加入世帯</option><option value="all_households">全戸（加入していない世帯も含む）</option></select>
+            <Hint text="全戸を選ぶと、名簿にない世帯の分も含めて部数を入れられます。区で全戸に配る時に選んでください。" />
             <fieldset><legend>班ごとの部数</legend>{districtCopies.map((row, index) => <p>
               <label><input type="checkbox" name="district" value={row.district} checked /> {row.district}（名簿 {row.copies} 世帯）</label>
-              部数 <input type="number" name={`copies_${index}`} min="0" max={row.copies} value={row.copies} style="width:6rem" />
+              部数 <input type="number" name={`copies_${index}`} min="1" value={row.copies} style="width:6rem" />
             </p>)}</fieldset>
-            <details><summary>世帯を選ぶ</summary><p>世帯に印を付けると、印を付けた世帯にだけ紙を配ります。</p>{householdChoices(roster).map(({ district, household, count }) => <label>
+            {roster.length === 0 ? <p><label>全戸に配る時の部数 <input type="number" name="allCopies" min="1" style="width:6rem" /></label></p> : null}
+            <details><summary>世帯を選ぶ</summary><p>加入世帯の一部に配る時は、世帯に印を付けてください。全戸に配る時は、上の班ごとの部数を使います。</p>{householdChoices(roster).map(({ district, household, count }) => <label>
               <input type="checkbox" name="household" value={JSON.stringify([district, household])} /> {district} / {household}{count > 1 ? `（名簿に同じ名前が ${count} 世帯あり、${count} 部）` : ""}
             </label>)}</details>
             <p>紙の部数と配る相手の指定は、公開ページに表示されません。</p>
-            <label for={`line-${draft.document_id}`}>公式 LINE</label>
-            <select id={`line-${draft.document_id}`} name="lineDelivery"><option value="send">題と URL を送る</option><option value="skip">今回は送らない</option></select>
+            {canSendLine(draft.kind) ? <>
+              <label for={`line-${draft.document_id}`}>公式 LINE</label>
+              <select id={`line-${draft.document_id}`} name="lineDelivery"><option value="send">題と URL を送る</option><option value="skip">今回は送らない</option></select>
+            </> : <p>公式 LINE には送らず、区のページに載せます。</p>}
             <p><button type="submit">配る内容を確認する</button> <Hint text={`${DOCUMENT_KIND_LABEL[draft.kind as DocumentKind]}の本文と配る相手を確認する画面を開くだけで、まだ配りません。`} /></p>
           </form> : null}
         </section>
@@ -176,6 +197,7 @@ admin.get("/publish/:projectId", async (c) => {
         <section class="panel" key={record.publication_id}>
           <p>{new Date(record.published_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}に配りました。</p>
           <p>紙の配布先: {paperTargetLabel(record.distribution)}</p>
+          <p>配る相手: {record.recipient_scope === "all_households" ? "全戸" : "加入世帯"}</p>
           <p>公式 LINE: {record.line_status === "sent" ? `${record.line_recipients ?? 0} 人に送信済み` : record.line_status === "failed" ? "送信できませんでした" : record.line_status === "not_sent" ? "今回は送っていません" : record.line_status === "not_configured" ? "接続設定なし" : "送信待ち"}</p>
           {record.line_error ? <p>{record.line_error}</p> : null}
           {record.unpublished_at ? <p>現在は公開を下げています。</p> : <form class="inline" method="post" action={adminPath(ward, `/publish/${projectId}/lower/${record.publication_id}`)}><button class="danger" type="submit">公開を下げる</button> {record.publication_id === firstPublishedId ? <Hint text="配った記録を残したまま、この案内を区のページから下げます。" /> : null}</form>}
@@ -201,15 +223,17 @@ admin.post("/publish/:projectId/space", async (c) => {
     WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_id = ? AND v.version_no = ?`)
     .bind(ward.wardId, projectId, documentId, versionId, versionNo)
     .first<{ kind: string; scope: string; stale_since_version: number | null; version_id: string; version_no: number; published_at: string | null }>();
-  if (!row || row.scope !== "space" || !["duty_roster", "procedure"].includes(row.kind) || row.published_at || row.stale_since_version !== null) return c.notFound();
+  if (!row || row.scope !== "space" || !["duty_roster", "procedure"].includes(row.kind) || row.published_at) return c.notFound();
   const now = nowIso();
   const result = await c.env.DB.prepare(`UPDATE document_versions SET published_at = ?, published_by_account_id = ?
     WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_id = ? AND version_no = ? AND published_at IS NULL
-      AND EXISTS (SELECT 1 FROM documents d WHERE d.ward_id = ? AND d.document_id = ? AND d.scope = 'space' AND d.stale_since_version IS NULL)
+      AND version_no = (SELECT MAX(v.version_no) FROM document_versions v WHERE v.ward_id = ? AND v.document_id = ?)
+      AND EXISTS (SELECT 1 FROM documents d WHERE d.ward_id = ? AND d.document_id = ? AND d.scope = 'space')
       AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL)`)
     .bind(now, account.accountId, ward.wardId, projectId, documentId, versionId, versionNo,
-      ward.wardId, documentId, ward.wardId, projectId).run();
-  if ((result.meta.changes ?? 0) !== 1) return c.text("新しい物が入っています。案を見直してください。", 409);
+      ward.wardId, documentId, ward.wardId, documentId, ward.wardId, projectId).run();
+  if ((result.meta.changes ?? 0) !== 1) return c.text("案の内容が変わったか、すでに配っています。配る画面で内容を確かめてください。", 409);
+  if (row.kind === "duty_roster") await markDistributedTask(c.env.DB, ward.wardId, projectId, account.accountId, "duty_roster", versionId);
   return c.redirect(adminPath(ward, `/publish/${projectId}?space=sent`), 303);
 });
 
@@ -249,6 +273,7 @@ admin.post("/publish/:projectId/confirm", async (c) => {
   if (!(DOCUMENT_KINDS as readonly string[]).includes(draft.kind)) return c.text("文書の種類を確認できません。", 400);
   const warnings = await checkPublicDraft(c.env.DB, ward.wardId, project.project_id, draft.kind as DocumentKind, draft.body);
   const roster = await getRoster(c.env.DB, ward.wardId);
+  const recipientScope = form.get("recipientScope") === "all_households" ? "all_households" : "member_households";
   const targetMode = form.get("targetMode");
   let distribution: PaperDistribution | null;
   if (targetMode === null) {
@@ -259,23 +284,25 @@ admin.post("/publish/:projectId/confirm", async (c) => {
     const selectedDistricts = new Set(form.getAll("district").map(String));
     const selectedHouseholds = new Set(form.getAll("household").map(String));
     // 世帯に印があれば、選びの欄が班のままでも世帯に配る。印を黙って捨てて全ての班に配らないため。
-    distribution = buildDistribution(roster, selectedHouseholds.size > 0 ? "household" : String(targetMode), selectedDistricts, selectedHouseholds,
-      (index) => Number(form.get(`copies_${index}`)));
+    distribution = buildDistribution(roster, recipientScope === "all_households" ? "district" : selectedHouseholds.size > 0 ? "household" : String(targetMode), selectedDistricts, selectedHouseholds,
+      (index) => Number(form.get(`copies_${index}`)), recipientScope === "all_households");
   }
   // 名簿は入れなくても動く。無い区は部数の割り振りなしで配る。
-  if (!distribution && roster.length === 0) distribution = { mode: "district", targets: [] };
-  if (!distribution) return c.text("名簿にある班か世帯を選んでください。", 400);
-  const recipientScope = form.get("recipientScope") === "all_households" ? "all_households" : "member_households";
-  const lineDelivery = form.get("lineDelivery") === "skip" ? "skip" : "send";
+  if (roster.length === 0) distribution = recipientScope === "all_households" && form.get("allCopies")
+    ? allHouseholdCopies(Number(form.get("allCopies"))) : { mode: "district", targets: [] };
+  if (!distribution) return c.text("配る班と部数を確かめてください。加入世帯に配る部数は名簿の世帯数までです。全戸に配る時は「全戸」を選んでください。", 400);
+  const lineDelivery = !canSendLine(draft.kind) || form.get("lineDelivery") === "skip" ? "skip" : "send";
   const contacts = await getPublicContact(c.env.DB, ward.wardId);
   let allowance = null;
-  try { allowance = await getLineAllowance(lineAccessToken(c.env)); } catch { /* 送信結果として記録する */ }
+  if (lineDelivery === "send") try { allowance = await getLineAllowance(lineAccessToken(c.env)); } catch { /* 送信結果として記録する */ }
   return c.html(<AdminPage ward={ward} account={account} title="配る内容の確認" back={{ href: adminPath(ward, `/publish/${project.project_id}`), label: "案に戻る" }}>
     <h1>配る内容の確認 <Hint text="本文と配る相手を読んでから「配る」を押すと、区のページに載ります。公式 LINE に送るかどうかも確認してください。" /></h1>
     <ArticleBody body={draft.body} />
+    {draft.stale_since_version !== null ? <Notice>新しい物が入っています。ここに表示した内容で配れます。直す時は案に戻ってください。</Notice> : null}
     {warnings.length > 0 ? <section class="panel"><h2>混入の検査で見つかった所</h2><p>公開する前に内容を確認してください。配る操作は続けられます。</p><ul>{warnings.map((warning) => <li>{warning}</li>)}</ul></section> : null}
     <p>配ります。区のページに載ります。{lineDelivery === "skip" ? "今回は公式 LINE に送りません。" : `公式 LINE は${allowance?.friends === null || allowance === null ? "人数確認後" : `${allowance.friends} 人`}に届きます。`}</p>
     {distribution.targets.length ? <p>紙の配布先: {paperTargetLabel(JSON.stringify(distribution))}</p> : <p>名簿が無いため、紙の配布先と部数は指定していません。</p>}
+    <p>配る相手: {recipientScope === "all_households" ? "全戸" : "加入世帯"}</p>
     <p>公開用の連絡先: {contacts || "未設定"}</p>
     <form method="post" action={adminPath(ward, `/publish/${project.project_id}/send`)}>
       <input type="hidden" name="documentId" value={documentId} />
@@ -306,17 +333,13 @@ admin.post("/publish/:projectId/send", async (c) => {
     .bind(ward.wardId, projectId, documentId, versionId, versionNo).first<DraftRow>();
   if (!row || row.scope !== "public" || row.published_at) return c.notFound();
   if (row.kind === "duty_roster") return c.text("当番表は公開せず、プロジェクトの空間に配ってください。", 400);
-  if (row.stale_since_version !== null) {
-    return c.html(<AdminPage ward={ward} account={account} title="新しい物が入りました" back={{ href: adminPath(ward, `/publish/${projectId}`), label: "案に戻る" }}>
-      <h1>新しい物が入りました</h1><p>案を直すか、このまま配るか選び直してください。</p>
-    </AdminPage>, 409);
-  }
   if (!(DOCUMENT_KINDS as readonly string[]).includes(row.kind)) return c.text("文書の種類を確認できません。", 400);
   const now = nowIso();
   const publicationId = newId();
   const roster = await getRoster(c.env.DB, ward.wardId);
   const rawDistribution = typeof form.distribution === "string" ? form.distribution : "";
-  let distribution: PaperDistribution | null = roster.length === 0 ? { mode: "district", targets: [] } : validateDistribution(rawDistribution, roster);
+  let distribution: PaperDistribution | null = roster.length === 0 && recipientScope !== "all_households"
+    ? { mode: "district", targets: [] } : validateDistribution(rawDistribution, roster, recipientScope === "all_households");
   if (!distribution && !rawDistribution.trim().startsWith("{")) {
     const districts = [...new Set(roster.map((entry) => entry.district))];
     const legacy = parseDistribution(rawDistribution, districts);
@@ -327,10 +350,11 @@ admin.post("/publish/:projectId/send", async (c) => {
     c.env.DB.prepare(`UPDATE document_versions SET published_at = ?, published_by_account_id = ?
       WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_id = ? AND version_no = ?
         AND published_at IS NULL
+        AND version_no = (SELECT MAX(v.version_no) FROM document_versions v WHERE v.ward_id = ? AND v.document_id = ?)
         AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL)
-        AND EXISTS (SELECT 1 FROM documents d WHERE d.ward_id = ? AND d.document_id = ? AND d.stale_since_version IS NULL)`)
+        AND EXISTS (SELECT 1 FROM documents d WHERE d.ward_id = ? AND d.document_id = ? AND d.scope = 'public')`)
       .bind(now, account.accountId, ward.wardId, projectId, documentId, versionId, versionNo,
-        ward.wardId, projectId, ward.wardId, documentId),
+        ward.wardId, documentId, ward.wardId, projectId, ward.wardId, documentId),
     c.env.DB.prepare(`INSERT INTO publication_records
       (ward_id, publication_id, project_id, document_id, version_id, version_no, recipient_scope, distribution, line_status, published_at, published_by_account_id)
       SELECT ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ? WHERE EXISTS (
@@ -340,16 +364,18 @@ admin.post("/publish/:projectId/send", async (c) => {
         ward.wardId, versionId, now, account.accountId),
   ]);
   if (publication[0]?.meta.changes !== 1 || publication[1]?.meta.changes !== 1) {
-    return c.html(<AdminPage ward={ward} account={account} title="新しい物が入りました" back={{ href: adminPath(ward, `/publish/${projectId}`), label: "案に戻る" }}>
-      <h1>新しい物が入りました</h1><p>案を直すか、もう一度内容を確認してください。</p>
+    return c.html(<AdminPage ward={ward} account={account} title="配る内容を確かめてください" back={{ href: adminPath(ward, `/publish/${projectId}`), label: "案に戻る" }}>
+      <h1>配る内容を確かめてください</h1><p>案の内容が変わったか、すでに配っています。配る画面で内容を確かめてください。</p>
     </AdminPage>, 409);
   }
+  if (row.kind === "announcement") await markDistributedTask(c.env.DB, ward.wardId, projectId, account.accountId, "announcement", versionId);
   const publicUrl = `${(c.env.PUBLIC_BASE_URL || new URL(c.req.url).origin).replace(/\/+$/, "")}/${ward.slug}/p/${encodeURIComponent(projectId)}`;
-  let lineStatus: PublicationRow["line_status"] = form.lineDelivery === "skip" ? "not_sent" : "not_configured";
+  const sendLine = canSendLine(row.kind) && form.lineDelivery !== "skip";
+  let lineStatus: PublicationRow["line_status"] = sendLine ? "not_configured" : "not_sent";
   let lineRecipients: number | null = null;
   let lineSentAt: string | null = null;
   let lineError: string | null = null;
-  if (form.lineDelivery !== "skip") {
+  if (sendLine) {
     try {
       const allowance = await getLineAllowance(lineAccessToken(c.env));
       lineRecipients = allowance.friends;
@@ -397,6 +423,10 @@ export function ArticleBody({ body }: { body: string }) {
 interface DistributionTarget { district: string; copies: number; household?: string; }
 interface PaperDistribution { mode: "district" | "household"; targets: DistributionTarget[]; }
 
+function allHouseholdCopies(copies: number): PaperDistribution | null {
+  return Number.isInteger(copies) && copies > 0 ? { mode: "district", targets: [{ district: "全戸", copies }] } : null;
+}
+
 /** 世帯を選ぶ欄。名簿に同じ班と名前の世帯が複数あると見分けられないので、一つの欄にまとめて数を示す。 */
 function householdChoices(roster: Array<{ district: string; household: string }>) {
   const choices = new Map<string, { district: string; household: string; count: number }>();
@@ -410,7 +440,7 @@ function householdChoices(roster: Array<{ district: string; household: string }>
 }
 
 function buildDistribution(
-  roster: Array<{ district: string; household: string }>, mode: string, districts: Set<string>, households: Set<string>, copyCount: (index: number) => number,
+  roster: Array<{ district: string; household: string }>, mode: string, districts: Set<string>, households: Set<string>, copyCount: (index: number) => number, allHouseholds = false,
 ): PaperDistribution | null {
   if (mode === "household") {
     const targets = roster.filter((entry) => households.has(JSON.stringify([entry.district, entry.household])))
@@ -424,13 +454,13 @@ function buildDistribution(
     if (!districts.has(district)) continue;
     const copies = copyCount(index);
     const available = roster.filter((entry) => entry.district === district).length;
-    if (!Number.isInteger(copies) || copies < 1 || copies > available) return null;
+    if (!Number.isInteger(copies) || copies < 1 || (!allHouseholds && copies > available)) return null;
     targets.push({ district, copies });
   }
   return targets.length ? { mode, targets } : null;
 }
 
-function validateDistribution(raw: string, roster: Array<{ district: string; household: string }>): PaperDistribution | null {
+function validateDistribution(raw: string, roster: Array<{ district: string; household: string }>, allHouseholds = false): PaperDistribution | null {
   try {
     const value: unknown = JSON.parse(raw);
     if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
@@ -438,6 +468,7 @@ function validateDistribution(raw: string, roster: Array<{ district: string; hou
     if (!Array.isArray(input.targets)) return null;
     const households = new Set(roster.map((entry) => JSON.stringify([entry.district, entry.household])));
     const districts = new Set(roster.map((entry) => entry.district));
+    if (allHouseholds && roster.length === 0) districts.add("全戸");
     const targets: DistributionTarget[] = [];
     for (const item of input.targets) {
       if (typeof item !== "object" || item === null || Array.isArray(item)) return null;
@@ -448,7 +479,7 @@ function validateDistribution(raw: string, roster: Array<{ district: string; hou
         targets.push({ district: target.district, household: target.household, copies: 1 });
       } else if (input.mode === "district") {
         const available = roster.filter((entry) => entry.district === target.district).length;
-        if (target.household !== undefined || (target.copies as number) > available) return null;
+        if (target.household !== undefined || (!allHouseholds && (target.copies as number) > available)) return null;
         targets.push({ district: target.district, copies: target.copies as number });
       } else return null;
     }
