@@ -6,6 +6,7 @@ import type { AnswerSheetReading } from "../ai/schema";
 import type { Reading } from "../ai/schema";
 import type { Waitable } from "../intake/types";
 import { receiveOriginal, getReadings } from "../intake/api";
+import { getOriginal } from "../intake/store";
 import { SEND_SCRIPT } from "../intake/browser-script";
 import { getSquads } from "../settings/store";
 import { lookupPrintQr } from "../print/qr";
@@ -108,8 +109,10 @@ admin.post("/answers/roster/photo", async (c) => {
     wardId: c.var.ward.wardId, via: "system", readKind: "general",
     parts: [{ kind: "photo", filename: photo.name || "名簿の写真", mediaType: photo.type, bytes: new Uint8Array(await photo.arrayBuffer()) }],
   });
-  if (!outcome.jobId) return c.redirect(adminPath(c.var.ward.slug, "/answers/roster"), 303);
-  return c.redirect(`${adminPath(c.var.ward.slug, "/answers/roster")}?job=${encodeURIComponent(outcome.jobId)}`, 303);
+  const duplicate = outcome.duplicates[0];
+  const jobId = outcome.jobId ?? (duplicate ? (await getOriginal(c.env.DB, c.var.ward.wardId, duplicate.originalId))?.job_id : null);
+  if (!jobId) return c.redirect(adminPath(c.var.ward.slug, "/answers/roster"), 303);
+  return c.redirect(`${adminPath(c.var.ward.slug, "/answers/roster")}?job=${encodeURIComponent(jobId)}`, 303);
 });
 
 admin.post("/answers/roster/photo/import", async (c) => {
