@@ -124,7 +124,8 @@ export async function findMember(db: D1Database, wardId: string, projectId: stri
   const row = await db.prepare(
     `SELECT m.role, m.district FROM project_space_members m JOIN project_spaces s
      ON s.ward_id = m.ward_id AND s.project_id = m.project_id
-     WHERE m.ward_id = ? AND m.project_id = ? AND m.token_hash = ? AND m.revoked_at IS NULL AND m.expires_at > ? AND s.closed_at IS NULL`,
+     JOIN projects p ON p.ward_id = m.ward_id AND p.project_id = m.project_id
+     WHERE m.ward_id = ? AND m.project_id = ? AND m.token_hash = ? AND m.revoked_at IS NULL AND m.expires_at > ? AND s.closed_at IS NULL AND p.closed_at IS NULL`,
   ).bind(wardId, projectId, hash, nowIso()).first<{ role: SpaceRole; district: string | null }>();
   return row ? { token, role: row.role, district: row.district, projectId } : null;
 }

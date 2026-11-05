@@ -157,8 +157,9 @@ pub.post("/space/:projectId/send", async (c) => {
 async function renderSpace(c: Context<WardEnv>, direct: string | null) {
   const projectId = c.req.param("projectId");
   if (!projectId) return c.notFound();
-  const project = await c.env.DB.prepare("SELECT title FROM projects WHERE ward_id = ? AND project_id = ?").bind(c.var.ward.wardId, projectId).first<{ title: string }>();
+  const project = await c.env.DB.prepare("SELECT title, closed_at FROM projects WHERE ward_id = ? AND project_id = ?").bind(c.var.ward.wardId, projectId).first<{ title: string; closed_at: string | null }>();
   if (!project) return c.notFound();
+  if (project.closed_at) return closedNotice(c);
   const state = await getSpace(c.env.DB, c.var.ward.wardId, projectId);
   if (!state || state.closed_at) return closedNotice(c);
   const fromCookie = await cookieMember(c, projectId);
