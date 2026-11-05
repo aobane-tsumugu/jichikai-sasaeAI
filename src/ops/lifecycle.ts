@@ -29,7 +29,7 @@ const WARD_DELETE_TABLES = [
 interface QueueRow {
   queue_id: string;
   ward_id: string;
-  target_type: "job" | "ward";
+  target_type: "job" | "ward" | "answer";
   target_id: string | null;
   cursor: string | null;
 }
@@ -52,6 +52,50 @@ export async function requestJobDeletion(db: D1Database, wardId: string, jobId: 
       .bind(queueId, wardId, jobId, requestedAt),
   ]);
   return queueId;
+}
+
+/**
+ * Web と電話で受けた回答を消す。回答の表からはすぐ消し、日次の写しの書き直しは列で続ける。
+ * 回答票の写真から入った回答（原本がある物）は、記録の消去で原本と一緒に消す。
+ */
+export async function requestAnswerDeletion(db: D1Database, wardId: string, answerId: string): Promise<boolean> {
+  const requestedAt = nowIso();
+  const [removed] = await db.batch([
+    db.prepare("DELETE FROM project_answers WHERE ward_id = ? AND answer_id = ? AND original_id IS NULL").bind(wardId, answerId),
+    db.prepare(`INSERT INTO ops_deletion_queue (queue_id, ward_id, target_type, target_id, requested_at)
+      SELECT ?, ?, 'answer', ?, ? WHERE changes() = 1`).bind(newId(), wardId, answerId, requestedAt),
+  ]);
+  return (removed?.meta.changes ?? 0) === 1;
+}
+
+async function eraseAnswer(env: Env, item: QueueRow): Promise<void> {
+  const wardId = item.ward_id;
+  const answerId = item.target_id ?? "";
+  const cursor = item.cursor?.startsWith("snapshots:") ? item.cursor.slice("snapshots:".length) : undefined;
+  const bucket = new WardBucket(env.ORIGINALS, wardId);
+  const page = await bucket.list("snapshots/daily/", { limit: 100, cursor });
+  for (const entry of page.keys) {
+    const object = await bucket.get(entry.key);
+    if (!object) continue;
+    let value: unknown;
+    try { value = await object.json(); } catch { await bucket.delete(entry.key); continue; }
+    if (typeof value !== "object" || value === null || Array.isArray(value)) { await bucket.delete(entry.key); continue; }
+    const doc = value as { wardId?: unknown; tables?: Record<string, unknown> };
+    if (doc.wardId !== wardId || typeof doc.tables !== "object" || doc.tables === null) { await bucket.delete(entry.key); continue; }
+    const rows = doc.tables.project_answers;
+    if (Array.isArray(rows)) doc.tables.project_answers = rows.filter((row) =>
+      typeof row !== "object" || row === null || (row as Record<string, unknown>).answer_id !== answerId);
+    await bucket.put(entry.key, JSON.stringify(doc), { httpMetadata: { contentType: "application/json; charset=utf-8" } });
+  }
+  if (page.truncated && page.cursor) {
+    await env.DB.prepare("UPDATE ops_deletion_queue SET cursor = ?, state = 'running', last_error = '' WHERE queue_id = ? AND ward_id = ?")
+      .bind(`snapshots:${page.cursor}`, item.queue_id, wardId).run();
+    return;
+  }
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM ops_deletion_queue WHERE queue_id = ? AND ward_id = ?").bind(item.queue_id, wardId),
+    env.DB.prepare("INSERT INTO ops_deletion_marks (mark_id, ward_id, scope, deleted_at) VALUES (?, ?, 'record', ?)").bind(newId(), wardId, nowIso()),
+  ]);
 }
 
 export async function requestWardDeletion(db: D1Database, wardId: string): Promise<string> {
@@ -268,6 +312,10 @@ async function finishDeletion(env: Env, item: QueueRow): Promise<void> {
   const at = nowIso();
   if (item.target_type === "job" && item.target_id) {
     await eraseJob(env, item);
+    return;
+  }
+  if (item.target_type === "answer" && item.target_id) {
+    await eraseAnswer(env, item);
     return;
   }
   if (item.cursor === null) {
