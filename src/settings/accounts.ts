@@ -1,7 +1,7 @@
 // 席とアカウントの操作（区の設定と運用の画面が共有する）。HTTP を知らず、D1 だけを触る。
 // 全部の問い合わせは ward_id を where に持つ。席は鍵ではなく、誰がしたかの記録と交代のための名札。
 import { newId, nowIso } from "../core/ids";
-import { cleanName, generatePassword, generateSalt, hashPassword, nameKey } from "../core/password";
+import { cleanLoginId, cleanName, generatePassword, generateSalt, hashPassword, loginIdProblem, nameKey } from "../core/password";
 
 export type Failure = { ok: false; message: string };
 
@@ -19,6 +19,7 @@ export interface DeviceRow {
 
 export interface AccountRow {
   accountId: string;
+  loginId: string;
   name: string;
   seatId: string | null;
   seatTitle: string | null;
@@ -92,14 +93,14 @@ async function seatIsActive(db: D1Database, wardId: string, seatId: string): Pro
 export async function listAccounts(db: D1Database, wardId: string): Promise<AccountRow[]> {
   const accounts = await db
     .prepare(
-      `SELECT a.account_id, a.name, a.seat_id, s.title AS seat_title, a.created_at
+      `SELECT a.account_id, a.login_id, a.name, a.seat_id, s.title AS seat_title, a.created_at
          FROM accounts a
          LEFT JOIN seats s ON s.ward_id = a.ward_id AND s.seat_id = a.seat_id AND s.removed_at IS NULL
         WHERE a.ward_id = ? AND a.removed_at IS NULL
         ORDER BY a.created_at, a.name`,
     )
     .bind(wardId)
-    .all<{ account_id: string; name: string; seat_id: string | null; seat_title: string | null; created_at: string }>();
+    .all<{ account_id: string; login_id: string; name: string; seat_id: string | null; seat_title: string | null; created_at: string }>();
   const devices = await db
     .prepare(
       "SELECT device_id, account_id, label, created_at, last_seen_at FROM devices WHERE ward_id = ? ORDER BY last_seen_at DESC",
@@ -108,6 +109,7 @@ export async function listAccounts(db: D1Database, wardId: string): Promise<Acco
     .all<{ device_id: string; account_id: string; label: string; created_at: string; last_seen_at: string }>();
   return accounts.results.map((a) => ({
     accountId: a.account_id,
+    loginId: a.login_id,
     name: a.name,
     seatId: a.seat_title === null ? null : a.seat_id,
     seatTitle: a.seat_title,
@@ -118,6 +120,21 @@ export async function listAccounts(db: D1Database, wardId: string): Promise<Acco
   }));
 }
 
+async function defaultLoginId(db: D1Database, wardId: string, name: string): Promise<string> {
+  const cleaned = cleanName(name);
+  if (/^[A-Za-z0-9]+$/.test(cleaned)) return cleanLoginId(cleaned);
+  const row = await db
+    .prepare(
+      `SELECT COALESCE(MAX(CAST(substr(login_id, 5) AS INTEGER)), 0) AS max_number
+         FROM accounts
+        WHERE ward_id = ? AND removed_at IS NULL AND login_id GLOB 'user[0-9]*'
+          AND substr(login_id, 5) <> '' AND substr(login_id, 5) NOT GLOB '*[^0-9]*'`,
+    )
+    .bind(wardId)
+    .first<{ max_number: number }>();
+  return `user${(row?.max_number ?? 0) + 1}`;
+}
+
 /**
  * アカウントを足す。パスワードは Workers が作り、ここで一度だけ返す（保存は塩付きの要約だけ）。
  * 渡すのは足した人の仕事。createdBy は提供側が作る最初のアカウントでは null。
@@ -126,10 +143,22 @@ export async function addAccount(
   db: D1Database,
   wardId: string,
   input: { name: string; seatId?: string | null; createdBy?: string | null },
-): Promise<{ ok: true; accountId: string; name: string; password: string } | Failure> {
+): Promise<{ ok: true; accountId: string; loginId: string; name: string; password: string } | Failure> {
   const problem = labelProblem(input.name, "名前");
   if (problem) return { ok: false, message: problem };
   const name = cleanName(input.name);
+  const key = nameKey(name);
+  const nameInUse = await db
+    .prepare("SELECT 1 AS found FROM accounts WHERE ward_id = ? AND name_key = ? AND removed_at IS NULL")
+    .bind(wardId, key)
+    .first();
+  if (nameInUse) return { ok: false, message: "同じ名前のアカウントがもうあります。" };
+  let loginId = await defaultLoginId(db, wardId, name);
+  const loginIdInUse = await db
+    .prepare("SELECT 1 AS found FROM accounts WHERE ward_id = ? AND login_id = ? AND removed_at IS NULL")
+    .bind(wardId, loginId)
+    .first();
+  if (loginIdInUse) loginId = await defaultLoginId(db, wardId, "");
   const seatId = input.seatId || null;
   if (seatId && !(await seatIsActive(db, wardId, seatId))) return { ok: false, message: "その席は見つかりません。" };
 
@@ -139,14 +168,51 @@ export async function addAccount(
   const hash = await hashPassword(password, salt);
   const result = await db
     .prepare(
-      `INSERT INTO accounts (account_id, ward_id, name, name_key, seat_id, password_salt, password_hash, password_changed_at, created_at, created_by_account_id)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-        WHERE NOT EXISTS (SELECT 1 FROM accounts WHERE ward_id = ? AND name_key = ? AND removed_at IS NULL)`,
+      `INSERT INTO accounts (account_id, ward_id, login_id, name, name_key, seat_id, password_salt, password_hash, password_changed_at, created_at, created_by_account_id)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE NOT EXISTS (SELECT 1 FROM accounts WHERE ward_id = ? AND login_id = ? AND removed_at IS NULL)
+          AND NOT EXISTS (SELECT 1 FROM accounts WHERE ward_id = ? AND name_key = ? AND removed_at IS NULL)`,
     )
-    .bind(accountId, wardId, name, nameKey(name), seatId, salt, hash, nowIso(), nowIso(), input.createdBy ?? null, wardId, nameKey(name))
+    .bind(accountId, wardId, loginId, name, key, seatId, salt, hash, nowIso(), nowIso(), input.createdBy ?? null, wardId, loginId, wardId, key)
     .run();
-  if (result.meta.changes === 0) return { ok: false, message: "同じ名前のアカウントがもうあります。" };
-  return { ok: true, accountId, name, password };
+  if (result.meta.changes === 0) {
+    const duplicateName = await db
+      .prepare("SELECT 1 AS found FROM accounts WHERE ward_id = ? AND name_key = ? AND removed_at IS NULL")
+      .bind(wardId, key)
+      .first();
+    return duplicateName
+      ? { ok: false, message: "同じ名前のアカウントがもうあります。" }
+      : { ok: false, message: "その ID はもう使われています。もう一度お試しください。" };
+  }
+  return { ok: true, accountId, loginId, name, password };
+}
+
+/** ID を変更する。大文字小文字をそろえ、同じ区の他の人と重ならないようにする。 */
+export async function setAccountLoginId(
+  db: D1Database,
+  wardId: string,
+  accountId: string,
+  rawLoginId: string,
+): Promise<{ ok: true; loginId: string } | Failure> {
+  const problem = loginIdProblem(rawLoginId);
+  if (problem) return { ok: false, message: problem };
+  const loginId = cleanLoginId(rawLoginId);
+  const result = await db
+    .prepare(
+      `UPDATE accounts SET login_id = ?
+        WHERE ward_id = ? AND account_id = ? AND removed_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM accounts other WHERE other.ward_id = ? AND other.login_id = ? AND other.account_id <> ? AND other.removed_at IS NULL)`,
+    )
+    .bind(loginId, wardId, accountId, wardId, loginId, accountId)
+    .run();
+  if (result.meta.changes > 0) return { ok: true, loginId };
+  const existing = await db
+    .prepare("SELECT login_id FROM accounts WHERE ward_id = ? AND account_id = ? AND removed_at IS NULL")
+    .bind(wardId, accountId)
+    .first<{ login_id: string }>();
+  if (!existing) return { ok: false, message: "そのアカウントは見つかりません。" };
+  if (existing.login_id === loginId) return { ok: true, loginId };
+  return { ok: false, message: "その ID はもう使われています。" };
 }
 
 /**
@@ -194,11 +260,11 @@ export async function resetPassword(
   wardId: string,
   accountId: string,
   keepDeviceId?: string,
-): Promise<{ ok: true; name: string; password: string } | Failure> {
+): Promise<{ ok: true; loginId: string; name: string; password: string } | Failure> {
   const account = await db
-    .prepare("SELECT name FROM accounts WHERE ward_id = ? AND account_id = ? AND removed_at IS NULL")
+    .prepare("SELECT login_id, name FROM accounts WHERE ward_id = ? AND account_id = ? AND removed_at IS NULL")
     .bind(wardId, accountId)
-    .first<{ name: string }>();
+    .first<{ login_id: string; name: string }>();
   if (!account) return { ok: false, message: "そのアカウントは見つかりません。" };
   const password = generatePassword();
   const salt = generateSalt();
@@ -212,7 +278,7 @@ export async function resetPassword(
       .prepare("DELETE FROM devices WHERE ward_id = ? AND account_id = ? AND device_id <> ?")
       .bind(wardId, accountId, keepDeviceId ?? ""),
   ]);
-  return { ok: true, name: account.name, password };
+  return { ok: true, loginId: account.login_id, name: account.name, password };
 }
 
 /**

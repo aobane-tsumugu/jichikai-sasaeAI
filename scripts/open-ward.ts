@@ -36,7 +36,7 @@ interface OpenedWard {
   url: string;
   adminUrl: string;
   qrSvgUrl: string;
-  account: { name: string; password: string };
+  account: { loginId: string; name: string; password: string };
 }
 
 async function main(): Promise<void> {
@@ -94,11 +94,12 @@ async function main(): Promise<void> {
   console.log(`区を開きました: ${body.name}`);
   console.log(`  区のページ: ${body.url}`);
   console.log(`  役員画面:   ${body.adminUrl}`);
-  console.log(`  最初の役員: ${body.account.name}`);
+  console.log(`  最初の役員 ID: ${body.account.loginId}`);
+  console.log(`  表示名: ${body.account.name}`);
 
   const credentialsOut = argValue(argv, "--credentials-out");
   if (credentialsOut) {
-    writeFileSync(credentialsOut, `名前: ${body.account.name}\nパスワード: ${body.account.password}\n`, {
+    writeFileSync(credentialsOut, `ID: ${body.account.loginId}\n表示名: ${body.account.name}\nパスワード: ${body.account.password}\n`, {
       encoding: "utf8",
       mode: 0o600,
     });

@@ -5,6 +5,7 @@ import { DEVICE_COOKIE } from "./auth";
 import { newId, nowIso } from "./ids";
 import {
   cleanName,
+  cleanLoginId,
   generateDeviceToken,
   generatePassword,
   generateSalt,
@@ -47,27 +48,30 @@ export async function seedAccount(
   wardId: string,
   name: string,
   options: { seatId?: string | null; password?: string } = {},
-): Promise<AccountInfo & { password: string }> {
+): Promise<AccountInfo & { loginId: string; password: string }> {
   const accountId = newId();
+  const cleanedName = cleanName(name);
+  const loginId = /^[A-Za-z0-9]+$/.test(cleanedName) ? cleanLoginId(cleanedName) : `test${accountId.replace(/[^A-Za-z0-9]/g, "")}`;
   const password = options.password ?? generatePassword();
   const salt = generateSalt();
   await db
     .prepare(
-      `INSERT INTO accounts (account_id, ward_id, name, name_key, seat_id, password_salt, password_hash, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO accounts (account_id, ward_id, login_id, name, name_key, seat_id, password_salt, password_hash, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       accountId,
       wardId,
-      cleanName(name),
-      nameKey(name),
+      loginId,
+      cleanedName,
+      nameKey(cleanedName),
       options.seatId ?? null,
       salt,
       await hashPassword(password, salt),
       nowIso(),
     )
     .run();
-  return { accountId, name: cleanName(name), seatId: options.seatId ?? null, password };
+  return { accountId, loginId, name: cleanedName, seatId: options.seatId ?? null, password };
 }
 
 /** ログイン済みの端末の記憶を作り、Cookie ヘッダーの値を返す。 */

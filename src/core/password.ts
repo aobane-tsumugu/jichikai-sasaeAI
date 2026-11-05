@@ -85,3 +85,16 @@ export function cleanName(input: string): string {
 export function nameKey(input: string): string {
   return cleanName(input).normalize("NFKC").toLowerCase().replace(/\s/g, "");
 }
+
+/** ログイン ID は前後の空白を除き、半角英数字だけを受け付ける。 */
+export function cleanLoginId(input: string): string {
+  return input.trim().toLowerCase();
+}
+
+export function loginIdProblem(input: string): string | null {
+  const id = cleanLoginId(input);
+  if (id === "") return "ID を入れてください。";
+  if (id.length > 40) return "ID は 40 文字までです。";
+  if (!/^[A-Za-z0-9]+$/.test(id)) return "ID は半角の英数字だけで入力してください。";
+  return null;
+}
