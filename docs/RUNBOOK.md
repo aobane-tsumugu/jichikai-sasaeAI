@@ -62,7 +62,7 @@
 2. `https://jichikai.aobane-tsumugu.com/demoku/admin/projects/{projectId}` で「今年の中身」と「問い」を確認します。問いに選択肢があればそのボタンを押し、なければ「答え」に入力して「答える」を押します。「分からない」「後で」も選べます。AI が資料を正しく読んで日時・場所・協賛などへ反映することは実機で未確認です。
 3. `https://jichikai.aobane-tsumugu.com/demoku/admin/projects/{projectId}/draft` を開き、対象文書を選びます。案をAIに依頼するボタンは「AIに案を起こしてもらう」です。文面を手入力・修正する場合は「直した中身を保存」を押します。種類「案内」「手伝いの募集」を確認します。
 4. `https://jichikai.aobane-tsumugu.com/demoku/admin/projects/{projectId}/check` の「公開の下書きを確かめる」で「文書」を選び「開く」を押します。登録済みの名簿などを使う「照合結果」を読み、必要なら「案を直す」へ進みます。個人情報をすべて検出するかは実機で未確認です。
-5. `https://jichikai.aobane-tsumugu.com/demoku/admin/publish/{projectId}` の「紙の配布先」で「班を選ぶ」または「世帯を選ぶ」を選び、「班ごとの部数」や配る世帯を確認します。「公式 LINE」は必ず「今回は送らない」を選び、「配る内容を確認する」を押します。次の「配る内容の確認」で本文・紙の配布先と「今回は公式 LINE に送りません。」を読み、「配る」を押します。世帯を選んで実際に配った結果は実機で未確認です。
+5. `https://jichikai.aobane-tsumugu.com/demoku/admin/publish/{projectId}` で「班ごとの部数」を確認します。一部の世帯だけに紙を配る時は「世帯を選ぶ」を開いて世帯に印を付けます（印を付けると、その世帯にだけ配ります）。「公式 LINE」は必ず「今回は送らない」を選び、「配る内容を確認する」を押します。次の「配る内容の確認」で本文・紙の配布先と「今回は公式 LINE に送りません。」を読み、「配る」を押します。世帯を選んで実際に配った結果は実機で未確認です。
 6. 公開結果は `https://jichikai.aobane-tsumugu.com/demoku/p/{projectId}` と公開一覧 `https://jichikai.aobane-tsumugu.com/demoku/` で確認します。公開リンク、回答入口はコードにあります。文面・表示は実画面で確認します。公式 LINE の送信は行いません。
 7. 印刷は `https://jichikai.aobane-tsumugu.com/demoku/admin/print/{projectId}/{documentId}/{versionNo}` を開き、実際のリンク「案内と回答票」「回答票」「班長への一枚」「当番表と配置図」「役員会の記入欄」「協賛先の一覧」から選びます。ブラウザ印刷の見え方、班別の部数が名簿と合うことは実機で未確認です。
 
