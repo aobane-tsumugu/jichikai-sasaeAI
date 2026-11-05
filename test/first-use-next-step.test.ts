@@ -11,9 +11,17 @@ it("初めての役員にプロジェクト・資料・空間の次の操作を�
   const opening = "行事や総会など、仕事ごとにプロジェクトを開きます。";
   const materials = "去年の案内や記録の紙、Word や Excel を、見つかった物から送ってください。全部そろえなくてかまいません。";
   const emptyHome = await get(realApp, `${root}/`, cookie);
+  expect(emptyHome.status).toBe(200);
   const homeHtml = await emptyHome.text();
   expect(homeHtml).toContain(opening);
-  expect(homeHtml).toContain(`class="button" href="${root}/projects">プロジェクトを開く`);
+  // 入口は四つにまとめている。初めての人も「新しいプロジェクト」から作成画面へ進める。
+  expect(homeHtml).toContain(`class="button secondary" href="${root}/projects">新しいプロジェクト</a>`);
+  const projectEntry = await get(realApp, `${root}/projects`, cookie);
+  expect(projectEntry.status).toBe(200);
+  const projectEntryHtml = await projectEntry.text();
+  expect(projectEntryHtml).toContain("<h2>プロジェクトを開く</h2>");
+  expect(projectEntryHtml).toContain(`<form method="post" action="${root}/projects">`);
+  expect(projectEntryHtml).toContain('<button type="submit">開く</button>');
 
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "最初の行事（架空）", year: 2026, accountId: account.accountId,

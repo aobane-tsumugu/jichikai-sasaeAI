@@ -4,10 +4,10 @@ import { newId, nowIso } from "../core/ids";
 import { Hint, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { getReadings, listJobs } from "../intake/store";
-import { broadcastLineText, lineAccessToken } from "../line/api";
 import { getClient } from "../ai/deps";
 import { MODEL } from "../ai/anthropic";
 import { applyChange, getProjectState, getProjectSummary } from "./api";
+import { saveDocument } from "./actions";
 
 export const followupAdmin = new Hono<AdminEnv>();
 
@@ -99,8 +99,6 @@ followupAdmin.get("/requests/city/:projectId", async (c) => {
   return c.html(<Layout title={project.title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>{project.title} <Hint text="届いた通知を読み、締切や提出先、回答案を残す画面です。まず通知の内容と締切を確認してください。" /></h1><p><a href={adminPath(ward, "/requests/city")}>行政の依頼一覧</a></p>
     {c.req.query("saved") ? <Notice>記録しました。</Notice> : null}
-    {c.req.query("sent") ? <Notice>公式 LINE で送りました。</Notice> : null}
-    {c.req.query("error") ? <Notice error>送れませんでした。文と公式 LINE の設定を確かめてください。</Notice> : null}
     {sourceText ? <details class="panel"><summary>通知から読んだ要点</summary><p>{sourceText}</p></details> : null}
     <form method="post" action={adminPath(ward, `/requests/city/${encodeURIComponent(projectId)}`)} class="panel">
       {readDue ? <p>通知から読んだ期限: {readDue}</p> : null}
@@ -113,7 +111,7 @@ followupAdmin.get("/requests/city/:projectId", async (c) => {
       <label for="submittedOn">提出した日</label><input id="submittedOn" name="submittedOn" type="date" value={details?.submitted_on ?? ""} />
       <label for="noticeBody">住民に配る文</label><textarea id="noticeBody" name="noticeBody" maxlength={4000} rows={6}>{details?.notice_body ?? ""}</textarea>
       <button name="operation" value="save">記録する</button>
-      <button class="secondary" name="operation" value="send">公式 LINE で配る</button>
+      <button class="secondary" name="operation" value="send">配る画面へ進む</button> <Hint text="住民に配る文を「知らせ」として保存します。次の画面で内容と配る相手を確認できます。ここではまだ配りません。" />
     </form>
   </Layout>);
 });
@@ -147,23 +145,20 @@ followupAdmin.post("/requests/city/:projectId", async (c) => {
     });
     nextAnswer = response.content.filter((block) => block.type === "text").map((block) => block.text).join("\n").slice(0, 6000);
   }
-  if (operation === "send") {
-    if (!noticeBody || noticeBody.length > 4000) return c.text("配る文を入力してください。", 400);
-    const now = nowIso();
-    await saveCityRequestDetails(c.env.DB, ward.wardId, projectId, dueOn || null, nextAnswer, submittedWhat, submittedTo, submittedOn || null, noticeBody, null, account.accountId, now);
-    await recordSubmittedItem(c.env.DB, ward.wardId, projectId, submittedWhat, submittedTo, submittedOn, submissionId, account.accountId);
-    try {
-      await broadcastLineText(lineAccessToken(c.env), noticeBody);
-    } catch {
-      return c.redirect(`${adminPath(ward, `/requests/city/${encodeURIComponent(projectId)}`)}?error=1`, 303);
-    }
-    await c.env.DB.prepare("UPDATE city_request_details SET notice_sent_at = ?, updated_at = ? WHERE ward_id = ? AND project_id = ?")
-      .bind(now, now, ward.wardId, projectId).run();
-    return c.redirect(`${adminPath(ward, `/requests/city/${encodeURIComponent(projectId)}`)}?sent=1`, 303);
-  }
+  if (operation === "send" && (!noticeBody || noticeBody.length > 4000)) return c.text("配る文を入力してください。", 400);
   const now = nowIso();
   await saveCityRequestDetails(c.env.DB, ward.wardId, projectId, dueOn || null, nextAnswer, submittedWhat, submittedTo, submittedOn || null, noticeBody, null, account.accountId, now);
   await recordSubmittedItem(c.env.DB, ward.wardId, projectId, submittedWhat, submittedTo, submittedOn, submissionId, account.accountId);
+  if (operation === "send") {
+    const current = await getProjectSummary(c.env.DB, ward.wardId, projectId);
+    if (!current) return c.notFound();
+    const saved = await saveDocument(c.env.DB, ward.wardId, projectId, account.accountId, {
+      kind: "notice", title: project.title, scope: "public",
+      body: JSON.stringify({ text: noticeBody, items: [] }), basedOn: current.stateVersion,
+    });
+    if (!saved) return c.text("知らせを保存できませんでした。プロジェクトが開いているか確かめてください。", 400);
+    return c.redirect(adminPath(ward, `/publish/${encodeURIComponent(projectId)}`), 303);
+  }
   return c.redirect(`${adminPath(ward, `/requests/city/${encodeURIComponent(projectId)}`)}?saved=1`, 303);
 });
 
