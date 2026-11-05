@@ -17,7 +17,7 @@ const packs: Record<DocumentKind, DraftPack> = {
   },
   recruitment: {
     version: "draft-recruitment@4", kind: "recruitment", title: "手伝いの募集", scope: "public",
-    instruction: `住民向けの手伝い募集を作ってください。手伝いの内容、時間帯、場所、申し出の締切、申し出方法、問い合わせ先を分かる範囲で含めます。状態にある募集内容だけを書き、加入を条件にしません。回答先や紙での申し出方法が分からない時は空欄と問いを残します。案内本文や出欠の案を混ぜません。${common}`,
+    instruction: `住民向けの手伝い募集を作ってください。申し出の方法は、区のページの「一回だけ手伝える募集」から名前と手伝える時間帯だけで申し込めること、自治会に入っていなくてよいことを書きます。手伝いの内容、時間帯、場所、申し出の締切、申し出方法、問い合わせ先を分かる範囲で含めます。状態にある募集内容だけを書き、加入を条件にしません。回答先や紙での申し出方法が分からない時は空欄と問いを残します。案内本文や出欠の案を混ぜません。${common}`,
   },
   duty_roster: {
     version: "draft-duty-roster@4", kind: "duty_roster", title: "当番表", scope: "space",
