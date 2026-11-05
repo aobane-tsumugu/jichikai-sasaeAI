@@ -3,7 +3,7 @@ import { AdminPage } from "../core/admin-ui";
 import { adminPath } from "../core/auth";
 import { Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
-import { requestAnswerDeletion, requestJobDeletion } from "../ops/lifecycle";
+import { requestAnswerDeletion, requestJobDeletion, requestProjectDeletion } from "../ops/lifecycle";
 
 export const deletion = new Hono<AdminEnv>();
 
@@ -22,9 +22,11 @@ deletion.get("/", async (c) => {
     GROUP BY j.job_id ORDER BY j.created_at DESC LIMIT 100`).bind(ward.wardId)
     .all<{ job_id: string; created_at: string; via: string; filename: string; kind: string; title: string | null }>();
   const queue = await c.env.DB.prepare(`SELECT state, COUNT(*) AS count FROM ops_deletion_queue
-    WHERE ward_id = ? AND target_type IN ('job', 'answer') GROUP BY state`).bind(ward.wardId)
+    WHERE ward_id = ? AND target_type IN ('job', 'answer', 'project') GROUP BY state`).bind(ward.wardId)
     .all<{ state: string; count: number }>();
   const counts = new Map(queue.results.map((row) => [row.state, row.count]));
+  const projects = await c.env.DB.prepare("SELECT project_id, title FROM projects WHERE ward_id = ? ORDER BY created_at DESC")
+    .bind(ward.wardId).all<{ project_id: string; title: string }>();
   // Web と電話で受けた回答は原本を持たないので、記録の消去とは別に一件ずつ消す。
   const answers = await c.env.DB.prepare(`SELECT a.answer_id, a.household, a.district, a.source, a.created_at, p.title
     FROM project_answers a JOIN projects p ON p.ward_id = a.ward_id AND p.project_id = a.project_id
@@ -35,6 +37,13 @@ deletion.get("/", async (c) => {
     {c.req.query("queued") === "1" ? <Notice>消去を受け付けました。処理は続きから進みます。</Notice> : null}
     <p>住民から希望が届いたら、対象の記録を選んで処理します。原本、読み取った内容、その記録を探す索引を一緒に消します。AI 側で処理中の場合も、終了後に消します。</p>
     <p>受付 {counts.get("pending") ?? 0} 件、処理中 {counts.get("running") ?? 0} 件、要対応 {counts.get("error") ?? 0} 件</p>
+    <h2>プロジェクト</h2>
+    {projects.results.map((project) => <section class="panel">
+      <p>{project.title}</p>
+      <form method="post" action={adminPath(ward, `/settings/deletion/projects/${project.project_id}`)} onsubmit={`return confirm(${JSON.stringify(`「${project.title}」の原本、回答、配った案内などを消します。続けますか？`)})`}>
+        <button class="danger">このプロジェクトを消す</button>
+      </form>
+    </section>)}
     <h2>対象の記録</h2>
     {jobs.results.map((job) => <section class="panel">
       <p>{job.title ? `${job.title} / ` : ""}{job.filename || (job.kind === "text" ? "一行の文" : "名前のない記録")} / {shownAt(job.created_at)}</p>
@@ -61,6 +70,12 @@ deletion.post("/answers/:answerId", async (c) => {
   const { ward } = c.var;
   if (!(await requestAnswerDeletion(c.env.DB, ward.wardId, c.req.param("answerId")))) return c.notFound();
   return c.redirect(adminPath(ward, "/settings/deletion?answer=1"), 303);
+});
+
+deletion.post("/projects/:projectId", async (c) => {
+  const { ward } = c.var;
+  if (!(await requestProjectDeletion(c.env.DB, ward.wardId, c.req.param("projectId")))) return c.notFound();
+  return c.redirect(adminPath(ward, "/settings/deletion?queued=1"), 303);
 });
 
 deletion.post("/:jobId", async (c) => {
