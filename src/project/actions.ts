@@ -1,6 +1,6 @@
 import { newId, nowIso } from "../core/ids";
 import { applyChange } from "./apply";
-import { DEFAULT_SCOPE, DOCUMENT_KIND_LABEL, cleanRowData, isItemKey, isTableKey, rowMatchKey, type DocumentKind, type Scope, type ItemKey, type RowData } from "./model";
+import { DEFAULT_SCOPE, DOCUMENT_KIND_LABEL, TABLES, cleanRowData, isItemKey, isTableKey, rowMatchKey, type DocumentKind, type Scope, type ItemKey, type RowData } from "./model";
 import { hashOf, stableStringify } from "./util";
 
 /** 当番表の行を役員が画面で直す。行の鍵を変えても同じ行を保ち、変更履歴と古い案の印を残す。 */
@@ -81,24 +81,43 @@ export async function answerQuestion(db: D1Database, wardId: string, projectId: 
   const value = answer.trim().slice(0, 2000);
   if (action === "answer" && !value) return false;
   if (action === "answer") {
-    const question = await db.prepare("SELECT kind, target, detail FROM project_questions WHERE ward_id = ? AND project_id = ? AND question_id = ? AND state IN ('open', 'later')")
-      .bind(wardId, projectId, questionId).first<{ kind: string; target: string | null; detail: string | null }>();
+    const question = await db.prepare("SELECT kind, text, target, detail FROM project_questions WHERE ward_id = ? AND project_id = ? AND question_id = ? AND state IN ('open', 'later')")
+      .bind(wardId, projectId, questionId).first<{ kind: string; text: string; target: string | null; detail: string | null }>();
+    let applied = false;
     if (question?.kind === "decide" && question.target && isItemKey(question.target)) {
       const result = await applyChange(db, wardId, projectId, { kind: "item", itemKey: question.target, value,
         source: { kind: "person", accountId }, confidence: "high", packVersion: "person-answer@1", requestId: questionId });
       if (result.status === "rejected" || result.status === "dropped") return false;
+      applied = true;
     }
     if (question?.kind === "conflict" && question.detail) {
-      let detail: { itemKey?: string; options?: string[]; table?: string; rowId?: string; field?: string; values?: Array<string | number> };
+      let detail: { itemKey?: string; options?: string[]; table?: string; rowId?: string; field?: string; values?: Array<string | number>; candidateRowIds?: string[]; changeId?: string };
       try { detail = JSON.parse(question.detail) as typeof detail; } catch { return false; }
       const options = detail.options ?? [];
       const index = options.indexOf(value);
       if (index < 0) return false;
       const source = { kind: "person" as const, accountId };
-      if (detail.itemKey && isItemKey(detail.itemKey) && options[index] !== undefined) {
+      if (detail.changeId && detail.candidateRowIds && detail.table && isTableKey(detail.table)) {
+        // 照合が曖昧で保留した行を、答えのとおりに入れる。同じ相手なら相手の鍵に揃えて更新し、別の相手なら足す
+        const held = await db.prepare("SELECT payload FROM project_changes WHERE ward_id = ? AND project_id = ? AND change_id = ?")
+          .bind(wardId, projectId, detail.changeId).first<{ payload: string }>();
+        const heldData = held ? (JSON.parse(held.payload) as { data?: Record<string, string | number> }).data : undefined;
+        if (!heldData) return false;
+        const sameRowId = detail.candidateRowIds[index];
+        const sameRow = sameRowId ? await db.prepare("SELECT data FROM project_rows WHERE ward_id = ? AND project_id = ? AND row_id = ? AND removed_at IS NULL")
+          .bind(wardId, projectId, sameRowId).first<{ data: string }>() : null;
+        const def = TABLES[detail.table];
+        const keys = sameRow ? Object.fromEntries(Object.entries(JSON.parse(sameRow.data) as Record<string, string | number>)
+          .filter(([name]) => [...def.keyFields, ...(def.optionalKeyFields ?? [])].includes(name))) : {};
+        const result = await applyChange(db, wardId, projectId, { kind: "row", table: detail.table, data: { ...heldData, ...keys },
+          source, confidence: "high", packVersion: "person-conflict@1", requestId: questionId });
+        if (result.status === "rejected" || result.status === "dropped") return false;
+        applied = true;
+      } else if (detail.itemKey && isItemKey(detail.itemKey) && options[index] !== undefined) {
         const result = await applyChange(db, wardId, projectId, { kind: "item", itemKey: detail.itemKey as ItemKey, value,
           source, confidence: "high", packVersion: "person-conflict@1", requestId: questionId });
         if (result.status === "rejected" || result.status === "dropped") return false;
+        applied = true;
       } else if (detail.table && isTableKey(detail.table) && detail.rowId && detail.field && detail.values?.[index] !== undefined) {
         const row = await db.prepare("SELECT data FROM project_rows WHERE ward_id = ? AND project_id = ? AND row_id = ? AND removed_at IS NULL")
           .bind(wardId, projectId, detail.rowId).first<{ data: string }>();
@@ -108,7 +127,15 @@ export async function answerQuestion(db: D1Database, wardId: string, projectId: 
         const result = await applyChange(db, wardId, projectId, { kind: "row", table: detail.table, data,
           source, confidence: "high", packVersion: "person-conflict@1", requestId: questionId });
         if (result.status === "rejected" || result.status === "dropped") return false;
+        applied = true;
       }
+    }
+    if (question && !applied) {
+      // どの中身にも当たらない答えも、決めたこととして記録に残す（前提 4、12）
+      const result = await applyChange(db, wardId, projectId, { kind: "row", table: "decisions",
+        data: { what: `${question.text.slice(0, 160)} → ${value.slice(0, 200)}`, decidedOn: nowIso().slice(0, 10) },
+        source: { kind: "person", accountId }, confidence: "high", packVersion: "person-answer@1", requestId: questionId });
+      if (result.status === "rejected") return false;
     }
   }
   const r = await db.prepare(`UPDATE project_questions SET state = ?, answer = ?, answered_at = ?, answered_by_account_id = ?
