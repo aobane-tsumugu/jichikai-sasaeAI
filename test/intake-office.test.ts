@@ -142,6 +142,12 @@ describe("Excel の展開", () => {
     });
   }
 
+  it("要素に接頭辞が付いた Excel も同じに読む", async () => {
+    const prefixed = Object.fromEntries(Object.entries(XLSX).map(([name, xml]) => [name, name.endsWith(".rels") ? xml : xml.replace(/<(\/?)(?=[a-zA-Z])/g, "<$1x:")]));
+    const plain = await extractOffice((await makeZip(XLSX, false)).buffer as ArrayBuffer);
+    expect(await extractOffice((await makeZip(prefixed, false)).buffer as ArrayBuffer)).toEqual(plain);
+  });
+
   it("zip でない物は開けない", async () => {
     await expect(extractOffice(new Uint8Array([1, 2, 3, 4]))).rejects.toThrow();
   });

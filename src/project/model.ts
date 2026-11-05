@@ -152,6 +152,7 @@ export const TABLES: Record<TableKey, TableDef> = {
         label: "出席",
         def: { type: "enum", values: ["present", "absent"], labels: { present: "出席", absent: "欠席" } },
       },
+      note: { label: "備考", def: TEXT },
     },
     keyFields: ["slot"],
     optionalKeyFields: ["task"],

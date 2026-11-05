@@ -146,14 +146,19 @@ export const SEND_SCRIPT = String.raw`(function (root) {
     return serial % 1 === 0 ? iso.slice(0, 10) : iso.slice(0, 16).replace('T', ' ');
   }
 
+  // 作った道具によっては要素に x: などの接頭辞が付く。読む前に外す
+  async function sheetXml(zip, name) {
+    return (await zip.text(name)).replace(/<(\/?)[A-Za-z_][\w.-]*:/g, '<$1');
+  }
+
   async function extractXlsx(zip) {
-    var wb = await zip.text('xl/workbook.xml');
+    var wb = await sheetXml(zip, 'xl/workbook.xml');
     var rels = await zip.text('xl/_rels/workbook.xml.rels');
     var relTarget = {};
     rels.replace(/<Relationship\b[^>]*>/g, function (tag) { relTarget[attr(tag, 'Id')] = attr(tag, 'Target'); return ''; });
 
     var shared = [];
-    var sstXml = await zip.text('xl/sharedStrings.xml');
+    var sstXml = await sheetXml(zip, 'xl/sharedStrings.xml');
     sstXml.replace(/<si\b[^>]*>([\s\S]*?)<\/si>/g, function (m, inner) {
       var text = '';
       inner.replace(/<rPh\b[\s\S]*?<\/rPh>/g, '').replace(/<t(?:\s[^>]*)?>([^<]*)<\/t>/g, function (mm, t) { text += unescapeXml(t); return ''; });
@@ -163,7 +168,7 @@ export const SEND_SCRIPT = String.raw`(function (root) {
 
     var codes = {};
     var xfFormat = [];
-    var styles = await zip.text('xl/styles.xml');
+    var styles = await sheetXml(zip, 'xl/styles.xml');
     styles.replace(/<numFmt\b[^>]*>/g, function (tag) { codes[parseInt(attr(tag, 'numFmtId'), 10)] = attr(tag, 'formatCode'); return ''; });
     var xfs = /<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/.exec(styles);
     if (xfs) xfs[1].replace(/<xf\b[^>]*>/g, function (tag) { xfFormat.push(parseInt(attr(tag, 'numFmtId') || '0', 10)); return ''; });
@@ -175,7 +180,7 @@ export const SEND_SCRIPT = String.raw`(function (root) {
     for (var s = 0; s < sheets.length; s++) {
       var target = relTarget[sheets[s].rid] || '';
       var path = target.charAt(0) === '/' ? target.slice(1) : 'xl/' + target;
-      var xml = await zip.text(path);
+      var xml = await sheetXml(zip, path);
       var grid = [];
       var maxRow = 0;
       var reCell = /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g;

@@ -95,6 +95,16 @@ admin.get("/projects/:projectId", async (c) => {
     ...state.tables.sponsors.map((row) => ({ data: { counterpart: row.data.name ?? "", direction: "income", amount: row.data.amount ?? "", date: "", note: row.data.reply ?? "" } })),
     ...state.tables.ledger,
   ];
+  const questionOrder: Record<string, number> = { conflict: 0, decide: 1, unreadable: 2, map_gap: 3, discarded: 4 };
+  const sortedQuestions = [...state.questions].sort((a, b) => (questionOrder[a.kind] ?? 5) - (questionOrder[b.kind] ?? 5));
+  const firstQuestions = sortedQuestions.slice(0, 5);
+  const laterQuestions = sortedQuestions.slice(5);
+  const questionPanel = (q: (typeof state.questions)[number]) => <section class="panel" id={`question-${q.questionId}`}><strong>{q.text}</strong>{q.options?.length ? <ul>{q.options.map((o) => <li>{o}</li>)}</ul> : null}
+      <form method="post" action={adminPath(ward, `/projects/${projectId}/questions/${q.questionId}`)}>
+        {q.options?.length ? <><label for={`answer-${q.questionId}`}>一つ選ぶ</label><select id={`answer-${q.questionId}`} name="answer">{q.options.map((o) => <option>{o}</option>)}</select></> : <><label for={`answer-${q.questionId}`}>答え</label><input id={`answer-${q.questionId}`} name="answer" maxlength={2000} /></>}
+        <button name="action" value="answer">答える</button> <button class="secondary" name="action" value="unknown">分からない</button> <button class="secondary" name="action" value="later">後で</button>
+      </form>
+    </section>;
   return c.html(<Layout title={project.title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/projects")}>プロジェクト一覧</a>}>
     <h1>{project.title}</h1>
     <p><a href={adminPath(ward, "/requests/city")}>行政の依頼</a> | <a href={adminPath(ward, "/inquiries")}>問い合わせと要望</a> | <a href={adminPath(ward, "/ledger")}>帳簿</a></p>
@@ -102,12 +112,8 @@ admin.get("/projects/:projectId", async (c) => {
     <form method="post" action={adminPath(ward, `/projects/${projectId}/title`)}><label for="title">題を直す</label><input id="title" name="title" value={project.title} maxlength={100} required /><button class="secondary">保存</button></form>
     <p>{PROJECT_KIND_LABEL[project.kind]} / {project.year}年</p>
     <h2>問い</h2>
-    {state.questions.map((q) => <section class="panel" id={`question-${q.questionId}`}><strong>{q.text}</strong>{q.options?.length ? <ul>{q.options.map((o) => <li>{o}</li>)}</ul> : null}
-      <form method="post" action={adminPath(ward, `/projects/${projectId}/questions/${q.questionId}`)}>
-        {q.options?.length ? <><label for={`answer-${q.questionId}`}>一つ選ぶ</label><select id={`answer-${q.questionId}`} name="answer">{q.options.map((o) => <option>{o}</option>)}</select></> : <><label for={`answer-${q.questionId}`}>答え</label><input id={`answer-${q.questionId}`} name="answer" maxlength={2000} /></>}
-        <button name="action" value="answer">答える</button> <button class="secondary" name="action" value="unknown">分からない</button> <button class="secondary" name="action" value="later">後で</button>
-      </form>
-    </section>)}
+    {firstQuestions.map(questionPanel)}
+    {laterQuestions.length ? <details><summary>ほかの問い（{laterQuestions.length} 件）</summary>{laterQuestions.map(questionPanel)}</details> : null}
     {state.questions.length === 0 ? <p>今、問いはありません。</p> : null}
     <h2 id="materials">材料とその影響</h2>
     {await Promise.all(jobs.map(async (job) => {
@@ -116,7 +122,7 @@ admin.get("/projects/:projectId", async (c) => {
       return <section class="panel" id="materials"><h3>{job.first_filename || "一行の文"}</h3><p>{job.status === "done" ? "反映しました" : job.status === "failed" ? "読めませんでした" : "処理中または確認中"}</p>
         {originals.map((original) => { const target = adminPath(ward, `/intake/originals/${original.original_id}`); const related = readings.filter((r) => "fields" in r.body ? r.body.fields.some((f) => f.original_id === original.original_id) || r.body.text_blocks.some((b) => b.original_id === original.original_id) : r.body.rows.some((row) => row.original_id === original.original_id)); return <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:1rem;align-items:start;margin:1rem 0">
           <div><a href={target} target="_blank">元の物を開く: {original.filename || "一行の文"}</a>{original.media_type.startsWith("image/") ? <a href={target} target="_blank"><img src={target} alt="入った元の写真" loading="lazy" style="display:block;width:100%;height:auto;margin-top:.5rem" /></a> : null}</div>
-          <div>{related.map((r) => <details open><summary>読み取った中身</summary><p>{r.body.summary}</p>
+          <div>{related.map((r) => <details><summary>読み取った中身</summary><p>{r.body.summary}</p>
             {"fields" in r.body ? <>{r.body.fields.filter((f) => f.original_id === original.original_id).map((f) => <p><a href={target} target="_blank">{f.name}: {f.value}</a>（写真全体・{f.locator} / 確かさ{CONFIDENCE_LABEL[f.confidence]}）</p>)}{r.body.text_blocks.filter((b) => b.original_id === original.original_id).map((b) => <p><a href={target} target="_blank">{b.text}</a>（写真全体・{b.locator}）</p>)}</> : r.body.rows.filter((row) => row.original_id === original.original_id).map((row) => <p><a href={target} target="_blank">{row.household_name} / {row.ward_group}</a>（写真全体・{row.locator}）</p>)}
           </details>)}</div>
         </div>; })}
