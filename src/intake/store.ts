@@ -156,6 +156,11 @@ export async function withdrawJob(env: Pick<Env, "DB" | "ORIGINALS">, wardId: st
   const bucket = new WardBucket(env.ORIGINALS, wardId);
   await Promise.all(originals.filter((o) => o.r2_path).map((o) => bucket.delete(o.r2_path as string)));
   await env.DB.batch([
+    // 本文を消す前に、読み取り全体と原本ごとの検索用の記録も消す。
+    env.DB.prepare(`DELETE FROM archive_search_entries WHERE ward_id = ? AND record_type = 'reading' AND (
+      source_id IN (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?) OR
+      content IN (SELECT body FROM readings WHERE ward_id = ? AND job_id = ?))`)
+      .bind(wardId, wardId, jobId, wardId, jobId),
     env.DB.prepare(
       "UPDATE originals SET withdrawn_at = ?, r2_path = NULL WHERE ward_id = ? AND job_id = ? AND withdrawn_at IS NULL",
     ).bind(now, wardId, jobId),
