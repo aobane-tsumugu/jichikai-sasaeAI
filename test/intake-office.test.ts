@@ -165,6 +165,34 @@ describe("Excel の展開", () => {
     expect(JSON.stringify(result.tables)).toContain("2026-10-22");
   });
 
+  it("当番表の時刻には架空の日付を付けず、年月日と日時はそのまま読む", async () => {
+    const workbook = {
+      ...XLSX,
+      "xl/styles.xml": `<styleSheet><numFmts>
+        <numFmt numFmtId="164" formatCode="hh:mm"/>
+        <numFmt numFmtId="165" formatCode="yyyy/m/d h:mm"/>
+        </numFmts><cellXfs><xf numFmtId="20"/><xf numFmtId="21"/>
+        <xf numFmtId="164"/><xf numFmtId="14"/><xf numFmtId="165"/>
+        </cellXfs></styleSheet>`,
+      "xl/worksheets/sheet1.xml": `<worksheet><sheetData>
+        <row r="1"><c r="A1" t="inlineStr"><is><t>開始時刻</t></is></c>
+          <c r="B1" s="0"><v>0</v></c><c r="C1" s="0"><v>0.5</v></c></row>
+        <row r="2"><c r="A2" t="inlineStr"><is><t>秒のある時刻</t></is></c>
+          <c r="B2" s="1"><v>${(12 * 3600 + 34 * 60 + 56) / 86400}</v></c></row>
+        <row r="3"><c r="A3" t="inlineStr"><is><t>独自の時刻書式</t></is></c>
+          <c r="B3" s="2"><v>0.25</v></c></row>
+        <row r="4"><c r="A4" s="3"><v>46319</v></c><c r="B4" s="4"><v>46319.5</v></c></row>
+        </sheetData></worksheet>`,
+    };
+    const result = await extractOffice(await makeZip(workbook, false)) as { tables: { rows: string[][] }[] };
+    expect(result.tables[0]!.rows).toEqual([
+      ["開始時刻", "00:00", "12:00"],
+      ["秒のある時刻", "12:34:56"],
+      ["独自の時刻書式", "06:00"],
+      ["2026-10-24", "2026-10-24 12:00"],
+    ]);
+  });
+
   it("zip でない物は開けない", async () => {
     await expect(extractOffice(new Uint8Array([1, 2, 3, 4]))).rejects.toThrow();
   });
