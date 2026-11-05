@@ -243,22 +243,42 @@ else {
   } catch (error) { fail(4, "全文索引と記録に聞く", error, start); }
 }
 
-// 5. 「実態の一枚」の公開・印刷画面がある場合に確認する。
+// 5. 活動紹介を保存し、閉じた後に掲載する。後続の確認のため開き直す。
 if (!projectId) skip(5, "実態の一枚", "前提のプロジェクトを開けませんでした");
 else {
   const start = Date.now();
   try {
-    const page = await get(admin + "/projects/" + projectId);
-    const link = /href="([^"]*\/activity[^"]*)"/.exec(page.html)?.[1];
-    if (!link) skip(5, "実態の一枚", "役員画面に実態の一枚を作る入口がありません");
-    else {
-      const activity = await get(unescapeHtml(link));
-      if (!activity.response.ok) throw new Error("実態の一枚を開けません");
-      const form = readForm(activity.html, "/activity");
-      const saved = await post(form.action, form.fields);
-      if (saved.status !== 303) throw new Error("実態の一枚を保存・配布できません");
-      record(5, "実態の一枚", "通過", "画面を開き、表示された内容で保存", saved.status, start);
+    const path = admin + "/close/" + projectId;
+    const page = await get(path);
+    if (!page.response.ok) throw new Error("報告と閉じる画面を開けません");
+    const form = readForm(page.html, path + "/activity");
+    form.fields.introduction = "会場の予約と案内を役員が受け持ちました（架空）。";
+    form.fields.membershipBurden = "年に一度の当番があります（架空）。";
+    form.fields.membershipBenefit = "行事の案内が届きます（架空）。";
+    const taskId = /<input\b[^>]*name="taskId"[^>]*value="([^"]*)"/i.exec(page.html)?.[1];
+    if (taskId) form.fields.taskId = unescapeHtml(taskId);
+    form.fields.action = "save";
+    const saved = await post(form.action, form.fields);
+    if (saved.status !== 303 || saved.headers.get("location") !== path + "?activity=saved") throw new Error("活動紹介の下書きを保存できません");
+    const close = readForm(page.html, path + "/finalize");
+    const closed = await post(close.action, close.fields);
+    if (closed.status !== 303) throw new Error("確認用のプロジェクトを閉じられません");
+    try {
+      const closedPage = await get(path);
+      const publish = readForm(closedPage.html, path + "/activity");
+      publish.fields.action = "publish";
+      if (taskId) publish.fields.taskId = unescapeHtml(taskId);
+      const published = await post(publish.action, publish.fields);
+      if (published.status !== 303 || published.headers.get("location") !== path + "?activity=published") throw new Error("活動紹介を区のページに載せられません");
+      const publicPage = await get(wardPath + "/work/" + projectId);
+      if (!publicPage.response.ok || !publicPage.html.includes(form.fields.introduction) || !publicPage.html.includes(form.fields.membershipBurden) || !publicPage.html.includes(form.fields.membershipBenefit)) throw new Error("掲載した活動紹介を区のページで確認できません");
+    } finally {
+      const closedPage = await get(path);
+      const reopen = readForm(closedPage.html, path + "/reopen");
+      const reopened = await post(reopen.action, reopen.fields);
+      if (reopened.status !== 303) throw new Error("後続の確認用にプロジェクトを開き直せません");
     }
+    record(5, "実態の一枚", "通過", "架空の活動紹介を保存し、閉じた後に区のページで掲載内容を確認。後続の確認用に開き直した", saved.status, start);
   } catch (error) { fail(5, "実態の一枚", error, start); }
 }
 
@@ -297,15 +317,25 @@ if (projectId) {
   } catch (error) { fail(7, "当番表の編集", error, start); }
 } else skip(7, "当番表の編集", "プロジェクトを開けませんでした");
 
-// 8. 名簿を選んだ一部だけに配る画面があるかを確認。全体配布は行わない。
+// 8. 名簿から一世帯を選び、配る内容の確認画面まで進む。配る操作は行わない。
 if (!projectId) skip(8, "対象者への配布", "前提のプロジェクトを開けませんでした");
 else {
   const start = Date.now();
   try {
     const page = await get(admin + "/publish/" + projectId);
     if (!page.response.ok) throw new Error("配布画面を開けません");
-    if (!/name="(?:households|recipients|target_households)"/.test(page.html)) skip(8, "対象者への配布", "配布画面に対象世帯を一部選ぶ欄がなく、送信操作は実行しません");
-    else skip(8, "対象者への配布", "対象世帯の指定はありますが、本物の住民に送らないため配布は実行しません");
+    const household = /<input\b[^>]*name="household"[^>]*value="([^"]*)"/i.exec(page.html)?.[1];
+    if (!household) skip(8, "対象者への配布", "名簿に選べる世帯がありません");
+    else {
+      const form = readForm(page.html, "/publish/" + projectId + "/confirm");
+      form.fields.household = unescapeHtml(household);
+      form.fields.lineDelivery = "skip";
+      const confirm = await post(form.action, form.fields);
+      const html = await confirm.text();
+      const target = JSON.parse(form.fields.household) as [string, string];
+      if (!confirm.ok || !unescapeHtml(html).includes("紙の配布先: " + target.join(" / ")) || !html.includes("今回は公式 LINE に送りません")) throw new Error("選んだ世帯への紙の配布先を確認できません");
+      record(8, "対象者への配布", "通過", "一世帯を選び、紙の配布先と公式 LINE に送らない選択を確認。配る操作は実行していない", confirm.status, start);
+    }
   } catch (error) { fail(8, "対象者への配布", error, start); }
 }
 
@@ -353,23 +383,25 @@ else {
   } catch (error) { fail(11, "行政の依頼と帳簿", error, start); }
 }
 
-// 12. 新しいプロジェクトの原本を消す機能があれば、公開と記録からの削除を確かめる。
+// 12. この通しの回答票の記録を「消す求め」から受け付ける。消去完了は待たない。
 if (!projectId) skip(12, "原本を消す", "前提のプロジェクトを開けませんでした");
 else {
   const start = Date.now();
   try {
-    const intake = await get(admin + "/intake?project=" + encodeURIComponent(projectId));
-    const originalId = sheetOriginal;
-    const withdrawAction = /<form\b[^>]*action="([^"]*\/intake\/[^/"?]+\/withdraw)"[^>]*>/i.exec(intake.html)?.[1];
-    if (!originalId || !withdrawAction) skip(12, "原本を消す", "新しいプロジェクトの回答票が取り下げ可能な状態ではありません");
+    if (!sheetOriginal) skip(12, "原本を消す", "この通しで受け取った回答票の原本がありません");
     else {
-      const originalPage = await get(admin + "/intake/originals/" + originalId);
-      if (!originalPage.response.ok) throw new Error("原本を開けません");
-      const removed = await post(unescapeHtml(withdrawAction), {});
-      if (removed.status !== 303) throw new Error("原本を取り下げられません");
-      const [publicPage, originalAfter, recordPage] = await Promise.all([get(wardPath + "/p/" + projectId), get(admin + "/intake/originals/" + originalId), get(admin + "/projects/" + projectId)]);
-      if (!publicPage.response.ok || publicPage.html.includes(sheetFilename) || originalAfter.response.status !== 404 || recordPage.html.includes("/intake/originals/" + originalId)) throw new Error("公開側または記録から原本が見えなくなったことを確認できません");
-      record(12, "原本を消す", "通過", "原本と読み取りを取り下げ、原本が開けず、公開案内にファイル名がなく、記録に原本リンクがないことを確認", removed.status, start);
+      const page = await get(admin + "/settings/deletion");
+      if (!page.response.ok) throw new Error("消す求めの画面を開けません");
+      const section = [...page.html.matchAll(/<section\b[^>]*>[\s\S]*?<\/section>/gi)]
+        .map(match => match[0]).find(html => unescapeHtml(html).includes(projectTitle) && unescapeHtml(html).includes(sheetFilename));
+      if (!section) throw new Error("今回のプロジェクトの回答票を消す求めで選べません");
+      const form = readForm(section, admin + "/settings/deletion/");
+      const queued = await post(form.action, form.fields);
+      const location = queued.headers.get("location");
+      if (queued.status !== 303 || location !== admin + "/settings/deletion?queued=1") throw new Error("原本の消去を受け付けられません");
+      const accepted = await get(location);
+      if (!accepted.response.ok || !accepted.html.includes("消去を受け付けました。処理は続きから進みます。")) throw new Error("原本の消去の受付を確認できません");
+      record(12, "原本を消す", "通過", "今回の回答票の記録を区の設定の消す求めから受け付けた。消去完了は未確認", accepted.response.status, start);
     }
   } catch (error) { fail(12, "原本を消す", error, start); }
 }
