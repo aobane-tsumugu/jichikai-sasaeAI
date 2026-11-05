@@ -4,7 +4,7 @@ import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // 下書きと当番表の案が見えるまで最大180秒待つ。
-const DRAFT_WAIT_LIMIT_MS = 180_000;
+const DRAFT_WAIT_LIMIT_MS = 360_000;
 const args = process.argv.slice(2);
 const arg = (key: string) => { const i = args.indexOf(key); return i < 0 ? undefined : args[i + 1]; };
 const onlyPublic = args.includes("--only-public");
