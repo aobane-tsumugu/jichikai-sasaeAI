@@ -284,6 +284,11 @@ admin.post("/close/:projectId/finalize", async (c) => {
     c.env.DB.prepare(`UPDATE project_close_reports SET body = ?, updated_at = ?, updated_by_account_id = ?
       WHERE ward_id = ? AND project_id = ? AND scope = 'public' AND body = '' AND EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL)`)
       .bind(shown, now, account.accountId, ward.wardId, id, ward.wardId, id),
+    // 名前を消す既存の処理が動く前に、閉じた時の人数だけを同じ書き込みで残す。
+    c.env.DB.prepare(`UPDATE projects SET help_offer_count_on_close = (
+      SELECT COUNT(*) FROM project_help_offers WHERE ward_id = ? AND project_id = ?
+    ) WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL`)
+      .bind(ward.wardId, id, ward.wardId, id),
     c.env.DB.prepare("UPDATE projects SET closed_at = ?, closed_by_account_id = ? WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL")
       .bind(now, account.accountId, ward.wardId, id),
   ]);

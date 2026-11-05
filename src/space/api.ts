@@ -1,5 +1,6 @@
 import { newId, nowIso } from "../core/ids";
 import { DOCUMENT_KIND_LABEL, type DocumentKind } from "../project/model";
+import { latestSpaceTables, readPublicationTables } from "./publication-tables";
 
 export type SpaceRole = "member" | "leader";
 export interface SpaceCredential {
@@ -165,10 +166,9 @@ export async function enterWithPassphrase(db: D1Database, wardId: string, projec
 }
 
 export async function getSpaceMaterials(db: D1Database, wardId: string, projectId: string, district: string | null) {
-  const [project, rows, answers, docs, originals] = await Promise.all([
+  const [project, publication, answers, docs, originals] = await Promise.all([
     db.prepare("SELECT title FROM projects WHERE ward_id = ? AND project_id = ?").bind(wardId, projectId).first<{ title: string }>(),
-    db.prepare("SELECT table_key, data FROM project_rows WHERE ward_id = ? AND project_id = ? AND scope = 'current' AND removed_at IS NULL AND table_key IN ('sponsors', 'duties', 'layout') ORDER BY table_key, created_at")
-      .bind(wardId, projectId).all<{ table_key: string; data: string }>(),
+    latestSpaceTables(db, wardId, projectId),
     district === null
       ? db.prepare("SELECT district, household, people_count FROM project_answers WHERE ward_id = ? AND project_id = ? ORDER BY district, household").bind(wardId, projectId).all<{ district: string; household: string; people_count: number }>()
       : db.prepare("SELECT district, household, people_count FROM project_answers WHERE ward_id = ? AND project_id = ? AND district = ? ORDER BY household").bind(wardId, projectId, district).all<{ district: string; household: string; people_count: number }>(),
@@ -187,16 +187,17 @@ export async function getSpaceMaterials(db: D1Database, wardId: string, projectI
        ORDER BY o.received_at, o.position`,
     ).bind(wardId, projectId).all<{ original_id: string; filename: string; media_type: string }>(),
   ]);
-  const items = rows.results.map((row) => {
-    let data: Record<string, unknown> = {};
-    try { data = JSON.parse(row.data) as Record<string, unknown>; } catch { data = {}; }
-    if (row.table_key === "sponsors") {
+  const tables = publication ? readPublicationTables(publication.tables_snapshot) : null;
+  const items = (tables ?? []).map((row) => {
+    const data = { ...row.data };
+    if (row.kind === "sponsors") {
       delete data.amount;
       delete data.lastYearAmount;
     }
-    return { kind: row.table_key, data };
+    return { kind: row.kind, data };
   });
   // 題は文書ごとの現在の値しか保存されていないため、作業中の題を出さず種類を見出しにする。
   const documents = docs.results.map((doc) => ({ document_id: doc.document_id, title: DOCUMENT_KIND_LABEL[doc.kind], body: doc.body }));
-  return { title: project?.title ?? "", items, attendance: answers.results, documents, originals: originals.results };
+  return { title: project?.title ?? "", items, tablesPublished: publication !== null,
+    tablesRecorded: tables !== null, attendance: answers.results, documents, originals: originals.results };
 }

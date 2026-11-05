@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { seedAdmin } from "../src/core/testing";
 import { applyChange, createProject } from "../src/project/api";
 import { saveDocument } from "../src/project/actions";
-import { get, realApp } from "./helpers";
+import { get, postForm, realApp } from "./helpers";
 
 describe("印刷用ページ", () => {
   it("当番表と配置図の紙は、案内の本文ではなく今年の当番と配置から作る", async () => {
@@ -22,9 +22,10 @@ describe("印刷用ページ", () => {
     const version = await env.DB.prepare(`SELECT v.document_id, v.version_id, v.version_no FROM documents d
       JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id WHERE d.ward_id = ? AND d.project_id = ?`)
       .bind(ward.wardId, project.projectId).first<{ document_id: string; version_id: string; version_no: number }>();
-    await env.DB.prepare(`INSERT INTO publication_records (ward_id, publication_id, project_id, document_id, version_id, version_no,
-        line_status, published_at, published_by_account_id) VALUES (?, 'pub-print', ?, ?, ?, ?, 'not_sent', ?, ?)`)
-      .bind(ward.wardId, project.projectId, version!.document_id, version!.version_id, version!.version_no, "2026-10-01T00:00:00.000Z", account.accountId).run();
+    if (!version) throw new Error("配る案内がありません。");
+    expect((await postForm(realApp, `/${ward.slug}/admin/publish/${project.projectId}/send`, {
+      documentId: version.document_id, versionId: version.version_id, versionNo: String(version.version_no), lineDelivery: "skip",
+    }, cookie)).status).toBe(303);
 
     const base = `/${ward.slug}/admin/print/${project.projectId}/${version!.document_id}/${version!.version_no}`;
     const duty = await (await get(realApp, `${base}/duty`, cookie)).text();

@@ -225,15 +225,15 @@ describe("秋の収穫祭の最初の一片", () => {
     expect(await answersPage.text()).toContain(FIRST_SLICE.secondHousehold);
     expect((await get(realApp, publicUrl)).status).toBe(200);
 
-    // 段 4: 当番表と配置を空間に置き、合言葉なしでは中身を見られない。
+    // 段 4: 当番表と配置を空間に配り、合言葉なしでは中身を見られない。
     await applyChange(env.DB, ward.wardId, projectId as string, {
       kind: "row", table: "layout", data: { spot: FIRST_SLICE.layoutSpot, position: FIRST_SLICE.layoutPosition },
       source: { kind: "person", accountId: account.accountId }, confidence: "high", packVersion: "first-slice@1",
     });
-    await saveDocument(env.DB, ward.wardId, projectId as string, account.accountId, {
+    expect(await saveDocument(env.DB, ward.wardId, projectId as string, account.accountId, {
       kind: "duty_roster", title: FIRST_SLICE.dutyTitle, scope: "space",
       body: JSON.stringify({ text: FIRST_SLICE.dutyText, items: [] }), basedOn: (await getProjectState(env.DB, ward.wardId, projectId as string))?.project.stateVersion ?? 0,
-    });
+    })).toBe(true);
     expect((await postForm(realApp, `/${ward.slug}/admin/space/${projectId}/open`, { passphrase: FIRST_SLICE.passphrase }, cookie)).status).toBe(303);
     const locked = await get(realApp, `/${ward.slug}/space/${projectId}`);
     expect(locked.status).toBe(200);
@@ -246,7 +246,33 @@ describe("秋の収穫祭の最初の一片", () => {
     expect(spacePage.status).toBe(200);
     expect(spaceBody).toContain("文書はまだ配っていません。");
     expect(spaceBody).not.toContain(FIRST_SLICE.dutyText);
-    expect(spaceBody).toContain(FIRST_SLICE.layoutSpot);
+    expect(spaceBody).not.toContain(FIRST_SLICE.layoutSpot);
+    expect(spaceBody).not.toContain(FIRST_SLICE.layoutPosition);
+
+    // 保存と入室だけでは表を出さず、役員が配った後に文書と表を一緒に見せる。
+    const dutyVersion = await env.DB.prepare(`SELECT d.document_id, v.version_id, v.version_no FROM documents d
+      JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
+      WHERE d.ward_id = ? AND d.project_id = ? AND d.kind = 'duty_roster'
+      ORDER BY v.version_no DESC LIMIT 1`)
+      .bind(ward.wardId, projectId).first<{ document_id: string; version_id: string; version_no: number }>();
+    if (!dutyVersion) throw new Error("配る当番表がありません。");
+    const dutyPublished = await postForm(realApp, `/${ward.slug}/admin/publish/${projectId}/space`, {
+      documentId: dutyVersion.document_id, versionId: dutyVersion.version_id, versionNo: String(dutyVersion.version_no),
+    }, cookie);
+    expect(dutyPublished.status).toBe(303);
+    expect(dutyPublished.headers.get("location")).toBe(`/${ward.slug}/admin/publish/${projectId}?space=sent`);
+    const distributedSpace = await get(realApp, `/${ward.slug}/space/${projectId}`, spaceCookie ?? undefined);
+    const distributedSpaceBody = await distributedSpace.text();
+    expect(distributedSpace.status).toBe(200);
+    expect(distributedSpaceBody).toContain(FIRST_SLICE.dutyText);
+    expect(distributedSpaceBody).toContain(FIRST_SLICE.layoutSpot);
+    expect(distributedSpaceBody).toContain(FIRST_SLICE.layoutPosition);
+    expect(distributedSpaceBody).not.toContain("文書はまだ配っていません。");
+    const lockedAfterDistribution = await get(realApp, `/${ward.slug}/space/${projectId}`);
+    const lockedAfterDistributionBody = await lockedAfterDistribution.text();
+    expect(lockedAfterDistribution.status).toBe(200);
+    expect(lockedAfterDistributionBody).not.toContain(FIRST_SLICE.dutyText);
+    expect(lockedAfterDistributionBody).not.toContain(FIRST_SLICE.layoutSpot);
     const publicSpaceCheck = await get(realApp, publicUrl);
     const publicSpaceBody = await publicSpaceCheck.text();
     expect(publicSpaceBody).not.toContain(FIRST_SLICE.dutyText);
