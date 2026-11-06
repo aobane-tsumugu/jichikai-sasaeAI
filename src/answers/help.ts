@@ -24,7 +24,7 @@ export async function listHelpOpportunities(db: D1Database, wardId: string, proj
     JOIN publication_records r ON r.ward_id = d.ward_id AND r.project_id = d.project_id AND r.document_id = d.document_id
     JOIN document_versions v ON v.ward_id = r.ward_id AND v.version_id = r.version_id
     LEFT JOIN project_deadlines deadline ON deadline.ward_id = p.ward_id AND deadline.project_id = p.project_id AND deadline.kind = 'answer_due'
-    WHERE p.ward_id = ? AND p.closed_at IS NULL AND d.kind = 'recruitment' AND d.scope = 'public'
+    WHERE p.ward_id = ? AND p.closed_at IS NULL AND d.kind = 'recruitment' AND v.scope = 'public'
       AND r.unpublished_at IS NULL AND (deadline.due_on IS NULL OR deadline.due_on >= ?)
       AND NOT EXISTS (SELECT 1 FROM publication_records newer
         WHERE newer.ward_id = r.ward_id AND newer.document_id = r.document_id AND newer.version_no > r.version_no)
@@ -55,8 +55,9 @@ export async function addHelpOffer(db: D1Database, wardId: string, projectId: st
         AND deadline.project_id = p.project_id AND deadline.kind = 'answer_due' AND deadline.due_on < ?)
       AND EXISTS (SELECT 1 FROM documents d JOIN publication_records r
         ON r.ward_id = d.ward_id AND r.project_id = d.project_id AND r.document_id = d.document_id
+        JOIN document_versions v ON v.ward_id = r.ward_id AND v.version_id = r.version_id
         WHERE d.ward_id = p.ward_id AND d.project_id = p.project_id AND d.kind = 'recruitment'
-          AND d.scope = 'public' AND r.unpublished_at IS NULL
+          AND v.scope = 'public' AND r.unpublished_at IS NULL
           AND NOT EXISTS (SELECT 1 FROM publication_records newer WHERE newer.ward_id = r.ward_id
             AND newer.document_id = r.document_id AND newer.version_no > r.version_no))`)
     .bind(newId(), wardId, name, times, nowIso(), wardId, projectId, todayInJapan()).run();
