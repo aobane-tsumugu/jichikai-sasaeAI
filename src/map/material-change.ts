@@ -29,7 +29,7 @@ function tableParts(state: ProjectState, originalId: string): string[] {
       const replied = current.filter((row) => row.data.reply === "yes" || row.data.reply === "no").length;
       if (replied) return [`${state.tables.sponsors.filter((row) => row.scope === "current").length}軒のうち${replied}軒の返事を入れました`];
     }
-    const place = key === "ledger" ? TABLES[key].label : `${TABLES[key].label}の一覧`;
+    const place = key === "ledger" || key === "committee" ? TABLES[key].label : `${TABLES[key].label}の一覧`;
     return [`${current.length ? "" : "参考に、"}${place}に${rows.length}行入れました`];
   });
 }

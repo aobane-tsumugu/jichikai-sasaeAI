@@ -92,7 +92,7 @@ it("届いた資料で入ったことを一行で書き、多い時は短くす�
       { scope: "current", data: { name: "架空薬局", reply: "pending" }, source: source("c") },
       { scope: "current", data: { name: "架空米店", reply: "" }, source: source("z") },
           { scope: "reference", data: { name: "架空酒店", reply: "yes" }, source: source("e") },
-    ], duties: [], layout: [], ledger: [{ scope: "current", data: {}, source: source("d") }], decisions: [], submissions: [] },
+    ], duties: [], layout: [], ledger: [{ scope: "current", data: {}, source: source("d") }], decisions: [], submissions: [], committee: [] },
     questions: [{ source: source("a") }],
     mapTasks: [{ name: "会場を押さえる", progress: "done", progressSource: source("a") }],
   } as unknown as ProjectState;
