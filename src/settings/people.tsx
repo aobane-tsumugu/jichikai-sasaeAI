@@ -29,7 +29,7 @@ const DONE: Record<string, string> = {
   "seat-removed": "席を外しました。その席にいた人は、席なしになりました。",
   "seat-changed": "席を変えました。",
   "account-removed": "アカウントを外しました。",
-  "login-id-changed": "ID を変更しました。",
+  "login-id-changed": "IDを変更しました。",
   "locked-out": "端末を締め出しました。",
 };
 
@@ -65,9 +65,9 @@ const PeoplePage = (props: {
   const base = (rest: string) => adminPath(ward, `/settings/people${rest}`);
   return (
     <AdminPage ward={ward} account={me} title="役員の席とアカウント" back={{ href: adminPath(ward, "/settings"), label: "区の設定" }}>
-      <h1>役員の席とアカウント <Hint text="役員が入るための ID や、会長・書記などの席を管理する画面です。人を足す時は、下のアカウントの欄に表示名を入れてください。" /></h1>
+      <h1>役員の席とアカウント</h1><p class="lead">役員が入るためのIDや、会長・書記などの席を管理する画面です。人を足すときは、下のアカウントの欄に表示名を入れてください。</p>
       <p class="muted">
-        席は「会長」「書記」などの名札です。席があるかないかで、できることは変わりません。アカウントは一人に一つで、ID とパスワードで入ります。表示名は漢字のまま使えます。
+        席は「会長」「書記」などの役の名前です。席があるかないかで、できることは変わりません。アカウントは一人に一つで、IDとパスワードで入ります。表示名は漢字のまま使えます。
       </p>
       {props.notice ? <Notice>{props.notice}</Notice> : null}
       {props.error ? <Notice error>{props.error}</Notice> : null}
@@ -114,21 +114,21 @@ const PeoplePage = (props: {
               <label for={`login-id-${a.accountId}`}>ID</label>
               <input id={`login-id-${a.accountId}`} name="loginId" type="text" required maxlength={40} value={a.loginId} autocapitalize="none" spellcheck={false} />
               <p class="muted">半角の英数字だけ。前後の空白は取り除きます。</p>
-              <button type="submit" class="secondary">ID を変更</button>
+              <button type="submit" class="secondary">IDを変更</button>
             </form>
             <form method="post" action={base(`/accounts/${a.accountId}/seat`)} class="inline">
-              <SeatSelect seats={seats} selected={a.seatId} label={`${a.name} の席`} />{" "}
+              <SeatSelect seats={seats} selected={a.seatId} label={`${a.name}の席`} />{" "}
               <button type="submit" class="secondary">
                 席を変える
               </button>
             </form>
             <details>
-              <summary>端末 {a.devices.length} 台</summary>
-              {a.devices.length === 0 ? <p class="muted">ログインした端末はありません。</p> : null}
+              <summary>端末{a.devices.length} 台</summary>
+              {a.devices.length === 0 ? <p class="muted">入った端末はありません。</p> : null}
               <ul>
                 {a.devices.map((d) => (
                   <li>
-                    {d.label || "不明な端末"}、最後に使った日時 {formatJst(d.lastSeenAt)}{" "}
+                    {d.label || "不明な端末"}、最後に使った日時{formatJst(d.lastSeenAt)}{" "}
                     {d.deviceId === deviceId ? (
                       <span class="muted">（この端末）</span>
                     ) : (
@@ -136,7 +136,7 @@ const PeoplePage = (props: {
                         class="inline"
                         method="post"
                         action={base(`/accounts/${a.accountId}/devices/${d.deviceId}/lockout`)}
-                        onsubmit="return confirm('この端末を締め出します。この端末では、もう一度ログインが必要になります。')"
+                        onsubmit="return confirm('この端末を締め出します。この端末では、もう一度IDとパスワードを入れてください。')"
                       >
                         <button type="submit" class="danger">
                           締め出す
@@ -191,7 +191,7 @@ const PeoplePage = (props: {
         <p>
           <button type="submit">足す</button>
         </p>
-        <p class="muted">ID は自動で作られます。足すと ID とパスワードが一度だけ出ます。その人に渡してください。</p>
+        <p class="muted">IDは自動で作られます。足すとIDとパスワードが一度だけ出ます。その人に渡してください。</p>
       </form>
     </AdminPage>
   );
@@ -239,7 +239,7 @@ const CredentialsPage = (props: { c: Context<AdminEnv>; title: string; loginId: 
     title={props.title}
     back={{ href: adminPath(props.c.var.ward, "/settings/people"), label: "役員の席とアカウントへ戻る" }}
   >
-    <h1>{props.title} <Hint text="役員画面に入るための ID とパスワードです。表示されているうちに、その人に渡してください。" /></h1>
+    <h1>{props.title}</h1><p class="lead">役員画面に入るためのIDとパスワードです。表示されているうちに、その人に渡してください。</p>
     <Credentials loginId={props.loginId} name={props.name} password={props.password} />
   </AdminPage>
 );

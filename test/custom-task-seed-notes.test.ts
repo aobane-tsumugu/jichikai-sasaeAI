@@ -4,7 +4,7 @@ import { seedAdmin } from "../src/core/testing";
 import { createProject, getProjectState } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("人が地図に足した仕事にも、来年の種で去年の三つの記録を出す", async () => {
+it("人が段取りに足した仕事にも、これをもとに新しく始めるで去年の三つの記録を出す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const source = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "架空の行事", year: 2026, eventDay: "2026-10-24", accountId: account.accountId,

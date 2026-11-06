@@ -15,15 +15,15 @@ async function opsLogin(): Promise<string> {
 
 const JSON_HEADERS = { accept: "application/json" };
 
-describe("運用の画面のログイン", () => {
-  it("OPS_ID と OPS_PASSWORD が無ければ開かない", async () => {
+describe("運用の画面の入る", () => {
+  it("OPS_IDとOPS_PASSWORDがなければ開かない", async () => {
     const res = await get(realApp, "/ops/login");
     expect(res.status).toBe(503);
     expect(await res.text()).toContain("設定されていません");
     expect((await get(realApp, "/ops/")).status).toBe(503);
   });
 
-  it("ID とパスワードが合えば入れ、札は /ops に限り、JavaScript から読めない", async () => {
+  it("IDとパスワードが合えば入れ、札は /opsに限り、JavaScriptから読めない", async () => {
     const res = await postForm(realApp, "/ops/login", { id: OPS_ID, password: OPS_PASSWORD }, undefined, opsEnv);
     expect(res.status).toBe(303);
     expect(res.headers.get("location")).toBe("/ops/");
@@ -34,17 +34,17 @@ describe("運用の画面のログイン", () => {
     expect(setCookie).not.toContain(OPS_PASSWORD);
   });
 
-  it("違えば 401 で、札を渡さない（ID が違う時もパスワードが違う時も同じ答え）", async () => {
+  it("違えば401で、札を渡さない（IDが違う時もパスワードが違う時も同じ答え）", async () => {
     const wrongPassword = await postForm(realApp, "/ops/login", { id: OPS_ID, password: "x" }, undefined, opsEnv);
     const wrongId = await postForm(realApp, "/ops/login", { id: "x", password: OPS_PASSWORD }, undefined, opsEnv);
     for (const res of [wrongPassword, wrongId]) {
       expect(res.status).toBe(401);
       expect(cookieFrom(res, OPS_COOKIE)).toBeNull();
-      expect(await res.text()).toContain("ID かパスワードが違います");
+      expect(await res.text()).toContain("IDかパスワードが違います");
     }
   });
 
-  it("ログインしていなければログイン画面へ送る。機械の呼び出しには 401", async () => {
+  it("役員画面に入っていなければ入る画面へ送る。機械の呼び出しには401", async () => {
     const page = await get(realApp, "/ops/", undefined, opsEnv);
     expect(page.status).toBe(303);
     expect(page.headers.get("location")).toBe("/ops/login");
@@ -130,7 +130,7 @@ describe("区の開設", () => {
     expect(list).not.toMatch(/class="secret"/);
   });
 
-  it("使えない URL、重複、名前の抜けは開かない", async () => {
+  it("使えないURL、重複、名前の抜けは開かない", async () => {
     const cookie = await opsLogin();
     const open = (form: Record<string, string>) =>
       postForm(realApp, "/ops/wards", form, cookie, opsEnv, JSON_HEADERS);
@@ -175,11 +175,11 @@ describe("区の開設", () => {
   });
 });
 
-describe("固定 URL と QR と案内", () => {
-  it("区の画面に URL と QR が出る。QR の画像は区のページの URL", async () => {
+describe("固定URLとQRと案内", () => {
+  it("区の画面にURLとQRが出る。QRの画像は区のページのURL", async () => {
     const cookie = await opsLogin();
     const slug = uniqueSlug("qr");
-    await postForm(realApp, "/ops/wards", { name: "QR の区", slug, firstAccountName: "役員" }, cookie, opsEnv);
+    await postForm(realApp, "/ops/wards", { name: "QRの区", slug, firstAccountName: "役員" }, cookie, opsEnv);
     const url = wardUrl(env, "http://localhost/", slug);
 
     const detail = await (await get(realApp, `/ops/wards/${slug}`, cookie, opsEnv)).text();
@@ -195,7 +195,7 @@ describe("固定 URL と QR と案内", () => {
     expect(sheet).toContain(url);
   });
 
-  it("ない区は 404", async () => {
+  it("ない区は404", async () => {
     const cookie = await opsLogin();
     expect((await get(realApp, "/ops/wards/none-such", cookie, opsEnv)).status).toBe(404);
     expect((await get(realApp, "/ops/wards/none-such/qr.svg", cookie, opsEnv)).status).toBe(404);
@@ -203,7 +203,7 @@ describe("固定 URL と QR と案内", () => {
   });
 });
 
-describe("役員が入れなくなった時の復旧（提供側）", () => {
+describe("役員が入れなくなったときの復旧（提供側）", () => {
   it("アカウントを足し、初期化すると古いパスワードは使えない", async () => {
     const cookie = await opsLogin();
     const slug = uniqueSlug("recover");

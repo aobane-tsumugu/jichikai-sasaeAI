@@ -6,7 +6,7 @@ import { sha256Hex } from "../src/core/password";
 import { seedWard } from "../src/core/testing";
 import { createProject } from "../src/project/api";
 
-const text = "今年の持ち物を教えてください（架空の問い）";
+const text = "今年の持ち物を教えてください（架空の質問）";
 
 async function setup() {
   const ward = await seedWard(env.DB);
@@ -33,13 +33,13 @@ async function questions(wardId: string, projectId: string) {
     .bind(wardId, projectId).all<{ question_id: string; text: string; state: string }>()).results;
 }
 
-describe("AI が同じ問いを繰り返す時", () => {
-  it("別の入力から前後に空白を付けて書いても、未回答・後回しの問いを再利用する", async () => {
+describe("AIが同じ質問を繰り返す時", () => {
+  it("別の入力から前後に空白を付けて書いても、まだ答えていない・後回しの質問を再利用する", async () => {
     const { wardId, projectId } = await setup();
     const first = await ask(wardId, await ticketFor(wardId, projectId));
     const second = await ask(wardId, await ticketFor(wardId, projectId), `　\n${text}\t `);
     expect(first.status).toBe("added");
-    expect(second).toMatchObject({ status: "same", questionId: first.questionId, note: "同じ問いが既にあります" });
+    expect(second).toMatchObject({ status: "same", questionId: first.questionId, note: "同じ質問が既にあります" });
     expect(await questions(wardId, projectId)).toHaveLength(1);
     await env.DB.prepare("UPDATE project_questions SET state = 'later' WHERE ward_id = ? AND question_id = ?")
       .bind(wardId, first.questionId).run();
@@ -47,7 +47,7 @@ describe("AI が同じ問いを繰り返す時", () => {
     expect(await questions(wardId, projectId)).toHaveLength(1);
   });
 
-  it("答えた後なら同じ入力からも新しい問いを作る", async () => {
+  it("答えた後なら同じ入力からも新しい質問を作る", async () => {
     const { wardId, projectId } = await setup();
     const ticket = await ticketFor(wardId, projectId);
     const first = await ask(wardId, ticket);

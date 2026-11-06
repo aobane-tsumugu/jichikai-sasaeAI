@@ -47,13 +47,13 @@ export async function openWard(
 
   const name = cleanName(input.name);
   if (name === "") return { ok: false, message: "区の名前を入れてください。" };
-  if (name.length > 60) return { ok: false, message: "区の名前は 60 文字までです。" };
+  if (name.length > 60) return { ok: false, message: "区の名前は60文字までです。" };
 
-  if (await findWardBySlug(db, slug)) return { ok: false, message: "その区の URL はもう使われています。" };
+  if (await findWardBySlug(db, slug)) return { ok: false, message: "その区のURLはもう使われています。" };
   const destination = input.lineDestination?.trim() ?? "";
-  if (destination.length > 100) return { ok: false, message: "公式 LINE の送信先 ID を確かめてください。" };
+  if (destination.length > 100) return { ok: false, message: "公式LINEの送信先IDを確かめてください。" };
   if (destination && await db.prepare("SELECT 1 FROM line_channels WHERE destination = ?").bind(destination).first()) {
-    return { ok: false, message: "その公式 LINE は別の区に接続されています。" };
+    return { ok: false, message: "その公式LINEは別の区に接続されています。" };
   }
   const wardId = newId();
   const line = destination ? lineSecretNames(wardId) : undefined;
@@ -63,7 +63,7 @@ export async function openWard(
       VALUES (?, ?, ?, ?)`).bind(wardId, destination, line.channelSecretBinding, line.accessTokenBinding));
     await db.batch(statements);
   } catch {
-    return { ok: false, message: destination ? "区の URL か公式 LINE の送信先 ID はもう使われています。" : "その区の URL はもう使われています。" };
+    return { ok: false, message: destination ? "区のURLか公式LINEの送信先IDはもう使われています。" : "その区のURLはもう使われています。" };
   }
 
   const account = await addAccount(db, wardId, { name: input.firstAccountName });

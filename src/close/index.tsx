@@ -1,3 +1,4 @@
+import { adminResult } from "../core/admin-ui";
 import { formatDateText, formatJstDate } from "../core/time";
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
@@ -85,8 +86,8 @@ async function generatedReportText(db: D1Database, wardId: string, projectId: st
 function reportInstruction(contact: string): string {
   const pack = getDraftPack("report");
   return `${pack.instruction}
-閉じる時の実施報告です。住民に向けた公開の報告だけを書きます。役員だけの記録は書かず、役員が自分で書きます。人数や出来事は状態にある今年の事実だけにし、分からない所は空欄のまま役員への問いにします。${contact ? `\n区の公開用の連絡先（問い合わせ先に使う）: ${contact}` : ""}
-対象の文書: ${pack.kind}。範囲: ${pack.scope}。data に pack_version を ${pack.version}、based_on_state_version を引いた状態の番号として含めてください。`;
+閉じるときの実施報告です。住民に向けた公開の報告だけを書きます。役員だけの記録は書かず、役員が自分で書きます。人数や出来事は状態にある今年の事実だけにし、分からないところは空欄のまま役員への質問にします。${contact ? `\n区の公開用の連絡先（問い合わせ先に使う）: ${contact}` : ""}
+対象の文書: ${pack.kind}。範囲: ${pack.scope}。dataにpack_versionを${pack.version}、based_on_state_versionを引いた状態の番号として含めてください。`;
 }
 
 admin.get("/close/:projectId", async (c) => {
@@ -181,7 +182,7 @@ admin.post("/close/:projectId/activity", async (c) => {
   if (!project) return c.notFound();
   const action = String(form.get("action") ?? "save");
   if (action !== "save" && action !== "publish") return c.notFound();
-  if (action === "publish" && !project.closedAt) return c.text("プロジェクトを閉じてから掲載できます。", 400);
+  if (action === "publish" && !project.closedAt) return adminResult(c, "行事を閉じてから載せられます。", 400, { href: adminPath(c.var.ward, `/close/${encodeURIComponent(c.req.param("projectId"))}`), label: "報告と閉じる画面に戻る" }, "報告と行事の内容を確かめて、もう一度操作してください。");
   const rows = await c.env.DB.prepare("SELECT task_id, name, period FROM project_close_map WHERE ward_id = ? AND project_id = ? ORDER BY period, task_id")
     .bind(ward.wardId, projectId).all<{ task_id: string; name: string; period: string }>();
   const selectedIds = new Set(form.getAll("taskId").map(String));
@@ -221,7 +222,7 @@ admin.post("/close/:projectId/prepare", async (c) => {
       startTask(c.env, waitableContext(c), { wardId: ward.wardId, projectId: id, task: "report", accountId: account.accountId,
         instruction: reportInstruction(contact) }),
       startTask(c.env, waitableContext(c), { wardId: ward.wardId, projectId: id, task: "map_draft", accountId: account.accountId,
-        instruction: "閉じる時の地図の下書きを状態から作る。原本は読まない。状態にある仕事を一つずつ保ち、task_id、period、name、progress（open/started/done）、requested_by、difficulty、next_year を記録する。時期、進み具合、頼んだ相手、困ったこと、来年変えることは状態にある内容だけを書き、分からない欄は空にして役員への問いにする。仕事を省いたり、過去の参考情報を今年の実績にしたり、内容を補って作らない。write_change で kind=map_draft、target=map、data={tasks:[...] } を一度書く。" }),
+        instruction: "閉じるときの段取りの下書きを状態から作る。元の資料は読まない。状態にある仕事を一つずつ保ち、task_id、period、name、progress（open/started/done）、requested_by、difficulty、next_yearを記録する。時期、進み具合、頼んだ相手、困ったこと、来年変えることは状態にある内容だけを書き、分からない欄は空にして役員への質問にする。仕事を省いたり、過去の参考情報を今年の実績にしたり、内容を補って作らない。write_changeでkind=map_draft、target=map、data={tasks:[...] }を一度書く。" }),
     ]);
   } catch (error) { console.error("閉じる下書きを起こせませんでした", error instanceof Error ? error.name : ""); }
   return c.redirect(adminPath(ward, `/close/${id}`), 303);
@@ -297,10 +298,10 @@ admin.post("/close/:projectId/finalize", async (c) => {
       const written = await saveDocument(c.env.DB, ward.wardId, id, account.accountId, {
         kind: "report", title: "実施報告", scope: "public", body: publicationBody, basedOn: project.stateVersion,
       });
-      if (!written) return c.text("報告を保存できませんでした。もう一度お願いします。", 409);
+      if (!written) return adminResult(c, "報告を保存できませんでした。もう一度お願いします。", 409, { href: adminPath(c.var.ward, `/close/${encodeURIComponent(c.req.param("projectId"))}`), label: "報告と閉じる画面に戻る" }, "報告と行事の内容を確かめて、もう一度操作してください。");
       report = await latestReport();
     }
-    if (!report) return c.text("報告を保存できませんでした。もう一度お願いします。", 409);
+    if (!report) return adminResult(c, "報告を保存できませんでした。もう一度お願いします。", 409, { href: adminPath(c.var.ward, `/close/${encodeURIComponent(c.req.param("projectId"))}`), label: "報告と閉じる画面に戻る" }, "報告と行事の内容を確かめて、もう一度操作してください。");
     statements.push(
       c.env.DB.prepare(`UPDATE document_versions SET published_at = ?, published_by_account_id = ?
         WHERE ward_id = ? AND project_id = ? AND version_id = ? AND published_at IS NULL

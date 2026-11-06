@@ -6,7 +6,7 @@ import { saveDocument } from "../src/project/actions";
 import { createProject, getProjectState } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("次の下書きを役員向けにしても配った募集で申し込め、公開を下げると受付を終える", async () => {
+it("次の下書きを役員向けにしても配った募集で申し込め、区のページから下げると受付を終える", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,
@@ -52,6 +52,6 @@ it("次の下書きを役員向けにしても配った募集で申し込め、�
   if (!publicationId) throw new Error("配った募集の記録がありません。");
   expect((await postForm(realApp, `${base}/admin/publish/${project.projectId}/lower/${publicationId}`, {}, cookie)).status).toBe(303);
   expect(await (await get(realApp, helpPath)).text()).toContain("手伝いの受付は終わりました。");
-  expect((await postForm(realApp, helpPath, { helper_name: "受付後の架空の申し出", helper_times: publishedTime })).status).toBe(400);
+  expect((await postForm(realApp, helpPath, { helper_name: "受付あとの架空の申し出", helper_times: publishedTime })).status).toBe(400);
   expect(await listHelpOffers(env.DB, ward.wardId, project.projectId)).toHaveLength(1);
 });

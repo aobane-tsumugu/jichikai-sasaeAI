@@ -31,24 +31,24 @@ describe("各置き場の差し込み口", () => {
         if (!router) continue;
         for (const key of routeKeys(router)) {
           const owner = seen.get(key);
-          expect(owner, `${surface} の ${key} が ${owner} と ${name} で重なっています`).toBeUndefined();
+          expect(owner, `${surface}の${key}が${owner}と${name}で重なっています`).toBeUndefined();
           seen.set(key, name);
         }
       }
     }
   });
 
-  it("pub の経路は /admin の下に置けない（役員画面はログインの検査の内側）", () => {
+  it("pubの経路は /adminの下に置けない（役員画面は入るの検査の内側）", () => {
     for (const [name, bundle] of Object.entries(bundles)) {
       if (!bundle.pub) continue;
       for (const key of routeKeys(bundle.pub)) {
         const path = key.split(" ")[1] ?? "";
-        expect(path.startsWith("/admin"), `${name} の ${key}`).toBe(false);
+        expect(path.startsWith("/admin"), `${name}の${key}`).toBe(false);
       }
     }
   });
 
-  it("admin の経路はログインが要り、pub と hooks は要らない", async () => {
+  it("adminの経路は入るが要り、pubとhooksは要らない", async () => {
     const probe: Bundle = {
       admin: new Hono<AdminEnv>().get("/probe", (c) => c.text(`admin:${c.var.account.name}`)),
       pub: new Hono<WardEnv>().get("/probe-pub", (c) => c.text(`pub:${c.var.ward.slug}`)),
@@ -68,7 +68,7 @@ describe("各置き場の差し込み口", () => {
     expect(await hook.text()).toBe("hook");
   });
 
-  it("admin の POST もログインが要る", async () => {
+  it("adminのPOSTも入るが要る", async () => {
     const probe: Bundle = { admin: new Hono<AdminEnv>().post("/probe", (c) => c.text("ok")) };
     const app = appWith(probe);
     const { ward, cookie } = await seedAdmin(env.DB);
@@ -100,7 +100,7 @@ describe("Cron", () => {
     expect(ran).toEqual([CRON.EVERY_5_MIN]);
   });
 
-  it("CRON の定数は二つの式", async () => {
+  it("CRONの定数は二つの式", async () => {
     expect(Object.values(CRON)).toEqual(["*/5 * * * *", "0 18 * * *"]);
   });
 });

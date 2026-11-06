@@ -76,13 +76,13 @@ it("新任の役員が題は案内・年不明の実際のフォームから送�
     const remaining = await pendingMaterialGroups(env.DB, ward.wardId);
     expect(remaining.map((g) => g.title)).toEqual([FIRST_SLICE.dutyTitle]);
     const moved = await env.DB.prepare("SELECT job_id, original_id FROM originals WHERE ward_id = ? AND filename = ?").bind(ward.wardId, "案内.txt").first<{ job_id: string; original_id: string }>();
-    if (!moved) throw new Error("案内の原本がありません");
+    if (!moved) throw new Error("案内の元の資料がありません");
     const readings = await getReadings(env.DB, ward.wardId, moved.job_id);
     const body = readings[0]?.body;
-    if (!body || !("original_years" in body)) throw new Error("原本ごとの読み取りがありません");
+    if (!body || !("original_years" in body)) throw new Error("元の資料ごとの読み取りがありません");
     expect(body.original_years.every((entry) => entry.year === null)).toBe(true);
     await applyChange(env.DB, ward.wardId, id, { kind: "item", itemKey: "place", value: FIRST_SLICE.previousPlace,
-      source: { kind: "original", ref: moved.original_id, locator: "4 行目" }, confidence: "high", packVersion: "connect@12" });
+      source: { kind: "original", ref: moved.original_id, locator: "4行目" }, confidence: "high", packVersion: "connect@12" });
     const state = await getProjectState(env.DB, ward.wardId, id);
     if (!state) throw new Error("段取りがありません");
     expect(state.questions).toHaveLength(0);

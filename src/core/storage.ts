@@ -6,14 +6,14 @@ export class WardBucket {
     private readonly bucket: R2Bucket,
     readonly wardId: string,
   ) {
-    if (!wardId || /[/\\]/.test(wardId)) throw new Error("区の ID が不正です");
+    if (!wardId || /[/\\]/.test(wardId)) throw new Error("区のIDが不正です");
   }
 
   /** 区の中のキーを R2 のキーにする。.. と空の部分と先頭の / を拒む。 */
   key(path: string): string {
     const parts = path.split("/");
     if (parts.some((p) => p === "" || p === "." || p === "..")) {
-      throw new Error("R2 のキーが不正です");
+      throw new Error("R2のキーが不正です");
     }
     return `${this.wardId}/${path}`;
   }

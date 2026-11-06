@@ -4,7 +4,7 @@ import { seedAdmin } from "../src/core/testing";
 import { createProject, getProjectState } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("閉じる時に残した三つの記録を種から開いた地図の同じ仕事に出す", async () => {
+it("閉じるときに残した三つの記録を種から開いた段取りの同じ仕事に出す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "去年の行事（架空）", year: 2026, eventDay: "2026-10-24", accountId: account.accountId,
@@ -39,7 +39,7 @@ it("閉じる時に残した三つの記録を種から開いた地図の同じ�
   expect(html.match(/去年の記録/g)).toHaveLength(1);
 });
 
-it("種のないプロジェクトの地図には去年の記録を出さない", async () => {
+it("種のない行事の段取りには去年の記録を出さない", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "新しい行事（架空）", year: 2027, accountId: account.accountId,

@@ -74,17 +74,17 @@ function groupDeadlines(rows: { project_id: string; kind: string; due_on: string
  * 題は後で直せる。去年の地図を種にする時の日付の置き直しは、束 7 の来年の種で行う。
  */
 export async function createProject(db: D1Database, wardId: string, input: CreateProjectInput): Promise<ProjectSummary> {
-  if (!(PROJECT_KINDS as readonly string[]).includes(input.kind)) throw new ProjectInputError("プロジェクトの種類が合いません");
+  if (!(PROJECT_KINDS as readonly string[]).includes(input.kind)) throw new ProjectInputError("行事の種類が合いません");
   const title = input.title.trim();
-  if (title === "" || title.length > 100) throw new ProjectInputError("題は 1 文字から 100 文字にしてください");
+  if (title === "" || title.length > 100) throw new ProjectInputError("題は1文字から100文字にしてください");
   if (!Number.isInteger(input.year) || input.year < 1900 || input.year > 2200) throw new ProjectInputError("年が合いません");
-  if (input.eventDay !== undefined && !DATE_PATTERN.test(input.eventDay)) throw new ProjectInputError("行事の日は YYYY-MM-DD で入れてください");
+  if (input.eventDay !== undefined && !DATE_PATTERN.test(input.eventDay)) throw new ProjectInputError("行事の日はYYYY-MM-DDで入れてください");
   if (input.seedProjectId) {
     const seed = await db
       .prepare("SELECT 1 AS ok FROM projects WHERE ward_id = ? AND project_id = ?")
       .bind(wardId, input.seedProjectId)
       .first();
-    if (!seed) throw new ProjectInputError("種にするプロジェクトが見つかりません");
+    if (!seed) throw new ProjectInputError("種にする行事が見つかりません");
   }
 
   const projectId = newId();
@@ -132,7 +132,7 @@ export async function createProject(db: D1Database, wardId: string, input: Creat
   await db.batch(statements);
 
   const created = await getProjectSummary(db, wardId, projectId);
-  if (!created) throw new Error("プロジェクトを作れませんでした");
+  if (!created) throw new Error("行事を作れませんでした");
   return created;
 }
 

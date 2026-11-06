@@ -3,7 +3,7 @@ import { getAnswerDeadline } from "../answers/api";
 import { ReceptionClosed, ResidentContact, EventDetails, residentContext } from "../answers/resident";
 import { formatDateText, formatJstDate } from "../core/time";
 import { Hono } from "hono";
-import { Hint, Layout } from "../core/ui";
+import { Layout } from "../core/ui";
 import type { Bundle } from "../core/bundle";
 import type { WardEnv } from "../env";
 import { getOfficialLineUrl, getPublicContact, getSetting } from "../settings/store";
@@ -85,7 +85,7 @@ pub.get("/", async (c) => {
     <p class="lead">{c.var.ward.name}は、この地域の自治会です。入っていなくても、登録しなくても読めます。</p>
     {c.env.DEMO_NOTICE ? <p class="muted">{c.env.DEMO_NOTICE}</p> : null}
     {opportunities.length ? <section class="panel">
-      <h2><a href={`/${c.var.ward.slug}/help`}>一回だけ手伝う</a> <Hint text="自治会に加入していない人も、名前と手伝える時間帯だけで申し込めます。" /></h2>
+      <h2><a href={`/${c.var.ward.slug}/help`}>一回だけ手伝う</a></h2><p class="lead">自治会に加入していない人も、名前と手伝える時間帯だけで申し込めます。</p>
       <p>自治会に入っていなくても手伝えます。お名前と手伝える時間帯を教えてください。</p>
       <p><a href={`/${c.var.ward.slug}/help`}>手伝いを申し込む</a></p>
     </section> : null}
@@ -95,9 +95,9 @@ pub.get("/", async (c) => {
       <p>更新: {formatJstDate(item.published_at)}</p>
     </section>)}
     <h2>自治会の仕事を知る</h2>
-    {activities.results.length === 0 ? <p>掲載中の活動紹介はありません。</p> : activities.results.map((item) => <section class="panel" key={item.project_id}>
+    {activities.results.length === 0 ? <p>載せている活動紹介はありません。</p> : activities.results.map((item) => <section class="panel" key={item.project_id}>
       <h3><a href={`/${c.var.ward.slug}/work/${encodeURIComponent(item.project_id)}`}>{item.title}で役員がしたこと</a></h3>
-      <p>掲載: {formatJstDate(item.published_at)}</p>
+      <p>載せた日: {formatJstDate(item.published_at)}</p>
     </section>)}
     {await pageFooter(c)}
   </Layout>);
@@ -177,15 +177,15 @@ pub.get("/p/:projectId", async (c) => {
   const renderDocument = ({ latest, earlier }: { latest: PublicProject; earlier: PublicProject[] }) => {
       const date = (item: PublicProject) => formatJstDate(item.published_at);
       if (latest.unpublished_at) return <article class="panel" key={latest.document_id}>
-        <p>{date(latest)} に載せた案内は、掲載を終えました。</p>
+        <p>{date(latest)} に載せた案内は、区のページから下げました。</p>
       </article>;
       return <article class="panel" key={latest.document_id}>
         <h2>{latest.kind === "announcement" ? changes ? `${date(latest)}に配った案内` : "くわしい案内" : latest.document_title}</h2>
         {latest.kind === "announcement" && changes ? <p>変わったところは、上のお知らせのとおりです。</p> : null}
-        <p>掲載日: {date(latest)}</p>
+        <p>載せた日: {date(latest)}</p>
         <ArticleBody body={latest.body} />
         {earlier.map((older) => <details>
-          <summary>変更前の案内（{date(older)} 掲載）</summary>
+          <summary>変更前の案内（{date(older)}に載せたもの）</summary>
           <ArticleBody body={older.body} />
         </details>)}
       </article>;
@@ -196,7 +196,7 @@ pub.get("/p/:projectId", async (c) => {
     {ordered.filter(({ latest }) => latest.kind === "notice").map(renderDocument)}
     {activeAnnouncement ? <>
       <EventDetails item={context.item} />
-      {deadline ? <p>答えの締切 {formatJstDate(deadline)}まで</p> : null}
+      {deadline ? <p>答えの締切{formatJstDate(deadline)}まで</p> : null}
       {closed ? <ReceptionClosed closed={!!items[0]!.closed_at} due={deadline} /> : <><p><a class="button" href={`/${c.var.ward.slug}/answer/${encodeURIComponent(projectId)}${suffix}`}>参加する人数を答える</a></p><p>参加しないときは、答えなくてかまいません。紙の回答票を班長に渡しても答えられます。</p></>}
     </> : null}
     {ordered.filter(({ latest }) => latest.kind !== "notice").map(renderDocument)}

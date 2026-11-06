@@ -1,7 +1,8 @@
+import { adminResult } from "../core/admin-ui";
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { WardBucket } from "../core/storage";
-import { Hint, Layout, Notice } from "../core/ui";
+import { Layout, Notice } from "../core/ui";
 import { CRON } from "../core/cron";
 import { listClarifications, processPhotoBatches } from "./clarifications";
 import type { AdminEnv, AppEnv } from "../env";
@@ -90,7 +91,7 @@ admin.get("/inbox", async (c) => {
     </section>
     <h2>役員に届いた問い合わせ</h2>
     {inquiries.results.length ? <ul class="rows">{inquiries.results.map((q) => <li><a class="row-link" href={adminPath(ward, "/inquiries")}><b>{q.subject}</b><span>{formatJst(q.received_at)}に届きました</span>
-      {q.line_source_type ? <span>送った人: {q.line_sender_label || "名前は分かりません"}（{q.line_source_type === "user" ? "公式への一対一" : "LINE グループ"}）</span> : null}
+      {q.line_source_type ? <span>送った人: {q.line_sender_label || "名前は分かりません"}（{q.line_source_type === "user" ? "公式への一対一" : "LINEグループ"}）</span> : null}
       {q.line_replied_at ? <span>AIは答えていません。送った人には「役員に伝えて、内容を確認します。」と返しました。</span> : null}
       {q.answer ? <span>{q.answer}</span> : null}</a></li>)}</ul> : <p class="muted">問い合わせはありません。</p>}
     <p><a href={adminPath(ward, "/inbox/questions")}>送った資料についての質問を見る</a></p>
@@ -119,7 +120,7 @@ admin.get("/inbox/questions", async (c) => {
   const questions = await listClarifications(c.env.DB, ward.wardId);
   return c.html(<Layout title="質問" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/inbox")}>届いたものへ</a>
-    <h1>送った資料についての質問 <Hint text="読めないところなどを残しています。分かるものだけ答えられます。答えがなくても仕事は進められます。" /></h1>
+    <h1>送った資料についての質問</h1><p class="lead">読めないところなどを残しています。分かるものだけ答えられます。答えがなくても仕事は進められます。</p>
     {questions.map((question) => <section class="panel"><h2>{question.text}</h2>
       <p><a href={adminPath(ward, `/intake/originals/${question.original_id}`)}>元の資料を見る</a></p>
       <p>{question.sent_at ? "写真が届いた場所で聞きました。答えがなくても、催促はしません。" : "まだ公式LINEでは聞いていません。"}</p>
@@ -148,7 +149,7 @@ admin.post("/inbox/city/:jobId", async (c) => {
     projectId = created.projectId;
   }
   if (!projectId || !(await c.env.DB.prepare("SELECT 1 AS ok FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL")
-    .bind(ward.wardId, projectId).first())) return c.text("開いているプロジェクトを選んでください。", 400);
+    .bind(ward.wardId, projectId).first())) return adminResult(c, "開いている行事を選んでください。", 400, { href: adminPath(c.var.ward, "/inbox"), label: "届いたものに戻る" }, "開いている行事を選び直してください。");
   if (!(await assignProject(c.env, safeContext(c), ward.wardId, jobId, projectId))) return c.redirect(`/${ward.slug}/admin/inbox?error=busy`, 303);
   return c.redirect(`/${ward.slug}/admin/inbox?n=assigned`, 303);
 });

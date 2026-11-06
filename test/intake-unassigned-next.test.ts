@@ -4,7 +4,7 @@ import { seedAdmin } from "../src/core/testing";
 import { SEND_SCRIPT } from "../src/intake/browser-script";
 import { get, realApp } from "./helpers";
 
-it("プロジェクト未定の資料をブラウザから送ると、受け取った画面へ進んでその資料が出る", async () => {
+it("行事未定の資料をブラウザから送ると、受け取った画面へ進んでその資料が出る", async () => {
   const { ward, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   let submit: ((event: { preventDefault(): void }) => Promise<void>) | undefined;

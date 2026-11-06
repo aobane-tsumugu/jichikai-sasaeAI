@@ -55,8 +55,8 @@ async function insertDocument(wardId: string, projectId: string, kind: string) {
   return documentId;
 }
 
-describe("プロジェクトを開く", () => {
-  it("種類ごとの地図の型と行事の日を置き、開いている一覧に出る", async () => {
+describe("行事を開く", () => {
+  it("種類ごとの段取りの型と行事の日を置き、開いている一覧に出る", async () => {
     const { ward, project } = await setup();
     expect(project.deadlines.event_day).toBe("2026-10-24");
     const state = await getProjectState(db, ward.wardId, project.projectId);
@@ -70,7 +70,7 @@ describe("プロジェクトを開く", () => {
     expect(open.map((p) => p.projectId)).toContain(project.projectId);
   });
 
-  it("閉じたプロジェクトは開いている一覧に出ない", async () => {
+  it("閉じた行事は開いている一覧に出ない", async () => {
     const { ward, project } = await setup();
     await db.prepare("UPDATE projects SET closed_at = ? WHERE ward_id = ? AND project_id = ?").bind("2026-11-01T00:00:00.000Z", ward.wardId, project.projectId).run();
     expect((await listOpenProjects(db, ward.wardId)).map((p) => p.projectId)).not.toContain(project.projectId);
@@ -81,11 +81,11 @@ describe("プロジェクトを開く", () => {
     const b = await seedWard(db);
     expect(await listOpenProjects(db, b.wardId)).toEqual([]);
     expect(await getProjectState(db, b.wardId, a.project.projectId)).toBeNull();
-    const result = await applyChange(db, b.wardId, a.project.projectId, item(person(a.account.accountId), "10 月 24 日"));
+    const result = await applyChange(db, b.wardId, a.project.projectId, item(person(a.account.accountId), "10月24日"));
     expect(result).toEqual({ status: "rejected", reason: "no_project" });
   });
 
-  it("行事に無い項目しか持たない種類では、その項目の差分を捨てる", async () => {
+  it("行事にない項目しか持たない種類では、その項目の差分を捨てる", async () => {
     const { ward, account, project } = await setup("board_meeting");
     const result = await applyChange(
       db, ward.wardId, project.projectId,
@@ -96,9 +96,9 @@ describe("プロジェクトを開く", () => {
 });
 
 describe("出どころの検査", () => {
-  it("出どころの無い差分は捨て、捨てたことが問いの一覧に出る", async () => {
+  it("出どころのない差分は捨て、捨てたことが質問の一覧に出る", async () => {
     const { ward, project } = await setup();
-    const bad = { kind: "item", itemKey: "date_time", value: "10 月 24 日", confidence: "high", packVersion: "p1" } as unknown as ChangeInput;
+    const bad = { kind: "item", itemKey: "date_time", value: "10月24日", confidence: "high", packVersion: "p1" } as unknown as ChangeInput;
     const result = expectStatus(await applyChange(db, ward.wardId, project.projectId, bad), "dropped");
     expect(result.reason).toContain("出どころ");
     const state = await getProjectState(db, ward.wardId, project.projectId);
@@ -112,7 +112,7 @@ describe("出どころの検査", () => {
     expect((await getProjectState(db, ward.wardId, project.projectId))?.questions.filter((q) => q.kind === "discarded")).toHaveLength(1);
   });
 
-  it("型の外の差分（知らない種類、空）も例外にせず捨て、問いの一覧に出る", async () => {
+  it("型の外の差分（知らない種類、空）も例外にせず捨て、質問の一覧に出る", async () => {
     const { ward, account, project } = await setup();
     const unknownKind = { kind: "foo", source: person(account.accountId), confidence: "high", packVersion: "p1" } as unknown as ChangeInput;
     expectStatus(await applyChange(db, ward.wardId, project.projectId, unknownKind), "dropped");
@@ -127,33 +127,33 @@ describe("出どころの検査", () => {
     expect(kinds.results.map((r) => r.kind)).toEqual(["unknown"]);
   });
 
-  it("実在しない原本の差分は捨てる（確かめる口が false を返す）", async () => {
+  it("実在しない元の資料の差分は捨てる（確かめる口がfalseを返す）", async () => {
     const { ward, project } = await setup();
-    const result = await applyChange(db, ward.wardId, project.projectId, item(paper("no-such-original"), "10 月 24 日"), {
+    const result = await applyChange(db, ward.wardId, project.projectId, item(paper("no-such-original"), "10月24日"), {
       verifyOriginal: async () => false,
     });
-    expect(expectStatus(result, "dropped").reason).toContain("原本が見つかりません");
+    expect(expectStatus(result, "dropped").reason).toContain("元の資料が見つかりません");
   });
 
   it("人の入力は、同じ区のアカウントでなければ捨てる", async () => {
     const { ward, project } = await setup();
     const other = await seedWard(db);
     const stranger = await seedAccount(db, other.wardId, "別の区の人（架空）");
-    const result = await applyChange(db, ward.wardId, project.projectId, item(person(stranger.accountId), "10 月 24 日"));
+    const result = await applyChange(db, ward.wardId, project.projectId, item(person(stranger.accountId), "10月24日"));
     expectStatus(result, "dropped");
   });
 
-  it("AI の案は、参考にした年が無ければ捨てる", async () => {
+  it("AIの下書きは、参考にした年がなければ捨てる", async () => {
     const { ward, project } = await setup();
-    const result = await applyChange(db, ward.wardId, project.projectId, item({ kind: "ai_proposal" }, "10 月 24 日"));
+    const result = await applyChange(db, ward.wardId, project.projectId, item({ kind: "ai_proposal" }, "10月24日"));
     expectStatus(result, "dropped");
   });
 
   it("捨てた差分は、直して送り直せば入る", async () => {
     const { ward, project } = await setup();
-    const first = await applyChange(db, ward.wardId, project.projectId, item(paper("o-1"), "10 月 24 日"), { verifyOriginal: async () => false });
+    const first = await applyChange(db, ward.wardId, project.projectId, item(paper("o-1"), "10月24日"), { verifyOriginal: async () => false });
     expectStatus(first, "dropped");
-    const second = await applyChange(db, ward.wardId, project.projectId, item(paper("o-1"), "10 月 24 日"), { verifyOriginal: async () => true });
+    const second = await applyChange(db, ward.wardId, project.projectId, item(paper("o-1"), "10月24日"), { verifyOriginal: async () => true });
     expectStatus(second, "applied");
   });
 });
@@ -161,7 +161,7 @@ describe("出どころの検査", () => {
 describe("重複を弾く印", () => {
   it("同じ差分の二度目は、保存した結果をそのまま返す", async () => {
     const { ward, project } = await setup();
-    const change = item(paper("o-1"), "10 月 24 日 11 時");
+    const change = item(paper("o-1"), "10月24日11時");
     const first = expectStatus(await applyChange(db, ward.wardId, project.projectId, change), "applied");
     expect(first.duplicate).toBe(false);
     const second = await applyChange(db, ward.wardId, project.projectId, change);
@@ -172,31 +172,31 @@ describe("重複を弾く印", () => {
 
   it("同じ印で中身が違えば受けない", async () => {
     const { ward, project } = await setup();
-    await applyChange(db, ward.wardId, project.projectId, item(paper("o-1"), "10 月 24 日 11 時"));
-    const result = await applyChange(db, ward.wardId, project.projectId, item(paper("o-1"), "10 月 25 日 11 時"));
+    await applyChange(db, ward.wardId, project.projectId, item(paper("o-1"), "10月24日11時"));
+    const result = await applyChange(db, ward.wardId, project.projectId, item(paper("o-1"), "10月25日11時"));
     expect(result).toEqual({ status: "rejected", reason: "key_reused" });
   });
 
-  it("同じ原本から別の項目を書くのは通る", async () => {
+  it("同じ元の資料から別の項目を書くのは通る", async () => {
     const { ward, project } = await setup();
-    expectStatus(await applyChange(db, ward.wardId, project.projectId, item(paper("o-1"), "10 月 24 日")), "applied");
+    expectStatus(await applyChange(db, ward.wardId, project.projectId, item(paper("o-1"), "10月24日")), "applied");
     expectStatus(
       await applyChange(db, ward.wardId, project.projectId, { ...item(paper("o-1"), "公民館"), itemKey: "place" } as ChangeInput),
       "applied",
     );
   });
 
-  it("包みの版が違えば別の印になる（同じ中身なら同じ物でした）", async () => {
+  it("包みの版が違えば別の印になる（同じ中身なら同じものでした）", async () => {
     const { ward, project } = await setup();
-    await applyChange(db, ward.wardId, project.projectId, item(paper("o-1"), "10 月 24 日"));
-    const result = await applyChange(db, ward.wardId, project.projectId, item(paper("o-1"), "10 月 24 日", { packVersion: "tsunagu-2" }));
+    await applyChange(db, ward.wardId, project.projectId, item(paper("o-1"), "10月24日"));
+    const result = await applyChange(db, ward.wardId, project.projectId, item(paper("o-1"), "10月24日", { packVersion: "tsunagu-2" }));
     expectStatus(result, "same");
   });
 
-  it("閉じたプロジェクトには入れない", async () => {
+  it("閉じた行事には入れない", async () => {
     const { ward, account, project } = await setup();
     await db.prepare("UPDATE projects SET closed_at = ? WHERE ward_id = ? AND project_id = ?").bind("2026-11-01T00:00:00.000Z", ward.wardId, project.projectId).run();
-    expect(await applyChange(db, ward.wardId, project.projectId, item(person(account.accountId), "10 月 24 日"))).toEqual({
+    expect(await applyChange(db, ward.wardId, project.projectId, item(person(account.accountId), "10月24日"))).toEqual({
       status: "rejected",
       reason: "closed",
     });
@@ -207,7 +207,7 @@ describe("今年の中身と参考の中身", () => {
   it("去年の資料の中身は参考（年ごと）に入り、今年には入らない", async () => {
     const { ward, project } = await setup();
     const result = expectStatus(
-      await applyChange(db, ward.wardId, project.projectId, item(paper("o-last", { year: 2025 }), "10 月 25 日")),
+      await applyChange(db, ward.wardId, project.projectId, item(paper("o-last", { year: 2025 }), "10月25日")),
       "applied",
     );
     expect(result.stateVersion).toBe(1);
@@ -215,7 +215,7 @@ describe("今年の中身と参考の中身", () => {
     expect(date?.current).toBeNull();
     expect(date?.references).toHaveLength(1);
     expect(date?.references[0]).toMatchObject({
-      content: "10 月 25 日",
+      content: "10月25日",
       scope: "reference",
       refYear: 2025,
       confidence: "high",
@@ -226,16 +226,16 @@ describe("今年の中身と参考の中身", () => {
   it("年不明の資料は参考に留まる", async () => {
     const { ward, project } = await setup();
     const unknownYear: Source = { kind: "original", ref: "o-x", locator: "全体" };
-    expectStatus(await applyChange(db, ward.wardId, project.projectId, item(unknownYear, "10 月 25 日")), "applied");
+    expectStatus(await applyChange(db, ward.wardId, project.projectId, item(unknownYear, "10月25日")), "applied");
     const date = (await getProjectState(db, ward.wardId, project.projectId))?.items.find((i) => i.key === "date_time");
     expect(date?.current).toBeNull();
     expect(date?.references[0]).toMatchObject({ scope: "reference", refYear: null });
   });
 
-  it("QR の紙から読んだ物と、今年の日付の資料の物と、人の入力は今年に入る", async () => {
+  it("QRの紙から読んだ物と、今年の日付の資料の物と、人の入力は今年に入る", async () => {
     const { ward, account, project } = await setup();
-    const qr: Source = { kind: "original", ref: "o-qr", locator: "欄 1", qr: true };
-    expectStatus(await applyChange(db, ward.wardId, project.projectId, item(qr, "10 月 24 日 11 時")), "applied");
+    const qr: Source = { kind: "original", ref: "o-qr", locator: "欄1", qr: true };
+    expectStatus(await applyChange(db, ward.wardId, project.projectId, item(qr, "10月24日11時")), "applied");
     const place = { itemKey: "place" as const, confidence: "high" as const, packVersion: "p" };
     expectStatus(
       await applyChange(db, ward.wardId, project.projectId, { kind: "item", value: "公民館", source: paper("o-this"), ...place }),
@@ -252,69 +252,69 @@ describe("今年の中身と参考の中身", () => {
     expect(current("belongings")?.source.kind).toBe("person");
   });
 
-  it("AI の案は今年の中身に入るが、出どころの年は参考にした年", async () => {
+  it("AIの下書きは今年の中身に入るが、出どころの年は参考にした年", async () => {
     const { ward, project } = await setup();
     const proposal: Source = { kind: "ai_proposal", ref: "o-last", year: 2025 };
-    expectStatus(await applyChange(db, ward.wardId, project.projectId, item(proposal, "10 月 24 日")), "applied");
+    expectStatus(await applyChange(db, ward.wardId, project.projectId, item(proposal, "10月24日")), "applied");
     const date = (await getProjectState(db, ward.wardId, project.projectId))?.items.find((i) => i.key === "date_time");
-    expect(date?.current).toMatchObject({ content: "10 月 24 日", source: { kind: "ai_proposal", year: 2025 } });
+    expect(date?.current).toMatchObject({ content: "10月24日", source: { kind: "ai_proposal", year: 2025 } });
   });
 });
 
 describe("今年の中身がある項目に違う中身が来た時", () => {
   it("資料の中身は上書きせず、食い違いとして並べる", async () => {
     const { ward, account, project } = await setup();
-    await applyChange(db, ward.wardId, project.projectId, item(person(account.accountId), "10 月 24 日 11 時"));
+    await applyChange(db, ward.wardId, project.projectId, item(person(account.accountId), "10月24日11時"));
     const result = expectStatus(
-      await applyChange(db, ward.wardId, project.projectId, item(paper("o-2"), "10 月 25 日 11 時")),
+      await applyChange(db, ward.wardId, project.projectId, item(paper("o-2"), "10月25日11時")),
       "conflict",
     );
     expect(result.questionIds).toHaveLength(1);
     const state = await getProjectState(db, ward.wardId, project.projectId);
-    expect(state?.items.find((i) => i.key === "date_time")?.current?.content).toBe("10 月 24 日 11 時");
+    expect(state?.items.find((i) => i.key === "date_time")?.current?.content).toBe("10月24日11時");
     const q = state?.questions.find((x) => x.kind === "conflict");
-    expect(q?.options).toEqual(["10 月 24 日 11 時", "10 月 25 日 11 時"]);
+    expect(q?.options).toEqual(["10月24日11時", "10月25日11時"]);
     expect(q?.text).toContain("食い違っています");
   });
 
   it("人の入力は役員の判断なので、今ある中身に代わる", async () => {
     const { ward, account, project } = await setup();
-    await applyChange(db, ward.wardId, project.projectId, item(paper("o-2"), "10 月 24 日"));
-    const result = expectStatus(await applyChange(db, ward.wardId, project.projectId, item(person(account.accountId), "10 月 25 日")), "applied");
+    await applyChange(db, ward.wardId, project.projectId, item(paper("o-2"), "10月24日"));
+    const result = expectStatus(await applyChange(db, ward.wardId, project.projectId, item(person(account.accountId), "10月25日")), "applied");
     expect(result.stateVersion).toBe(2);
     const date = (await getProjectState(db, ward.wardId, project.projectId))?.items.find((i) => i.key === "date_time");
-    expect(date?.current?.content).toBe("10 月 25 日");
+    expect(date?.current?.content).toBe("10月25日");
     // 入れ替わった物は消えずに残る
     const rows = await db.prepare("SELECT COUNT(*) AS n FROM project_item_values WHERE ward_id = ? AND project_id = ? AND item_key = 'date_time'").bind(ward.wardId, project.projectId).first<{ n: number }>();
     expect(rows?.n).toBe(2);
   });
 
-  it("AI の案は、決まった中身を上書きしない", async () => {
+  it("AIの下書きは、決まった中身を上書きしない", async () => {
     const { ward, account, project } = await setup();
-    await applyChange(db, ward.wardId, project.projectId, item(person(account.accountId), "10 月 24 日"));
-    const result = await applyChange(db, ward.wardId, project.projectId, item({ kind: "ai_proposal", year: 2025 }, "10 月 25 日"));
+    await applyChange(db, ward.wardId, project.projectId, item(person(account.accountId), "10月24日"));
+    const result = await applyChange(db, ward.wardId, project.projectId, item({ kind: "ai_proposal", year: 2025 }, "10月25日"));
     expectStatus(result, "kept");
-    expect((await getProjectState(db, ward.wardId, project.projectId))?.items.find((i) => i.key === "date_time")?.current?.content).toBe("10 月 24 日");
+    expect((await getProjectState(db, ward.wardId, project.projectId))?.items.find((i) => i.key === "date_time")?.current?.content).toBe("10月24日");
   });
 
-  it("今ある中身が案なら、資料の中身に入れ替わる", async () => {
+  it("今ある中身が下書きなら、資料の中身に入れ替わる", async () => {
     const { ward, project } = await setup();
-    await applyChange(db, ward.wardId, project.projectId, item({ kind: "ai_proposal", year: 2025 }, "10 月 25 日"));
-    expectStatus(await applyChange(db, ward.wardId, project.projectId, item(paper("o-3", { qr: true }), "10 月 24 日")), "applied");
+    await applyChange(db, ward.wardId, project.projectId, item({ kind: "ai_proposal", year: 2025 }, "10月25日"));
+    expectStatus(await applyChange(db, ward.wardId, project.projectId, item(paper("o-3", { qr: true }), "10月24日")), "applied");
     expect((await getProjectState(db, ward.wardId, project.projectId))?.items.find((i) => i.key === "date_time")?.current?.source.kind).toBe("original");
   });
 
-  it("同じ中身は「同じ物でした」で、状態の版は上がらない", async () => {
+  it("同じ中身は「同じものでした」で、状態の版は上がらない", async () => {
     const { ward, account, project } = await setup();
-    await applyChange(db, ward.wardId, project.projectId, item(person(account.accountId), "10 月 24 日 11 時"));
-    const result = expectStatus(await applyChange(db, ward.wardId, project.projectId, item(paper("o-4"), "10月24日 11時")), "same");
+    await applyChange(db, ward.wardId, project.projectId, item(person(account.accountId), "10月24日11時"));
+    const result = expectStatus(await applyChange(db, ward.wardId, project.projectId, item(paper("o-4"), "10月24日11時")), "same");
     expect(result.stateVersion).toBe(1);
   });
 
-  it("確かさが低い中身は入るが、問いにもなる", async () => {
+  it("確かさが低い中身は入るが、質問にもなる", async () => {
     const { ward, project } = await setup();
     const result = expectStatus(
-      await applyChange(db, ward.wardId, project.projectId, item(paper("o-5"), "10 月 24 日", { confidence: "low" })),
+      await applyChange(db, ward.wardId, project.projectId, item(paper("o-5"), "10月24日", { confidence: "low" })),
       "applied",
     );
     expect(result.questionIds).toHaveLength(1);
@@ -351,7 +351,7 @@ describe("表の行", () => {
     expect(rows.map((r) => [r.scope, r.refYear, r.data.amount])).toEqual([["reference", 2025, 5000], ["current", null, 6000]]);
   });
 
-  it("名前が似ているだけの行は保留して、同じ相手かを問いに並べる", async () => {
+  it("名前が似ているだけの行は保留して、同じ相手かを質問に並べる", async () => {
     const { ward, project } = await setup();
     await applyChange(db, ward.wardId, project.projectId, sponsor(paper("o-a"), { name: "商店A" }));
     const result = expectStatus(await applyChange(db, ward.wardId, project.projectId, sponsor(paper("o-b"), { name: "商店A本店", amount: 3000 })), "held");
@@ -383,7 +383,7 @@ describe("表の行", () => {
 });
 
 describe("古くなる文書", () => {
-  it("頼っている項目が変わった文書だけに古い印が付く。出した物はそのまま残る", async () => {
+  it("頼っている項目が変わった文書だけに古い印が付く。配ったものはそのまま残る", async () => {
     const { ward, account, project } = await setup();
     const announcement = await insertDocument(ward.wardId, project.projectId, "announcement");
     await insertDocument(ward.wardId, project.projectId, "duty_roster");
@@ -393,7 +393,7 @@ describe("古くなる文書", () => {
       .run();
 
     const result = expectStatus(
-      await applyChange(db, ward.wardId, project.projectId, item(person(account.accountId), "10 月 24 日")),
+      await applyChange(db, ward.wardId, project.projectId, item(person(account.accountId), "10月24日")),
       "applied",
     );
     expect(result.staleDocuments.sort()).toEqual(["announcement", "duty_roster"]);
@@ -418,7 +418,7 @@ describe("古くなる文書", () => {
     await insertDocument(ward.wardId, project.projectId, "report");
     const result = expectStatus(
       await applyChange(db, ward.wardId, project.projectId, {
-        kind: "stale", documents: ["report", "notice"], reason: "雨天で会場が変わった", source: paper("o-rain"), confidence: "high", packVersion: "p",
+        kind: "stale", documents: ["report", "notice"], reason: "雨で会場が変わった", source: paper("o-rain"), confidence: "high", packVersion: "p",
       }),
       "applied",
     );
@@ -426,7 +426,7 @@ describe("古くなる文書", () => {
   });
 });
 
-describe("地図の仕事", () => {
+describe("段取りの仕事", () => {
   it("済み・進んだの印は出どころ付きで、前に進める向きだけ付く", async () => {
     const { ward, project } = await setup();
     const mark = (progress: "started" | "done", ref: string): ChangeInput => ({
@@ -438,7 +438,7 @@ describe("地図の仕事", () => {
     expect(venue).toMatchObject({ progress: "done", progressSource: { kind: "original", ref: "o-permit" } });
   });
 
-  it("地図に無い仕事への当ては捨てる", async () => {
+  it("段取りにない仕事への当ては捨てる", async () => {
     const { ward, project } = await setup();
     const result = await applyChange(db, ward.wardId, project.projectId, {
       kind: "map_task", taskKey: "no-such-task", progress: "done", source: paper("o-1"), confidence: "high", packVersion: "p",
@@ -447,10 +447,10 @@ describe("地図の仕事", () => {
   });
 });
 
-describe("問いを書く", () => {
-  it("書ける。同じ問いは二度並ばず、同じ印で中身が違えば受けない", async () => {
+describe("質問を書く", () => {
+  it("書ける。同じ質問は二度並ばず、同じ印で中身が違えば受けない", async () => {
     const { ward, project } = await setup();
-    const q = { kind: "decide" as const, text: "雨天時の会場は公民館のホールでよいですか", options: ["よい", "別にする"], packVersion: "p1" };
+    const q = { kind: "decide" as const, text: "雨のときの会場は公民館のホールでよいですか", options: ["よい", "別にする"], packVersion: "p1" };
     const first = await addQuestion(db, ward.wardId, project.projectId, q);
     expect(first.status).toBe("added");
     const second = await addQuestion(db, ward.wardId, project.projectId, q);
@@ -461,7 +461,7 @@ describe("問いを書く", () => {
     expect(state?.questions.filter((x) => x.kind === "decide")).toHaveLength(1);
   });
 
-  it("捨てた差分の問い（discarded）は書く手では作れない", async () => {
+  it("捨てた差分の質問（discarded）は書く手では作れない", async () => {
     const { ward, project } = await setup();
     const result = await addQuestion(db, ward.wardId, project.projectId, {
       kind: "discarded" as unknown as "decide", text: "x", packVersion: "p",
@@ -469,7 +469,7 @@ describe("問いを書く", () => {
     expect(result).toMatchObject({ status: "rejected", reason: "bad_input" });
   });
 
-  it("実在しない原本の読めなかった所は受けない", async () => {
+  it("実在しない元の資料の読めなかったところは受けない", async () => {
     const { ward, project } = await setup();
     const result = await addQuestion(
       db, ward.wardId, project.projectId,
@@ -479,7 +479,7 @@ describe("問いを書く", () => {
     expect(result).toMatchObject({ status: "rejected", reason: "bad_source" });
   });
 
-  it("別の区のプロジェクトには書けない", async () => {
+  it("別の区の行事には書けない", async () => {
     const a = await setup();
     const b = await seedWard(db);
     expect(await addQuestion(db, b.wardId, a.project.projectId, { kind: "decide", text: "x", packVersion: "p" })).toEqual({

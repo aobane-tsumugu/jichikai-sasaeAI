@@ -4,7 +4,7 @@ import { seedAdmin } from "../src/core/testing";
 import { createProject, getProjectState } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("去年の地図で直した仕事の日付を、来年の行事の日から同じ間隔で引き継ぐ", async () => {
+it("去年の段取りで直した仕事の日付を、来年の行事の日から同じ間隔で引き継ぐ", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const source = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "架空の行事", year: 2026, eventDay: "2026-10-24", accountId: account.accountId,

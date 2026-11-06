@@ -21,7 +21,7 @@ export async function setSetting(
   value: string,
   accountId: string | null = null,
 ): Promise<void> {
-  if (!KEY_PATTERN.test(key)) throw new Error("設定のキーは英小文字、数字、_ . : - の 64 文字までです");
+  if (!KEY_PATTERN.test(key)) throw new Error("設定のキーは英小文字、数字、_ . : - の64文字までです");
   if (value.length > MAX_VALUE) throw new Error("設定の値が長すぎます");
   await db
     .prepare(

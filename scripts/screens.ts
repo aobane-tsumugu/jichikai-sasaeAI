@@ -28,7 +28,7 @@ try {
   base = new URL(baseArg);
   if (base.protocol !== "https:" && base.protocol !== "http:") throw new Error();
 } catch {
-  console.error("--base は http または https の URL を指定してください。");
+  console.error("--baseはhttpまたはhttpsのURLを指定してください。");
   process.exit(2);
 }
 const baseUrl = base.toString().replace(/\/$/, "");
@@ -68,7 +68,7 @@ try {
 async function openPath(path: string): Promise<void> {
   const response = await page.goto(new URL(path, `${baseUrl}/`).toString(), { waitUntil: "domcontentloaded", timeout: 30000 });
   if (!response || !response.ok()) throw new Error(`HTTP ${response?.status() ?? "応答なし"}`);
-  if (page.url().includes("/admin/login")) throw new Error("ログインが必要です");
+  if (page.url().includes("/admin/login")) throw new Error("IDとパスワードを入れてください");
   await page.locator("body").waitFor({ state: "visible", timeout: 10000 });
 }
 
@@ -76,7 +76,7 @@ function safeReason(error: unknown): string {
   if (error instanceof Error) {
     const http = /HTTP \d+/.exec(error.message)?.[0];
     if (http) return http;
-    if (error.message.includes("ログイン")) return "ログインが必要です";
+    if (error.message.includes("入る")) return "IDとパスワードを入れてください";
     if (error.message.includes("ブラウザー")) return "ブラウザーを起動できませんでした";
     if (error.name === "TimeoutError") return "表示を待つ時間が上限に達しました";
   }
@@ -129,7 +129,7 @@ const shots: Shot[] = [
   { stage: 0, name: "名簿", path: `${admin}/answers/roster`, heading: "名簿" },
   { stage: 0, name: "区の設定", path: `${admin}/settings`, heading: "区の設定" },
   { stage: 1, name: "段取り", path: "project/map", heading: "段取り" },
-  { stage: 1, name: "材料", path: "project", heading: "材料とその影響" },
+  { stage: 1, name: "資料", path: "project", heading: "資料とその影響" },
   { stage: 1, name: "質問", path: "project/questions", heading: "分かるものだけ答えてください" },
   { stage: 1, name: "送る", path: `${admin}/intake`, heading: "送る" },
   { stage: 1, name: "送ったもの", path: `${admin}/intake/received`, heading: "受け取りました" },
@@ -139,9 +139,9 @@ const shots: Shot[] = [
   { stage: 2, name: "配る", path: "project/publish", heading: "配る" },
   { stage: 2, name: "出す", path: "print", heading: "印刷用ページ", a4: true },
   { stage: 2, name: "区のページ", path: "public/ward", heading: "お知らせ" },
-  { stage: 2, name: "プロジェクトのページ", path: "public/project", heading: "" },
+  { stage: 2, name: "行事のページ", path: "public/project", heading: "" },
   { stage: 3, name: "答えを見る", path: "project/answers", heading: "答え" },
-  { stage: 3, name: "回答の入口", path: "public/answer", heading: "回答" },
+  { stage: 3, name: "答えの入口", path: "public/answer", heading: "参加する人数を教えてください" },
   { stage: 4, name: "実行委員と班長のページ", path: "project/space", heading: "実行委員と班長のページ" },
   { stage: 5, name: "再配布", path: "project/publish", heading: "配る" },
   { stage: 6, name: "閉じる", path: "project/close", heading: "閉じ" },
@@ -193,12 +193,12 @@ try {
   await page.goto(new URL(`${admin}/login`, `${baseUrl}/`).toString(), { waitUntil: "domcontentloaded", timeout: 30000 });
   await page.locator('input[name="loginId"]').fill(credentials.name);
   await page.locator('input[name="password"]').fill(credentials.password);
-  await page.getByRole("button", { name: "ログイン" }).click();
+  await page.getByRole("button", { name: "入る" }).click();
   await page.waitForURL((url) => !url.pathname.includes("/admin/login"), { timeout: 15000 });
   await openPath(`${admin}/`);
   loginReady = true;
 } catch (error) {
-  rows.push({ stage: 0, name: "役員ログイン", width: "共通", file: "", result: "失敗", note: safeReason(error) });
+  rows.push({ stage: 0, name: "役員入る", width: "共通", file: "", result: "失敗", note: safeReason(error) });
 } finally {
   // 以降の処理では資格情報を保持しない。
 }
@@ -214,7 +214,7 @@ if (loginReady) {
   for (const shot of shots) {
     for (const width of shot.a4 ? [1280] : widths) {
       const suffix = shot.a4 && width === 1280 ? "794" : String(width);
-      rows.push({ stage: shot.stage, name: shot.name, width: suffix, file: `${shot.name}-${suffix}.png`, result: "未撮影", note: "役員ログインできませんでした" });
+      rows.push({ stage: shot.stage, name: shot.name, width: suffix, file: `${shot.name}-${suffix}.png`, result: "未撮影", note: "役員入るできませんでした" });
     }
   }
 }
@@ -225,9 +225,9 @@ const lines = [
   "# 画面撮影一覧",
   "",
   `- 区: ${ward}`,
-  `- 対象プロジェクト: ${projectId || "見つかりませんでした"}`,
+  `- 対象行事: ${projectId || "見つかりませんでした"}`,
   "- 資格情報: 値は表示・記録していません",
-  "- PC 動画の元: 幅 1280 の画面画像。印刷用ページは A4 幅 794 px。",
+  "- PC動画の元: 幅1280の画面画像。印刷用ページはA4幅794 px。",
   "",
   "| 段 | 画面 | 幅 | ファイル | 結果 | メモ |",
   "|---:|---|---:|---|---|---|",

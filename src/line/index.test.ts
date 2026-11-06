@@ -39,7 +39,7 @@ async function sign(body: string, secret: string): Promise<string> {
   return btoa(Array.from(signature, (value) => String.fromCharCode(value)).join(""));
 }
 
-describe("公式 LINE と受け箱", () => {
+describe("公式LINEと届いたもの", () => {
   it("生の本文の正しい署名を受け、異なる署名を拒む", async () => {
     const secret = "fictional-line-secret";
     const body = fixtureBody("U-fixture-signature");
@@ -48,7 +48,7 @@ describe("公式 LINE と受け箱", () => {
     expect(await verifyLineSignature(body, `${signature.slice(0, -2)}AA`, secret)).toBe(false);
   });
 
-  it("署名済み webhook の重複を一度だけ受け、受け箱一覧に架空の文を出す", async () => {
+  it("署名済みwebhookの重複を一度だけ受け、届いたもの一覧に架空の文を出す", async () => {
     const ward = await seedWard(env.DB, uniqueSlug("line-test"));
     const destination = `U-fixture-${crypto.randomUUID()}`;
     const body = fixtureBody(destination);
@@ -93,14 +93,14 @@ describe("公式 LINE と受け箱", () => {
     await Promise.all(pending);
   });
 
-  it("公式 LINE のグループの文も束 2 の入った物にする", async () => {
+  it("公式LINEのグループの文も束2の届いたものにする", async () => {
     const ward = await seedWard(env.DB, uniqueSlug("line-group-test"));
     const destination = `U-fixture-group-${crypto.randomUUID()}`;
     await env.DB.prepare("INSERT INTO line_channels (ward_id, destination, channel_secret_binding, access_token_binding) VALUES (?, ?, 'LINE_CHANNEL_SECRET', 'LINE_CHANNEL_ACCESS_TOKEN')").bind(ward.wardId, destination).run();
     const secret = "fictional-line-secret";
     const payload = JSON.parse(fixtureBody(destination)) as FixtureBody;
     const groupEvent = payload.events[0];
-    if (!groupEvent) throw new Error("架空の LINE 事例がありません");
+    if (!groupEvent) throw new Error("架空のLINE事例がありません");
     groupEvent.webhookEventId = `group-${crypto.randomUUID()}`;
     groupEvent.source = { type: "group", userId: "U-fixture-user", groupId: "C-fixture-group" };
     groupEvent.message.text = "架空の実行委員会からの連絡";
@@ -110,7 +110,7 @@ describe("公式 LINE と受け箱", () => {
     const pending: Promise<unknown>[] = [];
     const ctx = { waitUntil: (promise: Promise<unknown>) => void pending.push(promise) };
     const ports = createLineIntakePorts(runtime, ctx, async () => ({
-      choice: MATCH_NEW, reason: "新しいプロジェクトか確認が必要です", usage: { input_tokens: 1, output_tokens: 1 },
+      choice: MATCH_NEW, reason: "新しい行事か確認が必要です", usage: { input_tokens: 1, output_tokens: 1 },
     }));
     const response = await acceptLineWebhook(new Request("https://unit.test/hooks/line", {
       method: "POST", headers: { "x-line-signature": await sign(body, secret) }, body,
@@ -122,18 +122,18 @@ describe("公式 LINE と受け箱", () => {
     expect(await listInboxItems(env.DB, ward.wardId)).toHaveLength(1);
     const sender = await env.DB.prepare("SELECT sender_display_name, sender_label FROM line_inbox_items WHERE ward_id = ? LIMIT 1")
       .bind(ward.wardId).first<{ sender_display_name: string; sender_label: string }>();
-    expect(sender).toMatchObject({ sender_display_name: "架空の表示名", sender_label: "LINE グループ" });
+    expect(sender).toMatchObject({ sender_display_name: "架空の表示名", sender_label: "LINEグループ" });
     await Promise.all(pending);
   });
 
-  it("LINE グループに入った案内は同じグループへ一度だけ送る", async () => {
+  it("LINEグループに入った案内は同じグループへ一度だけ送る", async () => {
     const ward = await seedWard(env.DB, uniqueSlug("line-join-test"));
     const destination = `U-fixture-join-${crypto.randomUUID()}`;
     await env.DB.prepare("INSERT INTO line_channels (ward_id, destination, channel_secret_binding, access_token_binding) VALUES (?, ?, 'LINE_CHANNEL_SECRET', 'LINE_CHANNEL_ACCESS_TOKEN')").bind(ward.wardId, destination).run();
     const secret = "fictional-line-secret";
     const payload = JSON.parse(fixtureBody(destination)) as FixtureBody;
     const event = payload.events[0];
-    if (!event) throw new Error("架空の LINE 事例がありません");
+    if (!event) throw new Error("架空のLINE事例がありません");
     event.type = "join";
     event.webhookEventId = `join-${crypto.randomUUID()}`;
     event.replyToken = "fictional-reply-token";

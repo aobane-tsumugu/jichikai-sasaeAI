@@ -24,7 +24,7 @@ export function checkSourceShape(source: unknown, allowUnknownProposalYear = fal
     return { ok: false, reason: "出どころの種類が合いません" };
   }
   if (s.ref !== undefined && (typeof s.ref !== "string" || s.ref.length === 0 || s.ref.length > MAX_REF)) {
-    return { ok: false, reason: "出どころの ID が合いません" };
+    return { ok: false, reason: "出どころのIDが合いません" };
   }
   if (s.locator !== undefined && (typeof s.locator !== "string" || s.locator.length > MAX_LOCATOR)) {
     return { ok: false, reason: "出どころの箇所が合いません" };
@@ -35,7 +35,7 @@ export function checkSourceShape(source: unknown, allowUnknownProposalYear = fal
 
   switch (s.kind) {
     case "original":
-      if (!s.ref) return { ok: false, reason: "出どころの原本がありません" };
+      if (!s.ref) return { ok: false, reason: "出どころの元の資料がありません" };
       return { ok: true };
     case "person":
       if (!s.accountId) return { ok: false, reason: "入力した人が分かりません" };
@@ -45,7 +45,7 @@ export function checkSourceShape(source: unknown, allowUnknownProposalYear = fal
       return { ok: true };
     case "ai_proposal":
       // 当番の案は年不明の参考からも作れる。資料の年は作らない。
-      if (!allowUnknownProposalYear && !isYear(s.year)) return { ok: false, reason: "案の参考にした年がありません" };
+      if (!allowUnknownProposalYear && !isYear(s.year)) return { ok: false, reason: "下書きの参考にした年がありません" };
       return { ok: true };
     default:
       return { ok: false, reason: "出どころの種類が合いません" };

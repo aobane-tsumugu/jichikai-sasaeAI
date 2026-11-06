@@ -33,7 +33,7 @@ const MAX_NAME = 40;
 function labelProblem(raw: string, what: string): string | null {
   const text = cleanName(raw);
   if (text === "") return `${what}を入れてください。`;
-  if (text.length > MAX_NAME) return `${what}は ${MAX_NAME} 文字までです。`;
+  if (text.length > MAX_NAME) return `${what}は${MAX_NAME}文字までです。`;
   // eslint の no-control-regex を避けるため、制御文字は文字コードで見る
   if ([...text].some((ch) => ch.charCodeAt(0) < 0x20 || ch.charCodeAt(0) === 0x7f)) {
     return `${what}に使えない文字があります。`;
@@ -182,7 +182,7 @@ export async function addAccount(
       .first();
     return duplicateName
       ? { ok: false, message: "同じ名前のアカウントがもうあります。" }
-      : { ok: false, message: "その ID はもう使われています。もう一度お試しください。" };
+      : { ok: false, message: "そのIDはもう使われています。もう一度お試しください。" };
   }
   return { ok: true, accountId, loginId, name, password };
 }
@@ -212,7 +212,7 @@ export async function setAccountLoginId(
     .first<{ login_id: string }>();
   if (!existing) return { ok: false, message: "そのアカウントは見つかりません。" };
   if (existing.login_id === loginId) return { ok: true, loginId };
-  return { ok: false, message: "その ID はもう使われています。" };
+  return { ok: false, message: "そのIDはもう使われています。" };
 }
 
 /**

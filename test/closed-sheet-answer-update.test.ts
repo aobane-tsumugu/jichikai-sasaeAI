@@ -6,7 +6,7 @@ import { receive } from "../src/intake/receive";
 import { createProject } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("閉じた後は取り込み済みの回答票も変わらず、開き直すと同じ回答を直せる", async () => {
+it("閉じたあとは取り込み済みの回答票も変わらず、開き直すと同じ答えを直せる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,
@@ -23,7 +23,7 @@ it("閉じた後は取り込み済みの回答票も変わらず、開き直す�
   const closePath = `/${ward.slug}/admin/close/${project.projectId}`;
   expect((await postForm(realApp, `${closePath}/finalize`, {}, cookie)).status).toBe(303);
   await expect(addAnswer(env.DB, ward.wardId, { ...input, peopleCount: 9 }))
-    .rejects.toThrow("このプロジェクトは回答を受け付けていません。");
+    .rejects.toThrow("この行事は答えを受け付けていません。");
   expect(await listAnswers(env.DB, ward.wardId, project.projectId))
     .toMatchObject([{ answerId, peopleCount: 2 }]);
 

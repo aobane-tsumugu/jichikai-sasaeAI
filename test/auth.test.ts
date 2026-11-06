@@ -5,7 +5,7 @@ import { seedAccount, seedAdmin, seedDeviceCookie, seedSeat, seedWard, uniqueSlu
 import { cookieFrom, get, postForm, realApp } from "./helpers";
 
 describe("役員画面の入口", () => {
-  it("ログインしていなければログイン画面へ送る", async () => {
+  it("役員画面に入っていなければ入る画面へ送る", async () => {
     const { ward } = await seedAdmin(env.DB);
     const res = await get(realApp, `/${ward.slug}/admin/`);
     expect(res.status).toBe(303);
@@ -14,17 +14,17 @@ describe("役員画面の入口", () => {
     );
   });
 
-  it("ログイン画面は誰でも開ける", async () => {
+  it("入る画面は誰でも開ける", async () => {
     const { ward } = await seedAdmin(env.DB);
     const res = await get(realApp, `/${ward.slug}/admin/login`);
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain("役員画面にログイン");
+    expect(html).toContain("役員画面に入る");
     expect(html).toContain(ward.name);
     expect(res.headers.get("x-robots-tag")).toBe("noindex");
   });
 
-  it("名前とパスワードでログインし、端末の記憶で次から入れる", async () => {
+  it("名前とパスワードで入り、端末の記憶で次から入れる", async () => {
     const { ward, account } = await seedAdmin(env.DB);
     const login = await postForm(realApp, `/${ward.slug}/admin/login`, {
       name: account.name,
@@ -79,7 +79,7 @@ describe("役員画面の入口", () => {
     expect(b).toContain("IDかパスワードが違います。もう一度入れてください。分からないときは、ほかの役員に作り直してもらえます");
   });
 
-  it("ログイン後の戻り先は役員画面の中だけ", async () => {
+  it("入るあとの戻り先は役員画面の中だけ", async () => {
     const { ward, account } = await seedAdmin(env.DB);
     for (const next of ["https://evil.example/", "//evil.example/", "/other-ward/admin/", "/x/../admin"]) {
       const res = await postForm(realApp, `/${ward.slug}/admin/login`, {
@@ -91,7 +91,7 @@ describe("役員画面の入口", () => {
     }
   });
 
-  it("ログアウトはこの端末の記憶だけを消す", async () => {
+  it("このスマホやパソコンから出るはこの端末の記憶だけを消す", async () => {
     const { ward, account, cookie } = await seedAdmin(env.DB);
     const other = await seedDeviceCookie(env.DB, ward.wardId, account.accountId);
     const out = await postForm(realApp, `/${ward.slug}/admin/logout`, {}, cookie);
@@ -115,7 +115,7 @@ describe("役員画面の入口", () => {
     expect((await get(realApp, `/${ward.slug}/admin/`, cookie)).status).toBe(303);
   });
 
-  it("他の区のログインや端末の記憶では入れない", async () => {
+  it("他の区の入るや端末の記憶では入れない", async () => {
     const a = await seedAdmin(env.DB);
     const b = await seedAdmin(env.DB, uniqueSlug("other"), a.account.name);
     // A の端末の記憶で B の役員画面は開かない
@@ -134,7 +134,7 @@ describe("役員画面の入口", () => {
   it("役の名札は鍵ではない: 席が無くても、どの席でも同じに入れる", async () => {
     const ward = await seedWard(env.DB);
     const seatId = await seedSeat(env.DB, ward.wardId, "会計");
-    const noSeat = await seedAccount(env.DB, ward.wardId, "席の無い人");
+    const noSeat = await seedAccount(env.DB, ward.wardId, "席のない人");
     const accountant = await seedAccount(env.DB, ward.wardId, "会計の人", { seatId });
     for (const account of [noSeat, accountant]) {
       const cookie = await seedDeviceCookie(env.DB, ward.wardId, account.accountId);
@@ -142,7 +142,7 @@ describe("役員画面の入口", () => {
     }
   });
 
-  it("フォームの POST は同じ origin からだけ受ける", async () => {
+  it("フォームのPOSTは同じoriginからだけ受ける", async () => {
     const { ward, account } = await seedAdmin(env.DB);
     const res = await realApp.request(
       `/${ward.slug}/admin/login`,

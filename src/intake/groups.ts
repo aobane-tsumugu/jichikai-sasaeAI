@@ -92,6 +92,6 @@ export async function startMaterialGroup(env: Env, ctx: Waitable, wardId: string
   const pack = getDraftPack("announcement");
   const contact = await getPublicContact(env.DB, wardId);
   await startTask(env, ctx, { wardId, projectId: project.projectId, task: "draft", accountId,
-    instruction: `${pack.instruction}${contact ? `\n区の公開用の連絡先: ${contact}` : ""}\n対象の文書: ${pack.kind}。範囲: ${pack.scope}。data に pack_version を ${pack.version}、based_on_state_version を引いた状態の番号として含めてください。` });
+    instruction: `${pack.instruction}${contact ? `\n区の公開用の連絡先: ${contact}` : ""}\n対象の文書: ${pack.kind}。範囲: ${pack.scope}。dataにpack_versionを${pack.version}、based_on_state_versionを引いた状態の番号として含めてください。` });
   return project;
 }

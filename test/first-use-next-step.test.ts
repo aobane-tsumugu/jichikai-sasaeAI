@@ -5,7 +5,7 @@ import { receive } from "../src/intake/receive";
 import { createProject } from "../src/project/api";
 import { get, realApp } from "./helpers";
 
-it("初めての役員にプロジェクト・資料・空間の次の操作を、その画面で示す", async () => {
+it("初めての役員に行事・資料・実行委員と班長のページの次の操作を、その画面で示す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   const opening = "去年の資料を送ってください";
@@ -19,7 +19,7 @@ it("初めての役員にプロジェクト・資料・空間の次の操作を�
   const projectEntry = await get(realApp, `${root}/projects`, cookie);
   expect(projectEntry.status).toBe(200);
   const projectEntryHtml = await projectEntry.text();
-  expect(projectEntryHtml).toContain("<h2>プロジェクトを開く</h2>");
+  expect(projectEntryHtml).toContain("<h2>行事を開く</h2>");
   expect(projectEntryHtml).toContain(`<form method="post" action="${root}/projects">`);
   expect(projectEntryHtml).toContain('<button type="submit">開く</button>');
 

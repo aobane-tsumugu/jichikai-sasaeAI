@@ -36,13 +36,13 @@ async function setup() {
   };
   const state = async () => {
     const value = await getProjectState(env.DB, ward.wardId, project.projectId);
-    if (!value) throw new Error("架空のプロジェクトがありません");
+    if (!value) throw new Error("架空の行事がありません");
     return value;
   };
   return { ward, account, cookie, project, originalId, ticket, write, state, root: `/${ward.slug}/admin/projects/${project.projectId}` };
 }
 
-it("年不明は参考に留まり、印のある食い違いだけを問い、選ぶと人の入力として今年に入る", async () => {
+it("年不明は参考に留まり、印のある食い違いだけを質問、選ぶと人の入力として今年に入る", async () => {
   const { ward, account, project, cookie, root, originalId, ticket, write, state } = await setup();
   for (const itemKey of ["place", "content", "rain_plan"] as const) {
     await applyChange(env.DB, ward.wardId, project.projectId, {
@@ -71,7 +71,7 @@ it("年不明は参考に留まり、印のある食い違いだけを問い、�
     content: FIRST_SLICE.rainAnnouncement, refYear: null, source: { kind: "original", ref: originalId, year: null },
   });
   const question = current.questions.find((q) => q.target === "place");
-  if (!question) throw new Error("場所の問いがありません");
+  if (!question) throw new Error("場所の質問がありません");
   expect(question.text).toBe(`「場所」が食い違っています。今は「${FIRST_SLICE.previousPlace}」です。年の書いていない資料には「${FIRST_SLICE.rainAnnouncement}」とあります。どちらにしますか。`);
   expect(question.options).toEqual([FIRST_SLICE.previousPlace, FIRST_SLICE.rainAnnouncement]);
   expect((await write({ kind: "item", target: "place", data: { value: FIRST_SLICE.rainAnnouncement }, maybe_this_year: true })).duplicate).toBe(true);
@@ -85,7 +85,7 @@ it("年不明は参考に留まり、印のある食い違いだけを問い、�
   expect(current.items.find((item) => item.key === "rain_plan")?.current?.content).toBe(FIRST_SLICE.previousPlace);
 });
 
-it("この資料は今年の物で項目と表を入れ直し、違う中身は上書きせず問いにする", async () => {
+it("この資料は今年のもので項目と表を入れ直し、違う中身は上書きせず質問にする", async () => {
   const { ward, account, project, cookie, root, originalId, write, state } = await setup();
   await applyChange(env.DB, ward.wardId, project.projectId, {
     kind: "item", itemKey: "place", value: FIRST_SLICE.previousPlace, source: { kind: "person", accountId: account.accountId },
@@ -96,7 +96,7 @@ it("この資料は今年の物で項目と表を入れ直し、違う中身は�
     source: { kind: "original", ref: originalId, locator: FIRST_SLICE.previousLocator, year: FIRST_SLICE.eventYear },
     confidence: "high", packVersion: "current-test@1",
   });
-  expect(await (await get(realApp, root, cookie)).text()).not.toContain("この資料は今年の物</button>");
+  expect(await (await get(realApp, root, cookie)).text()).not.toContain("この資料は今年のもの</button>");
   for (const target of ["place", "content"] as const) {
     await write({ kind: "item", target, data: { value: FIRST_SLICE.rainAnnouncement } });
   }
@@ -108,8 +108,8 @@ it("この資料は今年の物で項目と表を入れ直し、違う中身は�
   const page = await (await get(realApp, root, cookie)).text();
   const action = `${root}/materials/${originalId}/this-year`;
   expect(page).toContain(`action="${action}"`);
-  expect(page).toContain("この資料は今年の物</button>");
-  expect(page).toContain("今年の中身と違う所は、上書きせず問いに並びます。");
+  expect(page).toContain("この資料は今年のもの</button>");
+  expect(page).toContain("今年の中身と違うところは、上書きせず質問に並びます。");
   expect((await postForm(realApp, action, {}, cookie)).status).toBe(303);
   current = await state();
   expect(current.items.find((item) => item.key === "content")?.current).toMatchObject({
@@ -122,7 +122,7 @@ it("この資料は今年の物で項目と表を入れ直し、違う中身は�
   expect(current.tables.sponsors[0]?.data.amount).toBe(FIRST_SLICE.sponsorAmount);
   expect(current.questions).toHaveLength(2);
   expect(current.questions.find((q) => q.target === "place")?.options).toEqual([FIRST_SLICE.previousPlace, FIRST_SLICE.rainAnnouncement]);
-  expect(await (await get(realApp, root, cookie)).text()).not.toContain("この資料は今年の物</button>");
+  expect(await (await get(realApp, root, cookie)).text()).not.toContain("この資料は今年のもの</button>");
   // 二度押しで問いを増やさず、別の区や別のプロジェクトからは年を直せない。
   expect((await postForm(realApp, action, {}, cookie)).status).toBe(303);
   expect((await state()).questions).toHaveLength(2);
@@ -132,7 +132,7 @@ it("この資料は今年の物で項目と表を入れ直し、違う中身は�
   expect((await state()).questions).toHaveLength(2);
 });
 
-it("年のある原本と無い原本を一緒に送っても、年の無い内容は年不明の参考に留まる", async () => {
+it("年のある元の資料とない元の資料を一緒に送っても、年のない内容は年不明の参考に留まる", async () => {
   const { ward, account } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: FIRST_SLICE.nextYearTitle, year: FIRST_SLICE.eventYear, accountId: account.accountId,
@@ -151,7 +151,7 @@ it("年のある原本と無い原本を一緒に送っても、年の無い内�
     ],
   });
   const [datedPhoto, undatedPhoto, datedWord, undatedText] = input.received;
-  if (!input.jobId || !datedPhoto || !undatedPhoto || !datedWord || !undatedText) throw new Error("架空の原本が足りません");
+  if (!input.jobId || !datedPhoto || !undatedPhoto || !datedWord || !undatedText) throw new Error("架空の元の資料が足りません");
   const modelReading: Reading = {
     document_kind: "memo", summary: FIRST_SLICE.dutyTitle,
     original_years: [{ original_id: datedPhoto.originalId, year: FIRST_SLICE.eventYear }, { original_id: undatedPhoto.originalId, year: null }],
@@ -172,7 +172,7 @@ it("年のある原本と無い原本を一緒に送っても、年の無い内�
       content: [{ type: "text", text: JSON.stringify(modelReading) }], usage: { input_tokens: 100, output_tokens: 100 },
     }),
   });
-  setClientFactory(() => { throw new Error("試験から本物の Anthropic は呼べません"); });
+  setClientFactory(() => { throw new Error("試験から本物のAnthropicは呼べません"); });
   try {
     expect(await runRead(env, ward.wardId, input.jobId, { deps: { createClient: () => client } })).toBe("read");
   } finally {

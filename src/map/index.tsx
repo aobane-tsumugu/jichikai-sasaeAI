@@ -50,7 +50,7 @@ admin.get("/projects/:projectId/map", async (c) => {
       <p class="lead">{first ? materials.results.length ? `${readCount}件の資料を読んで、${tasks.length}つの仕事の段取りを用意しました。違うところは、仕事を押して直せます。` : `ふつうの${tasks.length}つの仕事の段取りを用意しました。違うところは、仕事を押して直せます。` : `${day && daysLeft !== null && daysLeft >= 0 ? `${formatJstDate(day)}まで、あと${daysLeft}日です。` : ""}仕事を押すと開きます。`}</p>
       <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
       {notice === "removed" ? <Notice>仕事を外しました。下の「外した仕事」から戻せます。</Notice> : notice === "restored" ? <Notice>仕事を戻しました。仕事を押すと直せます。</Notice> : notice === "added" ? <Notice>仕事を足しました。仕事を押すと直せます。</Notice> : null}
-      {project.closedAt ? <Notice>このプロジェクトは閉じました。直す時は「報告と閉じる」から「開き直す」を押してください。</Notice> : <>
+      {project.closedAt ? <Notice>この行事は閉じました。直すときは「報告と閉じる」から「開き直す」を押してください。</Notice> : <>
         <section class="next"><strong>次は</strong>
           <p>{first && questions.length ? `質問が${questions.length}つあります。答えると、案内の下書きが整います。答えなくても進められます。` : next ? next.periodEnd ? `${shortDate(next.periodEnd)}までの仕事です。` : "時期はあとから直せます。" : "段取りの仕事は全部済みました。"}</p>
           <a class="button" href={adminPath(ward, first && questions.length ? `/projects/${id}/questions` : next ? taskUrl(next) : `/close/${id}`)}>{first && questions.length ? "質問に答える" : next?.name ?? "報告を書いて閉じる"}</a>
@@ -132,7 +132,7 @@ admin.get("/projects/:projectId/map/:taskId", async (c) => {
         <button class="secondary">直した内容を保存する</button>
       </form></div></details>
       <details class="fold"><summary>この仕事を段取りから外す</summary><div><p>外しても、段取りの「外した仕事を戻す」から戻せます。</p><form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}/remove`)}><button class="secondary">外す</button></form></div></details>
-    </> : <Notice>このプロジェクトは閉じました。開き直すと時期や担当を直せます。</Notice>}
+    </> : <Notice>この行事は閉じました。開き直すと時期や担当を直せます。</Notice>}
   </Layout>);
 });
 

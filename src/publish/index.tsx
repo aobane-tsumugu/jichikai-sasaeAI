@@ -1,6 +1,6 @@
 import { getAnswerLabels } from "../settings/answer-labels";
 import { Hono } from "hono";
-import { AdminPage } from "../core/admin-ui";
+import { adminResult, AdminPage } from "../core/admin-ui";
 import { adminPath } from "../core/auth";
 import type { Bundle } from "../core/bundle";
 import { newId, nowIso } from "../core/ids";
@@ -245,7 +245,7 @@ admin.post("/publish/:projectId/space", async (c) => {
     .bind(now, account.accountId, ward.wardId, projectId, ward.wardId, projectId, documentId, versionId, versionNo,
       ward.wardId, documentId, ward.wardId, documentId, ward.wardId, projectId);
   const result = await publish.run();
-  if (result.meta.changes !== 1) return c.text("下書きの内容が変わったか、すでに配っています。配る画面で内容を確かめてください。", 409);
+  if (result.meta.changes !== 1) return adminResult(c, "下書きの内容が変わったか、すでに配っています。配る画面で内容を確かめてください。", 409, { href: adminPath(c.var.ward, `/publish/${encodeURIComponent(c.req.param("projectId"))}`), label: "配る画面に戻る" }, "配る内容と配る相手を確かめて、もう一度操作してください。");
   await recordPublishedItems(c.env.DB, ward.wardId, projectId, publishedVersionId, account.accountId);
   if (row.kind === "duty_roster") await markDistributedTask(c.env.DB, ward.wardId, projectId, account.accountId, "duty_roster", publishedVersionId);
   return c.redirect(adminPath(ward, `/publish/${projectId}?space=sent`), 303);
@@ -263,7 +263,7 @@ admin.get("/publish/:projectId/preview/:documentId/:versionNo", async (c) => {
     <h1>{row.title}</h1><p class="lead">配る前の下書きを読む画面です。ここでは区のページには載りません。</p><ArticleBody body={row.body} />
     <p><a href={adminPath(ward, `/print/${c.req.param("projectId")}/${c.req.param("documentId")}/${row.version_no}/preview`)}>印刷用ページで見る</a></p>
     <p>配る前の見え方です。配る操作をするまで、区のページには載りません。</p>
-    {row.scope === "public" ? <p>配る相手と紙の部数は、配る内容を見る画面で変えられます。</p> : <p>この物は実行委員と班長に配る内容です。</p>}
+    {row.scope === "public" ? <p>配る相手と紙の部数は、配る内容を見る画面で変えられます。</p> : <p>これは実行委員と班長に配る内容です。</p>}
   </AdminPage>);
 });
 
@@ -347,8 +347,8 @@ admin.post("/publish/:projectId/send", async (c) => {
       WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_id = ? AND v.version_no = ?`)
     .bind(ward.wardId, projectId, documentId, versionId, versionNo).first<DraftRow>();
   if (!row || row.scope !== "public" || row.published_at) return c.notFound();
-  if (row.kind === "duty_roster") return c.text("当番表は公開せず、プロジェクトの空間に配ってください。", 400);
-  if (!(DOCUMENT_KINDS as readonly string[]).includes(row.kind)) return c.text("文書の種類を確認できません。", 400);
+  if (row.kind === "duty_roster") return adminResult(c, "当番表は公開せず、実行委員と班長のページに配ってください。", 400, { href: adminPath(c.var.ward, `/publish/${encodeURIComponent(c.req.param("projectId"))}`), label: "配る画面に戻る" }, "配る内容と配る相手を確かめて、もう一度操作してください。");
+  if (!(DOCUMENT_KINDS as readonly string[]).includes(row.kind)) return adminResult(c, "文書の種類を確認できません。", 400, { href: adminPath(c.var.ward, `/publish/${encodeURIComponent(c.req.param("projectId"))}`), label: "配る画面に戻る" }, "配る内容と配る相手を確かめて、もう一度操作してください。");
   const now = nowIso();
   const publicationId = newId();
   const roster = await getRoster(c.env.DB, ward.wardId);
@@ -361,7 +361,7 @@ admin.post("/publish/:projectId/send", async (c) => {
     distribution = { mode: "district", targets: Object.entries(legacy).map(([district, copies]) => ({ district, copies })) };
   }
   if (form.has("targetMode")) distribution = distributionFromForm(form, roster, recipientScope === "all_households");
-  if (!distribution) return c.text("紙の配布先が名簿と合いません。配布内容を選び直してください。", 400);
+  if (!distribution) return adminResult(c, "紙の配布先が名簿と合いません。配布内容を選び直してください。", 400, { href: adminPath(c.var.ward, `/publish/${encodeURIComponent(c.req.param("projectId"))}`), label: "配る画面に戻る" }, "配る内容と配る相手を確かめて、もう一度操作してください。");
   const draftDue = row.kind === "announcement" ? answerDeadlineFromDraft(row.body, project.year) : null;
   // 過ぎた日を受付の締切に入れると、配った途端に回答が閉じる。去年の中身の案でも起きるので入れない
   const answerDue = draftDue && draftDue >= new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date()) ? draftDue : null;
@@ -422,7 +422,7 @@ admin.post("/publish/:projectId/send", async (c) => {
       }
     } catch {
       lineStatus = "failed";
-      lineError = "公式 LINE に送信できませんでした。接続設定を提供側に確認してください。";
+      lineError = "公式LINEに送信できませんでした。接続設定を提供側に確認してください。";
     }
   }
   await c.env.DB.prepare(`UPDATE publication_records SET line_status = ?, line_recipients = ?, line_sent_at = ?, line_error = ?

@@ -283,7 +283,7 @@ export async function sentQuestionsForSource(db: D1Database, wardId: string, des
 /** 答えは出どころのある資料。運営上の決定や配る内容には書き込まない。 */
 export async function saveClarificationAnswers(db: D1Database, wardId: string, eventId: string, jobId: string, sender: string, answers: Array<{ question: ClarificationRow; text: string }>, now: Date): Promise<void> {
   await db.prepare("UPDATE jobs SET instruction = ? WHERE ward_id = ? AND job_id = ?")
-    .bind("公式が送った資料について尋ねたことへの答えです。出どころ付きの資料として扱い、運営上の正式な決定にせず、配る内容を変えないでください。確認できたことと元の写真は get_reading にあります。", wardId, jobId).run();
+    .bind("公式が送った資料について尋ねたことへの答えです。出どころ付きの資料として扱い、運営上の正式な決定にせず、配る内容を変えないでください。確認できたことと元の写真はget_readingにあります。", wardId, jobId).run();
   for (const { question, text } of answers) {
     // 同時に別の人が答えても、片方を上書きせず両方を残す。
     await db.batch([
@@ -303,7 +303,7 @@ export async function saveClarificationAnswers(db: D1Database, wardId: string, e
     if (received.results.length > 1 && question.project_id) await addQuestion(db, wardId, question.project_id, {
       kind: "conflict", text: `送った資料について、違う答えが届いています。${question.text}`.slice(0, 500),
       target: "送った資料の確認",
-      source: { kind: "original", ref: question.original_id, locator: "公式 LINE で届いた答え" }, packVersion: "line-clarification-answer@1",
+      source: { kind: "original", ref: question.original_id, locator: "公式LINEで届いた答え" }, packVersion: "line-clarification-answer@1",
     });
   }
 }
@@ -317,7 +317,7 @@ export function safeQuestionText(text: string): boolean {
 async function pushRecipientCount(token: string, batch: Batch, fetcher: typeof fetch): Promise<number> {
   const get = async (path: string): Promise<Record<string, unknown>> => {
     const response = await fetcher(`https://api.line.me/v2/bot/${path}`, { headers: { authorization: `Bearer ${token}` } });
-    if (!response.ok) throw new Error("LINE の送信枠を確認できません");
+    if (!response.ok) throw new Error("LINEの送信枠を確認できません");
     return await response.json() as Record<string, unknown>;
   };
   try {

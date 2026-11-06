@@ -91,21 +91,21 @@ export function createLineIntakePorts(
     async checkPhoto(wardId, original, jobId) {
       if (!original.bytes) return;
       await quickCheckPhotos(env, { wardId, via: original.sourceType === "user" ? "line_direct" : "line_group",
-        parts: [{ kind: "photo", filename: "LINE の写真", mediaType: original.contentType ?? "application/octet-stream", bytes: new Uint8Array(original.bytes) }] },
+        parts: [{ kind: "photo", filename: "LINEの写真", mediaType: original.contentType ?? "application/octet-stream", bytes: new Uint8Array(original.bytes) }] },
       jobId);
     },
     async receiveOriginal(wardId, original) {
       const bytes = original.kind === "text"
         ? new TextEncoder().encode(original.text ?? "")
         : original.bytes ? new Uint8Array(original.bytes) : null;
-      if (!bytes) throw new Error("LINE の写真データがありません。");
+      if (!bytes) throw new Error("LINEの写真データがありません。");
       const outcome = await receiveIntakeOriginal(env, ctx, {
         wardId,
         via: original.sourceType === "user" ? "line_direct" : "line_group",
         senderLabel: original.senderId,
         parts: [{
           kind: original.kind === "text" ? "text" : "photo",
-          filename: original.kind === "text" ? "LINE の文.txt" : "LINE の写真",
+          filename: original.kind === "text" ? "LINE の文.txt" : "LINEの写真",
           mediaType: original.kind === "text" ? "text/plain; charset=utf-8" : original.contentType ?? "application/octet-stream",
           bytes,
         }],
@@ -130,7 +130,7 @@ export function createLineIntakePorts(
       }));
       const result = await (match ?? (async (_wardId, item) => matchProject(createAnthropic(env, { maxRetries: 0, timeoutMs: 5000 }), {
         candidates,
-        summary: item.kind === "text" ? (item.text ?? "") : "LINE から写真が届きました",
+        summary: item.kind === "text" ? (item.text ?? "") : "LINEから写真が届きました",
         ...(item.kind === "text" && item.text ? { excerpt: item.text } : {}),
         senderLabel: item.senderDisplayName || item.senderId,
         officialAddressed: item.officialAddressed,
