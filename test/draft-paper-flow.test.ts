@@ -86,7 +86,7 @@ it("資料から当番の下書きを行にし、役員が直して紙と実行�
     expect(result.isError).not.toBe(true);
     expect(JSON.parse(result.content[0]!.text)).toMatchObject({ status: "applied" });
   };
-  expect(PACK_VERSION).toBe("connect@16");
+  expect(PACK_VERSION).toBe("connect@17");
   await draftDuty();
   const dutyRows = (await state()).tables.duties.filter((row) => row.scope === "current");
   expect(dutyRows).toHaveLength(2);

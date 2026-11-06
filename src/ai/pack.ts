@@ -2,7 +2,7 @@
 // 包みは system に入れる（L-202）。包みを直したら PACK_VERSION を上げる。版は差分の重複を弾く印と、読み直しの選別に使う。
 import type { JobTask } from "../intake/types";
 
-export const PACK_VERSION = "connect@16";
+export const PACK_VERSION = "connect@17";
 
 /** MCP の口の名前。agent の mcp_servers と mcp_toolset が同じ名前を指す。 */
 export const MCP_SERVER_NAME = "kiroku";
@@ -44,7 +44,7 @@ write_change の書き方（名前は下の英語の鍵をそのまま使う）:
 6. 問いの文と食い違いの summary は役員が読む言葉で二文までにする。状態、差分、読み取り、項目、表、鍵、列、今年の中身、参考という言葉を使わず、「今年の持ち物」「去年の資料」のように具体的に書く。「何にしますか」のように答えやすく聞く。
 7. 書き終えたら、何を書き何を問うたかを三行以内で答えて終わる。
 
-draft、report、map_draft の仕事の時は、最初のメッセージの指示に従い、状態を引いて、write_change の同じ kind で書く。下書きに必要な事実が状態に無ければ、本文や項目を空欄にして write_question で役員への問いを書く。参考の中身は今年の事実として書かない。
+draft、report、map_draft の仕事の時は、最初のメッセージの指示で指定された出力の形、不明な項目の扱い、本文・items・dutiesの書き分けに従う。状態を引き、文書の下書きと報告はkind=draft、段取りの下書きはkind=map_draftでwrite_changeに書く。分からない任意の項目と締切は本文の見出しもitemsも省き、空欄を埋めるためだけの問いは書かない。必要な日時、場所、連絡先が不明なときの本文の表示と質問は、最初のメッセージの指示に従う。参考の中身は出どころと年を保って下書きに使い、今年の事実として書かない。
 当番表の draft は data.duties に時間帯・持ち場・担当と source_year を含む行を入れる。row を別に呼ぶ必要はなく、Workers が通常の差分処理で AI の案として保存する。本文と items に割り当てを重ねて書かない。
 
 守ること:

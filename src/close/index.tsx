@@ -21,9 +21,12 @@ import { getPublicContact } from "../settings/store";
 import { activityFacts } from "../ward/activity";
 import { documentText } from "../draft/meeting-materials";
 import { meetingDecisionDraft, meetingDecisionStatements } from "./decisions";
+import { hashOf } from "../project/util";
 
 interface CloseTask { task_id: string; name: string; period_start: string | null; period_end: string | null; progress: MapProgress; }
 interface CloseEntry extends CloseTask { period: string; requested_by: string; difficulty: string; next_year: string; }
+const MAP_EDIT_PACK = "close-map-edit@1";
+type CloseEdit = Pick<CloseEntry, "period" | "name" | "progress" | "requested_by" | "difficulty" | "next_year">;
 interface ActivityTaskEdit { taskId: string; name: string; period: string; }
 interface ActivityBody { introduction: string; membershipBurden: string; membershipBenefit: string; tasks: ActivityTaskEdit[]; }
 const ERROR_MESSAGES: Readonly<Record<string, string>> = {
@@ -62,13 +65,29 @@ function waitableContext(context: { executionCtx: Waitable }): Waitable {
 async function prepareDrafts(db: D1Database, wardId: string, projectId: string, accountId: string) {
   const project = await getProjectSummary(db, wardId, projectId);
   if (!project || project.closedAt) return false;
-  const tasks = await db.prepare("SELECT task_id, name, period_start, period_end, progress FROM project_map_tasks WHERE ward_id = ? AND project_id = ? AND removed_at IS NULL ORDER BY sort_order")
-    .bind(wardId, projectId).all<CloseTask>();
+  const [tasks, edits] = await Promise.all([
+    db.prepare("SELECT task_id, name, period_start, period_end, progress FROM project_map_tasks WHERE ward_id = ? AND project_id = ? AND removed_at IS NULL ORDER BY sort_order")
+      .bind(wardId, projectId).all<CloseTask>(),
+    db.prepare("SELECT target, payload FROM project_changes WHERE ward_id = ? AND project_id = ? AND pack_version = ? ORDER BY created_at DESC, rowid DESC")
+      .bind(wardId, projectId, MAP_EDIT_PACK).all<{ target: string; payload: string }>(),
+  ]);
   const now = nowIso();
-  const stmts = (tasks.results ?? []).map((task) => db.prepare(`INSERT OR IGNORE INTO project_close_map
+  // 閲覧した時点の写しを実績にしない。今の段取りに、閉じる画面で役員が直した分だけを重ねる。
+  const stmts = tasks.results.map((task) => {
+    const saved = edits.results.find((edit) => edit.target === task.task_id);
+    const edit = saved ? JSON.parse(saved.payload) as CloseEdit : null;
+    return db.prepare(`INSERT INTO project_close_map
     (ward_id, project_id, task_id, period, name, progress, requested_by, difficulty, next_year, updated_at, updated_by_account_id)
-    VALUES (?, ?, ?, ?, ?, ?, '', '', '', ?, ?)`)
-    .bind(wardId, projectId, task.task_id, [task.period_start, task.period_end].filter((date): date is string => !!date).map(formatJstDate).join(" 〜 "), task.name, task.progress, now, accountId));
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (ward_id, project_id, task_id) DO UPDATE SET period = excluded.period, name = excluded.name, progress = excluded.progress,
+      updated_at = excluded.updated_at, updated_by_account_id = excluded.updated_by_account_id`)
+      .bind(wardId, projectId, task.task_id,
+        edit?.period ?? [task.period_start, task.period_end].filter((date): date is string => !!date).map(formatJstDate).join(" 〜 "),
+        edit?.name ?? task.name, edit?.progress ?? task.progress, edit?.requested_by ?? "", edit?.difficulty ?? "", edit?.next_year ?? "", now, accountId);
+  });
+  stmts.unshift(db.prepare(`DELETE FROM project_close_map WHERE ward_id = ? AND project_id = ? AND NOT EXISTS (
+    SELECT 1 FROM project_map_tasks t WHERE t.ward_id = ? AND t.project_id = ? AND t.task_id = project_close_map.task_id AND t.removed_at IS NULL)`)
+    .bind(wardId, projectId, wardId, projectId));
   for (const scope of ["public", "staff"] as const) stmts.push(db.prepare(`INSERT OR IGNORE INTO project_close_reports (ward_id, project_id, scope, body, updated_at, updated_by_account_id) VALUES (?, ?, ?, '', ?, ?)`)
     .bind(wardId, projectId, scope, now, accountId));
   if (stmts.length) await db.batch(stmts);
@@ -95,7 +114,7 @@ function reportInstruction(contact: string, meetingSummary?: string): string {
   const pack = getDraftPack("report");
   return `${pack.instruction}${meetingSummary === undefined ? "" : `
 今回は総会です。行事の人数と回答票についての指示は使いません。答えは世帯ごとの出席・委任・欠席です。参加する人数や当日の出席人数に置き換えず、次の集計をそのまま使ってください。${meetingSummary}。総会が成り立つかは判定しません。委任する相手や答えた人の名前は公開の報告に書きません。`}
-閉じるときの実施報告です。住民に向けた公開の報告だけを書きます。役員だけの記録は書かず、役員が自分で書きます。人数や出来事は状態にある今年の事実だけにし、分からないところは空欄のまま役員への質問にします。${contact ? `\n区の公開用の連絡先（問い合わせ先に使う）: ${contact}` : ""}
+閉じるときの実施報告です。住民に向けた公開の報告だけを書きます。役員だけの記録は書かず、役員が自分で書きます。人数や出来事は状態にある今年の事実だけを書き、不明な数や出来事は本文にもitemsにも入れません。${contact ? `\n区の公開用の連絡先（問い合わせ先に使う）: ${contact}` : ""}
 対象の文書: ${pack.kind}。範囲: ${pack.scope}。dataにpack_versionを${pack.version}、based_on_state_versionを引いた状態の番号として含めてください。`;
 }
 
@@ -287,11 +306,20 @@ admin.post("/close/:projectId/map/:taskId", async (c) => {
   const { ward, account } = c.var; const id = c.req.param("projectId"); const taskId = c.req.param("taskId"); const f = await c.req.formData();
   const name = String(f.get("name") ?? "").trim().slice(0, 120); const progress = String(f.get("progress"));
   if (!name || !(["open", "started", "done"] as string[]).includes(progress)) return c.redirect(adminPath(ward, `/close/${id}`), 303);
-  await c.env.DB.prepare(`UPDATE project_close_map SET period = ?, name = ?, progress = ?, requested_by = ?, difficulty = ?, next_year = ?, updated_at = ?, updated_by_account_id = ?
+  if (!(await prepareDrafts(c.env.DB, ward.wardId, id, account.accountId))) return c.redirect(adminPath(ward, `/close/${id}`), 303);
+  const edit: CloseEdit = { period: String(f.get("period") ?? "").trim().slice(0, 80), name, progress: progress as MapProgress,
+    requested_by: String(f.get("requestedBy") ?? "").trim().slice(0, 160), difficulty: String(f.get("difficulty") ?? "").trim().slice(0, 1200), next_year: String(f.get("nextYear") ?? "").trim().slice(0, 1200) };
+  const now = nowIso();
+  const changeId = newId();
+  await c.env.DB.batch([c.env.DB.prepare(`UPDATE project_close_map SET period = ?, name = ?, progress = ?, requested_by = ?, difficulty = ?, next_year = ?, updated_at = ?, updated_by_account_id = ?
     WHERE ward_id = ? AND project_id = ? AND task_id = ? AND EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL)`)
-    .bind(String(f.get("period") ?? "").trim().slice(0, 80), name, progress, String(f.get("requestedBy") ?? "").trim().slice(0, 160),
-      String(f.get("difficulty") ?? "").trim().slice(0, 1200), String(f.get("nextYear") ?? "").trim().slice(0, 1200), nowIso(), account.accountId,
-      ward.wardId, id, taskId, ward.wardId, id).run();
+    .bind(edit.period, edit.name, edit.progress, edit.requested_by, edit.difficulty, edit.next_year, now, account.accountId, ward.wardId, id, taskId, ward.wardId, id),
+    c.env.DB.prepare(`INSERT INTO project_changes (change_id, ward_id, project_id, kind, target, status, dedupe_key, payload_hash, payload, result, pack_version, source_kind, created_at, created_by_account_id)
+      SELECT ?, ?, ?, 'map_task', ?, 'applied', ?, ?, ?, '{"status":"applied"}', ?, 'person', ?, ?
+      WHERE EXISTS (SELECT 1 FROM project_close_map m JOIN projects p ON p.ward_id = m.ward_id AND p.project_id = m.project_id
+        WHERE m.ward_id = ? AND m.project_id = ? AND m.task_id = ? AND p.closed_at IS NULL)`)
+      .bind(changeId, ward.wardId, id, taskId, changeId, await hashOf(edit), JSON.stringify(edit), MAP_EDIT_PACK, now, account.accountId, ward.wardId, id, taskId),
+  ]);
   return c.redirect(adminPath(ward, `/close/${id}#task-${taskId}`), 303);
 });
 

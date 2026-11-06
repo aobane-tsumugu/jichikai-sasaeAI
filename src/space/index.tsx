@@ -90,7 +90,7 @@ admin.post("/space/:projectId/invite", async (c) => {
   try {
     const token = await createInvite(c.env.DB, c.var.ward.wardId, c.req.param("projectId"), role, district, c.var.account.accountId);
       const url = `${new URL(c.req.url).origin}/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(c.req.param("projectId"))}/join/${token}`;
-    return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="一人用の入口を作りました"><h1>一人用の入口を作りました</h1><Notice>一度使うと、使えなくなります。</Notice><section class="next"><strong>次は</strong><p>この入口を、相手にだけ渡してください。</p><a class="button" href={url}>一人用の入口</a></section><p class="secret">{url}</p><h2>間違えたときは</h2><p>合言葉を変えてもう一度開くと、作った入口は使えなくなります。</p><a class="quiet" href={adminPath(c.var.ward.slug, `/space/${encodeURIComponent(c.req.param("projectId"))}`)}>実行委員と班長のページに戻る</a></AdminPage>);
+    return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="一人用の入口を作りました"><h1>一人用の入口を作りました</h1><p class="lead">相手に渡す入口です。相手が一度使うと、使えなくなります。</p><section class="next"><strong>次は</strong><p>下のアドレスを写して、LINEなどで相手にだけ送ってください。</p><label for="invite-url">相手に渡すアドレス</label><input id="invite-url" type="text" readonly value={url} onclick="this.select()" /><p class="help-text">欄を押すと、アドレスをまとめて選べます。「コピー」を選んでください。</p></section><h2>間違えたときは</h2><p>合言葉を変えてもう一度開くと、作った入口は使えなくなります。</p><a class="quiet" href={adminPath(c.var.ward.slug, `/space/${encodeURIComponent(c.req.param("projectId"))}`)}>実行委員と班長のページに戻る</a></AdminPage>);
   } catch {
     return adminSpaceError(c, "入口を作れませんでした。ページを開いてから、もう一度作れます。");
   }
