@@ -7,7 +7,7 @@ import { opsRoutes } from "../ops";
 import { requireAdmin } from "./auth";
 import type { Bundle } from "./bundle";
 import { loginRoutes } from "./login";
-import { Layout, ProviderContact, WardStopped } from "./ui";
+import { Layout, WardStopped } from "./ui";
 import { resolveWard } from "./ward";
 
 /**
@@ -97,7 +97,9 @@ export function createApp(bundles: Bundle[]) {
     c.html(
       <Layout title="見つかりません">
         <h1>見つかりません</h1>
-        <p>URLをお確かめください。区のページのURLは、案内や掲示のQRに書かれています。</p>
+        <p class="lead">アドレスが違うか、ページが下げられたようです。</p>
+        <section class="next"><strong>次は</strong><p>紙のQRコードをもう一度読むか、案内に書かれたアドレスを確かめてください。</p></section>
+        <a class="quiet" href={c.req.param("ward") ? `/${encodeURIComponent(c.req.param("ward")!)}/` : "/"}>最初の画面に戻る</a>
       </Layout>,
       404,
     ),
@@ -106,12 +108,16 @@ export function createApp(bundles: Bundle[]) {
   app.onError((err, c) => {
     // csrf の拒否（403）など、意図して返した失敗はそのまま返す
     if (err instanceof HTTPException) return err.getResponse();
-    // 中身（鍵、本文）を記録に出さないよう、種類と文だけにする
-    console.error("要求の処理に失敗しました", err instanceof Error ? `${err.name}: ${err.message}` : "不明な失敗");
+    // 中身（鍵、本文）を記録に出さないよう、失敗の種類だけにする
+    console.error("要求の処理に失敗しました", err instanceof Error ? err.name : "不明な失敗");
     return c.html(
       <Layout title="うまく動きませんでした">
         <h1>うまく動きませんでした</h1>
-        <p>時間をおいて、もう一度お試しください。</p><ProviderContact />
+        <div class="notice warn"><strong>今は、この画面を開けません</strong><p>時間をおくと開けることがあります。</p></div>
+        <section class="next"><strong>次は</strong><p>時間をおいて、もう一度開いてください。</p><a class="button" href={c.req.path}>もう一度開く</a></section>
+        <a class="quiet" href={c.req.param("ward") ? `/${encodeURIComponent(c.req.param("ward")!)}/` : "/"}>最初の画面に戻る</a>
+        <p>役員の方は、入る画面の「SasaeAIに問い合わせる」から連絡してください。</p>
+        <a class="quiet" href={c.req.param("ward") ? `/${encodeURIComponent(c.req.param("ward")!)}/admin/login` : "/"}>入る画面を開く</a>
       </Layout>,
       500,
     );

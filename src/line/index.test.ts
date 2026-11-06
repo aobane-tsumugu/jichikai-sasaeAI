@@ -143,7 +143,7 @@ describe("公式LINEと届いたもの", () => {
     const fetcher: typeof fetch = async (_input, init) => {
       sent += 1;
       const body = String(init?.body ?? "");
-      expect(body).toContain("貼られたものは全部記録に残ります");
+      expect(body).toContain("貼られた写真と文は、全部、自治会の記録に残ります");
       return new Response(null, { status: 200 });
     };
     const runtime = { ...env, LINE_CHANNEL_SECRET: secret, LINE_CHANNEL_ACCESS_TOKEN: "fictional-token" } as Env;

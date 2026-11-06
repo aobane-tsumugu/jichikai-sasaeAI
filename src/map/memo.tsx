@@ -98,23 +98,24 @@ memoAdmin.get("/projects/:projectId/ledger/:rowId", async (c) => {
   const state = await getProjectState(c.env.DB, ward.wardId, id);
   if (!state) return c.notFound();
   const rows = await getMemoRows(c.env.DB, ward.wardId, state);
-  const row: MemoRow | undefined = findRow(rows, state, key) ?? (key === "new" || customKey(key) ? { key: key === "new" ? `custom:${newId()}` : key, name: "メモを足す", hint: "", data: {}, current: null, reference: null, removed: false, sponsor: false } : undefined);
+  const row: MemoRow | undefined = findRow(rows, state, key) ?? (key === "new" || customKey(key) ? { key: key === "new" ? `custom:${newId()}` : key, name: "行を足す", hint: "", data: {}, current: null, reference: null, removed: false, sponsor: false } : undefined);
   if (!row || row.removed) return c.notFound();
   const back = adminPath(ward, rootPath(id)); const data = row.data;
-  const empty = !data.counterpart && data.amount === undefined && !data.date;
+  const empty = !data.counterpart && data.amount === undefined && !data.note;
+  const adding = key === "new" || (customKey(key) && !row.current);
   const field = (name: string, label: string, type = "text") => <div class="field"><label for={name}>{label}</label><input id={name} name={name} type={type} inputmode={type === "number" ? "numeric" : undefined} min={type === "number" ? "0" : undefined} step={type === "number" ? "1" : undefined} maxlength={type === "text" ? 200 : undefined} value={data[name]} /></div>;
-  const fields = <>{field("what", "何に")}{field("counterpart", row.sponsor ? "協賛先" : "どこに")}{field("amount", "額（円）", "number")}{field("date", "日付", "date")}</>;
+  const fields = row.sponsor ? <>{field("counterpart", "どこから")}{field("amount", "額（円）", "number")}{field("thanks", "お礼の仕方")}</> : <>{field("what", "何に")}{field("counterpart", "どこに")}{field("amount", "額（円）", "number")}{field("date", "日付", "date")}</>;
   const source = row.current ?? row.reference;
   const original = source?.source.kind === "original" ? source.source.ref : data.receiptOriginalId;
   return c.html(<Layout title={row.name} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={back}>{state.project.title}の運営メモへ</a><h1>{row.name}</h1><p class="lead">{empty ? "書けることだけ書いてください。書かなくても進められます。" : "読み違いを直せます。分からない欄は空のままでかまいません。"}元の資料は変わりません。</p>
+    <a class="back" href={back}>{state.project.title}の運営メモへ</a><h1>{row.name}</h1><p class="lead">{adding ? "来年の担当の方に残したいことを、行にできます。" : empty ? "書けることだけ書いてください。書かなくても進められます。" : "読み違いを直せます。分からない欄は空のままでかまいません。"}元の資料は変わりません。</p>
     {row.hint ? <p>よく残すこと: {row.hint}</p> : null}<PreviousMemo row={row} />
     {state.project.closedAt ? <Notice>この行事は閉じています。開き直すとメモを書けます。<p><a class="quiet" href={adminPath(ward, `/close/${id}`)}>行事を開き直す画面へ</a></p></Notice> : <>
       <form method="post" action={adminPath(ward, rowPath(id, row.key))}>
-        {!empty ? fields : null}
-        <div class="field"><label for="note">メモ</label><textarea id="note" name="note" rows={5} maxlength={2000}>{data.note ?? row.reference?.data.note ?? ""}</textarea></div>
-        {empty ? <details class="fold"><summary>分かっていれば書く</summary><div>{fields}</div></details> : null}
-        <details class="fold"><summary>来年のために書いておく</summary><div>{field("contact", "連絡先と、頼んだ人")}{field("requestedOn", "いつ頼んだか")}{field("quantity", "頼んだ内容の量")}{field("estimate", "見積りの額（円）", "number")}{field("payment", "払い方")}{field("thanks", "お礼の仕方")}</div></details>
+        {adding ? field("what", "何の行か") : !empty || row.sponsor ? fields : null}
+        <div class="field"><label for="note">メモ</label><textarea id="note" name="note" rows={5} maxlength={2000}>{data.note ?? ""}</textarea></div>
+        {!adding && !row.sponsor && empty ? <details class="fold"><summary>分かっていれば書く</summary><div>{fields}</div></details> : null}
+        {!adding && !row.sponsor ? <details class="fold"><summary>来年のために書いておく</summary><div>{field("contact", "連絡先と、頼んだ人")}{field("requestedOn", "いつ頼んだか")}{field("quantity", "頼んだ内容の量")}{field("estimate", "見積りの額（円）", "number")}{field("payment", "払い方")}{field("thanks", "お礼の仕方")}</div></details> : null}
         <div class="action-bar"><button>保存する</button></div>
       </form>
       {key !== "new" ? <form method="post" action={adminPath(ward, `${rowPath(id, row.key)}/remove`)}><button class="secondary">この行事では使わない行にする</button></form> : null}
@@ -173,11 +174,14 @@ memoAdmin.post("/projects/:projectId/ledger/:rowId", async (c) => {
   const back = { href: adminPath(ward, rowPath(id, row.key)), label: "メモに戻る" };
   const form = await c.req.formData(); const data: RowData = { ...row.data };
   for (const name of ["what", "counterpart", "date", "note", "contact", "requestedOn", "quantity", "payment", "thanks"]) {
+    if (!form.has(name)) continue;
     const value = String(form.get(name) ?? "").trim();
     if (value.length > (name === "note" ? 2000 : 200) || (name === "date" && value && (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(`${value}T00:00:00Z`)) || new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) !== value))) return adminResult(c, "書いた内容を保存できませんでした。", 400, back, "長い文は短くし、日付は日付の欄から選んで、もう一度保存してください。");
     delete data[name]; if (value) data[name] = value;
   }
   for (const name of ["amount", "estimate"]) {
+    if (!form.has(name)) continue;
+    if (!form.has(name)) continue;
     const value = String(form.get(name) ?? "").trim(); delete data[name];
     if (!value) continue;
     const amount = Number(value);
@@ -210,7 +214,7 @@ memoAdmin.get("/projects/:projectId/ledger", async (c) => {
   const result = notice === "saved" ? "メモを残しました" : notice === "removed" ? "この行事では使わない行にしました" : notice === "restored" ? "行を戻しました" : "";
   const renderRows = (entries: MemoRow[]) => <ul class="rows">{entries.map((row) => <li><a class="row-link" href={adminPath(ward, rowPath(id, row.key))}>
     <b>{row.name}{row.data.counterpart && row.data.what ? `　${row.data.counterpart}` : ""}</b>
-    <span>{typeof row.data.amount === "number" ? yen(row.data.amount) : row.data.counterpart || row.data.date ? "額の情報なし" : "情報なし"}{row.data.date ? `　${formatDateText(String(row.data.date))}` : ""}</span>
+    <span>{typeof row.data.amount === "number" ? yen(row.data.amount) : row.data.counterpart || row.data.note ? "額の情報なし" : "情報なし"}{row.data.date ? `　${formatDateText(String(row.data.date))}` : ""}</span>
     {row.data.note ? <span>メモ: {row.data.note}</span> : row.hint ? <span>{row.hint}</span> : null}
     {row.reference ? <span>{row.reference.refYear ? `${row.reference.refYear}年` : "過去"}の額: {typeof row.reference.data.amount === "number" ? yen(row.reference.data.amount) : "情報なし"}{row.reference.data.note ? `　メモ: ${row.reference.data.note}` : ""}</span> : null}
   </a></li>)}</ul>;

@@ -67,9 +67,9 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
   if (!inquiry) throw new Error("架空の問い合わせがありません");
   const inquiryPath = `${root}/inquiries/${inquiry.inquiry_id}`;
   const inquiryPage = await read(inquiryPath);
-  expect(inquiryPage).toContain("返事を書いて、問い合わせが届いた公式LINEのトークへ送れます");
-  expect(inquiryPage).toContain('<button name="operation" value="send">届いたトークへ公式LINEで返事を送る</button>');
-  expect(inquiryPage).toContain('<button class="secondary" name="operation" value="record">電話や直接答えたことを残す</button>');
+  expect(inquiryPage).toContain("返事を書いて送ると、来たところへ届き");
+  expect(inquiryPage).toContain('<button name="operation" value="send">1か所に送る</button>');
+  expect(inquiryPage).toContain('<button class="secondary" name="operation" value="record">どう答えたかを残す</button>');
   expect(inquiryPage).toContain("送った人をLINEで確認できないため、その人へは電話か直接答え");
   const saved = await follow(await postForm(realApp, inquiryPath, {
     answer: fixture.reportText, submittedToCity: "yes", kind: "request", operation: "record",

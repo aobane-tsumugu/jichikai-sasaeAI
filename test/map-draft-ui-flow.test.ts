@@ -62,7 +62,7 @@ it("資料のない一年目から仕事・質問・下書き・別の雨の知�
   const answered = await postForm(realApp, `${path}/questions/${question.questionId}`, { action: "answer", answer: FIRST_SLICE.layoutPosition }, cookie);
   expect(answered.status).toBe(303);
   const answerHtml = await (await get(realApp, answered.headers.get("location")!, cookie)).text();
-  expect(answerHtml).toContain("下書きに入りました");
+  expect(answerHtml).toContain("答えを残しました");
   expect(answerHtml).toContain("案内の下書きを見る");
   expect((await getEditableDocument(env.DB, ward.wardId, project.projectId, "announcement"))?.body).toContain(FIRST_SLICE.layoutPosition);
 
