@@ -174,7 +174,7 @@ admin.get("/publish/:projectId", async (c) => {
   const copies = (await getRoster(c.env.DB, ward.wardId)).length;
 
   return c.html(<AdminPage ward={ward} account={account} title="配る" back={{ href: adminPath(ward, `/projects/${projectId}/map`), label: `${project.title}の段取りへ` }}>
-    <h1>{primary ? paperHeading(project.title, primary.title) : project.title}を配る</h1><p class="lead">配ると、同じ内容が区のページと紙に出ます。</p>
+    <h1>{primary ? paperHeading(project.title, primary.title) : project.title}を配る</h1>{primary ? <p class="lead">配ると、同じ内容が区のページと紙に出ます。</p> : null}
     {project.closed_at ? <Notice>この行事は閉じています。</Notice> : null}
     {documentBodyCheckMessage(c.req.query("check_body")) ? <Notice>{documentBodyCheckMessage(c.req.query("check_body"))}</Notice> : null}
     {c.req.query("space") === "sent" ? <><Notice>実行委員と班長のページに配りました。</Notice><section class="next"><strong>次は</strong><p>配られたものを実行委員と班長に伝えてください。</p><a class="button" href={adminPath(ward, `/space/${projectId}`)}>実行委員と班長のページへ</a></section><p>間違えたときは、下書きを直して配り直せます。</p></> : null}

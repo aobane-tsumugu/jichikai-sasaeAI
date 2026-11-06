@@ -42,7 +42,7 @@ async function renderAdminSpace(c: Context<AdminEnv>, passphrase?: string) {
       <div class="notice done" role="status"><strong>開いています</strong><p>紙の案内を配ると、班長は班長への一枚のQRコードから入れます。</p></div>
       <section class="next"><strong>次は</strong>{published ? <><p>班長への一枚を印刷して、案内といっしょに渡してください。</p><a class="button" href={adminPath(ward.slug, `/print/${projectId}/${published.document_id}/${published.version_no}/leader`)}>班長への一枚を印刷する</a></> : <><p>案内を配ると、班長への一枚を印刷できます。</p><a class="button" href={adminPath(ward.slug, `/publish/${projectId}`)}>配る内容を見る</a></>}</section>
       <h2>実行委員に伝えること</h2>
-      <dl class="facts">{passphrase ? <><dt>合言葉</dt><dd>{passphrase}</dd></> : null}<dt>入口のアドレス</dt><dd><span class="secret"><a href={`/${encodeURIComponent(ward.slug)}/space/${encodeURIComponent(projectId)}`}>{`${new URL(c.req.url).origin}/${encodeURIComponent(ward.slug)}/space/${encodeURIComponent(projectId)}`}</a></span></dd></dl>
+      <dl class="facts">{passphrase ? <><dt>合言葉</dt><dd>{passphrase}</dd></> : null}<dt>入口のアドレス</dt><dd style="overflow-wrap: anywhere"><a href={`/${encodeURIComponent(ward.slug)}/space/${encodeURIComponent(projectId)}`}>{`${new URL(c.req.url).origin}/${encodeURIComponent(ward.slug)}/space/${encodeURIComponent(projectId)}`}</a></dd></dl>
       {!passphrase ? <p>合言葉は開くときに表示します。分からないときは、下の「合言葉を変える」から作り直せます。</p> : null}
       <section class="panel" style="display: flex; gap: 1rem; align-items: center"><div class="qrbox" style="flex: none; width: 112px; height: 112px" dangerouslySetInnerHTML={{ __html: qrSvg(`${new URL(c.req.url).origin}/${encodeURIComponent(ward.slug)}/space/${encodeURIComponent(projectId)}`) }} /><p style="margin: 0">入口のQRコードです。スマホで読み取ると、合言葉を入れる画面が開きます。</p></section>
       <p class="muted">この合言葉と入口を、LINEや電話で実行委員に伝えてください。</p>
