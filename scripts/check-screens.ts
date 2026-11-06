@@ -33,6 +33,7 @@ const screens = [
   "/admin/settings/templates", "/admin/inquiries", "/admin/inquiries/:inquiry", "/admin/inquiries/:inquiry/original", "/admin/requests/city",
   "/admin/requests/city/:project", "/admin/ledger",
   "", "/help", "/help/:project", "/p/:project", "/answer/:project",
+  "/space/:project",
   "/q/:project/:document/:version", "/work/:project",
 ];
 const routes = screens.map((shape) => ({
@@ -274,9 +275,14 @@ async function check(options: Options): Promise<{ results: Result[]; project: st
       seen.add(shape);
       queue.push(url);
     }
-    if (project) enqueue(`${site.wardPath}/admin/projects/${encodeURIComponent(project)}`, site.base.href);
+    if (project) {
+      for (const path of [`/admin/projects/${encodeURIComponent(project)}`, `/answer/${encodeURIComponent(project)}`, `/help/${encodeURIComponent(project)}`, `/space/${encodeURIComponent(project)}`]) {
+        enqueue(`${site.wardPath}${path}`, site.base.href);
+      }
+    }
     enqueue(`${site.wardPath}/admin/`, site.base.href);
     enqueue(`${site.wardPath}/`, site.base.href);
+    enqueue(`${site.wardPath}/help`, site.base.href);
     enqueue(list.href, site.base.href);
 
     for (const [index, url] of queue.entries()) {
@@ -408,6 +414,12 @@ async function selfTest() {
         } else response.end(html('<form method="post"><input name="loginId"><input name="password" type="password"><button>入る</button></form>'));
       } else if (path.startsWith("/fixture/admin") && !request.headers.cookie?.includes("device=fictional")) {
         response.writeHead(403); response.end(html("役員用です"));
+      } else if (path === "/fixture/answer/first") {
+        response.end(html('<main><h1>架空の行事の出欠を教えてください</h1><form method="post"><label>代表者のお名前<input name="household"></label><button>この内容で送る</button></form></main>'));
+      } else if (path === "/fixture/help/first") {
+        response.end(html('<main><h1>手伝える時間帯を教えてください</h1><form method="post"><label>お名前<input name="helper_name"></label><label>時間帯<input name="helper_times"></label><button>申し込む</button></form></main>'));
+      } else if (path === "/fixture/space/first") {
+        response.end(html('<main><h1>合言葉を入れてください</h1><form method="post" action="/fixture/space/first/enter"><label>合言葉<input name="passphrase" type="password"></label><button>入る</button></form><a href="/fixture/space/first/join/secret">招待の入口</a><a href="/fixture/space/first/person/secret">班長の入口</a></main>'));
       } else if (path === "/fixture/admin/projects") {
         response.end(html('<a href="/fixture/admin/projects/today">今やること</a><a href="/fixture/admin/projects/first">架空の行事</a><a href="/fixture/admin/projects/second">別の架空の行事</a>'));
       } else if (path === "/fixture/admin/projects/first") {
@@ -431,6 +443,11 @@ async function selfTest() {
       report(options, result.results, result.project, result.capped);
       assert.equal(result.project, "first");
       for (const width of widths) {
+        for (const path of ["/fixture/answer/first", "/fixture/help/first", "/fixture/space/first"]) {
+          const publicPage = result.results.find((row) => row.path === path && row.width === width);
+          assert.ok(publicPage, path);
+          assert.deepEqual(publicPage.failures, [], path);
+        }
         const map = result.results.find((row) => row.path.endsWith("/first/map") && row.width === width);
         assert.ok(map);
         for (const item of ["横のはみ出し", "文字が18px未満", "押せるものの高さが48px未満", "主なボタンが二つ以上", "文字の表示の誤り", "JavaScriptの誤り（console.errorなど）"]) assert.ok(map.failures.some((failure) => failure.item === item), item);
@@ -441,7 +458,7 @@ async function selfTest() {
       assert.equal(requests.filter((request) => request.startsWith("POST ")).length, 1);
       assert.ok(requests.includes("GET /fixture/app.js"));
       assert.ok(!requests.includes("GET /favicon.ico"));
-      assert.ok(!requests.some((request) => /second|other|logout|delete|join|\/title/.test(request)));
+      assert.ok(!requests.some((request) => /second|other|logout|delete|join|person|\/enter|\/title/.test(request)));
       const markdown = readFileSync(resolve(temp, "report.md"), "utf8");
       assert.ok(markdown.includes("通った画面:"));
       assert.ok(markdown.includes("Failed to load resource: net::ERR_FAILED"));
