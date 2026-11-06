@@ -8,6 +8,8 @@ import { buildDirectReading, MAX_READING_JSON_BYTES, parseExtracted, type Direct
 import { classifyUpload, decodeText, sha256Hex, type MediaClass } from "./media";
 import { projectDirectory } from "./project-port";
 import type { OriginalKind, ReadKind, Via } from "./types";
+import { validReadingCopy, type ReadingCopy } from "./photo-copy";
+import type { ReadableOriginal } from "../ai/read";
 
 /** 一回に送れる量。画面の送るで足りる量（六枚前後）より十分大きく、Workers の要求の上限に収まる。 */
 export const MAX_PARTS = 30;
@@ -22,6 +24,7 @@ export interface ReceivePart {
   /** ブラウザが言う種類。信じず、先頭のバイトで見る */
   mediaType: string;
   bytes: Uint8Array;
+  readingCopy?: ReadingCopy;
   /** Word と Excel をブラウザで展開した結果（JSON をパースした値）。無いと Word と Excel は受けない */
   extracted?: unknown;
 }
@@ -63,6 +66,8 @@ export interface DuplicateOriginal {
 }
 
 export interface ReceiveOutcome {
+  /** 初回の読み取りまで持つ写し。原本はR2のまま。読み直しはサーバーで作る。 */
+  readingCopies?: ReadableOriginal[];
   /** 新しい物が一つも無ければ null（全部「同じ物でした」） */
   jobId: string | null;
   /** 読みが要る（画像と PDF がある）か。要るなら呼び出し側が pipeline.kick で裏の読みを始める */
@@ -72,6 +77,7 @@ export interface ReceiveOutcome {
 }
 
 interface PreparedPart {
+  readingCopy?: ReadingCopy;
   part: ReceivePart;
   mediaType: string;
   mediaClass: MediaClass;
@@ -115,6 +121,7 @@ async function prepare(parts: ReceivePart[], projectId: string | null): Promise<
       mediaClass: classified.mediaClass,
       hash: await sha256Hex(part.bytes),
       bytes: part.bytes,
+      readingCopy: classified.mediaClass === "image" ? validReadingCopy(part.readingCopy) : undefined,
     };
     if (classified.mediaClass === "word" || classified.mediaClass === "excel") {
       const extracted = parseExtracted(part.extracted);
@@ -278,6 +285,8 @@ export async function receive(
   return {
     jobId,
     needsModelRead,
+    readingCopies: rows.flatMap((r) => r.p.readingCopy ? [{ originalId: r.originalId, filename: r.p.part.filename,
+      position: r.position, ...r.p.readingCopy }] : []),
     received: rows.map((r) => ({ originalId: r.originalId, filename: r.p.part.filename, kind: r.p.part.kind })),
     duplicates,
   };

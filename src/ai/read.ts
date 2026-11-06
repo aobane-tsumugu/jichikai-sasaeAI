@@ -5,6 +5,7 @@ import type { AnswerLabels } from "../settings/answer-labels";
 import type Anthropic from "@anthropic-ai/sdk";
 import { MODEL } from "./anthropic";
 import { cleanSuggestions } from "./suggest";
+import { MAX_IMAGE_BYTES, MAX_READ_BYTES, validReadingCopy } from "../intake/photo-copy";
 import {
   ANSWER_SHEET_SCHEMA,
   GENERAL_READING_SCHEMA,
@@ -12,6 +13,7 @@ import {
   isAnswerSheetReading,
   normalizeOriginalYears,
   type ReadingBody,
+  type ReadUnreadable,
 } from "./schema";
 
 export type ReadKind = "general" | "answer_sheet" | "restore";
@@ -53,8 +55,7 @@ export class ReadError extends Error {
 }
 
 /** Messages API の画像の上限は 1 枚 5 MB、リクエスト全体は 32 MB。base64 で 4/3 倍になるので余裕を見る。 */
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
+const MAX_TOTAL_BYTES = MAX_READ_BYTES;
 const MAX_OUTPUT_TOKENS = 16_000;
 
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
@@ -188,6 +189,7 @@ export function fixOriginalIds(body: ReadingBody, validIds: string[]): ReadingBo
 }
 
 export interface ReadOptions {
+  images?: Pick<ImagesBinding, "input">;
   kind: ReadKind;
   generalMeeting?: boolean;
   answerLabels?: AnswerLabels;
@@ -196,10 +198,54 @@ export interface ReadOptions {
   effort?: "low" | "medium" | "high";
 }
 
+/** 写しが無いときと合計が収まらないときに、非公開のバイトからサーバーで変換を試す。 */
+export async function prepareReadOriginals(originals: ReadableOriginal[], images?: Pick<ImagesBinding, "input">,
+  onUnreadable?: (original: ReadableOriginal, note: string) => void): Promise<ReadableOriginal[]> {
+  const overTotal = originals.reduce((sum, original) => sum + original.bytes.length, 0) > MAX_TOTAL_BYTES;
+  const prepared: ReadableOriginal[] = [];
+  for (const original of originals) {
+    const image = original.mediaType.startsWith("image/");
+    const needsCopy = image && (original.bytes.length > MAX_IMAGE_BYTES || !IMAGE_TYPES.has(original.mediaType) || overTotal);
+    const oversizedPdf = original.mediaType === "application/pdf" && original.bytes.length > MAX_TOTAL_BYTES;
+    if (!needsCopy && !oversizedPdf) { prepared.push(original); continue; }
+    try {
+      if (!images) throw new Error("画像の変換が使えません");
+      const output = await images.input(new Blob([original.bytes]).stream())
+        .transform({ width: 2000, height: 2000, fit: "scale-down" })
+        .output({ format: "image/jpeg", quality: 85 });
+      const bytes = new Uint8Array(await output.response().arrayBuffer());
+      if (output.contentType() !== "image/jpeg" || !validReadingCopy({ bytes, mediaType: output.contentType() })) throw new Error("写しを作れませんでした");
+      prepared.push({ ...original, mediaType: "image/jpeg", bytes });
+    } catch {
+      const note = "写真や紙を読み取れませんでした。明るい場所で、紙の全体が入るように撮れますか。";
+      if (!onUnreadable) throw new ReadError(note, "unreadable", false);
+      onUnreadable(original, note);
+    }
+  }
+  if (prepared.reduce((sum, original) => sum + original.bytes.length, 0) > MAX_TOTAL_BYTES) {
+    const note = "送った資料を一度に読み取れませんでした。何枚かずつ撮って送れますか。";
+    if (!onUnreadable) throw new ReadError(note, "unreadable", false);
+    for (const original of prepared) onUnreadable(original, note);
+    return [];
+  }
+  return prepared;
+}
+
 /** 一回の呼び出しで読む。失敗は ReadError にして、再試行してよいかを retryable で伝える。 */
 export async function readOriginals(client: Anthropic, options: ReadOptions): Promise<ReadResult> {
   if (options.originals.length === 0) throw new ReadError("読む原本がありません", "unsupported", false);
-  const content = buildContent(options.originals);
+  const unreadable: ReadUnreadable[] = [];
+  const prepared = await prepareReadOriginals(options.originals, options.images,
+    (original, note) => unreadable.push({ original_id: original.originalId, locator: "全体", note }));
+  if (!prepared.length) {
+    // 読めなかった箇所として残し、既存の撮り直しの質問へ渡す。AIに渡したとは記録しない。
+    const body: ReadingBody = options.kind === "answer_sheet" ? { summary: "紙を読み取れませんでした", rows: [], unreadable }
+      : { document_kind: "other", summary: "資料を読み取れませんでした",
+        original_years: options.originals.map((original) => ({ original_id: original.originalId, year: null })),
+        text_blocks: [], fields: [], tables: [], decisions: [], unreadable };
+    return { body, packVersion: packVersionFor(options.kind), model: "", usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0 } };
+  }
+  const content = buildContent(prepared);
 
   let response: Anthropic.Message;
   try {
@@ -238,6 +284,7 @@ export async function readOriginals(client: Anthropic, options: ReadOptions): Pr
     parsed as ReadingBody,
     options.originals.map((o) => o.originalId),
   );
+  body.unreadable.push(...unreadable);
   return {
     body,
     packVersion: packVersionFor(options.kind),

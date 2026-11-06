@@ -9,6 +9,7 @@ it("行事未定の資料をブラウザから送ると、受け取った画面�
   const root = `/${ward.slug}/admin`;
   let submit: ((event: { preventDefault(): void }) => Promise<void>) | undefined;
   const form = {
+    dataset: {},
     action: `${root}/intake`, elements: { text: { value: "" }, project_id: { value: "" } }, reset: vi.fn(),
     addEventListener: (_name: string, listener: typeof submit) => { submit = listener; },
   };
@@ -18,6 +19,14 @@ it("行事未定の資料をブラウザから送ると、受け取った画面�
   const elements = new Map<string, unknown>([
     ["send-form", form], ["send-status", status], ["send-button", button], ["files", { files: [file] }],
   ]);
+  const document = {
+    getElementById: (id: string) => elements.get(id) ?? null,
+    querySelectorAll: (selector: string) => {
+      if (selector !== "form[data-photo-form]") throw new Error(`試験のDOMで扱っていない選択です: ${selector}`);
+      // 送る画面のフォームにはdata-photo-formが無い。写真専用フォームと区別して探す。
+      return [form].filter((candidate) => "photoForm" in candidate.dataset);
+    },
+  };
   const location = { assign: vi.fn(), reload: vi.fn() };
   const send = async (path: string, init: RequestInit) => {
     const headers = new Headers(init.headers);
@@ -26,7 +35,7 @@ it("行事未定の資料をブラウザから送ると、受け取った画面�
     return realApp.request(path, { ...init, headers }, env);
   };
   new Function("window", "document", "fetch", "location", "setTimeout", SEND_SCRIPT)(
-    {}, { getElementById: (id: string) => elements.get(id) ?? null }, send, location, (callback: () => void) => { callback(); },
+    {}, document, send, location, (callback: () => void) => { callback(); },
   );
   expect(submit).toBeDefined();
   await submit!({ preventDefault: vi.fn() });

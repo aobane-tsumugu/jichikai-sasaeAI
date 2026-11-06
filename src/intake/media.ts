@@ -36,6 +36,10 @@ export function classifyUpload(bytes: Uint8Array, declaredType: string, filename
   if (startsWith(bytes, [0x52, 0x49, 0x46, 0x46]) && startsWith(bytes, [0x57, 0x45, 0x42, 0x50], 8)) {
     return { mediaType: "image/webp", mediaClass: "image" };
   }
+  if (bytes.length >= 12 && new TextDecoder("latin1").decode(bytes.subarray(4, 8)) === "ftyp"
+    && ["heic", "heix", "hevc", "hevx", "heif"].includes(new TextDecoder("latin1").decode(bytes.subarray(8, 12)))) {
+    return { mediaType: "image/heic", mediaClass: "image" };
+  }
   const head = new TextDecoder("latin1").decode(bytes.subarray(0, 1024));
   if (head.includes("%PDF-")) return { mediaType: "application/pdf", mediaClass: "pdf" };
   if (startsWith(bytes, [0x50, 0x4b, 0x03, 0x04])) {
