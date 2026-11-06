@@ -127,11 +127,17 @@ async function discoverPrint() {
 const shots: Shot[] = [
   { stage: 0, name: "最初の画面", path: `${admin}/`, heading: "いま進めていること" },
   { stage: 0, name: "名簿", path: `${admin}/answers/roster`, heading: "名簿" },
+  { stage: 0, name: "今やること", path: `${admin}/projects/today`, heading: "今やること" },
+  { stage: 0, name: "問い合わせと要望", path: `${admin}/inquiries`, heading: "問い合わせと要望" },
+  { stage: 0, name: "帳簿", path: `${admin}/ledger`, heading: "帳簿" },
+  { stage: 0, name: "役員の一覧", path: `${admin}/settings/people`, heading: "役員の一覧" },
   { stage: 0, name: "区の設定", path: `${admin}/settings`, heading: "区の設定" },
   { stage: 1, name: "段取り", path: "project/map", heading: "段取り" },
   { stage: 1, name: "資料", path: "project", heading: "資料とその影響" },
   { stage: 1, name: "質問", path: "project/questions", heading: "分かるものだけ答えてください" },
-  { stage: 1, name: "送る", path: `${admin}/intake`, heading: "送る" },
+  { stage: 1, name: "送る", path: `${admin}/intake`, heading: "手元の紙や資料を送る" },
+  { stage: 1, name: "行事に資料を送る", path: "project/intake", heading: "に資料を送る" },
+  { stage: 1, name: "行事の収支", path: "project/ledger", heading: "の収支" },
   { stage: 1, name: "送ったもの", path: `${admin}/intake/received`, heading: "受け取りました" },
   { stage: 1, name: "読み終わったもの", path: `${admin}/intake/read`, heading: "読み終わりました" },
   { stage: 1, name: "届いたもの", path: `${admin}/inbox`, heading: "届いたもの" },
@@ -145,12 +151,15 @@ const shots: Shot[] = [
   { stage: 4, name: "実行委員と班長のページ", path: "project/space", heading: "実行委員と班長のページ" },
   { stage: 5, name: "再配布", path: "project/publish", heading: "配る" },
   { stage: 6, name: "閉じる", path: "project/close", heading: "閉じ" },
+  { stage: 6, name: "一年の予定", path: `${admin}/archive/map`, heading: "一年の予定" },
   { stage: 6, name: "記録", path: `${admin}/archive`, heading: "記録" },
 ];
 
 async function pathFor(shot: Shot): Promise<string> {
   if (shot.path === "project") return `${admin}/projects/${encodeURIComponent(projectId)}`;
   if (shot.path === "project/questions") return `${admin}/projects/${encodeURIComponent(projectId)}/questions`;
+  if (shot.path === "project/intake") return `${admin}/intake?project=${encodeURIComponent(projectId)}`;
+  if (shot.path === "project/ledger") return `${admin}/projects/${encodeURIComponent(projectId)}/ledger`;
   if (shot.path === "project/map") return `${admin}/projects/${encodeURIComponent(projectId)}/map`;
   if (shot.path === "project/draft") return `${admin}/projects/${encodeURIComponent(projectId)}/draft/announcement`;
   if (shot.path === "project/publish") return `${admin}/publish/${encodeURIComponent(projectId)}`;

@@ -4,7 +4,6 @@ import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
 import { ErrorNotice, Hint, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
-import { listUnansweredByDistrict } from "../answers/api";
 import { getReadings, listOriginals, listJobs } from "../intake/store";
 import { createProject, getProjectState, getProjectSummary, listProjects, ProjectInputError } from "./api";
 import { answerQuestion, renameProject } from "./actions";
@@ -12,7 +11,7 @@ import { PROJECT_KINDS, PROJECT_KIND_LABEL, TABLE_KEYS, type TableKey, isItemKey
 import { setProjectApi } from "../ai/project-binding";
 import { agentApi } from "./agent-api";
 import { MAP_TEMPLATES } from "../map/template";
-import { followupAdmin } from "./followup";
+import { daysRemaining, followupAdmin } from "./followup";
 import { questionPages } from "./question-pages";
 import { markMaterialThisYear, unknownYearContents } from "./material-year";
 
@@ -91,16 +90,14 @@ admin.get("/projects/today", async (c) => {
   for (const project of projects) {
     for (const [kind, date] of Object.entries(project.deadlines)) {
       if (kind === "event_day" && date < today) continue;
-      entries.push({ date, projectId: project.projectId, project: project.title, label: DEADLINE_LABEL[kind as keyof typeof DEADLINE_LABEL], detail: formatJstDate(date), href: `/projects/${project.projectId}/map` });
+      entries.push({ date, projectId: project.projectId, project: project.title, label: DEADLINE_LABEL[kind as keyof typeof DEADLINE_LABEL], detail: "", href: kind === "submit_due" && project.kind === "city_request" ? `/requests/city/${project.projectId}` : kind === "answer_due" ? `/answers/${project.projectId}` : `/projects/${project.projectId}/map` });
     }
     const state = await getProjectState(c.env.DB, ward.wardId, project.projectId);
     if (!state) continue;
-    if (project.deadlines.answer_due) {
-      const groups = await listUnansweredByDistrict(c.env.DB, ward.wardId, project.projectId);
-      const unansweredCount = groups.reduce((count, group) => count + group.households.length, 0);
-      if (unansweredCount > 0) entries.push({ date: project.deadlines.answer_due, projectId: project.projectId, project: project.title, label: "まだ答えていない世帯", detail: `${unansweredCount}世帯`, href: `/answers/${encodeURIComponent(project.projectId)}` });
+    for (const task of state.mapTasks.filter((t) => t.progress !== "done" && t.periodEnd)) {
+      entries.push({ date: task.periodEnd, projectId: project.projectId, project: project.title, label: task.name, detail: "", href: `/projects/${project.projectId}/map/${task.taskId}` });
     }
-    for (const question of state.questions) {
+    for (const question of state.questions.filter((q) => q.state === "open" || q.state === "later")) {
       entries.push({ date: null, projectId: project.projectId, project: project.title, label: question.kind === "unreadable" ? "読めなかったところ" : "まだ答えていない質問", detail: question.text, href: `/projects/${project.projectId}/questions#question-${question.questionId}` });
     }
     for (const item of state.items) {
@@ -109,13 +106,8 @@ admin.get("/projects/today", async (c) => {
   }
   entries.sort((a, b) => (a.date ?? "9999-99-99").localeCompare(b.date ?? "9999-99-99") || a.project.localeCompare(b.project, "ja"));
   return c.html(<Layout title="今やること" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/projects")}>行事一覧</a>}>
-    <h1>今やること</h1><p class="lead">期限の近い仕事や、残っている質問を見る画面です。取りかかる項目の行事名を押してください。</p>
-    <p>期限の近い順に並べています。期限のない質問と足りないものは後ろに表示します。</p>
-    {entries.map((entry) => <article class="panel">
-      <p>{entry.date ? formatJstDate(entry.date) : "日付なし"}　{entry.label}</p>
-      <h2><a href={adminPath(ward, entry.href)}>{entry.project}</a></h2>
-      <p>{entry.detail}</p>
-    </article>)}
+    <a class="back" href={adminPath(ward, "/")}>最初の画面へ</a><h1>今やること</h1><p class="lead">締切の近い順に並べています。どれから始めてもかまいません。押すと、その仕事の画面が開きます。</p>
+    {[true, false].map((dated) => <section><h2>{dated ? "締切のあるもの" : "締切のないもの"}</h2><ul class="rows">{entries.filter((entry) => Boolean(entry.date) === dated).map((entry) => <li><a class="row-link" href={adminPath(ward, entry.href)}><b>{entry.project}　{entry.label}</b><span>{entry.date ? `${formatJstDate(entry.date)}　${daysRemaining(entry.date)}` : entry.detail}</span></a></li>)}</ul>{!entries.some((entry) => Boolean(entry.date) === dated) ? <p>{dated ? "締切のあるものはありません。" : "締切のないものはありません。"}</p> : null}</section>)}
     {entries.length === 0 ? <p>今、確認する項目はありません。</p> : null}
     <p><a href={adminPath(ward, "/")}>役員画面へ</a></p>
   </Layout>);
@@ -142,9 +134,9 @@ admin.get("/projects/:projectId", async (c) => {
   if (!project || !state) return c.notFound();
   const unknown = unknownYearContents(state);
   const unknownOriginalIds = new Set([...unknown.items, ...unknown.rows].map((value) => value.source.ref));
-  const ledgerRows: Array<{ data: RowData }> = [
-    ...state.tables.sponsors.map((row) => ({ data: { counterpart: row.data.name ?? "", direction: "income", amount: row.data.amount ?? "", date: "", note: row.data.reply ? `協賛の返事: ${displayFieldValue("sponsors", "reply", row.data.reply)}` : "" } })),
-    ...state.tables.ledger,
+  const ledgerRows: Array<{ rowId: string; data: RowData }> = [
+    ...state.tables.sponsors.filter((row) => row.scope === "current").map((row) => ({ rowId: row.rowId, data: { counterpart: row.data.name ?? "", direction: "income", amount: row.data.amount ?? "", date: "", note: row.data.reply ? `協賛の返事: ${displayFieldValue("sponsors", "reply", row.data.reply)}` : "" } })),
+    ...state.tables.ledger.filter((row) => row.scope === "current"),
   ];
   return c.html(<Layout title={project.title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/projects")}>行事一覧</a>}>
     <h1>{project.title}</h1><p class="lead">届いた資料と、今年の中身や質問を見る画面です。分かる質問に答えるか、下書きを開いて直してください。</p>
@@ -183,10 +175,9 @@ admin.get("/projects/:projectId", async (c) => {
     <h2>今年の中身</h2>
     {state.items.map((item) => <section class="panel"><strong>{item.label}</strong><p>{item.current?.content ?? "まだ入っていません"}</p>{item.references.map((v) => <p>参考（{v.refYear ?? "年不明"}年）: {v.content}</p>)}</section>)}
     <h2 id="ledger">収支</h2>
-    <p>領収書の読み取り結果はこの記録に入ります。年の集約、予算との比較、決算の下書きは<a href={adminPath(ward, "/ledger")}>帳簿</a> で確認できます。</p>
-    {ledgerRows.length === 0 ? <p>収支の記録はまだありません。</p> : <div style="overflow-x:auto"><table><thead><tr>{Object.entries(TABLES.ledger.fields).map(([key, field]) => <th>{key === "receiptOriginalId" ? "領収書" : field.label}</th>)}</tr></thead><tbody>{ledgerRows.map((row) => <tr>{Object.keys(TABLES.ledger.fields).map((key) => <td>{key === "receiptOriginalId"
-      ? (row.data[key] ? <a href={adminPath(ward, `/intake/originals/${encodeURIComponent(String(row.data[key]))}`)}>元の資料を開く</a> : "")
-      : displayFieldValue("ledger", key, row.data[key])}</td>)}</tr>)}</tbody></table></div>}
+    <p>領収書の写真や、協賛の返事から読み取った収入と支出を見られます。相手の名前を押すと、読み違いを直せます。</p>
+    <div class="action-links"><a class="button secondary" href={adminPath(ward, `/projects/${projectId}/ledger`)}>{project.title}の収支を見る</a><a class="button secondary" href={adminPath(ward, "/ledger")}>年の集計と予算を見る</a></div>
+    {ledgerRows.length === 0 ? <p>収支の記録はまだありません。領収書の写真を送ると、ここに入ります。</p> : <table class="stack"><thead><tr><th>相手</th><th>収入か支出</th><th>額</th><th>日付</th><th>メモ</th></tr></thead><tbody>{ledgerRows.map((row) => <tr><td data-label="相手"><a href={adminPath(ward, `/projects/${projectId}/ledger/${row.rowId}`)}>{row.data.counterpart}</a></td><td data-label="収入か支出">{displayFieldValue("ledger", "direction", row.data.direction)}</td><td data-label="額">{typeof row.data.amount === "number" ? displayFieldValue("ledger", "amount", row.data.amount) : "確かめ中"}</td><td data-label="日付">{displayFieldValue("ledger", "date", row.data.date)}</td><td data-label="メモ">{row.data.note}</td></tr>)}</tbody></table>}
     <h2>届いたものと文書</h2>
     {state.documents.map((d) => <p>{DOCUMENT_KIND_LABEL[d.kind]} / {SCOPE_LABEL[d.scope]}{d.stale ? " / 新しい資料が入っています" : ""}</p>)}
   </Layout>);

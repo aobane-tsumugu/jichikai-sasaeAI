@@ -30,9 +30,13 @@ it("行事未定の資料をブラウザから送ると、受け取った画面�
   );
   expect(submit).toBeDefined();
   await submit!({ preventDefault: vi.fn() });
-  expect(location.assign).toHaveBeenCalledWith(`${root}/intake/received`);
+  expect(location.assign).toHaveBeenCalledExactlyOnceWith(`${root}/intake/received?${new URLSearchParams({ back: `${root}/` })}`);
   expect(location.reload).not.toHaveBeenCalled();
-  const inbox = await get(realApp, `${root}/intake/received`, cookie);
+  const destination: unknown = location.assign.mock.calls[0]?.[0];
+  if (typeof destination !== "string") throw new Error("受け取ったあとの画面がありません");
+  const inbox = await get(realApp, destination, cookie);
   expect(inbox.status).toBe(200);
-  expect(await inbox.text()).toContain("架空の通知.txt");
+  const inboxHtml = await inbox.text();
+  expect(inboxHtml).toContain("架空の通知.txt");
+  expect(inboxHtml).toContain(`href="${root}/"`);
 });

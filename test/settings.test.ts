@@ -25,12 +25,12 @@ describe("区の設定: 役員の席とアカウント", () => {
     expect(added.status).toBe(303);
     expect(added.headers.get("location")).toBe(people(ward.slug, "?done=seat-added"));
     const page = await (await get(realApp, added.headers.get("location")!, cookie)).text();
-    expect(page).toContain("席を足しました");
+    expect(page).toContain("役職を足しました");
     expect(page).toContain("会計");
 
     const dup = await postForm(realApp, people(ward.slug, "/seats"), { title: "会計" }, cookie);
     expect(dup.status).toBe(400);
-    expect(await dup.text()).toContain("同じ名前の席がもうあります");
+    expect(await dup.text()).toContain("同じ名前の役職がもうあります");
 
     const seat = await env.DB.prepare("SELECT seat_id FROM seats WHERE ward_id = ? AND title = ?")
       .bind(ward.wardId, "会計")
@@ -64,7 +64,7 @@ describe("区の設定: 役員の席とアカウント", () => {
 
     const dup = await postForm(realApp, people(ward.slug, "/accounts"), { name: "新しい書記" }, cookie);
     expect(dup.status).toBe(400);
-    expect(await dup.text()).toContain("同じ名前のアカウントがもうあります");
+    expect(await dup.text()).toContain("同じ名前の役員がもうあります");
   });
 
   it("初期化: 他の人のパスワードを作り直すと、古いパスワードも端末も使えない", async () => {

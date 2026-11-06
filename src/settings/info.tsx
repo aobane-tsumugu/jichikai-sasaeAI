@@ -41,16 +41,21 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
           {squads}
         </textarea>
         <AnswerLabelFields labels={labels} />
-        <p>
-          <button type="submit">保存する</button>
-        </p>
+        <div class="action-bar"><button type="submit">保存する</button></div>
       </form>
     </AdminPage>,
     status,
   );
 }
 
-info.get("/", (c) => show(c, c.req.query("done") === "1" ? { notice: "保存しました。人数の聞き方は、次に配る案内からこの言い方で出ます。" } : {}));
+info.get("/", (c) => {
+  if (c.req.query("done") !== "1") return show(c);
+  return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="保存しました" back={{ href: adminPath(c.var.ward, "/settings"), label: "区の設定へ" }}>
+    <h1>保存しました</h1><div class="notice done"><strong>保存しました</strong><p>次に配る案内から、この内容で出ます。</p></div>
+    <section class="next"><strong>次は</strong><p>ほかに直すものがなければ、最初の画面へ戻ってください。</p><a class="button" href={adminPath(c.var.ward, "/")}>最初の画面へ</a></section>
+    <h2>間違えたときは</h2><p>もう一度、区の設定から開いて直し、保存してください。すでに配った案内は変わりません。</p><a class="quiet" href={adminPath(c.var.ward, "/settings/info")}>区の情報を直す</a>
+  </AdminPage>);
+});
 
 info.post("/", async (c) => {
   const { ward, account } = c.var;
