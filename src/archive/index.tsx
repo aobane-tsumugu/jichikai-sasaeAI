@@ -164,7 +164,7 @@ admin.get("/archive/:projectId", async (c) => {
     c.env.DB.prepare("SELECT task_id, name, period, progress, requested_by, difficulty, next_year FROM project_close_map WHERE ward_id = ? AND project_id = ? ORDER BY period, task_id").bind(ward.wardId, id).all<{ task_id: string; name: string; period: string; progress: string; requested_by: string; difficulty: string; next_year: string }>(),
     c.env.DB.prepare(`SELECT o.original_id, o.filename, o.kind FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
       WHERE o.ward_id = ? AND j.project_id = ? AND o.withdrawn_at IS NULL ORDER BY o.received_at`).bind(ward.wardId, id).all<{ original_id: string; filename: string; kind: string }>(),
-    c.env.DB.prepare(`SELECT d.title, d.kind, v.version_no, v.body, v.scope, COALESCE(r.published_at, v.published_at) AS published_at, r.unpublished_at, v.tables_snapshot
+    c.env.DB.prepare(`SELECT COALESCE(v.title, d.title) AS title, d.kind, v.version_no, v.body, v.scope, COALESCE(r.published_at, v.published_at) AS published_at, r.unpublished_at, v.tables_snapshot
       FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id AND v.project_id = d.project_id
       LEFT JOIN publication_records r ON r.ward_id = v.ward_id AND r.version_id = v.version_id
       WHERE d.ward_id = ? AND d.project_id = ? AND (v.published_at IS NOT NULL OR r.publication_id IS NOT NULL)

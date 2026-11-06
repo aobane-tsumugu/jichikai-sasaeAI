@@ -34,7 +34,7 @@ function parseActivity(raw: string): ActivityBody | null {
 }
 
 async function listPublic(db: D1Database, wardId: string, projectId?: string, includeLowered = false): Promise<PublicProject[]> {
-  const sql = `SELECT p.project_id, p.title, v.version_no, d.document_id, d.title AS document_title,
+  const sql = `SELECT p.project_id, p.title, v.version_no, d.document_id, COALESCE(v.title, d.title) AS document_title,
       v.body, r.published_at, r.unpublished_at
     FROM publication_records r
     JOIN projects p ON p.ward_id = r.ward_id AND p.project_id = r.project_id

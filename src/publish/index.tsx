@@ -284,7 +284,7 @@ admin.post("/publish/:projectId/space", async (c) => {
 
 admin.get("/publish/:projectId/preview/:documentId/:versionNo", async (c) => {
   const { ward, account } = c.var;
-  const row = await c.env.DB.prepare(`SELECT d.title, d.scope, v.body, v.version_no FROM documents d
+  const row = await c.env.DB.prepare(`SELECT COALESCE(v.title, d.title) AS title, d.scope, v.body, v.version_no FROM documents d
     JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
     WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_no = ?`)
     .bind(ward.wardId, c.req.param("projectId"), c.req.param("documentId"), Number(c.req.param("versionNo")))
@@ -306,7 +306,7 @@ admin.post("/publish/:projectId/confirm", async (c) => {
   const requestedVersionNo = Number(form.get("versionNo"));
   const project = await getProject(c.env.DB, ward.wardId, c.req.param("projectId"));
   if (!project || project.closed_at) return c.notFound();
-  const draft = await c.env.DB.prepare(`SELECT d.kind, d.title, d.scope, d.stale_since_version, v.version_id, v.version_no,
+  const draft = await c.env.DB.prepare(`SELECT d.kind, COALESCE(v.title, d.title) AS title, d.scope, d.stale_since_version, v.version_id, v.version_no,
       v.body, v.based_on_state_version, v.published_at
     FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
     WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_no = ?`)
@@ -376,7 +376,7 @@ admin.post("/publish/:projectId/send", async (c) => {
   const versionNo = Number(form.versionNo);
   const recipientScope = form.recipientScope === "all_households" ? "all_households" : "member_households";
   if (!project || project.closed_at) return c.notFound();
-  const row = await c.env.DB.prepare(`SELECT d.kind, d.title, d.scope, d.stale_since_version, v.body, v.based_on_state_version,
+  const row = await c.env.DB.prepare(`SELECT d.kind, COALESCE(v.title, d.title) AS title, d.scope, d.stale_since_version, v.body, v.based_on_state_version,
       v.published_at FROM documents d JOIN document_versions v
       ON v.ward_id = d.ward_id AND v.document_id = d.document_id
       WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_id = ? AND v.version_no = ?`)

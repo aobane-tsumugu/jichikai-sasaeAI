@@ -58,6 +58,10 @@ it("印刷の一覧から貼れる一枚を開き、未配布の変更を混ぜ�
     title: "まだ配っていないAIの題", text: "架空のAIの下書き", items: [],
   })).toBe(true);
   expect(await (await get(realApp, `${path(first)}/poster`, cookie)).text()).toBe(original);
+  // 紙と区のページと記録で、配った物の題を揃える
+  const wardPage = await (await get(realApp, `/${ward.slug}/`)).text();
+  expect(wardPage).toContain("秋の収穫祭（架空）");
+  expect(wardPage).not.toContain("まだ配っていないAIの題");
   for (const suffix of ["", "/preview", "/announcement"]) {
     const printed = await (await get(realApp, `${path(first)}${suffix}`, cookie)).text();
     expect(printed).toContain("秋の収穫祭（架空）");
@@ -74,6 +78,16 @@ it("印刷の一覧から貼れる一枚を開き、未配布の変更を混ぜ�
   expect(updated).not.toContain("まだ配っていない会場");
   expect(updated).not.toContain("架空の広場");
   expect(await (await get(realApp, `${path(first)}/poster`, cookie)).text()).toBe(original);
+
+  // 閉じた後の記録も、配った時の題で残す
+  expect(await saveAIDraft(env.DB, ward.wardId, project.projectId, "announcement", "poster-test@1", {
+    title: "閉じる前のAIの題", text: "架空のAIの下書き", items: [],
+  })).toBe(true);
+  await env.DB.prepare("UPDATE projects SET closed_at = ? WHERE ward_id = ? AND project_id = ?")
+    .bind(new Date().toISOString(), ward.wardId, project.projectId).run();
+  const record = await (await get(realApp, `${root}/archive/${project.projectId}`, cookie)).text();
+  expect(record).toContain("雨天の収穫祭（架空）");
+  expect(record).not.toContain("閉じる前のAIの題");
 });
 
 it("空間向けに配った文書は貼れる一枚の対象にしない", async () => {
