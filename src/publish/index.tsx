@@ -299,7 +299,7 @@ async function confirmPublication(c: Context<AdminEnv>) {
   } catch { lineNotice = "公式LINEの人数を読み取れませんでした。配ったあとに結果を知らせます。"; }
   const copies = publicScope ? distribution.targets.reduce((sum, target) => sum + target.copies, 0) : 0;
   const sendLabel = draft.published_at ? "配り直す" : "配る";
-  const tablesPreview = spaceTables ? <><h3>当番</h3><MaterialsTable table="duties" items={spaceTables} /><h3>配置図</h3><MaterialsTable table="layout" items={spaceTables} /></> : null;
+  const tablesPreview = spaceTables ? <><h3>当番</h3><MaterialsTable table="duties" items={spaceTables} /><h3>配置図</h3><MaterialsTable table="layout" items={spaceTables} /><h3>実行委員名簿</h3><MaterialsTable table="committee" items={spaceTables} /></> : null;
   const printHref = adminPath(ward, `/print/${projectId}/${draft.document_id}/${draft.version_no}/preview`);
   const editHref = adminPath(ward, `/projects/${projectId}/draft/${draft.kind}`);
   c.header("Cache-Control", "no-store");

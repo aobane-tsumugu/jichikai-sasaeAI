@@ -34,7 +34,7 @@ const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   "notice_save_failed": "知らせを保存できませんでした",
   "save_failed": "保存できませんでした。入力を確かめてください",
   "duty_save_failed": "当番の行を保存できませんでした",
-  "rota_missing": "下書きを作れませんでした。去年の同じ当番の表があるか確かめて、もう一度お試しください",
+  "rota_missing": "下書きを作れませんでした。名簿か去年の当番表を送って、もう一度お試しください",
   "ai_failed": "AIに頼めませんでした。ここで手入力して保存できます"
 };
 
@@ -63,7 +63,7 @@ admin.get("/projects/:projectId/draft", async (c) => {
     {c.req.query("notice") === "restored" ? <Notice>前の下書きを戻して、新しい下書きとして保存しました。</Notice> : null}
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     {listDraftPacks(project.kind).map((pack) => <section class="panel"><h2><a href={adminPath(ward, `/projects/${id}/draft/${pack.kind}`)}>{pack.title}</a></h2><p>{written.results.some((row) => row.kind === pack.kind) || (pack.kind === "duty_roster" && dutyWritten) ? "下書きがあります。" : "まだありません。"}{SEE_LABEL[pack.scope]}</p>
-      <form method="post" action={adminPath(ward, `/projects/${id}/draft/${pack.kind}/start`)}><button class="secondary">{project.kind === "duty" && pack.kind === "duty_roster" ? "去年の表と名簿から下書きを作る" : "AIに下書きを頼む"}</button></form>
+      <form method="post" action={adminPath(ward, `/projects/${id}/draft/${pack.kind}/start`)}><button class="secondary">{project.kind === "duty" && pack.kind === "duty_roster" ? "当番の下書きを作る" : "AIに下書きを頼む"}</button></form>
     </section>)}
     <div class="action-links"><a class="button secondary" href={adminPath(ward, `/publish/${id}`)}>配る画面へ</a></div>
   </Layout>);
@@ -158,7 +158,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     </form>
     {kindRaw === "duty_roster" ? <section>
       <h2>当番の担当を直す</h2>
-      <p>{project.kind === "duty" ? "去年の表と今の名簿から担当の下書きを入れます。空いたところや転入した世帯の担当を直せます。" : "手伝いの申し込みと、世帯の答えにある手伝いから、AIが担当の下書きを入れます。"}直した行は、AIが上書きしません。</p>
+      <p>{project.kind === "duty" ? "去年の表があればその順で、なければ名簿の順で下書きを入れます。時間帯や担当を直せます。" : "手伝いの申し込みと、世帯の答えにある手伝いから、AIが担当の下書きを入れます。"}直した行は、AIが上書きしません。</p>
       <div class="duty-rows">{state.tables.duties.filter((row) => row.scope === "current").map((row) => <form class="panel" method="post" action={adminPath(ward, `/projects/${id}/draft/duty-row/${row.rowId}`)}>
         <label for={`slot-${row.rowId}`}>時間帯</label><input id={`slot-${row.rowId}`} name="slot" value={String(row.data.slot ?? "")} maxlength={120} required />
         <label for={`task-${row.rowId}`}>持ち場</label><input id={`task-${row.rowId}`} name="task" value={String(row.data.task ?? "")} maxlength={200} />

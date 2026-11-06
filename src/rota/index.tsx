@@ -14,19 +14,21 @@ export async function rotaPanel(db: D1Database, ward: WardInfo, projectId: strin
   const preparation = await lastPreparation(db, ward.wardId, projectId);
   const comparison = proposal?.comparison;
   const root = adminPath(ward, `/projects/${projectId}/draft/duty_roster`);
-  return <section class="panel"><h2>去年の表と今の名簿</h2>
-    <p>去年の順番を保ち、免除の期間に当たる担当と今の名簿にない担当は空欄にします。転入した世帯をどこに入れるかは、下の当番表で直せます。</p>
+  return <section class="panel"><h2>{comparison?.hasPreviousTable === false ? "名簿から当番の下書きを作る" : "去年の表と今の名簿"}</h2>
+    <p>{comparison?.hasPreviousTable === false ? "去年の表がないため、班と世帯を名簿の順で並べます。名簿の順です。時間帯や担当は下の当番表で直せます。" : "去年の順番を保ち、免除の期間に当たる人と今の名簿にない人を担当から外します。班や団体で書かれた担当はそのまま残します。"}</p>
     {comparison ? <>
+      {comparison.hasPreviousTable !== false ? <>
       <p>{comparison.year}年の{comparison.sourceTitle}と比べています。</p>
       {!comparison.hasOldRoster ? <p>去年の名簿は残っていません。転入・転出は断定せず、当番表にある名前と比べています。</p> : null}
       <h3>{comparison.hasOldRoster ? "名簿に加わった世帯" : "去年の表にない世帯"}</h3>
       <p>{comparison.added.join("、") || "ありません。"}</p>
       <h3>{comparison.hasOldRoster ? "名簿から外れた世帯" : "今の名簿にない担当"}</h3><p>{comparison.removed.join("、") || "ありません。"}</p>
-      <h3>担当が空くところ</h3>{comparison.entries.filter((entry) => entry.explanation).map((entry) => <p>{entry.data.slot} {entry.data.task}: {entry.explanation}</p>)}
+      <h3>担当を外したところ</h3>{comparison.entries.filter((entry) => entry.explanation).map((entry) => <p>{entry.data.slot} {entry.data.task}: {entry.explanation}</p>)}
       <h3>去年の決めたこと</h3><p>{comparison.ruleRecords.join(" / ") || "記録はありません。順番のルールは作っていません。"}</p>
-      <form method="post" action={`${root}/start`}><button>{preparation ? "今の名簿と免除を下書きに反映する" : "去年の表と名簿から下書きを作る"}</button></form>
+      </> : <p>順番のルールは作っていません。免除の期間に当たる人は担当から外します。</p>}
+      <form method="post" action={`${root}/start`}><button>{preparation ? "今の名簿と免除を下書きに反映する" : comparison.hasPreviousTable === false ? "名簿から下書きを作る" : "去年の表と名簿から下書きを作る"}</button></form>
       <p>役員が直した行はそのまま残します。保存しただけでは配られません。</p>
-    </> : <p>去年の同じ当番の表がまだありません。去年の資料を送るか、記録から「これをもとに新しく始める」を使えます。</p>}
+    </> : <p>去年の表も今の名簿もまだありません。名簿か去年の当番表を送ると、下書きを作れます。</p>}
     <div class="action-links"><a class="button secondary" href={adminPath(ward, "/rota/exemptions")}>免除を記録する</a>
       <a class="button secondary" href={adminPath(ward, "/rota/history")}>世帯ごとの当番と役を読む</a></div>
   </section>;
