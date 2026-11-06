@@ -53,8 +53,8 @@ export async function registerLinePhoto(db: D1Database, wardId: string, input: {
     db.prepare(`INSERT OR IGNORE INTO line_photo_batches
       (ward_id, batch_id, destination, source_type, source_id, sender_id, image_set_id, expected_count, created_at, last_received_at, reply_token, reply_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(wardId, id, input.destination, source.type, source.id, source.senderId, setId, expected, now.toISOString(), now.toISOString(), input.replyToken ?? null, now.toISOString()),
-    db.prepare(`INSERT OR IGNORE INTO line_photo_items (ward_id, batch_id, job_id, message_id, image_index, quote_token)
-      VALUES (?, ?, ?, ?, ?, ?)`).bind(wardId, id, input.jobId, input.messageId, Number.isInteger(imageSet?.index) ? imageSet!.index! : null, input.quoteToken ?? null),
+    db.prepare(`INSERT OR IGNORE INTO line_photo_items (ward_id, batch_id, job_id, message_id, image_index, quote_token, receipt_reply_token)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(wardId, id, input.jobId, input.messageId, Number.isInteger(imageSet?.index) ? imageSet!.index! : null, input.quoteToken ?? null, input.replyToken ?? null),
     db.prepare(`UPDATE line_photo_batches SET last_received_at = ?, reply_token = ?, reply_at = ? WHERE ward_id = ? AND batch_id = ? AND prepared_at IS NULL`)
       .bind(now.toISOString(), input.replyToken ?? null, now.toISOString(), wardId, id),
   ]);
@@ -120,7 +120,6 @@ async function prepareQuestions(env: Env, wardId: string, batch: Batch, now: Dat
       .bind(wardId, item.job_id).all<{ original_id: string }>();
     const readings = await getReadings(env.DB, wardId, item.job_id);
     const pending: Array<{ originalId: string; topic: ClarificationPrompt["topic"]; text: string; options: string[] }> = [];
-    const paper = readings.some((reading) => "fields" in reading.body && reading.body.document_kind !== "photo");
     for (const reading of readings) {
       const unreadables = new Map<string, string[]>();
       for (const unreadable of reading.body.unreadable) {
@@ -140,10 +139,10 @@ async function prepareQuestions(env: Env, wardId: string, batch: Batch, now: Dat
         }
       }
     }
-    if (!item.project_id && paper && originals.results[0]) {
+    if (!item.project_id && originals.results[0]) {
       const candidates = await env.DB.prepare("SELECT title FROM projects WHERE ward_id = ? AND closed_at IS NULL ORDER BY created_at DESC LIMIT 6")
         .bind(wardId).all<{ title: string }>();
-      pending.push({ originalId: originals.results[0].original_id, topic: "project", text: "受け取った紙は、どの行事のものですか。", options: candidates.results.map((candidate) => candidate.title).filter((title) => title.length <= 20) });
+      pending.push({ originalId: originals.results[0].original_id, topic: "project", text: "この写真は、どの行事のものですか。", options: candidates.results.map((candidate) => candidate.title).filter((title) => title.length <= 20) });
     }
     for (const question of pending) {
       if (question.topic === "year" && item.project_id) {
@@ -183,6 +182,36 @@ async function prepareQuestions(env: Env, wardId: string, batch: Batch, now: Dat
 }
 
 export interface QuestionDeliveryDeps { fetch?: typeof fetch; now?: Date }
+
+/** 写真へのReplyを使う前に記録する。届いたか不明な時も同じReplyを再送しない。 */
+async function claimPhotoReply(db: D1Database, wardId: string, replyToken: string, now: Date): Promise<boolean> {
+  const item = await db.prepare("SELECT receipt_claimed_at FROM line_photo_items WHERE ward_id = ? AND receipt_reply_token = ?")
+    .bind(wardId, replyToken).first<{ receipt_claimed_at: string | null }>();
+  // 質問への答えのReplyは写真のものではない。
+  if (!item) return true;
+  const claimed = await db.prepare(`UPDATE line_photo_items SET receipt_claimed_at = ?
+    WHERE ward_id = ? AND receipt_reply_token = ? AND receipt_claimed_at IS NULL`).bind(now.toISOString(), wardId, replyToken).run();
+  if (!claimed.meta.changes) return false;
+  await db.prepare("UPDATE line_photo_batches SET reply_token = NULL WHERE ward_id = ? AND reply_token = ?")
+    .bind(wardId, replyToken).run();
+  return true;
+}
+
+/** 一対一の各写真に、質問を返していなければ決まった受領を返す。読み取りは待たない。 */
+export async function replyPhotoReceipt(env: Env, wardId: string, jobId: string, deps: QuestionDeliveryDeps = {}): Promise<void> {
+  const item = await env.DB.prepare(`SELECT i.receipt_reply_token, b.destination, j.project_id FROM line_photo_items i
+    JOIN line_photo_batches b ON b.ward_id = i.ward_id AND b.batch_id = i.batch_id
+    JOIN jobs j ON j.ward_id = i.ward_id AND j.job_id = i.job_id
+    WHERE i.ward_id = ? AND i.job_id = ? AND b.source_type = 'user' AND i.receipt_claimed_at IS NULL`)
+    .bind(wardId, jobId).first<{ receipt_reply_token: string | null; destination: string; project_id: string | null }>();
+  if (!item?.receipt_reply_token) return;
+  const credentials = await lineChannelCredentials(env, wardId, item.destination);
+  if (!credentials?.accessToken || !(await claimPhotoReply(env.DB, wardId, item.receipt_reply_token, deps.now ?? new Date()))) return;
+  try {
+    await replyLineText(credentials.accessToken, item.receipt_reply_token,
+      item.project_id ? "受け取りました。" : "受け取りました。役員が確かめます。", deps.fetch ?? fetch);
+  } catch { console.error("写真の受領を返せませんでした", wardId, jobId); }
+}
 
 /** 読めない写真だけ先に聞く。引用した一枚について一問だけ送る。 */
 export async function replyQuickPhotoChecks(env: Env, wardId: string, deps: QuestionDeliveryDeps = {}): Promise<void> {
@@ -227,7 +256,7 @@ async function deliverNextQuestion(env: Env, wardId: string, batch: Batch, reply
     AND EXISTS (SELECT 1 FROM jobs j WHERE j.ward_id = c.ward_id AND j.job_id = c.job_id AND j.withdrawn_at IS NULL) LIMIT 1`)
     .bind(wardId, batch.destination, batch.source_type, batch.source_id).first();
   if (open) return;
-  const text = question.message_text ?? question.text;
+  const text = batch.source_type === "user" ? question.text : question.message_text ?? question.text;
   if (!safeQuestionText(text)) return;
   const credentials = await lineChannelCredentials(env, wardId, batch.destination);
   if (!credentials?.accessToken) return;
@@ -257,6 +286,16 @@ async function deliverNextQuestion(env: Env, wardId: string, batch: Batch, reply
   const claim = await env.DB.prepare(`UPDATE line_clarifications SET send_claimed_at = ? WHERE ward_id = ? AND clarification_id = ? AND send_claimed_at IS NULL AND answer IS NULL`)
     .bind(now.toISOString(), wardId, question.id).run();
   if (!claim.meta.changes) return;
+  if (replyToken && !(await claimPhotoReply(env.DB, wardId, replyToken, now))) {
+    // 受領が先にReplyを使った。まだ送信していない質問は、次の処理で送れるよう戻す。
+    await env.DB.prepare(`UPDATE line_clarifications SET send_claimed_at = NULL
+      WHERE ward_id = ? AND clarification_id = ? AND sent_at IS NULL AND send_claimed_at = ?`)
+      .bind(wardId, question.id, now.toISOString()).run();
+    if (first) await env.DB.prepare(`UPDATE line_photo_batches SET send_claimed_at = NULL, send_method = NULL
+      WHERE ward_id = ? AND batch_id = ? AND sent_at IS NULL AND send_claimed_at = ?`)
+      .bind(wardId, batch.batch_id, now.toISOString()).run();
+    return;
+  }
   const photo = await env.DB.prepare("SELECT quote_token FROM line_photo_items WHERE ward_id = ? AND job_id = ?")
     .bind(wardId, question.job_id).first<{ quote_token: string | null }>();
   try {
@@ -292,6 +331,7 @@ export async function replyAfterClarification(env: Env, wardId: string, batchId:
   const claim = await env.DB.prepare("UPDATE line_photo_batches SET completed_at = ? WHERE ward_id = ? AND batch_id = ? AND completed_at IS NULL")
     .bind(now.toISOString(), wardId, batchId).run();
   if (!claim.meta.changes) return;
+  if (!(await claimPhotoReply(env.DB, wardId, replyToken, now))) return;
   try {
     await replyLineText(credentials.accessToken, replyToken, questions.some((q) => q.answered_unknown)
       ? "聞くことは以上です。分からなかったところは役員が確かめます。" : "確認できました。聞くことは以上です。ありがとうございます。", deps.fetch ?? fetch);

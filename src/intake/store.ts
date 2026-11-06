@@ -5,6 +5,7 @@ import { newId, nowIso } from "../core/ids";
 import type { Env } from "../env";
 import { normalizeOriginalYears, type ReadingBody } from "../ai/schema";
 import type { JobRow, JobStatus, OriginalRow } from "./types";
+import { subset } from "./reading-subset";
 
 export const MAX_READ_ATTEMPTS = 3;
 
@@ -85,6 +86,30 @@ export async function finishRead(
   },
 ): Promise<boolean> {
   const now = nowIso();
+  let body = args.body;
+  // 印字された「下書きです」の写真だけを外す。AIの関連性の判断では外さない。
+  if ("fields" in body) {
+    const general = body;
+    const originals = await listOriginals(db, args.wardId, args.jobId);
+    const excluded = new Set(originals.filter((original) => original.media_type.startsWith("image/") &&
+      general.text_blocks.some((block) => block.original_id === original.original_id && block.text.includes("下書きです")))
+      .map((original) => original.original_id));
+    if (excluded.size) {
+      const remaining = new Set(originals.filter((original) => !original.withdrawn_at && !excluded.has(original.original_id)).map((original) => original.original_id));
+      const updates = [...excluded].map((id) => db.prepare(`UPDATE originals SET withdrawn_at = ?
+        WHERE ward_id = ? AND job_id = ? AND original_id = ? AND withdrawn_at IS NULL
+        AND EXISTS (SELECT 1 FROM jobs WHERE ward_id = ? AND job_id = ? AND status = 'reading' AND attempt = ?)`)
+        .bind(now, args.wardId, args.jobId, id, args.wardId, args.jobId, args.attempt));
+      if (!remaining.size) updates.push(db.prepare(`UPDATE jobs SET status = 'withdrawn', withdrawn_at = ?, lease_until = NULL,
+        stop_reason = '下書きの紙なので、資料に入れていません。下書きの画面で直せます。'
+        WHERE ward_id = ? AND job_id = ? AND status = 'reading' AND attempt = ?`)
+        .bind(now, args.wardId, args.jobId, args.attempt));
+      await db.batch(updates);
+      if (!remaining.size) return false;
+      body = subset(body, remaining);
+      delete body.project_suggestions;
+    }
+  }
   const results = await db.batch([
     db
       .prepare(
@@ -99,7 +124,7 @@ export async function finishRead(
         args.source,
         args.packVersion,
         args.model,
-        JSON.stringify(args.body),
+        JSON.stringify(body),
         now,
         args.wardId,
         args.jobId,

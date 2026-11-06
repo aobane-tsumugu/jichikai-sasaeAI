@@ -35,6 +35,8 @@ import {
 } from "./store";
 import type { Waitable } from "./types";
 import { attachClarificationQuestions, processPhotoBatches } from "../line/clarifications";
+import { photoContextProject } from "../line/photo-context";
+import { completePhotoMaterial } from "./material";
 
 export interface PipelineDeps {
   /** 試験で差し替える。既定は署名鍵から作る本物のクライアント */
@@ -172,7 +174,7 @@ async function performRead(
     if (latest?.read_kind === "answer_sheet" && latest.project_id) {
       await saveAnswerSheetRows(env.DB, wardId, latest.project_id, jobId, latest.account_id);
     }
-    if (latest?.project_id && latest.read_kind !== "answer_sheet") await dispatchProject(env, wardId, latest.project_id).catch((e) => console.error("繋げるの起動に失敗しました", describe(e)));
+    if (latest?.project_id && latest.read_kind !== "answer_sheet") await connectReadJob(env, wardId, jobId, latest.project_id).catch((e) => console.error("繋げるの起動に失敗しました", describe(e)));
     else if (latest && (latest.via === "admin" || latest.via === "line_direct" || latest.via === "line_group")) await matchUnassignedAdminJob(env, wardId, jobId, client).catch((e) => console.error("届いたものの当てに失敗しました", describe(e)));
     if (placed) {
       await attachClarificationQuestions(env.DB, wardId, jobId).catch(() => undefined);
@@ -194,6 +196,22 @@ async function performRead(
     await releaseRead(env.DB, wardId, jobId, attempt);
     return "retry";
   }
+}
+
+async function connectReadJob(env: Env, wardId: string, jobId: string, projectId: string): Promise<void> {
+  if (!(await completePhotoMaterial(env.DB, wardId, jobId))) await dispatchProject(env, wardId, projectId);
+}
+
+async function assignReadJob(env: Env, wardId: string, jobId: string, projectId: string, reason: string, ai = false): Promise<void> {
+  if (!(await setJobProject(env.DB, wardId, jobId, projectId))) return;
+  await env.DB.prepare("UPDATE jobs SET ai_matched_at = ?, ai_match_reason = ? WHERE ward_id = ? AND job_id = ? AND project_id = ?")
+    .bind(ai ? nowIso() : null, reason, wardId, jobId, projectId).run();
+  await env.DB.prepare(`UPDATE line_inbox_items SET disposition = 'matched', matched_project_id = ?,
+    matched_project_name = (SELECT title FROM projects WHERE ward_id = ? AND project_id = ?), match_reason = ?
+    WHERE ward_id = ? AND job_id = ?`).bind(projectId, wardId, projectId, reason, wardId, jobId).run();
+  const job = await getJob(env.DB, wardId, jobId);
+  if (job?.read_kind === "answer_sheet") await saveAnswerSheetRows(env.DB, wardId, projectId, jobId, job.account_id);
+  else await connectReadJob(env, wardId, jobId, projectId);
 }
 
 async function saveAnswerSheetRows(
@@ -236,9 +254,6 @@ async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, 
     detail: `${project.kind} ${project.year ?? ""}`.trim(),
   }));
   const readings = await getReadings(env.DB, wardId, jobId);
-  // 複数の行事の資料を一つの行事へまとめて入れない。
-  const suggested = new Set(readings.flatMap((row) => "fields" in row.body ? (row.body.project_suggestions ?? []).map((s) => `${s.kind}:${s.title}`) : []));
-  if (suggested.size > 1) return;
   const paperCodes = readings.flatMap((reading) => {
     const body = reading.body;
     if ("rows" in body) return body.rows.map((row) => row.paper_code ?? "").filter(Boolean);
@@ -250,8 +265,7 @@ async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, 
     // 印字符号がある紙は AI の候補選びに回さない。欄ごとの読みをプロジェクト別に渡す。
     if (routes.every(Boolean) && routedProjects.length === 1) {
       const selectedId = routedProjects[0] as string;
-      const changed = await setJobProject(env.DB, wardId, jobId, selectedId);
-      if (changed && current.read_kind !== "answer_sheet") await dispatchProject(env, wardId, selectedId);
+      await assignReadJob(env, wardId, jobId, selectedId, "紙に書かれた行事に入れました。");
     } else if (routes.every(Boolean) && routedProjects.length > 1 && readings.length === 1 && "fields" in readings[0]!.body) {
       await createPaperRouteJobs(env, current, readings[0]!.body, paperCodes, routes.map((route) => route?.projectId ?? ""));
     } else if (routes.some(Boolean)) {
@@ -261,16 +275,23 @@ async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, 
     }
     if (routes.every(Boolean) || routes.some(Boolean)) return;
   }
+  const hasPhoto = (await listOriginals(env.DB, wardId, jobId)).some((original) => !original.withdrawn_at && original.media_type.startsWith("image/"));
+  if (hasPhoto) {
+    const context = await photoContextProject(env.DB, wardId, jobId);
+    if (context && candidates.some((candidate) => candidate.id === context.id)) {
+      await assignReadJob(env, wardId, jobId, context.id, context.reason);
+      return;
+    }
+  }
+  // 紙の符号や状況で決まらない場合だけ、中身から候補を選ぶ。
+  const suggested = new Set(readings.flatMap((row) => "fields" in row.body ? (row.body.project_suggestions ?? []).map((s) => `${s.kind}:${s.title}`) : []));
+  if (suggested.size > 1) return;
   const summary = readings.map((reading) => "summary" in reading.body ? reading.body.summary : "").filter(Boolean).join("\n").slice(0, 2000);
   if (!summary || candidates.length === 0) return;
   const result = await matchProject(client, { candidates, summary });
   const selected = candidates.find((candidate) => candidate.id === result.choice);
   if (selected) {
-    const changed = await setJobProject(env.DB, wardId, jobId, selected.id);
-    if (!changed) return;
-    await env.DB.prepare("UPDATE jobs SET ai_matched_at = ?, ai_match_reason = ? WHERE ward_id = ? AND job_id = ? AND project_id = ?")
-      .bind(nowIso(), result.reason, wardId, jobId, selected.id).run();
-    if (current.read_kind !== "answer_sheet") await dispatchProject(env, wardId, selected.id);
+    await assignReadJob(env, wardId, jobId, selected.id, result.reason, true);
   } else if (result.choice === MATCH_NEW || result.choice === MATCH_MULTIPLE || result.choice === MATCH_UNRELATED) {
     await env.DB.prepare("UPDATE jobs SET ai_match_reason = ? WHERE ward_id = ? AND job_id = ? AND project_id IS NULL")
       .bind(result.reason, wardId, jobId).run();
@@ -279,7 +300,7 @@ async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, 
     if (selected) {
       await env.DB.prepare(`UPDATE line_inbox_items SET disposition = 'matched', matched_project_id = ?, matched_project_name = ?, match_reason = ?
         WHERE ward_id = ? AND job_id = ?`).bind(selected.id, selected.title, result.reason, wardId, jobId).run();
-    } else if (result.choice === MATCH_UNRELATED) {
+    } else if (result.choice === MATCH_UNRELATED && !hasPhoto) {
       const item = await env.DB.prepare("SELECT item_id, received_at FROM line_inbox_items WHERE ward_id = ? AND job_id = ?")
         .bind(wardId, jobId).first<{ item_id: string; received_at: string }>();
       if (item) {
@@ -343,6 +364,10 @@ async function routeByPaperCode(db: D1Database, wardId: string, jobId: string) {
   if (!routes.every(Boolean) || projectIds.length !== 1) return null;
   const projectId = projectIds[0] as string;
   if (!(await setJobProject(db, wardId, jobId, projectId))) return null;
+  await db.prepare(`UPDATE line_inbox_items SET disposition = 'matched', matched_project_id = ?,
+    matched_project_name = (SELECT title FROM projects WHERE ward_id = ? AND project_id = ?),
+    match_reason = '紙に書かれた行事に入れました。' WHERE ward_id = ? AND job_id = ?`)
+    .bind(projectId, wardId, projectId, wardId, jobId).run();
   return getJob(db, wardId, jobId);
 }
 

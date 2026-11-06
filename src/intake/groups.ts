@@ -2,7 +2,8 @@
 import { newId, nowIso } from "../core/ids";
 import type { Env } from "../env";
 import { createProject, listOpenProjects, normalizeKey } from "../project/api";
-import type { ProjectSuggestion, Reading } from "../ai/schema";
+import type { ProjectSuggestion } from "../ai/schema";
+import { subset } from "./reading-subset";
 import { cleanSuggestions } from "../ai/suggest";
 import { startTask } from "../ai/api";
 import { getDraftPack } from "../draft/packs";
@@ -59,14 +60,6 @@ export async function pendingMaterialGroups(db: D1Database, wardId: string): Pro
     else if (unknown.length) groups.push({ key: `unknown:${job.job_id}`, title: "", kind: "event", materials: unknown });
   }
   return groups.sort((a, b) => Number(!a.title) - Number(!b.title) || b.materials.length - a.materials.length);
-}
-
-function subset(body: Reading, ids: Set<string>): Reading {
-  const take = <T extends { original_id: string }>(rows: T[]) => rows.filter((row) => ids.has(row.original_id));
-  return { ...body, summary: take(body.text_blocks).map((block) => block.text).join("\n").slice(0, 2000),
-    original_years: take(body.original_years), text_blocks: take(body.text_blocks), fields: take(body.fields),
-    tables: take(body.tables), decisions: take(body.decisions), unreadable: take(body.unreadable),
-    project_suggestions: take(body.project_suggestions ?? []) };
 }
 
 /** 一度に送った中に別の行事があれば、その原本だけを分ける。原本の ID と保管場所は保つ。 */

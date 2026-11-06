@@ -6,7 +6,8 @@ import { getLineMemberDisplayName, lineChannelCredentials, replyLineText } from 
 import { getClient } from "../ai/deps";
 import { matchClarificationAnswer } from "../ai/clarification";
 import { recordLineInquiry } from "../project/followup";
-import { isUnknownAnswer, replyAfterClarification, PHOTO_GROUP_GAP_MS, processPhotoBatches, registerLinePhoto, replyQuickPhotoChecks, saveClarificationAnswers, sentQuestionsForSource, type ClarificationRow, type PhotoSource } from "./clarifications";
+import { isUnknownAnswer, replyAfterClarification, PHOTO_GROUP_GAP_MS, processPhotoBatches, registerLinePhoto, replyPhotoReceipt, replyQuickPhotoChecks, saveClarificationAnswers, sentQuestionsForSource, type ClarificationRow, type PhotoSource } from "./clarifications";
+import { rememberPhotoSource } from "./photo-context";
 
 const RECEIPT_RETENTION_DAYS = 30;
 
@@ -140,6 +141,8 @@ export async function acceptLineWebhook(
   const processEvents = async (): Promise<void> => {
   let receivedPhoto = false;
   const photoChecksPending: Promise<void>[] = [];
+  const photoJobs: string[] = [];
+  const duplicateSets = new Map<string, { source: PhotoSource; setId: string; count: number }>();
   for (let event of events) {
     const eventId = event.webhookEventId;
     if (!eventId) continue;
@@ -254,7 +257,18 @@ export async function acceptLineWebhook(
         continue;
       }
       const itemId = await ports.receiveOriginal(wardId, original);
-      if (!itemId) continue;
+      if (!itemId) {
+        if (original.kind === "image" && source.type === "user" && event.replyToken) {
+          await replyLineText(accessToken, event.replyToken, "同じ写真を受け取っています。", fetcher);
+        }
+        if (original.kind === "image" && event.message.imageSet?.id) {
+          const setId = event.message.imageSet.id;
+          const key = JSON.stringify([source.type, source.id, source.senderId, setId]);
+          const prior = duplicateSets.get(key);
+          duplicateSets.set(key, { source, setId, count: (prior?.count ?? 0) + 1 });
+        }
+        continue;
+      }
       await db.prepare(`
         INSERT INTO line_inbox_items (
           ward_id, item_id, event_id, sender_id, original_kind, original_text,
@@ -276,6 +290,7 @@ export async function acceptLineWebhook(
           if (retake.project_id) await ports.assignProject(wardId, itemId, retake.project_id);
         }
         receivedPhoto = true;
+        photoJobs.push(itemId);
         if (ports.checkPhoto) photoChecksPending.push(ports.checkPhoto(wardId, original, itemId).catch(() => undefined));
       }
       if (answers.length) {
@@ -285,7 +300,10 @@ export async function acceptLineWebhook(
           const batchIds = [...new Set(answers.filter((answer) => answer.question.topic === "project").map((answer) => answer.question.batch_id))];
           for (const batchId of batchIds) {
             const photos = await db.prepare("SELECT job_id FROM line_photo_items WHERE ward_id = ? AND batch_id = ?").bind(wardId, batchId).all<{ job_id: string }>();
-            for (const photo of photos.results) await ports.assignProject(wardId, photo.job_id, match.projectId);
+            for (const photo of photos.results) {
+              await ports.assignProject(wardId, photo.job_id, match.projectId);
+              await rememberPhotoSource(db, wardId, photo.job_id, match.projectId);
+            }
           }
         }
       }
@@ -294,7 +312,7 @@ export async function acceptLineWebhook(
         if (!answers.length) await ports.saveAnswerReply?.(wardId, match.projectId, original, itemId);
         await ports.assignProject(wardId, itemId, match.projectId);
       }
-      await db.prepare(`
+      if (original.kind === "text") await db.prepare(`
         UPDATE line_inbox_items SET disposition = ?, matched_project_id = ?, matched_project_name = ?, match_reason = ?
         WHERE ward_id = ? AND item_id = ?
       `).bind(match?.disposition === "matched" && match.projectId ? "matched" : "unmatched",
@@ -307,12 +325,28 @@ export async function acceptLineWebhook(
     }
   }
   if (receivedPhoto) {
+    for (const duplicate of duplicateSets.values()) {
+      await db.prepare(`UPDATE line_photo_batches SET expected_count = MAX(0, expected_count - ?)
+        WHERE ward_id = ? AND destination = ? AND source_type = ? AND source_id = ? AND sender_id = ?
+        AND image_set_id = ? AND prepared_at IS NULL AND expected_count IS NOT NULL`)
+        .bind(duplicate.count, wardId, payload.destination!, duplicate.source.type, duplicate.source.id, duplicate.source.senderId, duplicate.setId).run();
+    }
     await Promise.all(photoChecksPending);
     // imageSet の無い連続写真にも、短い間だけまとめる余地を持たせる。
     if (!dependencies) await new Promise((resolve) => setTimeout(resolve, PHOTO_GROUP_GAP_MS));
     const deliveryNow = dependencies ? now : new Date();
-    await replyQuickPhotoChecks(env, wardId, { fetch: fetcher, now: deliveryNow });
-    await processPhotoBatches(env, wardId, { fetch: fetcher, now: deliveryNow });
+    try {
+      await replyQuickPhotoChecks(env, wardId, { fetch: fetcher, now: deliveryNow });
+      await processPhotoBatches(env, wardId, { fetch: fetcher, now: deliveryNow });
+    } catch { console.error("写真の質問を準備できませんでした", wardId); }
+    finally {
+      for (const jobId of photoJobs) await replyPhotoReceipt(env, wardId, jobId, { fetch: fetcher, now: deliveryNow });
+    }
+    // 同じ送信の写真は順に読む。直前の写真の当て先が次の写真の手掛かりになる。
+    for (const jobId of photoJobs) {
+      try { await ports.readPhoto?.(wardId, jobId); }
+      catch { console.error("写真の読み取りを始められませんでした", wardId, jobId); }
+    }
   }
   };
   const work = processEvents();
