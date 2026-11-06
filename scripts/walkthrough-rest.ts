@@ -462,7 +462,7 @@ else {
   } catch (error) { fail(12, "元の資料を消す", error, start); }
 }
 
-// 13. 架空の役員アカウントを足し、新しい資格でログインする。資格情報は表示・記録しない。
+// 13. 架空の役員にリンクを渡し、本人がIDとパスワードを作る。資格情報は表示・記録しない。
 if (!projectId) skip(13, "引渡し", "前提の行事を開けませんでした");
 else {
   const start = Date.now();
@@ -471,17 +471,25 @@ else {
     if (!peoplePage.response.ok) throw new Error("役員の一覧を開けません");
     const testName = FIRST_SLICE.firstOfficer + " " + stamp;
     const created = await post(admin + "/settings/people/accounts", { name: testName, seatId: "" });
-    const credentialsHtml = await created.text();
+    const invitationHtml = await created.text();
+    const invitation = unescapeHtml(/class="secret invite-link">([^<]+)<\/p>/.exec(invitationHtml)?.[1] ?? "");
+    if (created.status !== 201 || !invitation) throw new Error("入るためのリンクを作れません");
+    sensitiveValues.add(invitation);
+    const invitationUrl = new URL(invitation);
+    sensitiveValues.add(invitationUrl.pathname.split("/").pop()!);
+    cookies.clear();
+    const chosen = await post(invitationUrl.pathname + "/password", {});
+    const credentialsHtml = await chosen.text();
     const loginId = unescapeHtml(/ID:\s*<strong>([^<]+)<\/strong>/.exec(credentialsHtml)?.[1] ?? "");
     const password = unescapeHtml(/<p class="secret">([^<]+)<\/p>/.exec(credentialsHtml)?.[1] ?? "");
-    if (created.status !== 201 || !loginId || !password) throw new Error("新しい役員資格を作れません");
+    if (chosen.status !== 200 || !loginId || !password) throw new Error("本人のIDとパスワードを作れません");
     sensitiveValues.add(loginId);
     sensitiveValues.add(password);
     cookies.clear();
     const login = await post(admin + "/login", { loginId, password });
     const newAccountHome = await get(admin + "/");
     if (login.status !== 303 || !cookies.has("device") || !newAccountHome.response.ok || !newAccountHome.html.includes(testName)) throw new Error("新しい資格で役員画面に入れません");
-    record(13, "引渡し", "通過", "架空の役員アカウントを足し、新しい資格で入る。資格値は表示・記録していない", newAccountHome.response.status, start);
+    record(13, "引渡し", "通過", "架空の役員にリンクを渡し、本人が作ったIDとパスワードで入る。資格値は表示・記録していない", newAccountHome.response.status, start);
   } catch (error) { fail(13, "引渡し", error, start); }
 }
 
