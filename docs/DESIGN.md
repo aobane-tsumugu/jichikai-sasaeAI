@@ -113,4 +113,3 @@ Managed Agentsには、MCP経由で次の五つの手を渡します。
 - 本物の手書き・スマートフォン写真、公式LINEの一斉送信、復旧、連携設定に依存する入り方などの残る確認は[README.md](../README.md)を参照してください。
 
 実際に確かめた結果は[EVIDENCE/](EVIDENCE/)に残します。実装済み、試験で確認済み、実機で確認済みを分け、未計測の効果を書きません。架空資料の来歴と再利用条件は[fixtures/README.md](../fixtures/README.md)、コードのライセンスは[LICENSE](../LICENSE)にあります。
-
