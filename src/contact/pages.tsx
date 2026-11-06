@@ -1,4 +1,4 @@
-import { sha256Hex } from "../core/password";
+import { generateDeviceToken, sha256Hex } from "../core/password";
 import { Hono, type Context } from "hono";
 import { csrf } from "hono/csrf";
 import { bodyLimit } from "hono/body-limit";
@@ -72,43 +72,66 @@ contactRoutes.use("*", async (c, next) => {
 });
 contactRoutes.use("*", csrf());
 contactRoutes.use("*", bodyLimit({ maxSize: 8 * 1024 * 1024, onError: (c) => c.html(<ContactError message="写真が大きすぎます。7MBまでの写真にして送ってください。" href={c.req.path} />, 413) }));
-contactRoutes.get("/", (c) => c.html(<ContactPage title="SasaeAIへの問い合わせ">
+function ContactForm(props: { values: Record<string, string>; errors?: string[]; sitekey?: string }) {
+  const values = props.values;
+  return <ContactPage title="SasaeAIへの問い合わせ">
   <h1>SasaeAIへの問い合わせ</h1><p class="lead">役員の方が使ってください。住民の方は、区の役員へ聞いてください。</p>
-  <form method="post" action="/contact"><fieldset><legend>何にお困りですか</legend><div class="choice">
-    {Object.entries(KINDS).map(([kind, label]) => <label><input type="radio" name="kind" value={kind} required checked={kind === "access"} />{label}</label>)}
+  {props.errors?.length ? <Notice error><strong>まだ送っていません。下の内容を直して、もう一度送ってください。</strong>{props.errors.map((error) => <p>{error}</p>)}</Notice> : null}
+  <form method="post" action="/contact"><input type="hidden" name="submission_id" value={values.submission_id} /><fieldset><legend>何にお困りですか</legend><div class="choice">
+    {Object.entries(KINDS).map(([kind, label]) => <label><input type="radio" name="kind" value={kind} required checked={kind === values.kind} />{label}</label>)}
   </div></fieldset>
-    <label for="contact-ward">区の名前</label><input id="contact-ward" name="wardName" maxlength={60} value={c.req.query("ward")?.slice(0, 60) ?? ""} />
-    <label for="contact-name">お名前</label><input id="contact-name" name="name" required maxlength={60} autocomplete="name" />
-    <label for="contact-reach">メールアドレス</label><input id="contact-reach" name="reach" type="email" required maxlength={200} autocomplete="email" />
+    <label for="contact-ward">区の名前</label><input id="contact-ward" name="wardName" maxlength={60} value={values.wardName} />
+    <label for="contact-name">お名前</label><input id="contact-name" name="name" required maxlength={60} autocomplete="name" value={values.name} />
+    <label for="contact-reach">メールアドレス</label><input id="contact-reach" name="reach" type="email" required maxlength={200} autocomplete="email" value={values.reach} />
     <p>受付番号と、やりとりの画面のリンクを送ります。今使えるメールアドレスを書いてください。登録したものと違っても、家族のメールでもかまいません。</p>
-    <label for="contact-body">くわしく</label><textarea id="contact-body" name="body" required maxlength={5000} rows={6} />
-    <Turnstile sitekey={sitekey(c.env)} /><div class="action-bar"><button>送る</button></div>
+    <label for="contact-body">くわしく</label><textarea id="contact-body" name="body" required maxlength={5000} rows={6}>{values.body}</textarea>
+    <Turnstile sitekey={props.sitekey} /><div class="action-bar"><button>送る</button></div>
   </form><a class="quiet" href="/">最初の画面へ戻る</a>
-</ContactPage>));
-contactRoutes.post("/", async (c) => {
-  const form = await c.req.parseBody();
-  const text = (key: string) => typeof form[key] === "string" ? form[key].trim() : "";
-  const kind = text("kind"), name = text("name"), wardName = text("wardName"), reach = text("reach"), body = text("body");
-  if (!Object.hasOwn(KINDS, kind) || !name || name.length > 60 || wardName.length > 60 || (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(reach) || reach.length > 200) || !body || body.length > 5000) {
-    return c.html(<ContactError message="お名前と、使えるメールアドレス、くわしい内容を入れてください。" />, 400);
-  }
-  if (!await allowSend(c.env.DB, `ip:${c.req.header("cf-connecting-ip") ?? "unknown"}`)
-    || (reach && !await allowSend(c.env.DB, `reach:${reach.toLowerCase()}`, 3600, 3))) {
-    return c.html(<ContactError message="続けて送られたため、受け付けていません。時間をおいてもう一度送ってください。" />, 429);
-  }
-  if (!await verified(c, form)) return c.html(<ContactError message="送信の確認ができませんでした。もう一度画面を開いて送ってください。" />, 403);
-  const received = await receiveContact(c.env.DB, { kind: kind as ContactKind, name, wardName, reach, body });
-  const href = `/contact/${received.token}`;
-  const mailed = await mailNotice(c.env, { reach, receipt: received.receipt }, new URL(href, c.req.url).href);
+</ContactPage>;
+}
+function contactReceipt(c: Context<AppEnv>, token: string, receipt: string, mailed: "sent" | "manual" | "failed" | "received", created = false) {
   return c.html(<ContactPage title="問い合わせを受け取りました"><h1>問い合わせを受け取りました</h1>
-    <Notice>受付番号{receiptLabel(received.receipt)}</Notice>
+    <Notice>受付番号{receiptLabel(receipt)}</Notice>
     <p>{mailed === "sent" ? "受付番号と、やりとりの画面のリンクをメールで送りました。迷惑メールのフォルダも見てください。"
+      : mailed === "received" ? "この問い合わせは受け付けています。返事は、下のやりとりの画面で読めます。"
       : "メールをまだ送れないため、この画面を閉じないでください。返事は、下のやりとりの画面で読めます。"}</p>
     {mailed === "failed" ? <Notice error>問い合わせは受け付けましたが、メールを送れませんでした。</Notice> : null}
     <p>受付番号からは、やりとりの画面を開き直せません。</p>
-    <section class="next"><strong>次は</strong><p>やりとりの画面を開いて、返事を見てください。</p><a class="button contact-thread-link" href={href}>やりとりの画面を開く</a></section>
+    <section class="next"><strong>次は</strong><p>やりとりの画面を開いて、返事を見てください。</p><a class="button contact-thread-link" href={`/contact/${token}`}>やりとりの画面を開く</a></section>
     <a class="quiet" href="/contact">問い合わせのフォームへ戻る</a>
-  </ContactPage>, 201);
+  </ContactPage>, created ? 201 : 200);
+}
+contactRoutes.get("/", (c) => c.html(<ContactForm values={{ kind: "access", wardName: c.req.query("ward")?.slice(0, 60) ?? "", submission_id: generateDeviceToken() }} sitekey={sitekey(c.env)} />));
+contactRoutes.post("/", async (c) => {
+  const form = await c.req.parseBody();
+  const values = Object.fromEntries(["kind", "name", "wardName", "reach", "body", "submission_id"].map((key) => [key, typeof form[key] === "string" ? form[key] : ""]));
+  const text = (key: string) => typeof form[key] === "string" ? form[key].trim() : "";
+  const submissionId = text("submission_id");
+  const validSubmission = /^[A-Za-z0-9_-]{43}$/.test(submissionId);
+  // 再読み込みは、連続送信や送信確認の検査より先に同じ受付へ戻す。
+  const previous = validSubmission ? await contactByToken(c.env.DB, submissionId) : null;
+  if (previous) return contactReceipt(c, submissionId, previous.receipt, "received");
+  const showForm = (errors: string[], status: 400 | 403 | 429) => c.html(<ContactForm
+    values={{ ...values, submission_id: validSubmission ? submissionId : generateDeviceToken() }} errors={errors} sitekey={sitekey(c.env)} />, status);
+  const kind = text("kind"), name = text("name"), wardName = text("wardName"), reach = text("reach"), body = text("body");
+  const errors: string[] = [];
+  if (!validSubmission) errors.push("送る準備ができませんでした。入力は残しています。そのままもう一度送ってください。");
+  if (!Object.hasOwn(KINDS, kind)) errors.push("「何にお困りですか」から、一つ選んでください。");
+  if (!name || name.length > 60) errors.push("「お名前」に60文字まででお名前を入れてください。");
+  if (wardName.length > 60) errors.push("「区の名前」を60文字までにしてください。");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(reach) || reach.length > 200) errors.push("「メールアドレス」に今使えるメールアドレスを200文字までで入れてください。");
+  if (!body || body.length > 5000) errors.push("「くわしく」に5000文字までで内容を入れてください。");
+  if (errors.length) return showForm(errors, 400);
+  if (!await allowSend(c.env.DB, `ip:${c.req.header("cf-connecting-ip") ?? "unknown"}`)
+    || (reach && !await allowSend(c.env.DB, `reach:${reach.toLowerCase()}`, 3600, 3))) {
+    return showForm(["続けて送られたため、受け付けていません。時間をおいてもう一度送ってください。"], 429);
+  }
+  if (!await verified(c, form)) return showForm(["送信の確認ができませんでした。下の送信の確認をやり直して、もう一度送ってください。"], 403);
+  const received = await receiveContact(c.env.DB, { kind: kind as ContactKind, name, wardName, reach, body, submissionId });
+  if (!received.created) return contactReceipt(c, received.token, received.receipt, "received");
+  const href = `/contact/${received.token}`;
+  const mailed = await mailNotice(c.env, { reach, receipt: received.receipt }, new URL(href, c.req.url).href);
+  return contactReceipt(c, received.token, received.receipt, mailed, true);
 });
 contactRoutes.get("/:token", async (c) => {
   const contact = await contactByToken(c.env.DB, c.req.param("token"));

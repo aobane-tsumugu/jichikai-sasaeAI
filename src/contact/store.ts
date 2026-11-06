@@ -50,17 +50,25 @@ function receiptNumber() {
   }
   return digits.join("");
 }
-export async function receiveContact(db: D1Database, input: { kind: ContactKind; wardName: string; name: string; reach: string; body: string }) {
+export async function receiveContact(db: D1Database, input: { kind: ContactKind; wardName: string; name: string; reach: string; body: string; submissionId?: string }) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.reach) || input.reach.length > 200) throw new Error("使えるメールアドレスを入れてください");
-  const id = newId(), token = generateDeviceToken(), stamp = nowIso();
+  if (input.submissionId && !/^[A-Za-z0-9_-]{43}$/.test(input.submissionId)) throw new Error("送る準備ができていません");
+  // フォームごとに発行した推測できない値を、やりとりの鍵にも使う。本体は保存しない。
+  const id = newId(), token = input.submissionId ?? generateDeviceToken(), stamp = nowIso();
+  const hash = await sha256Hex(token);
   const receipt = receiptNumber();
   await db.batch([
     db.prepare(`INSERT INTO provider_contacts (ward_id, contact_id, receipt, token_hash, kind, ward_name, name, reach, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(CONTACT_WARD, id, receipt, await sha256Hex(token), input.kind, input.wardName, input.name, input.reach, stamp),
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS
+        (SELECT 1 FROM provider_contacts WHERE ward_id = ? AND token_hash = ?)`)
+      .bind(CONTACT_WARD, id, receipt, hash, input.kind, input.wardName, input.name, input.reach, stamp, CONTACT_WARD, hash),
     db.prepare(`INSERT INTO provider_contact_messages (ward_id, contact_id, message_id, sender, body, created_at)
-      VALUES (?, ?, ?, 'person', ?, ?)`).bind(CONTACT_WARD, id, newId(), input.body, stamp),
+      SELECT ward_id, contact_id, ?, 'person', ?, ? FROM provider_contacts WHERE ward_id = ? AND contact_id = ?`)
+      .bind(newId(), input.body, stamp, CONTACT_WARD, id),
   ]);
-  return { id, token, receipt };
+  const saved = await contactByToken(db, token);
+  if (!saved) throw new Error("問い合わせを保存できませんでした");
+  return { id: saved.contact_id, token, receipt: saved.receipt, created: saved.contact_id === id };
 }
 export async function appendMessage(env: Env, contact: Contact, sender: Message["sender"], body: string, photo?: File) {
   const id = newId();

@@ -6,6 +6,8 @@ import { WardBucket } from "../src/core/storage";
 import { seedAdmin, seedSeat } from "../src/core/testing";
 import { exportWard, requestWardDeletion, runDeletionCron } from "../src/ops/lifecycle";
 import { createProject } from "../src/project/api";
+import { CONTACT_WARD, contactByToken, messages, receiveContact } from "../src/contact/store";
+import { PROVIDER_CONTACT_FIXTURE } from "../fixtures/provider-contact";
 
 it("区の全表を控えと写しの方針に含め、秘密を渡さず、他の区を残して消去できる", async () => {
   // 表の追加時に方針への記入を忘れたら、この一本で分かる。
@@ -84,7 +86,15 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
   }
   const target = await records();
   const other = await records();
+  const received = await receiveContact(env.DB, { ...PROVIDER_CONTACT_FIXTURE, kind: "access" });
   await writeDailyWardSnapshots(env, new Date("2026-11-06T00:00:00Z"));
+  const providerBucket = new WardBucket(env.ORIGINALS, CONTACT_WARD);
+  const providerObject = await providerBucket.get("snapshots/daily/2026-11-06.json");
+  expect(providerObject).not.toBeNull();
+  const providerSnapshot = await providerObject!.json<{ wardId: string; tables: Record<string, Record<string, string | number | null>[]> }>();
+  expect(providerSnapshot.wardId).toBe(CONTACT_WARD);
+  expect(providerSnapshot.tables.provider_contacts).toEqual([expect.objectContaining({ contact_id: received.id, ward_id: CONTACT_WARD, reach: PROVIDER_CONTACT_FIXTURE.reach })]);
+  expect(providerSnapshot.tables.provider_contact_messages).toEqual([expect.objectContaining({ contact_id: received.id, ward_id: CONTACT_WARD, body: PROVIDER_CONTACT_FIXTURE.body })]);
   const snapshot = await (await target.bucket.get("snapshots/daily/2026-11-06.json"))!
     .json<{ tables: Record<string, Record<string, unknown>[]> }>();
   const exported = JSON.parse((await exportWard(env, target.ward.wardId)).body) as {
@@ -134,4 +144,16 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
   }
   expect((await target.bucket.list("")).keys.length).toBe(0);
   expect(await (await other.bucket.get("originals/fictional.jpg"))!.text()).toBe("架空の写真");
+  // 区の消去で提供側の写しを失わず、その行を親から戻すと同じ受付を開ける。
+  expect(await providerBucket.head("snapshots/daily/2026-11-06.json")).not.toBeNull();
+  await env.DB.prepare("DELETE FROM provider_contacts WHERE ward_id = ? AND contact_id = ?").bind(CONTACT_WARD, received.id).run();
+  expect(await contactByToken(env.DB, received.token)).toBeNull();
+  for (const table of ["provider_contacts", "provider_contact_messages"]) {
+    for (const row of providerSnapshot.tables[table]!) {
+      const columns = Object.keys(row);
+      await env.DB.prepare(`INSERT INTO ${table} (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`).bind(...Object.values(row)).run();
+    }
+  }
+  expect(await contactByToken(env.DB, received.token)).toMatchObject({ contact_id: received.id, receipt: received.receipt });
+  expect(await messages(env.DB, received.id)).toEqual([expect.objectContaining({ body: PROVIDER_CONTACT_FIXTURE.body })]);
 });
