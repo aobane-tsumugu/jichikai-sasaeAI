@@ -220,8 +220,10 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
       assert(final.values.get("lineDelivery") === "skip", "LINE送信を止められません");
       redirected(await post(final.action, final.values), "招集を配れません");
       const page = await get(`${root}/p/${project}`, true);
-      // 公開の案内は行事名を見出しに使い、下書きの題は表示しない。
-      assert(page.includes(`<h1>${projectTitle}のご案内</h1>`), "公開のページに総会の見出しがありません");
+      // 行事以外は、種類に合わせた題を見出しにする。
+      assert(page.includes(`<h1>${projectTitle} 総会の招集</h1>`), "公開のページに総会の見出しがありません");
+      assert(!page.includes("答えがないときは、欠席として数えます"), "総会の公開のページに行事の文があります");
+      assert(/<title>[^<]*総会の招集/.test(page), "公開のページの題が総会の招集ではありません");
       const article = [...page.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article>/gi)].find(a => /<h2>くわしい案内<\/h2>/.test(a[1] ?? ""))?.[1];
       assert(article && visible(article).includes(visible(form.values.get("text") ?? "")), "公開のページに招集の本文がありません");
       return "AIの招集の題、住民向けの文、日時・場所・議案を確認して配りました。公式LINEは送信していません。";

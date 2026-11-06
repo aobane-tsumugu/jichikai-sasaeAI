@@ -3,6 +3,7 @@ import { publishedItem } from "../answers/resident";
 import { listHelpOpportunities } from "../answers/help";
 import { formatDateText } from "../core/time";
 import { baseUrl } from "../core/ward";
+import { documentTitle } from "../project/heading";
 import type { WardEnv } from "../env";
 import { publicDocuments, type PublicDocument } from "./publications";
 
@@ -69,8 +70,8 @@ export const publicMetadata: MiddlewareHandler<WardEnv> = async (c, next) => {
       description = `${title}をご覧ください。自治会の仕事と関わり方を紹介します。`;
     } else {
       visible &&= documents.length > 0;
-      const labels = [...new Set(documents.map((document) =>
-        ({ announcement: "案内", recruitment: "手伝いの募集", notice: "知らせ", report: "報告" } as Record<string, string>)[document.kind]).filter(Boolean))];
+      const labels = [...new Set(documents.filter((document) => ["announcement", "recruitment", "notice", "report"].includes(document.kind))
+        .map((document) => documentTitle(document.project_kind, document.kind)))];
       title = `${ward.name}｜${documents[0]?.project_title ?? "お知らせ"}の${kind === "help" ? "手伝いの募集" : kind === "answer" ? "出欠の答え" : labels.join("・") || "お知らせ"}`;
       description = `${title}をご覧ください。${eventDescription(documents)}`;
       if (kind === "help") visible &&= (await listHelpOpportunities(c.env.DB, ward.wardId, projectId)).length > 0;

@@ -6,7 +6,7 @@ import { POSTER_CSS } from "../../core/styles";
 import { publishedItem } from "../content";
 
 
-export function PosterPage({ title, body, wardUrl, due, contact, distributed, back, copies }: { title: string; body: string; wardUrl: string; due?: string; contact?: string; distributed?: string; back?: string; copies?: string }) {
+export function PosterPage({ title, body, wardUrl, due, contact, distributed, back, copies, generalMeeting = false }: { generalMeeting?: boolean; title: string; body: string; wardUrl: string; due?: string; contact?: string; distributed?: string; back?: string; copies?: string }) {
   const dateTime = publishedItem(body, "date_time");
   const place = publishedItem(body, "place");
   // 雨の時の場所を載せないと、掲示を見た人が雨の日に元の場所へ行く
@@ -20,7 +20,7 @@ export function PosterPage({ title, body, wardUrl, due, contact, distributed, ba
         {place ? <><dt>{ITEM_SCREEN_LABEL.place}</dt><dd>{place}</dd></> : null}
         {rainPlan ? <><dt>{ITEM_SCREEN_LABEL.rain_plan}</dt><dd>{rainPlan}</dd></> : null}
       </dl> : null}
-      {due ? <><p>答えの締切：{due}</p><p>参加しないときも、答えてください。答えがないときは、欠席として数えます。</p></> : null}
+      {due ? <><p>答えの締切：{due}</p><p>{generalMeeting ? "出席、委任、欠席のどれかを答えてください。" : "参加しないときも、答えてください。答えがないときは、欠席として数えます。"}</p></> : null}
       {contact ? <p>連絡先：{contact}</p> : null}
       <div class="poster-link">
         <div class="poster-qr" role="img" aria-label="区のページを開くQR" dangerouslySetInnerHTML={{ __html: qrSvg(wardUrl) }} />
