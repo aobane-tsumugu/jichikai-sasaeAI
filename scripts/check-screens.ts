@@ -77,14 +77,29 @@ function scope(options: Options) {
       return url;
     } catch { return undefined; }
   }
+  function screenQuery(url: URL): string {
+    const route = match(url)?.shape ?? "";
+    const views: Record<string, readonly string[]> = {
+      "/admin/answers/:project": ["send", "sent", "hand", "list", "helpers", "unanswered"],
+      "/admin/archive/:project": ["seed"],
+      "/admin/close/:project": ["activity"],
+    };
+    const query = new URLSearchParams();
+    const view = url.searchParams.get("view");
+    if (view && views[route]?.includes(view)) query.set("view", view);
+    if (route === "/admin/projects/:project/draft/:kind" && relative(url)?.endsWith("/draft/notice") && url.searchParams.get("edit") === "1") query.set("edit", "1");
+    // 検索語や入力内容は、画面の識別にも報告にも使わない。
+    return query.size ? `?${query.toString()}` : "";
+  }
   function shape(url: URL): string {
     const route = match(url);
     // 下書きの種類と印刷の種類は別の画面。IDとページ番号、検索語はまとめる。
     const actual = relative(url)?.split("/") ?? [];
     const parts = route?.shape.split("/").map((part, index) => part === ":kind" ? actual[index] : part);
-    return `${wardPath}${parts?.join("/") ?? "/対象外"}`;
+    return `${wardPath}${parts?.join("/") ?? "/対象外"}${screenQuery(url)}`;
   }
-  return { base, wardPath, loginPath, relative, match, candidate, shape };
+  const displayPath = (url: URL) => url.pathname + screenQuery(url);
+  return { base, wardPath, loginPath, relative, match, candidate, shape, displayPath };
 }
 
 function readCredentials(path: string) {
@@ -315,7 +330,7 @@ async function check(options: Options): Promise<{ results: Result[]; project: st
         } finally {
           for (const error of httpErrors) failures.push({ item: "HTTPの誤り", detail: error });
           if (consoleErrors.length) failures.push({ item: "JavaScriptの誤り（console.errorなど）", detail: `${consoleErrors.length}件: ${[...new Set(consoleErrors)].slice(0, 8).join(" / ")}` });
-          results.push({ path: url.pathname, width, failures });
+          results.push({ path: site.displayPath(url), width, failures });
           if (view) {
             try { await view.close(); }
             catch { failures.push({ item: "ブラウザーの終了", detail: "この画面を閉じる処理に失敗しました" }); }
@@ -341,7 +356,7 @@ function report(options: Options, results: Result[], project: string, capped: bo
     `- 通った画面: ${passed}/${paths.length}画面（両方の幅で全項目を通過）`,
     `- 幅ごとの結果: 通過${results.filter((row) => typeof row.width === "number" && !row.failures.length).length}件、不合格${results.filter((row) => row.failures.length).length}件`,
     `- 幅390pxは高さ844px、幅1280pxは高さ800px。主なボタンのない画面ではボタンの位置を検査しません。`,
-    "- 同じ形のURLは一つ。下書きと印刷の種類は別々。検索語などの違いはまとめます。",
+    "- 同じ形のURLは一つ。下書きと印刷の種類、入力や一覧への切り替えは別々。検索語などの違いはまとめます。",
     `- ${!paths.length ? "画面を確認できていません。下の実行結果を確認してください。" : capped ? "上限200画面に達しました。残りのリンク先は未確認です。" : "集めたリンク先を最後まで確認しました。"}`,
     "- ログインだけPOSTを一回使います。既存の認証処理による端末の記録を除き、GETの画面だけを開きます。招待を使う入口と更新用の入口へは進みません。",
     "- 文字の大きさは表示中の本文と入力欄を対象にし、印刷の中身（.sheet、.print、[data-print]）とSVGを除きます。本文に埋め込まれたリンクの高さは除きます。",
@@ -393,8 +408,9 @@ async function selfTest() {
     const requests: string[] = [];
     const html = (body: string) => `<!doctype html><html lang="ja"><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="/favicon.ico"><style>body{margin:0;font-size:18px}a,button,input,summary{display:block;min-height:48px;font-size:18px}.small{font-size:12px}.wide{width:1400px}</style><script nonce="fixture" src="/fixture/app.js"></script></head><body>${body}</body></html>`;
     const server = createServer((request, response) => {
-      const path = new URL(request.url ?? "/", "http://localhost").pathname;
-      requests.push(`${request.method} ${path}`);
+      const url = new URL(request.url ?? "/", "http://localhost");
+      const path = url.pathname;
+      requests.push(`${request.method} ${path}${url.search}`);
       response.setHeader("Content-Type", "text/html; charset=utf-8");
       response.setHeader("Content-Security-Policy", "script-src 'nonce-fixture'; style-src 'unsafe-inline'");
       if (path === "/fixture/app.js") {
@@ -423,7 +439,11 @@ async function selfTest() {
       } else if (path === "/fixture/admin/projects") {
         response.end(html('<a href="/fixture/admin/projects/today">今やること</a><a href="/fixture/admin/projects/first">架空の行事</a><a href="/fixture/admin/projects/second">別の架空の行事</a>'));
       } else if (path === "/fixture/admin/projects/first") {
-        response.end(html('<a href="/fixture/admin/projects/first/map">段取り</a><a href="/fixture/admin/projects/second/map">別の段取り</a><a href="/fixture/admin/inbox">届いたもの</a><a href="/fixture/admin/archive">記録</a><a href="/fixture/admin/logout">出る</a><a href="/fixture/admin/projects/first/delete">消す</a><a href="/other/admin/">別の区</a><a href="/fixture/space/first/join/secret">一人用の入口</a>'));
+        response.end(html('<a href="/fixture/admin/projects/first/map">段取り</a><a href="/fixture/admin/answers/first">答えを見る</a><a href="/fixture/admin/projects/first/draft/notice">雨の変更</a><a href="/fixture/admin/projects/second/map">別の段取り</a><a href="/fixture/admin/inbox">届いたもの</a><a href="/fixture/admin/archive">記録</a><a href="/fixture/admin/logout">出る</a><a href="/fixture/admin/projects/first/delete">消す</a><a href="/other/admin/">別の区</a><a href="/fixture/space/first/join/secret">一人用の入口</a>'));
+      } else if (path === "/fixture/admin/answers/first") {
+        response.end(html(`<main>${url.searchParams.get("view") === "hand" ? '<div style="height:1000px"></div><form method="post"><button>この答えを入れる</button></form>' : '<p>架空の答えの画面</p>'}<a href="?view=summary">集計</a><a href="?view=hand">手で入れる</a><a href="?view=list&amp;q=fixture-query-text">一覧</a><a href="?view=list&amp;q=another-query-text">同じ一覧</a><a href="?view=unanswered">まだ答えていない世帯</a></main>`));
+      } else if (path === "/fixture/admin/projects/first/draft/notice") {
+        response.end(html(`<main><p${url.searchParams.get("edit") === "1" ? ' class="small"' : ""}>架空の知らせ</p><a href="?edit=1">下書きを書く</a></main>`));
       } else if (path === "/fixture/admin/projects/first/map") {
         response.end(html('<main class="wide"><p class="small">undefined null [object NaN</p><button style="min-height:20px;height:20px;font-size:12px">小さい操作</button><button>主な操作</button><div style="height:900px"></div><a href="/fixture/admin/settings">区の設定</a></main><script nonce="fixture">console.error("secret must not appear");console.error("Failed to load resource: net::ERR_FAILED https://invalid.example/fictional-only");fetch("/fixture/admin/projects/first/title",{method:"POST"}).catch(()=>{});fetch("/fixture/admin/logout").catch(()=>{})</script>'));
       } else if (path === "/fixture/admin/inbox") {
@@ -443,6 +463,11 @@ async function selfTest() {
       report(options, result.results, result.project, result.capped);
       assert.equal(result.project, "first");
       for (const width of widths) {
+        for (const view of ["hand", "list", "unanswered"]) {
+          assert.ok(result.results.some((row) => row.path === `/fixture/admin/answers/first?view=${view}` && row.width === width));
+        }
+        assert.ok(result.results.some((row) => row.path.endsWith("/answers/first?view=hand") && row.width === width && row.failures.some((failure) => failure.item === "主なボタンが一画面目に見えない")));
+        assert.ok(result.results.some((row) => row.path.endsWith("/draft/notice?edit=1") && row.width === width && row.failures.some((failure) => failure.item === "文字が18px未満")));
         for (const path of ["/fixture/answer/first", "/fixture/help/first", "/fixture/space/first"]) {
           const publicPage = result.results.find((row) => row.path === path && row.width === width);
           assert.ok(publicPage, path);
@@ -456,11 +481,14 @@ async function selfTest() {
         assert.ok(result.results.some((row) => row.path.endsWith("/settings") && row.width === width && !row.failures.length));
       }
       assert.equal(requests.filter((request) => request.startsWith("POST ")).length, 1);
+      assert.equal(requests.filter((request) => request.startsWith("GET /fixture/admin/answers/first?view=list&")).length, widths.length);
       assert.ok(requests.includes("GET /fixture/app.js"));
       assert.ok(!requests.includes("GET /favicon.ico"));
       assert.ok(!requests.some((request) => /second|other|logout|delete|join|person|\/enter|\/title/.test(request)));
       const markdown = readFileSync(resolve(temp, "report.md"), "utf8");
       assert.ok(markdown.includes("通った画面:"));
+      assert.ok(markdown.includes("/answers/first?view=hand") && markdown.includes("/draft/notice?edit=1"));
+      assert.ok(!markdown.includes("fixture-query-text") && !markdown.includes("another-query-text"));
       assert.ok(markdown.includes("Failed to load resource: net::ERR_FAILED"));
       assert.ok(markdown.includes("console.error: [本文を伏せました]"));
       assert.ok(!markdown.includes("secret must not appear") && !markdown.includes("fictional-only"));
