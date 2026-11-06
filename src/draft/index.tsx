@@ -112,7 +112,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     <h1>{pack.title}の下書きを直す</h1>
     <p class="lead">{kindRaw === "duty_roster" ? "実行委員と班長に見せる当番表です。" : kindRaw === "recruitment" && scope === "public" ? "区のページの「一回だけ手伝う」に出る募集です。" : scope === "public" ? "だれでも読める案内です。" : scope === "space" ? "実行委員と班長だけが読めます。" : "役員だけが読めます。"}直して保存しても、まだ配られません。</p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
-    {c.req.query("notice") === "saved" ? <section class="next"><strong>保存しました。まだ配っていません</strong><p>前の下書きにも戻せます。</p><a class="button secondary" href={adminPath(ward, `/publish/${id}/confirm?kind=${kindRaw}`)}>配る画面へ</a><a class="quiet" href="#previous-drafts">前の下書きに戻す</a></section> : null}
+    {c.req.query("notice") === "saved" ? <section class="next"><strong>保存しました。まだ配っていません</strong><p>前の下書きにも戻せます。</p>{scope === "public" || (scope === "space" && ["duty_roster", "procedure"].includes(kindRaw)) ? <a class="button secondary" href={adminPath(ward, `/publish/${id}/confirm?kind=${kindRaw}`)}>配る画面へ</a> : null}<a class="quiet" href="#previous-drafts">前の下書きに戻す</a></section> : null}
     {bodyCheck ? <Notice>{bodyCheck}</Notice> : null}
     {c.req.query("notice") === "restored" ? <Notice>前の下書きに戻しました。今の下書きも残ります。</Notice> : null}
     {taskNotice ? <Notice><span data-ai-status={taskNotice.status}>{taskNotice.message}</span> 画面を閉じても処理は続きます。ここで書いて保存することもできます。</Notice> : null}

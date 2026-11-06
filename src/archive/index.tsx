@@ -170,7 +170,7 @@ admin.get("/archive/:projectId", async (c) => {
     const task = current[0] ?? open.filter((task) => task.periodStart && task.periodStart > today).sort((a, b) => a.periodStart!.localeCompare(b.periodStart!))[0];
     const questions = next.questions.some((question) => question.state === "open" || question.state === "later");
     const label = questions ? "質問に答える" : task?.name ?? (open.length ? "段取りへ" : "報告を書いて閉じる");
-    const href = questions ? adminPath(ward, `/projects/${next.project.projectId}`) : task ? `${mapHref}#task-${task.taskId}` : open.length ? mapHref : adminPath(ward, `/close/${next.project.projectId}`);
+    const href = questions ? adminPath(ward, `/projects/${next.project.projectId}/questions`) : task ? `${mapHref}/${task.taskId}` : open.length ? mapHref : adminPath(ward, `/close/${next.project.projectId}`);
     return c.html(<AdminPage ward={ward} account={c.var.account} title="新しく始めました" back={{ href: root, label: `← ${project.year}年の記録へ` }}>
       <h1>{next.project.title}を始めました</h1><p class="lead">去年の段取りを新しい日に置き直しました</p><section class="next"><strong>次は</strong><p>段取りから準備を進められます。</p><a class="button" href={href}>{label}</a></section><p><a class="quiet" href={mapHref}>段取りへ</a></p><p>仕事の時期は、段取りから直せます。去年の記録は変わりません。</p>
     </AdminPage>);
