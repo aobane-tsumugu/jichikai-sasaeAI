@@ -7,7 +7,7 @@
 /** 包みの版。どの版で読んだかを readings に残し、直した後に古い版で読んだ物を選んで読み直せるようにする。 */
 export const READ_PACK_VERSION = {
   general: "read-general@2",
-  answer_sheet: "read-answer-sheet@2",
+  answer_sheet: "read-answer-sheet@3",
   restore: "read-restore@2",
   /** モデルを通さない読み取り（Word、Excel、文字） */
   direct: "read-direct@2",
@@ -103,6 +103,7 @@ export interface AnswerSheetRow {
   ward_group: string;
   adults: number | null;
   children: number | null;
+  seniors?: number | null;
   helper_names: string[];
   /** 手伝いの時間帯（準備と設営、受付、模擬店、片付けなど。書かれたまま） */
   helper_slots: string[];
@@ -220,6 +221,7 @@ export const ANSWER_SHEET_SCHEMA = {
           "ward_group",
           "adults",
           "children",
+          "seniors",
           "helper_names",
           "helper_slots",
           "note",
@@ -233,6 +235,7 @@ export const ANSWER_SHEET_SCHEMA = {
           ward_group: str,
           adults: { anyOf: [{ type: "integer" }, { type: "null" }] },
           children: { anyOf: [{ type: "integer" }, { type: "null" }] },
+          seniors: { anyOf: [{ type: "integer" }, { type: "null" }] },
           helper_names: { type: "array", items: str },
           helper_slots: { type: "array", items: str },
           note: str,

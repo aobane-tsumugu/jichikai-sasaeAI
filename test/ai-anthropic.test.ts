@@ -245,7 +245,7 @@ describe("読むの呼び出し", () => {
     const req = requests[0] as { system: string; output_config: { format: { schema: { required: string[] } } } };
     expect(req.system).toContain("回答票");
     expect(req.output_config.format.schema.required).toContain("rows");
-    expect(result.packVersion).toBe("read-answer-sheet@2");
+    expect(result.packVersion).toBe("read-answer-sheet@3");
   });
 });
 

@@ -1,3 +1,4 @@
+import { AnswerLabelFields, getAnswerLabels, saveAnswerLabels } from "../settings/answer-labels";
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { baseUrl, wardUrl } from "../core/ward";
@@ -259,6 +260,7 @@ const WardNotFound = () => (
 opsRoutes.get("/wards/:slug", async (c) => {
   const ward = await wardOrNull(c, c.req.param("slug"));
   if (!ward) return c.html(<WardNotFound />, 404);
+  const labels = await getAnswerLabels(c.env.DB, ward.wardId);
   const accounts = await listAccounts(c.env.DB, ward.wardId);
   const url = wardUrl(c.env, c.req.url, ward.slug);
   return c.html(
@@ -274,6 +276,8 @@ opsRoutes.get("/wards/:slug", async (c) => {
         <a class="button secondary" href={`/ops/wards/${ward.slug}/queue`}>処理状況</a>
         <a class="button secondary" href={`/ops/wards/${ward.slug}/lifecycle`}>保管と消去</a>
       </nav>
+      {c.req.query("labels") === "saved" ? <Notice>保存しました。次に配る案内から、この言い方で出ます。</Notice> : null}
+      <form method="post" action={`/ops/wards/${ward.slug}/answer-labels`}><AnswerLabelFields labels={labels} /><button type="submit">人数の聞き方を保存する</button></form>
       <h2>役員のアカウント</h2>
       <p class="muted">役員全員が入れなくなった時のために、提供側からも足す・初期化ができます。</p>
       <table>
@@ -316,6 +320,13 @@ opsRoutes.get("/wards/:slug", async (c) => {
       </form>
     </OpsPage>,
   );
+});
+
+opsRoutes.post("/wards/:slug/answer-labels", async (c) => {
+  const ward = await wardOrNull(c, c.req.param("slug"));
+  if (!ward) return c.html(<WardNotFound />, 404);
+  if (!await saveAnswerLabels(c.env.DB, ward.wardId, await c.req.parseBody(), null)) return c.html(<OpsPage title="人数の聞き方" loggedIn><Notice error>人数の聞き方を三つとも入れてください。一つ80文字までです。</Notice><a href={`/ops/wards/${ward.slug}`}>戻る</a></OpsPage>, 400);
+  return c.redirect(`/ops/wards/${ward.slug}?labels=saved`, 303);
 });
 
 opsRoutes.post("/wards/:slug/accounts", async (c) => {

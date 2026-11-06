@@ -1,3 +1,4 @@
+import { getAnswerLabels } from "../settings/answer-labels";
 // 入った物の読みの流れ。画面の応答の後に waitUntil で裏で動かす。
 //
 // waitUntil は応答を返した後、最長 30 秒しか続かない（Cloudflare の文書）。読みがそれを超えると黙って止められるので、
@@ -125,7 +126,8 @@ async function performRead(
     }
 
     const client = (deps?.createClient ?? ((e: Env) => createAnthropic(e, { maxRetries: 1 })))(env);
-    const result = await (deps?.readImpl ?? readOriginals)(client, { kind: job.read_kind, originals: readable });
+    const answerLabels = job.read_kind === "answer_sheet" ? await getAnswerLabels(env.DB, wardId) : undefined;
+    const result = await (deps?.readImpl ?? readOriginals)(client, { kind: job.read_kind, originals: readable, answerLabels });
     const placed = await finishRead(env.DB, {
       wardId,
       jobId,
@@ -178,12 +180,13 @@ async function saveAnswerSheetRows(
   await Promise.all(reading.rows.map(async (row, index) => {
     const household = row.household_name.trim();
     const district = row.ward_group.trim();
-    if (!household || !district) return;
+    if (!household) return;
     await addAnswer(db, wardId, {
       projectId,
       household,
       district,
-      peopleCount: (row.adults ?? 0) + (row.children ?? 0),
+      peopleCount: (row.adults ?? 0) + (row.children ?? 0) + (row.seniors ?? 0),
+      childrenCount: row.children, adultsCount: row.adults, seniorsCount: row.seniors,
       helperName: row.helper_names.join("、"),
       helperTimes: row.helper_slots.join("、"),
       source: "sheet",

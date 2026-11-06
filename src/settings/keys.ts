@@ -2,6 +2,7 @@
 // 値は文字列で、構造のある物は JSON。
 
 export const SETTING_KEYS = {
+  answerLabels: "answer_labels",
   /** 公開用の連絡先（文）。区のページが出す（束 4）。役員個人の連絡先は書かない。 */
   publicContact: "public_contact",
   /** 公式 LINE の友だち追加の URL。公開してよい入口だけを持つ。 */

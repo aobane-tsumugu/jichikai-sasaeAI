@@ -47,12 +47,10 @@ async function saveLineAnswer(db: D1Database, wardId: string, projectId: string,
   const countText = text.normalize("NFKC");
   const adults = /大人\s*(\d+)\s*人/.exec(countText);
   const children = /子(?:ども|供)\s*(\d+)\s*人/.exec(countText);
-  const total = /来場(?:は|が)?\s*(\d+)\s*人/.exec(countText);
-  const peopleCount = adults || children ? Number(adults?.[1] ?? 0) + Number(children?.[1] ?? 0) : Number(total?.[1]);
+  const seniors = /(?:高齢(?:の方|者)?|シニア)\s*(\d+)\s*人/.exec(countText);
+  const total = /(?:来場(?:は|が)?\s*)?(\d+)\s*人/.exec(countText);
+  const peopleCount = adults || children || seniors ? Number(adults?.[1] ?? 0) + Number(children?.[1] ?? 0) + Number(seniors?.[1] ?? 0) : Number(total?.[1]);
   if (!Number.isInteger(peopleCount) || peopleCount < 0) return;
-  const existing = await db.prepare("SELECT answer_id, household, district FROM project_answers WHERE ward_id = ? AND project_id = ?")
-    .bind(wardId, projectId).all<{ answer_id: string; household: string; district: string }>();
-  if (existing.results.some((answer) => answer.district === household.district && normalizeHousehold(answer.household) === normalizeHousehold(household.household))) return;
   const sourceOriginal = await db.prepare("SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ? AND withdrawn_at IS NULL ORDER BY position LIMIT 1")
     .bind(wardId, jobId).first<{ original_id: string }>();
   const helperPhrase = /([^。\n]{1,40}?)(?:なら|は)(?:手伝え|手伝い|手伝)/.exec(text)?.[1]?.trim() ?? "";
@@ -61,6 +59,7 @@ async function saveLineAnswer(db: D1Database, wardId: string, projectId: string,
     household: household.household,
     district: household.district,
     peopleCount,
+    ...(adults || children || seniors ? { childrenCount: Number(children?.[1] ?? 0), adultsCount: Number(adults?.[1] ?? 0), seniorsCount: Number(seniors?.[1] ?? 0) } : {}),
     ...(helperPhrase ? { helperName: household.household, helperTimes: helperPhrase } : {}),
     source: "line",
     ...(sourceOriginal ? { originalId: sourceOriginal.original_id } : {}),

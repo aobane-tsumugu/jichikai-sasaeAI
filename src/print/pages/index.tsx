@@ -1,3 +1,4 @@
+import { labelsFromBody } from "../../answers/counts";
 import { Hono } from "hono";
 import { AdminPage } from "../../core/admin-ui";
 import { Hint } from "../../core/ui";
@@ -157,8 +158,9 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   const paperCode = await makePaperCode(c.env.DB, ward.wardId, projectId, row.document_id, versionNo);
   const paperQr = (squad?: string) => <div style="text-align:center"><PrintQr text={named(squad)} sizeMm={26} />
     <div class="paper-code">{paperCode}</div></div>;
+  const labels = labelsFromBody(row.body);
   const answerSheet = (squad: string, helperMm: number) => <div style="display:flex;gap:4mm;align-items:flex-start">
-    <div style="flex:1"><FieldBox label="世帯名" heightMm={16} /><FieldBox label="人数" heightMm={12} /><FieldBox label="手伝いの名前と時間帯" heightMm={helperMm} /></div>
+    <div style="flex:1"><FieldBox label="代表者のお名前" heightMm={16} /><FieldBox label={`班: ${squad || "分からないときは空けてかまいません"}`} heightMm={10} /><div style="display:flex;gap:2mm">{labels.map((label) => <div style="flex:1"><FieldBox label={`${label}　人`} heightMm={16} /></div>)}</div><FieldBox label="手伝いの名前と時間帯" heightMm={helperMm} /></div>
     {paperQr(squad)}
   </div>;
   const onOneSheet = fitsAboveAnswer(row.body);

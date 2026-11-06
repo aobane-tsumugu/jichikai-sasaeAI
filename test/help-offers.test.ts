@@ -35,14 +35,14 @@ it("募集から班を選ばず申し込み、世帯と別に数えて当番の�
   const home = await (await get(realApp, `${base}/`)).text();
   expect(home).toContain(`href="${base}/help"`);
   expect(home).toContain(`href="${settings.official_line_url}"`);
-  expect(home).toContain("友だち追加は任意");
-  expect(await (await get(realApp, `${base}/help`)).text()).toContain(`href="${helpPath}"`);
+  expect(home).toContain("追加しなくても、このページと紙で読めます");
+  expect((await get(realApp, `${base}/help`)).headers.get("location")).toBe(helpPath);
   const form = await (await get(realApp, helpPath)).text();
   expect(form).toContain(`value="${FIRST_SLICE.helperTime}"`);
   expect(form).not.toMatch(/name="(?:household|district|people_count)"/);
   const sent = await postForm(realApp, helpPath, { helper_name: FIRST_SLICE.sheetHelper, helper_times: FIRST_SLICE.helperTime });
   expect(sent.status).toBe(200);
-  expect(await sent.text()).toContain("役員が申し込みを確認し、当番表を作る時に使います");
+  expect(await sent.text()).toContain("申し込みを受け付けました");
   await addAnswer(env.DB, ward.wardId, {
     projectId: project.projectId, household: FIRST_SLICE.firstHousehold, district: FIRST_SLICE.district,
     peopleCount: 2, helperName: FIRST_SLICE.phoneHelper, helperTimes: FIRST_SLICE.helperTime, source: "phone",

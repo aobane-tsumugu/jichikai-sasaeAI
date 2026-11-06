@@ -37,12 +37,12 @@ it("閉じた回答画面では受付をせず、開き直してから電話の�
   expect(html).toContain("架空の世帯");
   expect(html).toContain("参加人数: 2 人");
   expect(html).toContain("回答を入力する時は「報告と閉じる」から「開き直す」を押してください。");
-  expect(html).not.toContain('name="people_count"');
+  expect(html).not.toContain('name="children_count"');
   expect(html).not.toContain('name="part"');
   expect(html).not.toContain('name="due_on"');
 
   expect((await postForm(realApp, `${root}/close/${project.projectId}/reopen`, {}, cookie)).status).toBe(303);
-  expect(await (await get(realApp, path, cookie)).text()).toContain('name="people_count"');
+  expect(await (await get(realApp, path, cookie)).text()).toContain('name="children_count"');
   expect((await postForm(realApp, `${path}/phone`, { ...phone, household: "架空の別の世帯", people_count: "3" }, cookie)).status).toBe(303);
   expect(await listAnswers(env.DB, ward.wardId, project.projectId)).toHaveLength(2);
 });

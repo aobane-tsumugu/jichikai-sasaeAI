@@ -10,6 +10,9 @@ export interface RosterEntry {
 export interface AnswerInput extends RosterEntry {
   projectId: string;
   peopleCount: number;
+  childrenCount?: number | null;
+  adultsCount?: number | null;
+  seniorsCount?: number | null;
   helperName?: string;
   helperTimes?: string;
   source: "web" | "phone" | "sheet" | "line";
@@ -190,17 +193,21 @@ export async function getDistrictCopies(db: D1Database, wardId: string): Promise
 }
 
 export async function addAnswer(db: D1Database, wardId: string, input: AnswerInput): Promise<string> {
+  const breakdown = [input.childrenCount, input.adultsCount, input.seniorsCount];
+  const hasBreakdown = breakdown.some((value) => value != null);
+  const peopleCount = hasBreakdown ? breakdown.reduce<number>((sum, value) => sum + (value ?? 0), 0) : input.peopleCount;
+  if (breakdown.some((value) => value != null && (!Number.isInteger(value) || value < 0)) || !Number.isInteger(peopleCount) || peopleCount < 0) throw new Error("人数を確認してください。");
   if (input.source === "sheet" && input.originalId && input.sheetRowIndex !== undefined) {
     const existing = await db.prepare(
       "SELECT answer_id FROM project_answers WHERE ward_id = ? AND project_id = ? AND original_id = ? AND sheet_row_index = ?",
     ).bind(wardId, input.projectId, input.originalId, input.sheetRowIndex).first<{ answer_id: string }>();
     if (existing) {
       const result = await db.prepare(
-        `UPDATE project_answers SET household = ?, district = ?, people_count = ?, helper_name = ?, helper_times = ?, created_by_account_id = ?
+        `UPDATE project_answers SET household = ?, district = ?, people_count = ?, children_count = ?, adults_count = ?, seniors_count = ?, helper_name = ?, helper_times = ?, created_by_account_id = ?
          WHERE ward_id = ? AND project_id = ? AND original_id = ? AND sheet_row_index = ?
            AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = project_answers.ward_id
              AND p.project_id = project_answers.project_id AND p.closed_at IS NULL)`,
-      ).bind(input.household.trim(), input.district.trim(), input.peopleCount, input.helperName?.trim() ?? "", input.helperTimes?.trim() ?? "",
+      ).bind(input.household.trim(), input.district.trim(), peopleCount, input.childrenCount ?? null, input.adultsCount ?? null, input.seniorsCount ?? null, input.helperName?.trim() ?? "", input.helperTimes?.trim() ?? "",
         input.accountId ?? null, wardId, input.projectId, input.originalId, input.sheetRowIndex).run();
       if ((result.meta.changes ?? 0) === 0) throw new Error("このプロジェクトは回答を受け付けていません。");
       return existing.answer_id;
@@ -209,8 +216,8 @@ export async function addAnswer(db: D1Database, wardId: string, input: AnswerInp
   const answerId = newId();
   await db
     .prepare(
-      `INSERT INTO project_answers (answer_id, ward_id, project_id, household, district, people_count, helper_name, helper_times, source, original_id, sheet_row_index, created_at, created_by_account_id)
-       SELECT ?, ?, p.project_id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM projects p
+      `INSERT INTO project_answers (answer_id, ward_id, project_id, household, district, people_count, children_count, adults_count, seniors_count, helper_name, helper_times, source, original_id, sheet_row_index, created_at, created_by_account_id)
+       SELECT ?, ?, p.project_id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM projects p
        WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL`,
     )
     .bind(
@@ -218,7 +225,10 @@ export async function addAnswer(db: D1Database, wardId: string, input: AnswerInp
       wardId,
       input.household.trim(),
       input.district.trim(),
-      input.peopleCount,
+      peopleCount,
+      input.childrenCount ?? null,
+      input.adultsCount ?? null,
+      input.seniorsCount ?? null,
       input.helperName?.trim() ?? "",
       input.helperTimes?.trim() ?? "",
       input.source,
@@ -238,7 +248,7 @@ export async function addAnswer(db: D1Database, wardId: string, input: AnswerInp
 export async function listAnswers(db: D1Database, wardId: string, projectId: string): Promise<AnswerRow[]> {
   const result = await db
     .prepare(
-      `SELECT answer_id AS answerId, project_id AS projectId, household, district, people_count AS peopleCount,
+      `SELECT answer_id AS answerId, project_id AS projectId, household, district, people_count AS peopleCount, children_count AS childrenCount, adults_count AS adultsCount, seniors_count AS seniorsCount,
         helper_name AS helperName, helper_times AS helperTimes, source, original_id AS originalId, sheet_row_index AS sheetRowIndex, created_at AS createdAt
        FROM project_answers WHERE ward_id = ? AND project_id = ? ORDER BY created_at, answer_id`,
     )
@@ -248,7 +258,7 @@ export async function listAnswers(db: D1Database, wardId: string, projectId: str
 }
 
 export async function getAnswer(db: D1Database, wardId: string, projectId: string, answerId: string): Promise<AnswerRow | null> {
-  return db.prepare(`SELECT answer_id AS answerId, project_id AS projectId, household, district, people_count AS peopleCount,
+  return db.prepare(`SELECT answer_id AS answerId, project_id AS projectId, household, district, people_count AS peopleCount, children_count AS childrenCount, adults_count AS adultsCount, seniors_count AS seniorsCount,
       helper_name AS helperName, helper_times AS helperTimes, source, original_id AS originalId,
       sheet_row_index AS sheetRowIndex, created_at AS createdAt
     FROM project_answers WHERE ward_id = ? AND project_id = ? AND answer_id = ?`)
@@ -258,14 +268,17 @@ export async function getAnswer(db: D1Database, wardId: string, projectId: strin
 /** 受け取った時の情報は残し、役員が直した回答を同じ一件に保存する。 */
 export async function updateAnswer(
   db: D1Database, wardId: string, projectId: string, answerId: string,
-  input: Pick<AnswerInput, "household" | "district" | "peopleCount" | "helperName" | "helperTimes">,
+  input: Pick<AnswerInput, "household" | "district" | "peopleCount" | "childrenCount" | "adultsCount" | "seniorsCount" | "helperName" | "helperTimes">,
 ): Promise<boolean> {
+  const breakdown = [input.childrenCount, input.adultsCount, input.seniorsCount];
+  const peopleCount = breakdown.some((value) => value != null) ? breakdown.reduce<number>((sum, value) => sum + (value ?? 0), 0) : input.peopleCount;
+  if (breakdown.some((value) => value != null && (!Number.isInteger(value) || value < 0)) || !Number.isInteger(peopleCount) || peopleCount < 0) return false;
   const result = await db.prepare(`UPDATE project_answers
-    SET household = ?, district = ?, people_count = ?, helper_name = ?, helper_times = ?
+    SET household = ?, district = ?, people_count = ?, children_count = ?, adults_count = ?, seniors_count = ?, helper_name = ?, helper_times = ?
     WHERE ward_id = ? AND project_id = ? AND answer_id = ?
       AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = project_answers.ward_id
         AND p.project_id = project_answers.project_id AND p.closed_at IS NULL)`)
-    .bind(input.household.trim(), input.district.trim(), input.peopleCount, input.helperName?.trim() ?? "",
+    .bind(input.household.trim(), input.district.trim(), peopleCount, input.childrenCount ?? null, input.adultsCount ?? null, input.seniorsCount ?? null, input.helperName?.trim() ?? "",
       input.helperTimes?.trim() ?? "", wardId, projectId, answerId).run();
   return result.meta.changes === 1;
 }
@@ -305,7 +318,11 @@ export async function listUnansweredByDistrict(
 ): Promise<Array<{ district: string; households: string[] }>> {
   const [roster, answers] = await Promise.all([getRoster(db, wardId), listAnswers(db, wardId, projectId)]);
   const keyOf = (entry: RosterEntry) => JSON.stringify([entry.district, normalizeHousehold(entry.household)]);
-  const answered = new Set(answers.map(keyOf));
+  const answered = new Set(answers.filter((answer) => answer.district !== "").map(keyOf));
+  for (const answer of answers.filter((entry) => entry.district === "")) {
+    const matches = roster.filter((entry) => normalizeHousehold(entry.household) === normalizeHousehold(answer.household));
+    if (matches.length === 1) answered.add(keyOf(matches[0]!));
+  }
   const districts = new Map<string, string[]>();
   for (const entry of roster) {
     const members = districts.get(entry.district) ?? [];

@@ -1,3 +1,5 @@
+import { countText } from "../answers/counts";
+import { residentContext } from "../answers/resident";
 import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import type { Context } from "hono";
@@ -177,6 +179,7 @@ async function renderSpace(c: Context<WardEnv>, direct: string | null) {
   const credential = direct ? await findMember(c.env.DB, c.var.ward.wardId, projectId, direct) : fromCookie;
   if (!credential) return c.html(<Layout title={`入る - ${project.title}`} siteName={`${c.var.ward.name} ${project.title}`}><h1>{project.title} の空間 <Hint text="実行委員や班長が資料を見る場所です。役員から届いた合言葉を入れてください。" /></h1><form method="post" action={`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/enter`}><label for="passphrase">合言葉</label><input id="passphrase" name="passphrase" type="password" required /><button type="submit">入る</button></form></Layout>);
   if (direct) setSpaceCookie(c, credential);
+  const { labels } = await residentContext(c.env.DB, c.var.ward.wardId, projectId);
   const data = await getSpaceMaterials(c.env.DB, c.var.ward.wardId, projectId, credential.role === "leader" ? credential.district : null);
   return c.html(
     <Layout title={`プロジェクトの空間 - ${project.title}`} siteName={`${c.var.ward.name} ${project.title}`}>
@@ -184,7 +187,7 @@ async function renderSpace(c: Context<WardEnv>, direct: string | null) {
       {credential.role === "leader" && credential.district ? <p>{credential.district}の班長向け</p> : null}
       {c.req.query("sent") === "answer" ? <p role="status">回答票を受け取りました。読み取った内容は、役員画面と同じ回答の集計に入ります。</p> : c.req.query("sent") === "paper" ? <p role="status">紙を受け取りました。役員が配り直すまで、配った文書は変わりません。</p> : null}
       <h2>出欠</h2>
-      {data.attendance.length ? <div class="panel"><table><thead><tr><th>班</th><th>世帯</th><th>人数</th></tr></thead><tbody>{data.attendance.map((row) => <tr><td>{row.district}</td><td>{row.household}</td><td>{row.people_count}</td></tr>)}</tbody></table></div> : <p>回答はまだありません。</p>}
+      {data.attendance.length ? <div class="panel"><table><thead><tr><th>班</th><th>世帯</th><th>人数</th></tr></thead><tbody>{data.attendance.map((row) => <tr><td>{row.district || "班が分からない"}</td><td>{row.household}</td><td>{countText({ peopleCount: row.people_count, childrenCount: row.children_count, adultsCount: row.adults_count, seniorsCount: row.seniors_count }, labels)}</td></tr>)}</tbody></table></div> : <p>回答はまだありません。</p>}
       <h2>協賛先と打診</h2>{data.tablesRecorded ? <MaterialsTable table="sponsors" items={data.items} /> : <p>{data.tablesPublished ? "配った時の表の記録がありません。役員に聞いてください。" : "まだ配っていません。"}</p>}
       <h2>当番表と配置図 <Hint text="配った時の当番表と配置図です。役員が配り直すまで変わりません。" /></h2>
       {data.tablesRecorded ? <><MaterialsTable table="duties" items={data.items} /><MaterialsTable table="layout" items={data.items} /></>
