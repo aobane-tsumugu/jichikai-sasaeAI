@@ -82,7 +82,7 @@ pub.get("/line", async (c) => {
     <a class="back" href={`/${c.var.ward.slug}/`}>← {c.var.ward.name}のお知らせへ</a>
     <h1>新しいお知らせを、LINEで受け取る</h1>
     <p class="lead">区の公式LINEを友だちに追加すると、新しい案内や変更が、スマホのLINEに届きます。追加は、してもしなくてもかまいません。</p>
-    {lineUrl ? <><a class="button" href={lineUrl}>LINEで友だちに追加する</a><p>LINEが開きます。</p></> : <p>この区の公式LINEは、まだ用意されていません。</p>}
+    {lineUrl ? <><div class="action-links"><a class="button" href={lineUrl}>LINEで友だちに追加する</a></div><p class="muted">LINEが開きます。</p></> : <p>この区の公式LINEは、まだ用意されていません。</p>}
     <h2>追加しなくても読めます</h2><p>案内は、このページと、紙の回覧、掲示でも読めます。LINEを使わない方は、追加しなくてかまいません。</p>
     <h2>届くもの</h2><p>案内の題と、このページへのリンクが届きます。くわしい内容は、リンクを開いて、このページで読みます。</p>
     <div class="sheet-preview"><p><b>届く知らせの例</b></p><p style="margin-bottom: 0; overflow-wrap: anywhere">秋の収穫祭のご案内<br />{`${new URL(c.req.url).origin}/${c.var.ward.slug}/p/akimatsuri`}</p></div>
@@ -123,7 +123,14 @@ pub.get("/", async (c) => {
   const unique = [...uniqueItems.values()];
   const isCurrent = (item: PublicProject) => !item.closed_at && (item.kind === "announcement" || item.kind === "notice");
   const current = unique.filter(isCurrent);
-  const past = unique.filter((item) => !isCurrent(item));
+  // 過去の行事は一行にする。報告があれば報告、なければ案内を読む。
+  const pastRank = (item: PublicProject) => (item.kind === "report" ? 0 : item.kind === "announcement" ? 1 : 2);
+  const pastByProject = new Map<string, PublicProject>();
+  for (const item of unique.filter((entry) => !isCurrent(entry))) {
+    const kept = pastByProject.get(item.project_id);
+    if (!kept || pastRank(item) < pastRank(kept)) pastByProject.set(item.project_id, item);
+  }
+  const past = [...pastByProject.values()];
   const row = (item: PublicProject) => <li key={item.document_id}><a class="row-link" href={`/${c.var.ward.slug}/p/${encodeURIComponent(item.project_id)}`}><b>{item.project_kind === "event" && item.kind === "announcement" ? `${item.title}のご案内` : paperHeading(item.title, publicDocumentTitle(item))}</b>{isCurrent(item) && publishedItem(item.body, "date_time") ? <span>{formatDateText(publishedItem(item.body, "date_time"))}</span> : null}{isCurrent(item) && publishedItem(item.body, "place") ? <span>{publishedItem(item.body, "place")}</span> : null}{isCurrent(item) && (publishedItem(item.body, "date_time") || publishedItem(item.body, "place")) ? null : <span>{formatJstDate(item.published_at)}に載せました</span>}</a></li>;
   const [contact, lineUrl] = await Promise.all([getPublicContact(c.env.DB, c.var.ward.wardId), getOfficialLineUrl(c.env.DB, c.var.ward.wardId)]);
   return c.html(<Layout title={`${c.var.ward.name}のお知らせ`} siteName={c.var.ward.name}>
@@ -231,8 +238,8 @@ pub.get("/p/:projectId", async (c) => {
       return <article class="panel" key={latest.document_id}>
         <h2>{event && latest.kind === "announcement" ? changes ? `${date(latest)}に配った案内` : "くわしい案内" : title}</h2>
         {latest.kind === "announcement" && changes ? <p>変わったところは、上のお知らせのとおりです。</p> : null}
-        <p>載せた日: {date(latest)}</p>
-        <ArticleBody body={latest.body} title={{ project: latest.title, document: latest.document_title }} kind={latest.kind} />
+        <ArticleBody body={latest.body} title={{ project: latest.title, document: latest.document_title }} kind={latest.kind} hide={latest.kind === "announcement" && !changes ? ["date_time", "place", "rain_plan", "due"] : []} />
+        <p class="muted">{date(latest)}に載せました</p>
         {earlier.map((older) => <details>
           <summary>変更前の{event ? "案内" : publicDocumentTitle(older)}（{date(older)}に載せたもの）</summary>
           <ArticleBody body={older.body} title={{ project: older.title, document: older.document_title }} kind={older.kind} />

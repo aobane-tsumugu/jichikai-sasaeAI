@@ -120,7 +120,7 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
   expect(await raw.text()).toBe(fixture.publicAnnouncement);
   expect(await read(`${ledgerPath}/${sponsor.rowId}`)).toContain(`value="${fixture.sponsorAmount}"`);
   const memoEntry = await read(`${root}/ledger`);
-  expect(memoEntry).toContain(`href="${root}/projects/${id}/map"`);
+  expect(memoEntry).toContain(`href="${root}/projects/${id}/ledger"`);
   expect(memoEntry).not.toContain('name="budgetIncome"');
   expect(memoEntry).not.toContain('name="settlementDraft"');
   // 名簿を入れなくても、一般的な題の下書きを全種類で読める。

@@ -206,7 +206,7 @@ details.fold > div { padding: 0 var(--space-3) var(--space-3); }
 /* MapRow。地図の一枚。月の物差しと今日の線を持つ。SVG を使わず、リストとリンクで作り、スマホでも横に動かさない */
 .map { --label: 9.6rem; position: relative; margin: var(--space-4) 0; }
 .map-months { position: relative; z-index: 1; display: grid; grid-template-columns: var(--label) minmax(0, 1fr); padding-top: 1.9rem; border-bottom: 2px solid var(--fg); font-size: var(--text-note); font-weight: 700; }
-.map-months span { grid-column: 2; display: grid; grid-template-columns: 31fr 30fr 31fr 30fr; }
+.map-months span { grid-column: 2; display: grid; grid-template-columns: 31fr 30fr 31fr 30fr; overflow-x: clip; }
 .map-months i::first-line { background: var(--bg); }
 .map-months i { padding-left: var(--space-1); border-left: 1px solid var(--line-strong); font-style: normal; white-space: nowrap; overflow-wrap: normal; }
 
@@ -407,6 +407,7 @@ body { margin: 0; color: #000; font: 14pt/1.65 "Hiragino Sans", "Yu Gothic", "Me
 .paper-header { display: flex; justify-content: space-between; gap: 5mm; align-items: flex-start; }
 .paper-header > div:first-child { flex: 1; min-width: 0; }
 .paper-identity { flex: none; width: 36mm; font-size: 12pt; line-height: 1.45; text-align: center; overflow-wrap: anywhere; }
+.paper-identity .qr, .paper-identity span { display: block; width: auto; margin: 0 auto; }
 .sheet .paper-table { font-size: 12pt; }
 .paper-duties tr, .paper-layout tr { height: 11mm; }
 .paper-sponsors tr { height: 12.2mm; }
@@ -435,13 +436,13 @@ body { margin: 0; color: #000; font: 14pt/1.65 "Hiragino Sans", "Yu Gothic", "Me
 `;
 
 export const POSTER_CSS = `
-.sheet.poster { min-height:296mm; display:flex; flex-direction:column; justify-content:space-around; gap:8mm; text-align:center; padding:18mm 16mm; }
+.sheet.poster { min-height:296mm; display:flex; flex-direction:column; justify-content:space-around; gap:4mm; text-align:center; padding:12mm 16mm 9mm; }
 .poster h1 { margin:0; font-size:30pt; line-height:1.4; overflow-wrap:anywhere; }
 .poster dl { margin:0; width:100%; }
-.poster dt { margin:5mm 0 1mm; font-size:13pt; }
+.poster dt { margin:3mm 0 1mm; font-size:13pt; }
 .poster dd { margin:0; font-size:22pt; font-weight:bold; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
 .poster-link { width:100%; }
-.poster-qr { width:70mm; max-width:55%; margin:0 auto; }
+.poster-qr { width:62mm; max-width:55%; margin:0 auto; }
 .poster-qr svg { display:block; width:100%; height:auto; }
 .poster-url { display:block; margin-top:3mm; color:#000; font-size:10pt; overflow-wrap:anywhere; }
 @media screen and (max-width:215mm) {

@@ -75,7 +75,7 @@ admin.get("/", async (c) => {
       <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a></div>
       <ul class="rows two">{projects.map((p, index) => {
         const state = states[index];
-        const tasks = state?.mapTasks.filter((task) => task.progress !== "done" && (!task.periodStart || task.periodStart <= today) && (!task.periodEnd || task.periodEnd >= today)) ?? [];
+        const tasks = state?.mapTasks.filter((task) => task.progress !== "done" && (task.periodStart || task.periodEnd) && (!task.periodStart || task.periodStart <= today) && (!task.periodEnd || task.periodEnd >= today)) ?? [];
         const questions = state?.questions.length ?? 0;
         const due = p.deadlines.event_day ?? p.deadlines.submit_due;
         const days = due ? Math.ceil((Date.parse(due) - Date.parse(today)) / 86400_000) : null;

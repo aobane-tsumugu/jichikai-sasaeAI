@@ -27,5 +27,5 @@ export function mapCalendar(tasks: readonly MapTaskView[], year: number) {
     months.push({ label: `${date.getUTCMonth() + 1}月`, days: (next - at) / 86400000 });
     at = next;
   }
-  return { months, position: (date: string) => Math.max(0, Math.min(1, (Date.parse(`${date}T00:00:00Z`) - start) / span)), first, last };
+  return { dated: dates.length > 0, months, position: (date: string) => Math.max(0, Math.min(1, (Date.parse(`${date}T00:00:00Z`) - start) / span)), first, last };
 }

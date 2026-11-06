@@ -3,21 +3,25 @@ import { ITEM_LABEL, isItemKey, type ItemKey } from "./model";
 /** 下書きで、分からない項目に入れておく印。配る紙とページには出さない。 */
 export const PENDING = "（確認中）";
 
+/** AI の文に混ざった書式の記号を、紙とページで読める形にする。 */
+export function plainText(text: string): string {
+  return text.replace(/\r\n/g, "\n").split("\n").map((line) => line
+    .replace(/^\s*#{1,6}\s+/, "■ ").replace(/^\s*[-*]\s+/, "・").replace(/\*\*([^*]+)\*\*/g, "$1")).join("\n");
+}
+
 /** 配る本文から、まだ決まっていない所を外す。見出しと印だけの段は見出しごと、文の中なら文ごと外す。 */
 export function withoutPending(text: string): string {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const kept: string[] = [];
   lines.forEach((line, index) => {
     if (!line.includes(PENDING)) { kept.push(line); return; }
-    if (line.trim() === PENDING) {
-      const nextLine = lines[index + 1]?.trim();
-      while (kept.length && !kept[kept.length - 1]!.trim()) kept.pop();
-      const heading = kept[kept.length - 1]?.trim() ?? "";
-      if (!nextLine && heading && heading.length <= 30 && !/[。！？]$/.test(heading)) kept.pop();
-      return;
-    }
-    const rest = line.split(/(?<=。)/).filter((sentence) => !sentence.includes(PENDING)).join("");
-    if (rest.trim()) kept.push(rest);
+    const rest = line.trim() === PENDING ? "" : line.split(/(?<=。)/).filter((sentence) => !sentence.includes(PENDING)).join("");
+    if (rest.trim()) { kept.push(rest); return; }
+    // 中身が無くなった見出しは残さない。次の行に続きがあれば見出しは要る。
+    const nextLine = lines[index + 1]?.trim();
+    while (kept.length && !kept[kept.length - 1]!.trim()) kept.pop();
+    const heading = kept[kept.length - 1]?.trim() ?? "";
+    if (!nextLine && heading && heading.length <= 30 && !/[。！？]$/.test(heading)) kept.pop();
   });
   return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }

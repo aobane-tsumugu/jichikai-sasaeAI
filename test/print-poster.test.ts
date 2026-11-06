@@ -134,9 +134,9 @@ it("題が文書の種類だけの紙には行事名を出し、貼れる一枚�
   }, cookie)).status).toBe(303);
   const path = `${root}/print/${project.projectId}/${version.document_id}/${version.version_no}`;
   const poster = await (await get(realApp, `${path}/poster`, cookie)).text();
-  expect(poster).toContain("<h1>架空の秋祭り 案内</h1>");
+  expect(poster).toContain("<h1>架空の秋祭りのご案内</h1>");
   expect(poster).toContain("雨のとき");
   expect(poster).toContain("架空の公民館");
-  expect(await (await get(realApp, `${path}/announcement`, cookie)).text()).toContain("<h1>架空の秋祭り 案内</h1>");
-  expect(await (await get(realApp, `${path}/preview`, cookie)).text()).toContain("<h1>架空の秋祭り 案内</h1>");
+  expect(await (await get(realApp, `${path}/announcement`, cookie)).text()).toContain("<h1>架空の秋祭りのご案内</h1>");
+  expect(await (await get(realApp, `${path}/preview`, cookie)).text()).toContain("<h1>架空の秋祭りのご案内</h1>");
 });

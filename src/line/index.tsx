@@ -67,7 +67,7 @@ function InboxPick({ ward, title, detail, originals, action, projects, current, 
     <section class="panel"><b>{title}</b><p class="muted">{detail}</p>{originals.map((original) => <p class="link-line"><a href={original.href}>{original.label}</a></p>)}</section>
     {projects.length ? <form method="post" action={action}>
       <fieldset><legend>入れる行事</legend><div class="choice">{projects.map((project) => <label><input type="radio" name="projectId" value={project.project_id} checked={project.project_id === current} required /> {project.name}</label>)}</div></fieldset>
-      <div class="action-links"><button name="operation" value="assign">この行事に入れる</button></div>
+      <div class="action-bar"><button name="operation" value="assign">この行事に入れる</button></div>
     </form> : <Notice>進めている行事はありません。下から新しく始められます。</Notice>}
     <details class="fold" open={!projects.length}><summary>新しい行事として始めて、入れる</summary><div><form method="post" action={action}>
       <div class="field"><label for="project-name">名前</label><input id="project-name" name="projectName" type="text" maxlength={100} required /><p class="help-text">行事の名前を入れてください。あとで直せます。</p></div>
@@ -93,6 +93,8 @@ admin.get("/inbox", async (c) => {
     pendingMaterialGroups(db, ward.wardId), openInquiries(db, ward.wardId), listClarifications(db, ward.wardId),
   ]);
   const adminJobs = jobs.filter((j) => j.via === "admin" && !j.withdrawn_at);
+  // 閉じた行事に入れたものも、行事の名前で読む。
+  const names = new Map((await db.prepare("SELECT project_id, title FROM projects WHERE ward_id = ?").bind(ward.wardId).all<{ project_id: string; title: string }>()).results.map((row) => [row.project_id, row.title]));
   const lineRows = await Promise.all(items.map(async (item) => ({ item, job: item.job_id ? await getJob(db, ward.wardId, item.job_id) : null })));
   const itemPick = (id: string) => adminPath(ward, `/inbox/${id}/pick`);
   const jobPick = (id: string) => adminPath(ward, `/inbox/city/${id}/pick`);
@@ -112,9 +114,9 @@ admin.get("/inbox", async (c) => {
     {nothing ? <><div class="notice" role="status"><strong>届いたものはありません</strong><p>公式LINEや、QRコードのない紙で届いたものが、ここに入ります。</p></div><section class="next"><strong>次は</strong><p>手元の資料を送れます。</p><a class="button" href={adminPath(ward, "/intake")}>資料を送る</a></section></> : <>
     <p class="lead">AIが読んで、行事に入れました。違うときだけ直してください。分けなくてもかまいません。</p>
     {groups.length || readingJobs.length || unmatched.length ? <section class="panel"><h2>どの行事か分からないもの</h2>
-      {groups.map((group, groupIndex) => { const jobIds = [...new Set(group.materials.map((m) => m.jobId))]; return <article><p><b>{group.title || group.materials[0]?.original.filename || "届いた資料"}</b></p>
+      {groups.map((group, groupIndex) => { const jobIds = [...new Set(group.materials.map((m) => m.jobId))]; return <article><p><b>{group.title || (group.materials[0]?.original.filename?.startsWith("LINE") ? group.materials[0]?.original.kind === "text" ? "届いた文" : "届いた写真" : group.materials[0]?.original.filename) || "届いた資料"}</b></p>
         <p class="muted">{group.title ? `${group.title}の資料のようです。` : "何の資料か分からないものです。そのままでかまいません。"}{group.materials.length > 1 ? `${group.materials.length}件あります。` : ""}</p>
-        <form method="post" action={adminPath(ward, "/intake/start")}><input type="hidden" name="group" value={group.key} /><div class="action-links"><button class={groupIndex ? "secondary" : undefined}>{group.kind === "city_request" ? "市からの依頼として始める" : group.title ? `${group.title}を始める` : "このまま進める"}</button>
+        <form method="post" action={adminPath(ward, "/intake/start")}><input type="hidden" name="group" value={group.key} /><div class="action-links">{group.kind === "city_request" || group.title ? <button class={groupIndex ? "secondary" : undefined}>{group.kind === "city_request" ? "市からの依頼として始める" : `${group.title}を始める`}</button> : null}
           {jobIds.map((id) => { const item = items.find((i) => i.job_id === id); return <a class="button secondary" href={item ? itemPick(item.item_id) : jobPick(id)}>{jobIds.length > 1 ? `${group.materials.find((m) => m.jobId === id)?.original.filename || "届いた資料"}を進めている行事に入れる` : "進めている行事に入れる"}</a>; })}</div></form>
       </article>; })}
       {readingJobs.map((j) => <p class="link-line"><a href={adminPath(ward, "/intake/received")}>{j.first_filename || "撮った写真"}: {STATUS_LABEL[j.status]}</a></p>)}
@@ -133,8 +135,8 @@ admin.get("/inbox", async (c) => {
       {asked.length > 2 ? <li><a class="row-link" href={adminPath(ward, "/inquiries")}><b>ほかの問い合わせ {asked.length - 2}件</b><span>問い合わせと要望の画面で見られます</span></a></li> : null}</ul></> : null}
     {clarifications.length ? <p class="link-line"><a href={adminPath(ward, "/inbox/questions")}>送った資料についての質問を見る</a></p> : null}
     {assigned.length || matched.length ? <><h2>行事に入れたもの</h2><ul class="rows">
-      {assigned.map((j) => <li class="panel"><b>{j.first_filename || "届いた文"}</b><p class="muted">{projects.find((p) => p.project_id === j.project_id)?.name ?? "行事"}に入れました</p><a class="quiet" href={jobPick(j.job_id)}>別の行事に入れる</a></li>)}
-      {matched.map(({ item, job }) => <li class="panel"><b>{item.original_text ? `「${item.original_text}」` : "届いた写真"}</b><p class="muted">{item.sender_display_name || "役員"}がLINEで送りました。{(item.matched_project_name ?? projects.find((p) => p.project_id === job?.project_id)?.name) ? `${item.matched_project_name ?? projects.find((p) => p.project_id === job?.project_id)?.name}に入れました` : job ? STATUS_LABEL[job.status] : "どの行事か分かりませんでした"}</p><a class="quiet" href={itemPick(item.item_id)}>別の行事に入れる</a></li>)}
+      {assigned.map((j) => <li class="panel"><b>{j.first_filename || "届いた文"}</b><p class="muted">{names.get(j.project_id ?? "") ?? "行事"}に入れました</p><a class="quiet" href={jobPick(j.job_id)}>別の行事に入れる</a></li>)}
+      {matched.map(({ item, job }) => <li class="panel"><b>{item.original_text ? `「${item.original_text}」` : "届いた写真"}</b><p class="muted">{item.sender_display_name || "役員"}がLINEで送りました。{(item.matched_project_name ?? names.get(job?.project_id ?? "")) ? `${item.matched_project_name ?? names.get(job?.project_id ?? "")}に入れました` : job ? STATUS_LABEL[job.status] : "どの行事か分かりませんでした"}</p><a class="quiet" href={itemPick(item.item_id)}>別の行事に入れる</a></li>)}
     </ul></> : null}
     <p class="muted">関係のない雑談は、AIが外しています。</p></>}
   </Layout>);

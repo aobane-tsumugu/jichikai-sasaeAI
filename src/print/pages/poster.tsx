@@ -6,7 +6,7 @@ import { POSTER_CSS } from "../../core/styles";
 import { publishedItem } from "../content";
 
 
-export function PosterPage({ title, body, wardUrl, withAnswer, due, contact, distributed, back, copies, generalMeeting = false }: { withAnswer: boolean; generalMeeting?: boolean; title: string; body: string; wardUrl: string; due?: string; contact?: string; distributed?: string; back?: string; copies?: string }) {
+export function PosterPage({ wardName, title, body, wardUrl, withAnswer, due, contact, distributed, back, copies, generalMeeting = false }: { wardName?: string; withAnswer: boolean; generalMeeting?: boolean; title: string; body: string; wardUrl: string; due?: string; contact?: string; distributed?: string; back?: string; copies?: string }) {
   const dateTime = publishedItem(body, "date_time");
   const place = publishedItem(body, "place");
   // 雨の時の場所を載せないと、掲示を見た人が雨の日に元の場所へ行く
@@ -27,7 +27,7 @@ export function PosterPage({ title, body, wardUrl, withAnswer, due, contact, dis
         <a class="poster-url" href={wardUrl}>{wardUrl}</a>
         <p>スマホのカメラを向けて、出てきた文字を押してください。</p>
       </div>
-      {distributed ? <p>{distributed}</p> : null}
+      <div class="sheet-footer"><span>{wardName}</span><span>{distributed}</span></div>
     </section>
   </PrintDocument>;
 }
