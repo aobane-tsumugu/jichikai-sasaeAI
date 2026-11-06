@@ -66,8 +66,8 @@ it("架空の総会の答えをLINEからも世帯で数え、実行委員・班
   expect(await (await new WardBucket(env.ORIGINALS, ward.wardId).get(original.r2_path))?.text()).toBe(unreadableText);
 
   const checkCounts = (html: string, answered: number, attend: number, proxy: number, absent: number) => {
-    for (const [count, label] of [[answered, "答えた世帯"], [attend, "出席"], [proxy, "委任"], [absent, "欠席"]] as const) {
-      expect(html).toContain(`<b>${count}<small>世帯</small></b><span>${label}`);
+    for (const [count, label] of [[answered, "(?:答えた世帯|\\d+世帯のうち)"], [attend, "出席"], [proxy, "委任"], [absent, "欠席"]] as const) {
+      expect(html).toMatch(new RegExp(`<b>${count}<small>世帯</small></b><span>${label}`));
     }
     expect(html).not.toContain("人数が読めません");
     expect(html).not.toContain("参加すると答えた人数");

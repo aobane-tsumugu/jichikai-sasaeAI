@@ -24,7 +24,7 @@ export function DraftPaper({ title, projectTitle, body, kind, back, wardName, sq
     {paperGive(due, `${squad ? `${squad}の` : ""}班長か役員`).map((line) => <p>{line}</p>)}
   </div>;
   const onOneSheet = kind === "announcement" && fitsAboveAnswer(body, generalMeeting
-    ? meetingNote + due + "□出席□委任□欠席。委任する相手のお名前。世帯の代表のお名前。委任を選んだときは、この回答票を委任状として受け付けます。委任する相手を書かなかったときは、空欄のまま受け付けます。"
+    ? meetingNote + due + "□出席□委任□欠席。委任する相手のお名前。代表者のお名前。委任を選んだときは、この回答票を委任状として受け付けます。委任する相手を書かなかったときは、空欄のまま受け付けます。"
     : labels.join("") + slots + due + "下書きです。まだ配っていません。参加しないときも、答えてください。答えがないときは、欠席として数えます。いない欄は、空けたままでかまいません");
   const footer = (squad = "") => <><span>{wardName}{squad ? ` ${squad}` : ""}</span><strong>下書きです</strong></>;
   return <PrintDocument title={`下書き: ${paperHeading(projectTitle, title)}`} back={back}>

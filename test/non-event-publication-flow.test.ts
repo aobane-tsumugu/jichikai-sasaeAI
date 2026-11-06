@@ -110,7 +110,7 @@ it("総会と役員会を種類に合う題で読み、当番の知らせは実�
   }, cookie)).status).toBe(303);
   const summary = await read(answers, cookie);
   expect(summary).toContain('class="answers-wide"');
-  expect(summary).toMatch(/<div class="counts"><div class="count"><b>1<small>世帯<\/small><\/b><span>答えた世帯/);
+  expect(summary).toMatch(/<div class="counts space-counts"><div class="count"><b>1<small>世帯<\/small><\/b><span>\d+世帯のうち/);
   const rows = summary.match(/<ul class="rows two">([\s\S]*?)<\/ul>/)?.[1];
   if (!rows) throw new Error("総会の答えの操作がありません。");
   const paths = [`${answers}?view=unanswered`, `${answers}?view=hand`, `${answers}?view=list`, `${answers}?view=read`, `${admin}/answers/roster`];

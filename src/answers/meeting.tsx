@@ -32,7 +32,7 @@ export function meetingTotalsText(totals: MeetingTotals): string {
   return `答えた世帯${totals.answered}世帯 / 出席${totals.attend}世帯 / 委任${totals.proxy}世帯 / 欠席${totals.absent}世帯`;
 }
 
-export function MeetingCounts({ totals, className = "counts" }: { totals: MeetingTotals; className?: string }) {
+export function MeetingCounts({ totals, className = "counts space-counts" }: { totals: MeetingTotals; className?: string }) {
   return <div class={className}><div class="count"><b>{totals.answered}<small>世帯</small></b><span>答えた世帯</span></div>
     {Object.entries(MEETING_LABELS).map(([status, label]) => <div class="count"><b>{totals[status as MeetingStatus]}<small>世帯</small></b><span>{label}</span></div>)}
   </div>;
@@ -65,11 +65,9 @@ export function MeetingFields({ selected, proxyName = "", prefix = "meeting", di
   selected?: string | null; proxyName?: string | null; prefix?: string; disabled?: boolean;
 }) {
   return <>
-    <fieldset><legend>総会の出席について</legend><div class="choice">
+    <fieldset><legend>総会に</legend><div class="choice">
       {Object.entries(MEETING_LABELS).map(([value, label]) => <label><input type="radio" name="meeting_status" value={value} checked={selected === value} required disabled={disabled} /> {label}する</label>)}
     </div></fieldset>
-    <label for={`${prefix}-proxy`}>委任する相手のお名前（委任するとき。書かなくてかまいません）</label>
-    <input id={`${prefix}-proxy`} name="proxy_name" type="text" maxlength={120} value={proxyName ?? ""} disabled={disabled} />
-    <p class="muted">委任する相手を書かなかったときは、空欄のまま受け付けます。</p>
+    <div class="field"><label for={`${prefix}-proxy`}>委任する相手のお名前（書かなくてかまいません）</label><input id={`${prefix}-proxy`} name="proxy_name" type="text" maxlength={120} value={proxyName ?? ""} disabled={disabled} /><p class="help-text">委任するときだけ書いてください。書かなかったときは、空欄のまま受け付けます。</p></div>
   </>;
 }
