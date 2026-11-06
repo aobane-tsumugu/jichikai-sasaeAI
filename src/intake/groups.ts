@@ -93,8 +93,13 @@ async function attachGroup(env: Env, wardId: string, group: MaterialGroup, proje
       await env.DB.batch(statements);
     }
     await env.DB.prepare(`UPDATE line_inbox_items SET disposition = 'matched', matched_project_id = ?, matched_project_name = ?
-      WHERE ward_id = ? AND job_id = ?`).bind(projectId, group.title || "行事", wardId, jobId).run();
+      WHERE ward_id = ? AND job_id = ?`).bind(projectId, groupTitle(group), wardId, jobId).run();
   }
+}
+
+/** 題が読めない時は、送ったファイルの名前を仮の題にする。あとで直せる。 */
+function groupTitle(group: MaterialGroup): string {
+  return group.title || group.materials[0]?.original.filename?.replace(/\.[^.]+$/, "") || "届いた資料";
 }
 
 export async function startMaterialGroup(env: Env, ctx: Waitable, wardId: string, accountId: string, key: string, eventDay: string) {
@@ -104,7 +109,7 @@ export async function startMaterialGroup(env: Env, ctx: Waitable, wardId: string
   const year = eventDay ? Number(eventDay.slice(0, 4)) : new Date(Date.now() + 9 * 3600_000).getUTCFullYear();
   const existing = (await listOpenProjects(env.DB, wardId)).find((p) => p.kind === group.kind && p.year === year && normalizeKey(p.title) === normalizeKey(group.title));
   const project = existing ?? await createProject(env.DB, wardId, {
-    title: group.title || "行事", kind: group.kind, year, accountId, ...(eventDay ? { eventDay } : {}),
+    title: groupTitle(group), kind: group.kind, year, accountId, ...(eventDay ? { eventDay } : {}),
   });
   await attachGroup(env, wardId, group, project.projectId);
   const pack = getDraftPack("announcement");

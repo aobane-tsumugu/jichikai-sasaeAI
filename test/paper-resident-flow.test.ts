@@ -96,7 +96,7 @@ it("資料も班もない一年目に案内を配り、紙だけで返す相手�
     expect(poster).toContain(FIRST_SLICE.firstOfficer);
     expect(poster).toContain("2026年9月10日に配りました");
     const pack = getDraftPack("announcement");
-    expect(pack.version).toBe("draft-announcement@6");
+    expect(pack.version).toBe("draft-announcement@7");
     expect(pack.instruction).toContain("班長か役員に渡してください");
     expect(pack.instruction).toContain("ない時間帯、締切、連絡先を作らないでください");
   } finally {

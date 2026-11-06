@@ -184,6 +184,7 @@ admin.post("/projects/:projectId/questions/:questionId", async (c) => {
   const state = await getProjectState(c.env.DB, ward.wardId, id);
   if (!state || state.project.closedAt) return c.notFound();
   const ok = ["answer", "unknown", "later"].includes(action) && await answerQuestion(c.env.DB, ward.wardId, id, c.req.param("questionId"), action as "answer" | "unknown" | "later", String(form.get("answer") ?? ""), account.accountId);
+  if (ok && form.get("from") === "draft") return c.redirect(adminPath(ward, `/projects/${id}/draft/announcement`), 303);
   return c.redirect(`${adminPath(ward, `/projects/${id}/questions`)}?${ok ? `notice=${action === "answer" ? "answered" : action}` : "error=answer_failed"}`, 303);
 });
 

@@ -12,7 +12,7 @@ import type { AdminEnv } from "../env";
 import { getLineAllowance, lineAccessToken, LINE_NOT_CONFIGURED, sendLineTitleAndUrl } from "../line/api";
 import { answerDeadlineFromDraft, getRoster, parseDistribution } from "../answers/api";
 import { checkPublicDraft } from "./check";
-import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, isItemKey, type DocumentKind } from "../project/model";
+import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, ITEM_SCREEN_LABEL, isItemKey, type DocumentKind } from "../project/model";
 import { applyChange } from "../project/apply";
 import { recordPublishedItems } from "../project/actions";
 import { paperHeading } from "../project/heading";
@@ -313,6 +313,7 @@ async function confirmPublication(c: Context<AdminEnv>) {
       {lineDelivery === "send" && remaining !== null ? <p class="muted">今月、公式LINEで送れるのはあと{remaining}通です。送れなかったときも、区のページに載せて紙を配れます。</p> : null}
       {draft.stale_since_version !== null ? <Notice>新しいものが入っています。ここに表示した内容で配れます。直すときは下書きに戻ってください。</Notice> : null}
       {warnings.map((warning) => <PublicWarning finding={warning} />)}
+      {draft.body.includes("（確認中）") ? <div class="notice warn"><strong>まだ決まっていないところがあります</strong><p>「（確認中）」のまま配ると、その文字が読む人に見えます。このまま配ることもできます。</p><a class="quiet" href={adminPath(ward, `/projects/${projectId}/draft/${draft.kind}`)}>下書きを直す</a></div> : null}
       <div class="compare"><section class="compare-paper"><b>紙{copies ? `（${recipientScope === "all_households" ? "全戸" : "加入世帯"}に${copies}部）` : ""}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} />{draft.kind === "announcement" ? <p class="answer-slip-preview"><b>回答票</b>　切り取って班長か役員に渡します。代表者のお名前、人数、手伝いの欄があります。</p> : null}</div></section>
         <section><b>{publicScope ? "区のページ" : "実行委員と班長のページ"}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} />{draft.kind === "announcement" ? <p class="muted">この下に「出欠を答える」のボタンが出ます。</p> : null}</div></section></div>
       <p class="compare-link"><a class="quiet" href={printHref}>紙の見え方を見る</a></p><p class="muted">{publicScope ? "配ったあとも、区のページからは下げられます。" : "実行委員と班長に配ります。区のページには載りません。"}</p>
@@ -446,8 +447,8 @@ export function articleParagraphs(body: string): string[] {
   const paragraphs = text.replace(/\r\n/g, "\n").split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
   const missing = items.flatMap((item: unknown) => {
     const { key, content } = (item ?? {}) as { key?: unknown; content?: unknown };
-    if (typeof key !== "string" || typeof content !== "string" || !content.trim() || text.includes(content.trim().slice(0, 10))) return [];
-    return [`${isItemKey(key) ? ITEM_LABEL[key] : key}: ${content.trim()}`];
+    if (typeof key !== "string" || typeof content !== "string" || !content.trim() || text.includes(content.trim().slice(0, 10)) || (isItemKey(key) && text.includes(ITEM_LABEL[key]))) return [];
+    return [`${isItemKey(key) ? ITEM_SCREEN_LABEL[key] : key}: ${content.trim()}`];
   });
   return [...paragraphs, ...(missing.length ? [missing.join("\n")] : [])];
 }

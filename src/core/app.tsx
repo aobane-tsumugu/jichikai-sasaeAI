@@ -104,7 +104,7 @@ export function createApp(bundles: Bundle[]) {
         <p class="lead">アドレスが違うか、ページが下げられたようです。</p>
         <section class="next"><strong>次は</strong><p>紙のQRコードをもう一度読むか、案内に書かれたアドレスを確かめてください。</p></section>
         <a class="quiet" href={c.req.param("ward") ? `/${encodeURIComponent(c.req.param("ward")!)}/` : "/"}>最初の画面に戻る</a>
-        <p>役員の方で解決しないときは、SasaeAIへ連絡してください。</p><ProviderContact />
+        
       </Layout>,
       404,
     ),
@@ -121,7 +121,7 @@ export function createApp(bundles: Bundle[]) {
         <div class="notice warn"><strong>今は、この画面を開けません</strong><p>時間をおくと開けることがあります。</p></div>
         <section class="next"><strong>次は</strong><p>時間をおいて、もう一度開いてください。</p><a class="button" href={c.req.path}>もう一度開く</a></section>
         <a class="quiet" href={c.req.param("ward") ? `/${encodeURIComponent(c.req.param("ward")!)}/` : "/"}>最初の画面に戻る</a>
-        <p>役員の方で解決しないときは、SasaeAIへ連絡してください。</p><ProviderContact />
+        
       </Layout>,
       500,
     );

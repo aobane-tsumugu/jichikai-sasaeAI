@@ -57,9 +57,12 @@ admin.get("/print/:projectId", async (c) => {
     <p>{project.title}</p>
     <h2>配る紙</h2><ul class="rows">{papers.results.map((paper) => {
       const base = `/print/${id}/${paper.document_id}/${paper.published ?? paper.latest}`;
-      return <li><a class="row-link" href={adminPath(ward, `${base}${paper.published === null ? "/preview" : paper.kind === "duty_roster" ? "/duty" : "/announcement"}`)}><b>{paper.kind === "announcement" ? "案内と回答票" : paper.title}</b><span>{paper.published === null ? "下書きです。まだ配っていません。" : "配ったときの紙です。"}</span></a>
-        {paper.kind === "announcement" ? <><a class="quiet" href={adminPath(ward, `${base}${paper.published === null ? "/preview?paper=answer" : "/answer"}`)}>回答票だけ</a>
-          {paper.published !== null ? <div class="action-links"><a class="quiet" href={adminPath(ward, `${base}/poster`)}>掲示</a><a class="quiet" href={adminPath(ward, `${base}/leader`)}>班長への一枚</a></div> : null}</> : null}</li>;
+      const extra = paper.kind === "announcement" ? [
+        { href: `${base}${paper.published === null ? "/preview?paper=answer" : "/answer"}`, title: "回答票だけ", note: "答えを書いて渡してもらう紙です" },
+        ...(paper.published !== null ? [{ href: `${base}/poster`, title: "掲示", note: "掲示板に貼る一枚です" }, { href: `${base}/leader`, title: "班長への一枚", note: "班長のページのQRコードが付いています" }] : []),
+      ] : [];
+      return <><li><a class="row-link" href={adminPath(ward, `${base}${paper.published === null ? "/preview" : paper.kind === "duty_roster" ? "/duty" : "/announcement"}`)}><b>{paper.kind === "announcement" ? "案内と回答票" : paper.title}</b><span>{paper.published === null ? "下書きです。まだ配っていません。" : "配ったときの紙です。"}</span></a>
+        </li>{extra.map((row) => <li><a class="row-link" href={adminPath(ward, row.href)}><b>{row.title}</b><span>{row.note}</span></a></li>)}</>;
     })}</ul>{!papers.results.length ? <p>下書きを保存すると、ここから紙を開けます。</p> : null}
     <h2>書き込んで撮って送る紙</h2><p>電話や役員会で決まったことを、紙に書いて撮って送れます。案内を配る前から使えます。</p>
     <ul class="rows">{(["meeting", "sponsors"] as const).map((kind) => <li><a class="row-link" href={adminPath(ward, `/print/${id}/paper/${kind}`)}><b>{kindLabel(kind)}</b></a></li>)}</ul>

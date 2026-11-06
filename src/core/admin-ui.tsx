@@ -21,11 +21,7 @@ export const AdminPage: FC<
     headerRight={<span>{account.name} さん</span>}
     noindex
   >
-    {back ? (
-      <p class="link-line">
-        <a href={back.href}>{back.label}</a>
-      </p>
-    ) : null}
+    {back ? <a class="back" href={back.href}>{back.label.startsWith("←") ? back.label : `← ${back.label}`}</a> : null}
     {children}
   </Layout>
 );

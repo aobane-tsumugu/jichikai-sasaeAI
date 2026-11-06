@@ -83,6 +83,11 @@ export const ITEM_LABEL: Record<ItemKey, string> = {
   public_contact: "公開用の連絡先",
 };
 
+/** 画面と紙に出す項目の名前。ITEM_LABEL は AI と本文の見出しの突き合わせに使うので変えない。 */
+export const ITEM_SCREEN_LABEL: Record<ItemKey, string> = {
+  ...ITEM_LABEL, date_time: "いつ", place: "どこで", due: "答えの締切", public_contact: "連絡先",
+};
+
 /** プロジェクトの種類ごとに使う項目。画面に空の項目を並べる時と、AI に空の項目を見せる時の範囲。 */
 export const ITEMS_BY_KIND: Record<ProjectKind, readonly ItemKey[]> = {
   event: ITEM_KEYS,
