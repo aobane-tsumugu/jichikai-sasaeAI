@@ -6,10 +6,11 @@ const LINE_API = "https://api.line.me";
 export async function sendLineQuestion(token: string, input: {
   to: string; replyToken: string | null; text: string; batchId: string;
   options: Array<{ label: string; id: string }>;
-  quoteToken?: string | null; camera?: boolean;
+  quoteToken?: string | null; camera?: boolean; clarificationId?: string;
 }, request: typeof fetch = fetch): Promise<string | null> {
   const message = { type: "text", text: input.text, ...(input.quoteToken ? { quoteToken: input.quoteToken } : {}), ...(input.options.length || input.camera ? { quickReply: {
-    items: [...(input.camera ? [{ type: "action", action: { type: "camera", label: "撮り直す" } }] : []), ...input.options.map((option) => ({ type: "action", action: { type: "postback", label: option.label.slice(0, 20),
+    items: [...(input.camera && input.clarificationId ? [{ type: "action", action: { type: "postback", label: "撮り直す", displayText: "撮り直します",
+      data: new URLSearchParams({ clarification: input.clarificationId, retake: "1" }).toString() } }] : []), ...input.options.map((option) => ({ type: "action", action: { type: "postback", label: option.label.slice(0, 20),
       displayText: option.label, data: new URLSearchParams({ clarification: option.id, answer: option.label }).toString() } }))],
   } } : {}) };
   const response = await request(`${LINE_API}/v2/bot/message/${input.replyToken ? "reply" : "push"}`, {

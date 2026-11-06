@@ -1,5 +1,6 @@
 import type { MatchInput } from "../ai/match";
 import { getReadings } from "../intake/store";
+import type { PhotoSource } from "./clarifications";
 
 // 買い出しや設営で撮って送り直す間をつなぐ仮の幅。別の作業まで長く持ち越さない。
 export const PHOTO_CONTEXT_GAP_MS = 30 * 60_000;
@@ -29,6 +30,30 @@ export async function rememberPhotoSource(db: D1Database, wardId: string, jobId:
 export const PHOTO_AFTER_MS = 10 * 60_000;
 export const PHOTO_TEXT_TTL_MS = 24 * 60 * 60_000;
 
+// 撮り直しの選択も、同じトークで一時に持つ。普通の文と区別し、AIや記録へ渡さない。
+const retakeEventId = (source: PhotoSource) => `retake:${JSON.stringify([source.type, source.id, source.senderId])}`;
+
+export async function rememberPhotoRetake(db: D1Database, wardId: string, destination: string, source: PhotoSource, clarificationId: string, now: Date): Promise<void> {
+  await db.prepare(`INSERT INTO line_photo_context_texts
+    (ward_id, destination, source_type, source_id, event_id, received_at, text, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (ward_id, destination, event_id) DO UPDATE SET received_at = excluded.received_at, text = excluded.text, expires_at = excluded.expires_at`)
+    .bind(wardId, destination, source.type, source.id, retakeEventId(source), now.toISOString(), clarificationId,
+      new Date(now.getTime() + PHOTO_CONTEXT_GAP_MS).toISOString()).run();
+}
+
+export async function selectedPhotoRetake(db: D1Database, wardId: string, destination: string, source: PhotoSource, now: Date): Promise<string | undefined> {
+  const row = await db.prepare(`SELECT text FROM line_photo_context_texts WHERE ward_id = ? AND destination = ?
+    AND source_type = ? AND source_id = ? AND event_id = ? AND expires_at > ?`)
+    .bind(wardId, destination, source.type, source.id, retakeEventId(source), now.toISOString()).first<{ text: string }>();
+  return row?.text;
+}
+
+export async function forgetPhotoRetake(db: D1Database, wardId: string, destination: string, source: PhotoSource, clarificationId: string): Promise<void> {
+  await db.prepare(`DELETE FROM line_photo_context_texts WHERE ward_id = ? AND destination = ?
+    AND source_type = ? AND source_id = ? AND event_id = ? AND text = ?`)
+    .bind(wardId, destination, source.type, source.id, retakeEventId(source), clarificationId).run();
+}
+
 export interface PhotoBatchContext {
   batch_id: string; destination: string; source_type: string; source_id: string;
   created_at: string; last_received_at: string;
@@ -55,6 +80,7 @@ export async function purgePhotoTexts(db: D1Database, wardId: string, now = new 
 /** 解決した写真の前後の文を消す。重なる未解決の写真に必要な間だけは残す。 */
 export async function clearPhotoTexts(db: D1Database, wardId: string, batch: PhotoBatchContext): Promise<void> {
   await db.prepare(`DELETE FROM line_photo_context_texts WHERE ward_id = ? AND destination = ? AND source_type = ? AND source_id = ?
+    AND event_id NOT LIKE 'retake:%'
     AND received_at >= ? AND received_at <= ? AND NOT EXISTS (
       SELECT 1 FROM line_photo_batches b WHERE b.ward_id = line_photo_context_texts.ward_id
       AND b.destination = line_photo_context_texts.destination AND b.source_type = line_photo_context_texts.source_type
@@ -72,6 +98,7 @@ export async function photoContextProject(db: D1Database, wardId: string, batch:
   const end = new Date(Math.min(now.getTime(), Date.parse(batch.last_received_at) + PHOTO_AFTER_MS)).toISOString();
   const before = await db.prepare(`SELECT received_at AS at, 'text' AS kind, text AS summary, NULL AS job_id
     FROM line_photo_context_texts WHERE ward_id = ? AND destination = ? AND source_type = ? AND source_id = ?
+      AND event_id NOT LIKE 'retake:%'
       AND received_at >= ? AND received_at < ? AND expires_at > ?
     UNION ALL SELECT b.created_at AS at, 'photo' AS kind, NULL AS summary, i.job_id FROM line_photo_batches b
     JOIN line_photo_items i ON i.ward_id = b.ward_id AND i.batch_id = b.batch_id
@@ -86,6 +113,7 @@ export async function photoContextProject(db: D1Database, wardId: string, batch:
     summary: row.job_id ? (await getReadings(db, wardId, row.job_id)).map((reading) => reading.body.summary).join("\n") || "文字のない写真" : row.summary ?? "" })));
   const after = await db.prepare(`SELECT received_at AS at, text AS summary FROM line_photo_context_texts
     WHERE ward_id = ? AND destination = ? AND source_type = ? AND source_id = ?
+      AND event_id NOT LIKE 'retake:%'
       AND received_at >= ? AND received_at <= ? AND expires_at > ? ORDER BY received_at, event_id`)
     .bind(wardId, batch.destination, batch.source_type, batch.source_id, batch.created_at, end, now.toISOString())
     .all<{ at: string; summary: string }>();
@@ -102,7 +130,15 @@ export async function photoContextProject(db: D1Database, wardId: string, batch:
       AND j.withdrawn_at IS NULL AND p.closed_at IS NULL ORDER BY b.created_at DESC, i.image_index DESC LIMIT 1`)
     .bind(wardId, batch.destination, batch.source_type, batch.source_id, start, batch.created_at, batch.batch_id)
     .first<{ project_id: string }>();
-  return { before: prior, after: after.results, placeProjectId: place?.project_id ?? null,
+  const questions = await db.prepare(`SELECT c.clarification_id AS id, j.project_id AS projectId, c.topic, c.text
+    FROM line_clarifications c JOIN line_photo_batches b ON b.ward_id = c.ward_id AND b.batch_id = c.batch_id
+    JOIN jobs j ON j.ward_id = c.ward_id AND j.job_id = c.job_id
+    WHERE c.ward_id = ? AND b.destination = ? AND b.source_type = ? AND b.source_id = ?
+      AND c.answer IS NULL AND c.sent_at >= ? AND c.sent_at <= ? AND j.withdrawn_at IS NULL
+    ORDER BY c.sent_at DESC LIMIT 20`)
+    .bind(wardId, batch.destination, batch.source_type, batch.source_id, start, batch.created_at)
+    .all<NonNullable<MatchInput["photoContext"]>["unresolvedQuestions"][number]>();
+  return { before: prior, after: after.results, placeProjectId: place?.project_id ?? null, unresolvedQuestions: questions.results,
     previousPhotoProjectId: previous?.project_id ?? null, receivedAt: batch.created_at };
 }
 

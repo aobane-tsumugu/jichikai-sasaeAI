@@ -311,7 +311,7 @@ async function deliverNextQuestion(env: Env, wardId: string, batch: Batch, reply
     .bind(wardId, question.job_id).first<{ quote_token: string | null }>();
   try {
     const messageId = await sendLineQuestion(credentials.accessToken, { to: batch.source_id, replyToken, text, batchId: batch.batch_id,
-      quoteToken: photo?.quote_token, camera: question.topic === "unreadable",
+      quoteToken: photo?.quote_token, camera: question.topic === "unreadable", clarificationId: question.id,
       options: question.options.map((label) => ({ label, id: question.id })) }, deps.fetch ?? fetch);
     await env.DB.batch([
       env.DB.prepare("UPDATE line_clarifications SET sent_at = ?, sent_message_id = ? WHERE ward_id = ? AND clarification_id = ?")
@@ -419,15 +419,16 @@ export async function processPhotoBatches(env: Env, wardId: string, deps: Questi
   }
 }
 
-export async function sentQuestionsForSource(db: D1Database, wardId: string, destination: string, source: PhotoSource, context: { quotedMessageId?: string; clarificationId?: string; now?: Date } = {}): Promise<ClarificationRow[]> {
+export async function sentQuestionsForSource(db: D1Database, wardId: string, destination: string, source: PhotoSource, context: { quotedMessageId?: string; clarificationId?: string; requireReference?: boolean; now?: Date } = {}): Promise<ClarificationRow[]> {
+  if (context.requireReference && !context.quotedMessageId && !context.clarificationId) return [];
   const rows = await db.prepare(`SELECT c.clarification_id FROM line_clarifications c JOIN line_photo_batches b
     ON b.ward_id = c.ward_id AND b.batch_id = c.batch_id WHERE c.ward_id = ? AND b.destination = ? AND b.source_type = ? AND b.source_id = ?
     AND c.sent_at IS NOT NULL AND c.answer IS NULL
     ${!context.quotedMessageId && !context.clarificationId ? "AND c.sent_at >= ?" : ""}
-    ${context.quotedMessageId ? "AND (c.sent_message_id = ? OR EXISTS (SELECT 1 FROM line_photo_items i WHERE i.ward_id = c.ward_id AND i.job_id = c.job_id AND i.message_id = ?))" : ""} ${context.clarificationId ? "AND c.clarification_id = ?" : ""}
+    ${context.quotedMessageId ? "AND c.sent_message_id = ?" : ""} ${context.clarificationId ? "AND c.clarification_id = ?" : ""}
     ORDER BY c.sent_at DESC LIMIT 1`).bind(wardId, destination, source.type, source.id,
       ...(!context.quotedMessageId && !context.clarificationId ? [new Date((context.now ?? new Date()).getTime() - 30 * 60_000).toISOString()] : []),
-      ...(context.quotedMessageId ? [context.quotedMessageId, context.quotedMessageId] : []), ...(context.clarificationId ? [context.clarificationId] : []))
+      ...(context.quotedMessageId ? [context.quotedMessageId] : []), ...(context.clarificationId ? [context.clarificationId] : []))
     .all<{ clarification_id: string }>();
   if (!rows.results.length) return [];
   return (await listClarifications(db, wardId)).filter((q) => q.id === rows.results[0]!.clarification_id);

@@ -109,8 +109,9 @@ it("写真を引用して一問ずつ聞き、撮り直しと分からないで�
       active = await answerOpen();
     }
     expect(active.topic).toBe("unreadable");
-    expect(sent.at(-1)?.messages[0]?.quickReply?.items.some((item) => item.action.type === "camera")).toBe(true);
-    await webhook({ type: "message", webhookEventId: "fictional-retake", replyToken: "fictional-retake-reply", source: { type: "group", groupId, userId: "fictional-other" }, message: { type: "image", id: "fictional-retake-image", quoteToken: "fictional-retake-quote" } });
+    expect(sent.at(-1)?.messages[0]?.quickReply?.items.some((item) => item.action.type === "postback" && new URLSearchParams(item.action.data).get("retake") === "1")).toBe(true);
+    if (!active.sent_message_id) throw new Error("引用する質問の送信記録がありません");
+    await webhook({ type: "message", webhookEventId: "fictional-retake", replyToken: "fictional-retake-reply", source: { type: "group", groupId, userId: "fictional-other" }, message: { type: "image", id: "fictional-retake-image", quoteToken: "fictional-retake-quote", quotedMessageId: active.sent_message_id } });
     const retake = await env.DB.prepare("SELECT job_id FROM line_photo_items WHERE ward_id = ? AND retake_clarification_id = ?").bind(ward.wardId, active.id).first<{ job_id: string }>();
     if (!retake) throw new Error("撮り直しと質問が結び付いていません");
     await saveReading(retake.job_id, false, fixture.eventYear);
