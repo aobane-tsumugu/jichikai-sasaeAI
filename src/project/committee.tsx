@@ -40,8 +40,8 @@ async function show(c: Context<AdminEnv>, failed?: { rowId: string; data: RowDat
     </div></details>)}
     </>}
     {!closed ? <details class="fold" open={failed?.rowId === NEW_ROW}><summary>人を足す</summary><div><form method="post" action={base}><Fields id={NEW_ROW} data={failed?.rowId === NEW_ROW ? failed.data : {}} /><button class="secondary">名簿に足す</button></form></div></details> : null}
-    {rows.length ? <><p class="muted">区のページには出しません。配り直すまで、配った名簿は変わりません。</p>
-    {!closed && !saved && !removed ? <a class="quiet" href={adminPath(ward, `/publish/${id}`)}>配る画面へ</a> : null}</> : null}
+    {rows.length && !saved && !removed ? <><p class="muted">区のページには出しません。配り直すまで、配った名簿は変わりません。</p>
+    {!closed ? <a class="quiet" href={adminPath(ward, `/publish/${id}`)}>配る画面へ</a> : null}</> : null}
   </AdminPage>, failed ? 400 : removeFailed ? 409 : 200);
 }
 
