@@ -25,11 +25,11 @@ export const MAP_TEMPLATES: Record<string, readonly TemplateTask[]> = {
     { key: "committee", name: "実行委員を決める", start: -75, end: -55, opens: ["materials"] },
     { key: "venue", name: "会場を押さえる", start: -70, end: -45, opens: ["materials", "draft"] },
     { key: "sponsors", name: "協賛をお願いする", start: -60, end: -25, opens: ["materials", "ledger"] },
-    { key: "announcement", name: "案内を配る", start: -45, end: -30, opens: ["draft", "materials"] },
+    { key: "announcement", name: "案内を配る", start: -45, end: -30, opens: ["draft", "materials"], draftKind: "announcement" },
     { key: "answers", name: "参加と手伝いの答えを集める", start: -30, end: -14, opens: ["answers", "materials"] },
-    { key: "duty_roster", name: "当番表と配置を決める", start: -21, end: -7, opens: ["draft", "answers"] },
+    { key: "duty_roster", name: "当番表と配置を決める", start: -21, end: -7, opens: ["draft", "answers"], draftKind: "duty_roster" },
     { key: "day", name: "当日", start: 0, end: 0, opens: ["materials", "ledger"] },
-    { key: "report", name: "報告をまとめる", start: 1, end: 14, opens: ["draft", "ledger"] },
+    { key: "report", name: "報告をまとめる", start: 1, end: 14, opens: ["draft", "ledger"], draftKind: "report" },
   ],
   general_meeting: [
     { key: "agenda", name: "議案を決める", start: -45, end: -21, opens: ["materials", "draft"], draftKind: "procedure" },
@@ -63,6 +63,16 @@ export const MAP_TEMPLATES: Record<string, readonly TemplateTask[]> = {
 export function taskDraftKind(taskKey: string | null, kind: ProjectKind = "event"): DocumentKind {
   return MAP_TEMPLATES[kind]?.find((task) => task.key === taskKey)?.draftKind
     ?? (taskKey === "duty_roster" ? "duty_roster" : taskKey === "report" || taskKey === "minutes" ? "report" : "announcement");
+}
+
+/** 資料から始めるときは、その種類で最初に用意する文書へ進む。 */
+export function initialDraftKind(kind: ProjectKind): DocumentKind {
+  return taskDraftKind(MAP_TEMPLATES[kind]?.find((task) => task.draftKind)?.key ?? null, kind);
+}
+
+/** 文書が決まっている仕事だけを逆引きする。会場などの下書きへの近道は含めない。 */
+export function draftTaskKeys(kind: ProjectKind, documentKind: DocumentKind): string[] {
+  return (MAP_TEMPLATES[kind] ?? []).filter((task) => task.draftKind && taskDraftKind(task.key, kind) === documentKind).map((task) => task.key);
 }
 
 /** 仕事を押した時に開く物。型にない仕事（役員が足した物）は材料だけ。 */
