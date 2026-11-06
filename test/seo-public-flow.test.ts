@@ -108,11 +108,18 @@ it("二つの架空の区で、配った情報を転送でき、限定・下げ�
   for (const url of [`${origin}${root}/`, `${origin}${path}`, `${origin}/${second.ward.slug}/p/${other.projectId}`]) expect(map).toContain(`<loc>${url}</loc>`);
   for (const value of [restricted.projectId, draft.projectId, "/admin", "/space", "/ops", "/contact", fixture.firstHousehold, fixture.sheetHelper]) expect(map).not.toContain(value);
 
-  // 変更の新しい場所を優先し、下げた変更を説明に残さない。
+  // 知らせでは本文が正。転送用の説明で日時・場所を言い切らず、本文へ案内する。
   await publish(first, project.projectId, "notice", body(fixture.rainAnnouncement, fixture.layoutSpot));
   page = head(await html(path));
-  expect(page).toContain(fixture.layoutSpot);
+  expect(page).not.toContain(fixture.layoutSpot);
+  expect(page).not.toContain(formatDateText(fixture.eventDay));
+  expect(page).toContain('property="og:description"');
+  expect(page).toContain(fixture.nextYearTitle);
+  // 本文と項目が食い違っても、知らせの項目や以前の案内の場所を説明へ戻さない。
+  await publish(first, project.projectId, "notice", body("架空の新会場へ変更します。", fixture.previousPlace));
+  page = head(await html(path));
   expect(page).not.toContain(fixture.previousPlace);
+  expect(page).not.toContain("架空の新会場");
   const lower = async (kind: DocumentKind) => {
     const record = await env.DB.prepare(`SELECT r.publication_id FROM publication_records r
       JOIN documents d ON d.ward_id = r.ward_id AND d.document_id = r.document_id
