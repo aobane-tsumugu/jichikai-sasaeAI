@@ -111,7 +111,7 @@ export async function lineGroupSummary(token: string, groupId: string, request: 
   } catch { return null; }
 }
 
-/** 無料の範囲を上限にし、役員グループの人数を送信前に数える。 */
+/** LINEが返す月の上限を使い、役員グループの人数を送信前に数える。noneは上限なし。 */
 export async function officerPushAllowance(token: string, groupId: string, request: typeof fetch = fetch) {
   const [quota, consumption, group] = await Promise.all([
     lineGet<{ type: string; value?: number }>("/v2/bot/message/quota", token, request),
@@ -119,8 +119,8 @@ export async function officerPushAllowance(token: string, groupId: string, reque
     lineGet<{ count: number }>(`/v2/bot/group/${encodeURIComponent(groupId)}/members/count`, token, request),
   ]);
   if (!Number.isSafeInteger(consumption.totalUsage) || consumption.totalUsage < 0 || !Number.isSafeInteger(group.count) || group.count < 1) return null;
-  if (quota.type === "limited" && (!Number.isSafeInteger(quota.value) || quota.value! < 0)) return null;
-  return { limit: Math.min(200, quota.type === "limited" ? quota.value! : 200), used: consumption.totalUsage, recipients: group.count };
+  if (quota.type !== "none" && (quota.type !== "limited" || !Number.isSafeInteger(quota.value) || quota.value! < 0)) return null;
+  return { limit: quota.type === "limited" ? quota.value! : null, used: consumption.totalUsage, recipients: group.count };
 }
 
 /** 一つの役員グループへのPush。問い合わせの本文は呼び出し側で含めない。 */
