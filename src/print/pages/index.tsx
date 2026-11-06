@@ -18,7 +18,7 @@ import { getProjectState, getProjectSummary } from "../../project/api";
 import { createInvite, getSpace } from "../../space/api";
 import { TABLES, displayFieldValue, type TableKey } from "../../project/model";
 import type { RowView } from "../../project/types";
-import { readPublicationTables } from "../../space/publication-tables";
+import { currentPublicationTables, readPublicationTables } from "../../space/publication-tables";
 import { PosterPage } from "./poster";
 import { paperCopies, paperDate, paperDeadline, paperGive, paperHelperSlots, publishedItem } from "../content";
 
@@ -64,7 +64,7 @@ admin.get("/print/:projectId", async (c) => {
         { href: `${base}${paper.published === null ? "/preview?paper=answer" : "/answer"}`, title: "回答票だけ", note: "答えを書いて渡してもらう紙です" },
         ...(paper.published !== null ? [{ href: `${base}/poster`, title: "掲示", note: "掲示板に貼る一枚です" }, { href: `${base}/leader`, title: "班長への一枚", note: "班長のページのQRコードが付いています" }] : []),
       ] : [];
-      return <><li><a class="row-link" href={adminPath(ward, `${base}${paper.published === null ? "/preview" : paper.kind === "duty_roster" ? "/duty" : "/announcement"}`)}><b>{paper.kind === "announcement" ? "案内と回答票" : paper.title}</b><span>{paper.published === null ? "下書きです。まだ配っていません。" : "配ったときの紙です。"}</span></a>
+      return <><li><a class="row-link" href={adminPath(ward, `${base}${paper.published === null ? "/preview" : ["duty_roster", "procedure"].includes(paper.kind) ? "/duty" : "/announcement"}`)}><b>{paper.kind === "announcement" ? "案内と回答票" : paper.title}</b><span>{paper.published === null ? "下書きです。まだ配っていません。" : "配ったときの紙です。"}</span></a>
         </li>{extra.map((row) => <li><a class="row-link" href={adminPath(ward, row.href)}><b>{row.title}</b><span>{row.note}</span></a></li>)}</>;
     })}</ul>{!papers.results.length ? <p>下書きを保存すると、ここから紙を開けます。</p> : null}
     <h2>書き込んで撮って送る紙</h2><p>電話や役員会で決まったことを、紙に書いて撮って送れます。案内を配る前から使えます。</p>
@@ -122,14 +122,17 @@ admin.get("/print/:projectId/paper/:kind", async (c) => {
 
 admin.get("/print/:projectId/:documentId/:versionNo/preview", async (c) => {
   const { ward } = c.var;
-  const row = await c.env.DB.prepare(`SELECT COALESCE(v.title, d.title) AS title, d.kind, p.kind AS project_kind, p.title AS project_title, v.body, v.version_no FROM documents d
+  const row = await c.env.DB.prepare(`SELECT COALESCE(v.title, d.title) AS title, d.kind, p.kind AS project_kind, p.title AS project_title, v.body, v.version_no, v.scope FROM documents d
     JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
     JOIN projects p ON p.ward_id = d.ward_id AND p.project_id = d.project_id
     WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_no = ?`)
     .bind(ward.wardId, c.req.param("projectId"), c.req.param("documentId"), Number(c.req.param("versionNo")))
-    .first<{ title: string; kind: string; project_kind: string; project_title: string; body: string; version_no: number }>();
+    .first<{ title: string; kind: string; project_kind: string; project_title: string; body: string; version_no: number; scope: string }>();
   if (!row) return c.notFound();
+  const tables = row.scope === "space" && ["duty_roster", "procedure"].includes(row.kind)
+    ? await currentPublicationTables(c.env.DB, ward.wardId, c.req.param("projectId")) : undefined;
   return c.html(<DraftPaper title={row.title} projectTitle={row.project_title} body={row.body} kind={row.kind}
+    tables={tables}
     back={adminPath(ward, `/projects/${c.req.param("projectId")}/draft/${row.kind}`)} wardName={ward.name}
     squads={await getSquads(c.env.DB, ward.wardId)} labels={await getAnswerLabels(c.env.DB, ward.wardId)} answerOnly={c.req.query("paper") === "answer"}
     generalMeeting={row.project_kind === "general_meeting"} meetingNote={row.project_kind === "general_meeting" ? await meetingNote(c.env.DB, ward.wardId) : ""} />);
@@ -264,6 +267,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
       {tables === null ? <p>配ったときの表の記録がありません。表を確かめて配り直してください。</p> : <>
         <RowsTable table="duties" rows={published("duties")} paperCode={paperCode} />
         <RowsTable table="layout" rows={published("layout")} paperCode={paperCode} />
+        <RowsTable table="committee" rows={published("committee")} paperCode={paperCode} />
       </>}
       <div class="field-box" style="min-height:30mm">変わったこと、メモ　<span>（当日書いて、紙の番号と一緒に撮って送れます）</span></div>
       {contact ? <p>分からないときは　{contact}</p> : null}
@@ -329,7 +333,7 @@ export function fitsAboveAnswer(body: string, answerText: string): boolean {
 }
 
 /** 今年の中身の表を紙に並べる。空なら何も出さない。 */
-function RowsTable({ table, rows }: { table: TableKey; rows: Pick<RowView, "data">[]; paperCode?: string | null }) {
+export function RowsTable({ table, rows }: { table: TableKey; rows: Pick<RowView, "data">[]; paperCode?: string | null }) {
   if (!rows.length && table !== "sponsors") return <><h2>{TABLES[table].label}</h2><p>{TABLES[table].label}はまだありません。</p></>;
   const fields = Object.entries(TABLES[table].fields);
   return <>

@@ -1,13 +1,15 @@
 import { CutLine, FieldBox, PrintDocument, Sheet } from "../a4";
 import { paperHeading } from "../../project/heading";
 import { paperDeadline, paperGive, paperHelperSlots, publishedItem } from "../content";
-import { fitsAboveAnswer, PaperBody } from "./index";
+import { fitsAboveAnswer, PaperBody, RowsTable } from "./index";
 import { MeetingSlipFields } from "./meeting";
+import type { PublishedTableRow } from "../../space/publication-tables";
 
 /** 下書きは紙でも区別し、受け付け用のQRや配った日を作らない。 */
-export function DraftPaper({ title, projectTitle, body, kind, back, wardName, squads, labels, answerOnly = false, generalMeeting = false, meetingNote = "" }: {
+export function DraftPaper({ title, projectTitle, body, kind, back, wardName, squads, labels, tables, answerOnly = false, generalMeeting = false, meetingNote = "" }: {
   title: string; projectTitle: string; body: string; kind: string; back: string; wardName: string;
   squads: string[]; labels: readonly string[]; answerOnly?: boolean; generalMeeting?: boolean; meetingNote?: string;
+  tables?: PublishedTableRow[] | null;
 }) {
   const due = paperDeadline(publishedItem(body, "due"));
   const slots = paperHelperSlots(publishedItem(body, "helper_slots") || "");
@@ -32,6 +34,11 @@ export function DraftPaper({ title, projectTitle, body, kind, back, wardName, sq
     {(kind === "announcement" ? squads.length ? squads : [""] : [""]).map((squad) => <Sheet footer={footer(squad)}>
       <p><strong>下書きです。まだ配っていません。</strong></p>
       {!answerOnly && (kind !== "announcement" || onOneSheet) ? <><h1>{paperHeading(projectTitle, title)}</h1><PaperBody body={body} /></> : null}
+      {!answerOnly && tables !== undefined ? tables === null ? <p>配ったときの表の記録がありません。</p> : <>
+        <RowsTable table="duties" rows={tables.filter((entry) => entry.kind === "duties")} />
+        <RowsTable table="layout" rows={tables.filter((entry) => entry.kind === "layout")} />
+        <RowsTable table="committee" rows={tables.filter((entry) => entry.kind === "committee")} />
+      </> : null}
       {kind === "announcement" ? <>{generalMeeting || (!answerOnly && onOneSheet) ? <CutLine /> : null}{answer(squad)}</> : null}
     </Sheet>)}
   </PrintDocument>;

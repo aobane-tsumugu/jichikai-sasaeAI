@@ -10,3 +10,19 @@ export const ROTA_FIXTURE = {
     .map((household) => ({ household, district: FIRST_SLICE.district })),
   slots: ["第1週", "第2週", "第3週"],
 } as const;
+
+// U53の点検用。名前、班、当番、連絡先は全て架空。
+export const ROTA_REVIEW_FIXTURE = {
+  title: "清掃の当番（架空）",
+  first: "山田 太郎",
+  exempt: "佐藤 花子",
+  removed: "鈴木 一郎",
+  fourth: "高橋 春子",
+  district: "1班",
+  otherDistrict: "2班",
+  groups: ["1班", "環境部", "各班2名"],
+  slots: ["午前", "昼", "午後", "夕方"],
+  task: "清掃",
+  committeeRole: "実行委員長",
+  contact: "役員へ（架空）",
+} as const;

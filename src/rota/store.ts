@@ -4,6 +4,7 @@ import { getProjectState, getProjectSummary } from "../project/api";
 import { rowMatchKey, type RowData } from "../project/model";
 import { latestSpaceTables, readPublicationTables } from "../space/publication-tables";
 import { formatJstDate } from "../core/time";
+import { isPersonalAssignee, splitAssignees } from "./assignees";
 
 export interface Exemption extends RosterEntry {
   exemption_id: string;
@@ -52,6 +53,7 @@ export interface Comparison {
   sourceProjectId: string | null;
   year: number;
   hasOldRoster: boolean;
+  hasPreviousTable?: boolean;
   added: string[];
   removed: string[];
   entries: ProposalEntry[];
@@ -94,36 +96,47 @@ export async function compareRota(db: D1Database, wardId: string, projectId: str
     rows = state.tables.duties.filter((row) => row.scope === "reference" && row.refYear === project.year - 1).map((row) => row.data);
     rules = state.tables.decisions.filter((row) => row.scope === "reference" && row.refYear === project.year - 1).map((row) => row.data);
   }
-  if (rows.length === 0) return null;
   const [roster, records] = await Promise.all([getRoster(db, wardId), exemptions(db, wardId)]);
-  const oldNames = new Set(rows.map((data) => normalizeHousehold(String(data.assignee ?? ""))).filter(Boolean));
+  const hasPreviousTable = rows.length > 0;
+  if (!hasPreviousTable && !roster.length) return null;
+  const oldAssignees = rows.flatMap((data) => splitAssignees(String(data.assignee ?? ""))).filter(isPersonalAssignee);
+  const oldNames = new Set(oldAssignees.map(normalizeHousehold));
+  if (!hasPreviousTable) rows = roster.map((entry, index) => ({ slot: `${index + 1}番目`, task: entry.district, assignee: entry.household }));
   const oldKeys = new Set(oldRoster?.map(householdKey));
   const currentKeys = new Set(roster.map(householdKey));
   const comparison: Comparison = {
     sourceTitle: previous?.title ?? "この当番に届いた去年の表", sourceProjectId: previous?.project_id ?? null,
-    year: project.year - 1, hasOldRoster: oldRoster !== null,
-    added: roster.filter((entry) => oldRoster ? !oldKeys.has(householdKey(entry)) : !oldNames.has(normalizeHousehold(entry.household))).map(householdLabel),
+    year: hasPreviousTable ? project.year - 1 : project.year, hasOldRoster: oldRoster !== null, hasPreviousTable,
+    added: hasPreviousTable ? roster.filter((entry) => oldRoster ? !oldKeys.has(householdKey(entry)) : !oldNames.has(normalizeHousehold(entry.household))).map(householdLabel) : [],
     removed: oldRoster ? oldRoster.filter((entry) => !currentKeys.has(householdKey(entry))).map(householdLabel)
-      : [...new Set(rows.map((data) => String(data.assignee ?? "")).filter((name) => name && !roster.some((entry) => normalizeHousehold(entry.household) === normalizeHousehold(name))))],
+      : [...new Set(oldAssignees.filter((name) => !roster.some((entry) => normalizeHousehold(entry.household) === normalizeHousehold(name))))],
     entries: [], ruleRecords: rules.map((data) => [data.decidedOn, data.what].filter(Boolean).join(" ")),
   };
-  comparison.entries = rows.map((row) => {
+  comparison.entries = rows.map((row, index) => {
     const slot = String(row.slot ?? "").replace(new RegExp(`\\b${project.year - 1}(?=[年/-])`, "g"), String(project.year));
     const dates = [...slot.matchAll(/\b\d{4}-\d{2}-\d{2}\b/g)].map((match) => match[0]).filter(dateIsValid).sort();
     const on = project.deadlines.event_day;
     const from = dates[0] ?? on ?? `${project.year}-01-01`, to = dates.at(-1) ?? on ?? `${project.year}-12-31`;
     const active = records.filter((record) => record.withdrawn_at === null && record.starts_on <= to && record.ends_on >= from);
-    const name = String(row.assignee ?? "");
-    const matches = roster.filter((entry) => normalizeHousehold(entry.household) === normalizeHousehold(name));
-    let assignee = "", explanation = "";
-    if (!name) explanation = "去年も担当は空欄です。";
-    else if (roster.length === 0) explanation = "今の名簿がないため、担当は空欄にしました。";
-    else if (matches.length === 0) explanation = `去年の担当「${name}」は今の名簿にいないため、空欄にしました。`;
-    else if (matches.length !== 1) explanation = `「${name}」は同じ名前があるため、担当は空欄にしました。`;
-    else if (active.some((record) => householdKey(record) === householdKey(matches[0]!))) explanation = dates.length || on
-      ? `${householdLabel(matches[0]!)}は免除の期間に当たるため、担当から外しました。`
-      : `${householdLabel(matches[0]!)}はこの年に免除の期間があります。当番の日がまだ分からないため、担当は空欄にしました。`;
-    else assignee = matches[0]!.household;
+    const explanations: string[] = [];
+    const names = splitAssignees(String(row.assignee ?? ""));
+    const kept = names.filter((name) => {
+      if (hasPreviousTable && !isPersonalAssignee(name)) return true;
+      const matches = hasPreviousTable ? roster.filter((entry) => normalizeHousehold(entry.household) === normalizeHousehold(name)) : [roster[index]!];
+      if (matches.length !== 1) {
+        explanations.push(matches.length === 0 ? `去年の担当「${name}」は今の名簿にいないため、担当から外しました。`
+          : `「${name}」は同じ名前があるため、担当から外しました。`);
+        return false;
+      }
+      if (active.some((record) => householdKey(record) === householdKey(matches[0]!))) {
+        explanations.push(dates.length || on ? `${householdLabel(matches[0]!)}は免除の期間に当たるため、担当から外しました。`
+          : `${householdLabel(matches[0]!)}はこの年に免除の期間があります。当番の日がまだ分からないため、担当は空欄にしました。`);
+        return false;
+      }
+      return true;
+    });
+    const assignee = kept.length === names.length ? String(row.assignee ?? "") : kept.join("、");
+    const explanation = explanations.join(" ");
     // 出席や去年の備考は引き継がない。免除の説明も配布する行に書かない。
     const data: RowData = { slot, task: String(row.task ?? ""), assignee };
     return { sourceKey: rowMatchKey("duties", row), data, explanation };

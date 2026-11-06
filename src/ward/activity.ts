@@ -2,6 +2,7 @@ import { formatDateText, formatJstDate } from "../core/time";
 import { addDays } from "../map/template";
 import { getProjectState } from "../project/api";
 import type { RowData } from "../project/model";
+import { isPersonalAssignee, splitAssignees } from "../rota/assignees";
 
 export interface ActivityTask { taskId: string; name: string; period: string; }
 interface RecordedTask {
@@ -95,7 +96,9 @@ export async function activityFacts(db: D1Database, wardId: string, projectId: s
   const attended = new Set<string>();
   for (const row of duties) {
     const data: RowData = row.data;
-    const assigned = names(String(data.assignee ?? ""));
+    const assigned = splitAssignees(String(data.assignee ?? ""));
+    // 一部だけ名前が分かる欄も、その行の人数としては出さない。
+    if (!assigned.length || !assigned.every(isPersonalAssignee)) continue;
     if (data.attendance === "present") assigned.forEach((name) => attended.add(name));
     const task = String(data.task ?? "").trim(); const slot = String(data.slot ?? "").trim();
     // 時間帯は時刻や午前・午後などだけを出す。自由記述に混ざった名前や事情は出さない。
