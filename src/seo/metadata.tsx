@@ -27,6 +27,8 @@ function MetadataHead({ value }: { value: Metadata }) {
 
 // 自由記述の本文や公開用の連絡先は転送用の説明にコピーしない。
 function eventDescription(documents: PublicDocument[]): string {
+  // 知らせは本文が正。項目や以前の案内から日時・場所を足し戻さず、ページへ案内する。
+  if (documents.some((document) => document.kind === "notice")) return "";
   const ordered = ["notice", "announcement", "recruitment", "report"]
     .flatMap((kind) => documents.filter((document) => document.kind === kind));
   return ["date_time", "place"].map((key) => {
