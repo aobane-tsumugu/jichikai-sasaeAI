@@ -103,9 +103,12 @@ admin.get("/close/:projectId", async (c) => {
   const { ward } = c.var; const id = c.req.param("projectId");
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
   if (!project) return c.notFound();
+  const minutes = project.kind === "board_meeting" || project.kind === "general_meeting";
   if (!project.closedAt && !(await prepareDrafts(c.env.DB, ward.wardId, id, c.var.account.accountId))) return c.notFound();
-  if (c.req.query("reopened")) return c.html(<AdminPage ward={ward} account={c.var.account} title="もう一度開きました">
-    <h1>もう一度開きました</h1><p class="lead">報告と段取りを直せます。</p><section class="next"><strong>次は</strong><p>段取りから仕事を続けられます。</p><a class="button" href={adminPath(ward, `/projects/${id}/map`)}>段取りへ</a></section><a class="quiet" href={adminPath(ward, `/close/${id}`)}>閉じる画面に戻る</a>
+  if (!project.closedAt && c.req.query("reopened")) return c.html(<AdminPage ward={ward} account={c.var.account} title="もう一度開きました">
+    <h1>もう一度開きました</h1><p class="lead">{minutes ? "議事録と段取りを直せます。" : "報告と段取りを直せます。"}</p>
+    <section class="next"><strong>次は</strong><p>{minutes ? "残した議事録を書き直せます。" : "段取りから仕事を続けられます。"}</p><a class="button" href={adminPath(ward, minutes ? `/close/${id}#report-staff` : `/projects/${id}/map`)}>{minutes ? "議事録を直す" : "段取りへ"}</a></section>
+    <p>開き間違えたときは、閉じる画面で、もう一度「閉じて記録に残す」を押せます。</p><a class="quiet" href={adminPath(ward, `/close/${id}`)}>閉じる画面に戻る</a>
   </AdminPage>);
   const [tasks, reports, status, generatedReport, activityPage] = await Promise.all([
     c.env.DB.prepare(`SELECT m.task_id, m.name, m.period, m.progress, m.requested_by, m.difficulty, m.next_year FROM project_close_map m
@@ -120,7 +123,6 @@ admin.get("/close/:projectId", async (c) => {
     c.env.DB.prepare("SELECT draft_body, published_at FROM project_activity_pages WHERE ward_id = ? AND project_id = ?")
       .bind(ward.wardId, id).first<{ draft_body: string; published_at: string | null }>(),
   ]);
-  const minutes = project.kind === "board_meeting" || project.kind === "general_meeting";
   const minutesDocument = minutes ? await getEditableDocument(c.env.DB, ward.wardId, id, "report") : null;
   const decisions = minutes && !project.closedAt ? await meetingDecisionDraft(c.env.DB, ward.wardId, project) : null;
   const report = (scope: "public" | "staff") => reports.results.find((r) => r.scope === scope)?.body ||
@@ -168,10 +170,10 @@ admin.get("/close/:projectId", async (c) => {
         <div class="action-bar">{project.closedAt ? <button name="action" value="publish">区のページに載せる</button> : <p>行事を閉じると、区のページに載せられます。</p>}<button class="secondary" name="action" value="save">保存だけする</button></div>
       </form>
     </> : project.closedAt ? <>
-      <div class="notice done"><strong>記録に残しました</strong><p>{report("public").trim() ? "報告を区のページに載せました。" : "住民への報告は書かれていません。"}実行委員と班長のページと、答えの受付は終わりました。</p></div>
-      <section class="next"><strong>次は</strong><p>自治会に入っていない人や、これから役員になるかもしれない人に、どんな仕事だったかを伝えられます。急ぎません。</p><a class="button" href={`${root}?view=activity`}>紹介の下書きを直す</a></section>
-      <div class="action-links"><a class="button secondary" href={adminPath(ward, `/archive/${id}`)}>記録を読む</a></div>
-      <h2>間違えたときは</h2><p>もう一度開くと、報告と段取りを直せます。答えの受付と、実行委員と班長のページも元に戻ります。</p>
+      <div class="notice done"><strong>{minutes ? "会議を閉じて、議事録を役員の記録に残しました" : "記録に残しました"}</strong><p>{report("public").trim() ? "報告を区のページに載せました。" : "住民への報告は書かれていません。"}実行委員と班長のページと、答えの受付は終わりました。</p></div>
+      <section class="next"><strong>次は</strong><p>{minutes ? "残した議事録を読めます。" : "自治会に入っていない人や、これから役員になるかもしれない人に、どんな仕事だったかを伝えられます。急ぎません。"}</p><a class="button" href={minutes ? `${adminPath(ward, `/archive/${id}`)}#report` : `${root}?view=activity`}>{minutes ? "議事録を読む" : "紹介の下書きを直す"}</a></section>
+      {!minutes ? <div class="action-links"><a class="button secondary" href={adminPath(ward, `/archive/${id}`)}>記録を読む</a></div> : null}
+      <h2>間違えたときは</h2><p>もう一度開くと、{minutes ? "議事録" : "報告"}と段取りを直せます。答えの受付と、実行委員と班長のページも元に戻ります。</p>
       <form method="post" action={`${root}/reopen`}><div class="action-links"><button class="secondary">もう一度開く</button></div></form>
     </> : <>
       <p class="lead">報告と、来年への一言を残します。閉じたあとももう一度開けます。</p>

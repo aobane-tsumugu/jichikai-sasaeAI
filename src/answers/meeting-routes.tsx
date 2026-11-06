@@ -77,6 +77,24 @@ async function renderAdmin(c: Context<AdminEnv>, project: Meeting) {
   const valid = answers.filter((answer) => isMeetingStatus(answer.meetingStatus));
   const view = c.req.query("view") ?? "summary";
   const closed = !!project.closed_at;
+  const done = c.req.query("done") ?? "";
+  const savedAnswer = answers.find((answer) => answer.answerId === c.req.query("answer"));
+  const editHref = savedAnswer ? `${root}/${encodeURIComponent(savedAnswer.answerId)}/edit` : `${root}?view=list`;
+  const readHref = `${root}?view=read${c.req.query("original") ? `&original=${encodeURIComponent(c.req.query("original")!)}` : ""}`;
+  const results: Record<string, { message: string; back: string; backLabel: string; undo: string; undoHref: string; undoLabel: string }> = {
+    hand: { message: "電話や紙の答えを数に入れました。", back: `${root}?view=hand`, backLabel: "手で入れる画面へ戻る", undo: "書き間違えたときは、入れた答えを直したり消したりできます。", undoHref: editHref, undoLabel: "入れた答えを直す" },
+    edit: { message: "答えを訂正し、数え直しました。", back: `${root}?view=list`, backLabel: "答えの一覧へ戻る", undo: "元の答えに戻したいときは、もう一度書き直せます。", undoHref: editHref, undoLabel: "答えをもう一度直す" },
+    read: { message: "読み取った答えを直して、数に入れました。", back: readHref, backLabel: "回答票の読み取りへ戻る", undo: "読み違いが残っていたときは、同じ回答票の答えを入れ直せます。二重には数えません。", undoHref: readHref, undoLabel: "読み取った答えをもう一度直す" },
+    delete: { message: "答えを一覧と数から消しました。", back: `${root}?view=list`, backLabel: "答えの一覧へ戻る", undo: "消し間違えたときは、同じ答えを手で入れ直せます。", undoHref: `${root}?view=hand`, undoLabel: "消した答えを入れ直す" },
+    deadline: { message: `答えの締切を${deadline ? formatJstDate(deadline) : "空欄"}に変えました。`, back: root, backLabel: "総会の答えへ戻る", undo: "日を間違えたときは、「答えの締切を変える」で元の日に書き直せます。", undoHref: `${root}?deadline=edit#answer-deadline`, undoLabel: "締切をもう一度直す" },
+  };
+  const result = Object.prototype.hasOwnProperty.call(results, done) ? results[done] : undefined;
+  if (result) return c.html(<AdminPage ward={ward} account={c.var.account} title={result.message} back={{ href: result.back, label: result.backLabel }}>
+    <h1>{result.message}</h1><p class="lead">{result.undo}</p>
+    {done === "deadline" ? <p>配った案内の文は変わりません。</p> : null}
+    <section class="next"><strong>次は</strong><p>総会の答えの数を読めます。</p><a class="button" href={root}>総会の答えを見る</a></section>
+    <a class="quiet" href={result.undoHref}>{result.undoLabel}</a>
+  </AdminPage>);
   const unanswered = <>{!roster.length ? <p>名簿はまだありません。名簿を入れると、まだ答えていない世帯を見られます。</p> : <>
     {!remaining.length ? <p>まだ答えていない世帯はありません。</p> : null}
     {[...new Set(remaining.map((entry) => entry.district))].map((district) => <section><h2>{district}（{remaining.filter((entry) => entry.district === district).length}世帯）</h2><ul>{remaining.filter((entry) => entry.district === district).map((entry) => <li>{entry.household}</li>)}</ul></section>)}
@@ -90,7 +108,6 @@ async function renderAdmin(c: Context<AdminEnv>, project: Meeting) {
   const title = ({ hand: "電話や紙の答えを手で入れる", list: "答えの一覧", read: "読み取った答えを直して入れる", send: "回答票を撮って送る", sent: "回答票を受け取りました", unanswered: "まだ答えていない世帯" } as Record<string, string>)[view] ?? `${project.title}の答え`;
   return c.html(<AdminPage ward={ward} account={c.var.account} title={title} back={{ href: view === "summary" ? `/${ward.slug}/admin/projects/${id}/map` : root, label: view === "summary" ? `${project.title}の段取りへ` : `${project.title}の答えへ` }}>
     <h1 class={view === "summary" || view === "list" ? "answers-wide" : undefined}>{title}</h1>
-    {c.req.query("done") ? <Notice>保存しました。答えと数を確かめてください。</Notice> : null}
     {closed ? <Notice>この総会は閉じました。答えを直すときは、総会をもう一度開いてください。<p><a href={`/${ward.slug}/admin/close/${id}`}>閉じた総会の画面へ</a></p></Notice> : null}
     {view === "summary" ? <>
       <p class="lead">{answers.length ? "紙、電話、スマホの答えを合わせた数です。" : ""}{deadline ? `答えの締切は${formatJstDate(deadline)}です。` : "答えの締切はまだ決まっていません。"}</p>
@@ -112,7 +129,7 @@ async function renderAdmin(c: Context<AdminEnv>, project: Meeting) {
         <li><a class="row-link" href={`/${ward.slug}/admin/answers/roster`}><b>名簿</b><span>まだ答えていない世帯を出すために使います</span></a></li>
       </ul>
       </>}
-      {!closed ? <details class="fold"><summary>答えの締切を変える</summary><div><form method="post" action={`${root}/deadline`}><label for="due">答えの締切</label><input id="due" name="due_on" type="date" value={deadline ?? ""} required /><button class="secondary">締切を変える</button></form></div></details> : null}
+      {!closed ? <details class="fold" id="answer-deadline" open={c.req.query("deadline") === "edit"}><summary>答えの締切を変える</summary><div><form method="post" action={`${root}/deadline`}><label for="due">答えの締切</label><input id="due" name="due_on" type="date" value={deadline ?? ""} required /><button class="secondary">締切を変える</button></form></div></details> : null}
     </> : null}
     {view === "hand" && !closed ? <><p class="lead">聞いた内容を入れてください。</p><form method="post" action={`${root}/phone`}><HouseholdFields squads={squads} /><div class="action-bar"><button>この答えを入れる</button></div></form></> : null}
     {view === "send" && !closed ? <><p class="lead">預かった回答票や手元の回答票を撮ってください。一枚の写真に何枚写っていてもかまいません。</p><form method="post" action={`${root}/sheet`} enctype="multipart/form-data"><div class="field"><label class="file-button">カメラで回答票を撮る<input name="part" type="file" accept="image/*,.pdf" capture="environment" required /></label></div><div class="action-links"><button>送る</button></div></form>
@@ -203,7 +220,7 @@ export function installMeetingRoutes(admin: Hono<AdminEnv>, pub: Hono<WardEnv>) 
         ...parsed, source: originalId ? "sheet" : "phone", accountId: c.var.account.accountId,
         ...(originalId ? { originalId, sheetRowIndex: rowIndex } : {}) }, { answerId: c.req.param("answerId") });
       if (!saved) return adminResult(c, "答えを保存できませんでした。", 409, { href: root, label: "総会の答えへ戻る" }, "総会が閉じていないか、答えの一覧で確かめてください。");
-      return c.redirect(`${root}?view=list&done=edit`, 303);
+      return c.redirect(`${root}?view=list&done=${originalId ? "read" : c.req.param("answerId") ? "edit" : "hand"}&answer=${encodeURIComponent(saved)}${originalId ? `&original=${encodeURIComponent(originalId)}` : ""}`, 303);
     });
   }
   pub.use("/answer/:projectId", async (c, next) => {
