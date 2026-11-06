@@ -18,10 +18,13 @@ questionPages.get("/projects/:projectId/questions/:questionId/compare", async (c
   const state = await getProjectState(c.env.DB, ward.wardId, id);
   const question = state?.questions.find((question) => question.questionId === c.req.param("questionId") && question.kind === "conflict");
   if (!state || !question) return c.notFound();
-  const back = adminPath(ward, `/projects/${id}/questions`);
+  const fromDraft = c.req.query("from") === "draft";
+  const back = adminPath(ward, fromDraft ? `/projects/${id}/draft/announcement` : `/projects/${id}/questions`);
+  const currentValue = question.target && isItemKey(question.target) ? state.items.find((item) => item.key === question.target)?.current?.content : "";
   return c.html(<Layout title="二つを見比べる" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={back}>質問に戻る</a><h1>{question.text}</h1><p class="lead">使う方を選んでください。選ばなければ、今の中身のままです。</p>
-    {state.project.closedAt ? <Notice>この行事は閉じました。開き直すと答えを入れられます。</Notice> : <form method="post" action={adminPath(ward, `/projects/${id}/questions/${question.questionId}`)}>
+    <a class="back" href={back}>← {fromDraft ? "下書きへ" : "質問へ"}</a><h1>{question.text}</h1><p class="lead">使う方を選んでください。選ばないときは、{currentValue ? `今の下書きの${currentValue}` : "今の内容"}のままです。</p>
+    {state.project.closedAt ? <Notice>この行事は閉じました。もう一度開くと答えを入れられます。</Notice> : <form method="post" action={adminPath(ward, `/projects/${id}/questions/${question.questionId}`)}>
+      {fromDraft ? <input type="hidden" name="from" value="draft" /> : null}
       <fieldset><legend>使う内容</legend>{question.options?.length ? question.options.map((option) => <label><input type="radio" name="answer" value={option} required />{questionOptionLabel(option)}</label>) : <><p class="preserve-lines">{question.answer}</p><label for="answer">確かめた内容</label><input id="answer" name="answer" required maxlength={2000} /></>}</fieldset>
       {question.source?.kind === "original" && question.source.ref ? <p><a class="quiet" href={adminPath(ward, `/intake/originals/${encodeURIComponent(question.source.ref)}`)}>元の資料を見る</a></p> : null}
       <button name="action" value="answer">{question.target && isItemKey(question.target) ? "この内容を下書きに入れる" : "この答えを残す"}</button>
@@ -43,8 +46,8 @@ questionPages.get("/projects/:projectId/questions", async (c) => {
     <h1>分かるものだけ答えてください</h1><p class="lead">答えなくても配れます。</p>
     <ErrorNotice code={c.req.query("error")} messages={{ answer_failed: "答えを入れられませんでした。もう一度お試しください。" }} />
     {c.req.query("notice") === "unknown" ? <Notice>分からないとして残しました。あとから下書きで直せます。</Notice> : c.req.query("notice") === "later" ? <Notice>あとで答えられるように残しました。</Notice> : null}
-    {!questions.length ? next : null}
-    {state.project.closedAt ? <Notice>この行事は閉じました。開き直すと答えを入れられます。</Notice> : null}
+    {!questions.length || answered ? next : null}
+    {state.project.closedAt ? <Notice>この行事は閉じました。もう一度開くと答えを入れられます。</Notice> : null}
     {questions.map((question) => <section class="panel" id={`question-${question.questionId}`}>
       <h2>{question.kind === "unreadable" ? "読めなかったところがあります" : question.text}</h2>
       {question.kind === "unreadable" ? <p>{question.text}</p> : null}
@@ -60,6 +63,6 @@ questionPages.get("/projects/:projectId/questions", async (c) => {
         </div>
       </form> : null}
     </section>)}
-    {questions.length ? <><p class="muted">答えた内容は残ります。下書きはあとから直せます。</p>{answered ? next : <div class="action-bar"><a class="button" href={adminPath(ward, `/projects/${id}/draft/announcement`)}>案内の下書きを見る</a></div>}</> : null}
+    {questions.length ? <><p class="muted">答えは下書きに入ります。あとから直せます。</p>{answered ? null : <div class="action-bar"><a class="button" href={adminPath(ward, `/projects/${id}/draft/announcement`)}>案内の下書きを見る</a></div>}</> : null}
   </Layout>);
 });

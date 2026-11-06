@@ -1,4 +1,4 @@
-import { ITEM_LABEL } from "../../project/model";
+import { ITEM_SCREEN_LABEL } from "../../project/model";
 import { PrintDocument } from "../a4";
 import { qrSvg } from "../qr";
 
@@ -16,9 +16,9 @@ export function PosterPage({ title, body, wardUrl, due, contact, distributed, ba
     <section class="sheet poster" aria-label="貼れる一枚">
       <h1>{title}</h1>
       {dateTime || place || rainPlan ? <dl>
-        {dateTime ? <><dt>{ITEM_LABEL.date_time}</dt><dd>{dateTime}</dd></> : null}
-        {place ? <><dt>{ITEM_LABEL.place}</dt><dd>{place}</dd></> : null}
-        {rainPlan ? <><dt>{ITEM_LABEL.rain_plan}</dt><dd>{rainPlan}</dd></> : null}
+        {dateTime ? <><dt>{ITEM_SCREEN_LABEL.date_time}</dt><dd>{dateTime}</dd></> : null}
+        {place ? <><dt>{ITEM_SCREEN_LABEL.place}</dt><dd>{place}</dd></> : null}
+        {rainPlan ? <><dt>{ITEM_SCREEN_LABEL.rain_plan}</dt><dd>{rainPlan}</dd></> : null}
       </dl> : null}
       {due ? <><p>答えの締切：{due}</p><p>参加しないときも、答えてください。答えがないときは、欠席として数えます。</p></> : null}
       {contact ? <p>連絡先：{contact}</p> : null}

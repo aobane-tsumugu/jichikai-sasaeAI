@@ -91,6 +91,6 @@ export function PhotoCheckNotice({ checks, retakeHref, continueHref }: { checks:
   const needsRetake = checks.some((check) => check.readability === "unreadable" || check.readability === "partial");
   return <section class="panel" role="status"><h2>写真を受け取りました</h2><p class="lead">読めたかどうかを先に確かめています。撮り直さなくても、読み取れた分から進みます。</p>
     {checks.map((check, index) => <p>{checks.length > 1 ? `${index + 1}枚目: ` : ""}{photoCheckMessage(check)}{check.paperKind !== "other" ? ` ${PAPER_LABEL[check.paperKind]}のようです。` : ""}</p>)}
-    {needsRetake ? <><p>明るい場所で、紙の全体が入るように撮れますか。</p><section class="next"><strong>次は</strong><p>もう一度撮ってください。撮れないときは、このままでかまいません。</p><a class="button" href={retakeHref}>撮り直す</a> <a class="quiet" href={continueHref}>このままにする</a></section></> : null}
+    {needsRetake ? <><p>明るい場所で、紙の全体が入るように撮れますか。</p><div class="action-links"><a class="button secondary" href={retakeHref}>撮り直す</a><a class="quiet" href={continueHref}>このままにする</a></div></> : null}
   </section>;
 }

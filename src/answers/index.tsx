@@ -389,7 +389,7 @@ admin.get("/answers/:projectId/:answerId/edit", async (c) => {
         <label for="edit-household">代表者のお名前</label><input id="edit-household" name="household" type="text" value={answer.household} required maxLength={120} />
         <fieldset><legend>班</legend><DistrictSelect districts={editDistricts} selected={answer.district} /></fieldset>
         <AttendanceFields title={project.title} selected={countUnread(answer) ? undefined : answer.peopleCount > 0 ? "yes" : "no"} /><div class="admin-answer-counts"><CountFields labels={labels} answer={answer} prefix="edit" /></div>
-        <label for="edit-helper">手伝う人の名前（書かなくてかまいません）</label><input id="edit-helper" name="helper_name" type="text" value={answer.helperName ?? ""} maxLength={240} />
+        <label for="edit-helper">手伝う方のお名前（書かなくてかまいません）</label><input id="edit-helper" name="helper_name" type="text" value={answer.helperName ?? ""} maxLength={240} />
         <label for="edit-times">手伝える時間帯（書かなくてかまいません）</label><input id="edit-times" name="helper_times" type="text" value={answer.helperTimes ?? ""} maxLength={240} />
         <div class="action-bar"><button type="submit">直した答えを保存する</button></div>
         <p class="link-line"><a href={`${back}?view=list`}>保存せずに戻る</a></p>

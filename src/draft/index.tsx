@@ -44,6 +44,7 @@ function parseBody(raw: string): DraftBody {
 admin.get("/projects/:projectId/draft", async (c) => {
   const { ward } = c.var; const id = c.req.param("projectId"); const project = await getProjectSummary(c.env.DB, ward.wardId, id);
   if (!project) return c.notFound();
+  const written = await c.env.DB.prepare("SELECT DISTINCT kind FROM documents WHERE ward_id = ? AND project_id = ?").bind(ward.wardId, id).all<{ kind: string }>();
   return c.html(<Layout title={`下書き: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, `/projects/${id}`)}>行事へ</a>}>
     <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {project.title}の段取りへ</a>
     <h1>{project.title}の下書き</h1><p class="lead">作りたい文書を選んでください。今ある資料からAIに下書きを頼むか、自分で書き始められます。</p><p>文書を選び、必要ならAIに下書きを起こさせます。AIが止まっているときも、ここで書いて保存できます。</p>
@@ -51,10 +52,10 @@ admin.get("/projects/:projectId/draft", async (c) => {
     {c.req.query("notice") === "started" ? <Notice>AIに下書きを頼みました。画面を閉じても続きます。</Notice> : null}
     {c.req.query("notice") === "restored" ? <Notice>前の下書きを戻して、新しい下書きとして保存しました。</Notice> : null}
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
-    {listDraftPacks().map((pack) => <section class="panel"><h2><a href={adminPath(ward, `/projects/${id}/draft/${pack.kind}`)}>{pack.title}</a></h2><p>{SEE_LABEL[pack.scope]}</p>
+    {listDraftPacks().map((pack) => <section class="panel"><h2><a href={adminPath(ward, `/projects/${id}/draft/${pack.kind}`)}>{pack.title}</a></h2><p>{written.results.some((row) => row.kind === pack.kind) ? "下書きがあります。" : "まだありません。"}{SEE_LABEL[pack.scope]}</p>
       <form method="post" action={adminPath(ward, `/projects/${id}/draft/${pack.kind}/start`)}><button class="secondary">AIに下書きを頼む</button></form>
     </section>)}
-    <p class="link-line"><a href={adminPath(ward, `/publish/${id}`)}>配る</a></p>
+    <div class="action-links"><a class="button secondary" href={adminPath(ward, `/publish/${id}`)}>配る画面へ</a></div>
   </Layout>);
 });
 
@@ -104,7 +105,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
       {key === "helper_slots" ? <textarea id={`item-${key}`} name={`item_${key}`} rows={3} maxlength={2000}>{value}</textarea> : <input id={`item-${key}`} name={`item_${key}`} value={value} maxlength={2000} />}
       {original ? <p class="help-text">{original.filename || "送った資料"}{source?.locator ? `（${source.locator}）` : ""}から入れました。{previous ? `去年は${previous.content}でした。` : ""}</p> : draftItem?.source ? <p class="help-text">{draftItem.source}から入れました。今年も同じか見てください。</p> : previous ? <p class="help-text">去年は{previous.content}でした。</p> : null}
       {original ? <a class="quiet" href={adminPath(ward, `/intake/originals/${original.original_id}`)}>元の資料を見る</a> : null}
-      {conflict ? <a class="quiet" href={adminPath(ward, `/projects/${id}/questions/${conflict.questionId}/compare`)}>資料によって違います。見比べる</a> : null}
+      {conflict ? <a class="quiet" href={adminPath(ward, `/projects/${id}/questions/${conflict.questionId}/compare?from=draft`)}>資料によって違います。見比べる</a> : null}
       {key === "public_contact" ? <p class="help-text">だれでも読める案内に出ます。</p> : null}
     </div>;
   };

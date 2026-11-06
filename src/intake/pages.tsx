@@ -173,7 +173,7 @@ intakeAdmin.get("/intake/read", async (c) => {
   const groups = await pendingMaterialGroups(c.env.DB, ward.wardId);
   const projects = await projectDirectory().listOpen(c.env.DB, ward.wardId);
   return c.html(<Layout title="読み終わったもの" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, "/intake/received")}>送ったものへ</a>
+    <a class="back" href={adminPath(ward, "/intake/received")}>← 送ったものへ</a>
     <h1>{groups.length ? "読み終わりました" : "読み終わったものはまだありません"}</h1><p class="lead">{groups.length > 1 ? "行事ごとに分けました。違っていても、あとで直せます。" : groups.length ? "資料をまとめました。違っていても、あとで直せます。" : "読み終わると、ここに出ます。画面を閉じてもかまいません。"}</p>
     <ErrorNotice code={c.req.query("error")} messages={{ day: "今年の行事の日を入れ直してください。分からないときは空欄で進められます。" }} />
     {groups.map((group, index) => {
@@ -196,7 +196,7 @@ intakeAdmin.get("/intake/read", async (c) => {
     {groups.length === 0 ? <><p>まだ読み終わっていない資料は、送ったものから見られます。</p>
       {projects.map((p) => <p class="link-line"><a href={adminPath(ward, `/projects/${p.projectId}/map`)}>{p.title}の段取りを見る</a></p>)}
       <a class="button secondary" href={adminPath(ward, "/projects")}>資料がないので、種類を選んで始める</a></> : null}
-    <p class="muted">読めなかったところは、あとで質問します。年が書かれていない資料は、参考として残します。</p>
+    {groups.length ? <p class="muted">読めなかったところは、あとで質問します。年が書かれていない資料は、参考として残します。</p> : null}
     <a class="quiet" href={adminPath(ward, "/")}>最初の画面へ</a>
   </Layout>);
 });
