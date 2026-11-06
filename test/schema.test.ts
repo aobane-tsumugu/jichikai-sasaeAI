@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { newId } from "../src/core/ids";
 import { seedAccount, seedSeat, seedWard } from "../src/core/testing";
 
-describe("D1 の表", () => {
-  it("全ての表が ward_id を持つ（全文索引の内部の表は除く）", async () => {
+describe("D1の表", () => {
+  it("全ての表がward_idを持つ（全文索引の内部の表は除く）", async () => {
     const tables = await env.DB.prepare(
       "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations'",
     ).all<{ name: string; sql: string }>();

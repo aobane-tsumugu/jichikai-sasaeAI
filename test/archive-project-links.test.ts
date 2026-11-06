@@ -5,7 +5,7 @@ import { receive } from "../src/intake/receive";
 import { createProject } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("記録検索の題から進行中のプロジェクトを開け、閉じた後は記録を開ける", async () => {
+it("記録検索の題から進行中の行事を開け、閉じたあとは記録を開ける", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "架空の防災の準備", year: 2026, accountId: account.accountId,

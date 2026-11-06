@@ -51,7 +51,7 @@ describe("配る画面と区のページ", () => {
     const { ward, account } = await seedAdmin(env.DB);
     const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
     await setSetting(env.DB, ward.wardId, SETTING_KEYS.publicContact, "fixture@example.test", account.accountId);
-    const body = JSON.stringify({ text: "連絡先 fixture@example.test", items: [] });
+    const body = JSON.stringify({ text: "連絡先fixture@example.test", items: [] });
     await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
       kind: "announcement", title: "架空の案内", scope: "public", body, basedOn: project.stateVersion,
     });
@@ -60,10 +60,10 @@ describe("配る画面と区のページ", () => {
 });
 
 describe("名簿の取り込み", () => {
-  it("54 世帯の CSV を画面の送信形式で保存できる", async () => {
+  it("54世帯のCSVを画面の送信形式で保存できる", async () => {
     const { ward, cookie } = await seedAdmin(env.DB);
     const csv = ["番号,班,世帯名,氏名", ...Array.from({ length: 54 }, (_, index) =>
-      `${index + 1},${Math.floor(index / 18) + 1}班,架空世帯 ${index + 1},架空の氏名 ${index + 1}`,
+      `${index + 1},${Math.floor(index / 18) + 1}班,架空世帯${index + 1},架空の氏名${index + 1}`,
     )].join("\n");
     const form = new FormData();
     form.set("part", new File([csv], "加入世帯_2026秋.csv", { type: "text/csv" }));
@@ -78,10 +78,10 @@ describe("名簿の取り込み", () => {
     expect(await getRoster(env.DB, ward.wardId)).toHaveLength(54);
   });
 
-  it("JSON の行を受け取り、54 世帯を区ごとに保存できる", async () => {
+  it("JSONの行を受け取り、54世帯を区ごとに保存できる", async () => {
     const { ward, cookie } = await seedAdmin(env.DB);
     const rows = [["番号", "班", "世帯名"], ...Array.from({ length: 54 }, (_, index) => [
-      String(index + 1), `${Math.floor(index / 18) + 1}班`, `架空世帯 ${index + 1}`,
+      String(index + 1), `${Math.floor(index / 18) + 1}班`, `架空世帯${index + 1}`,
     ])];
     const response = await realApp.request(`/${ward.slug}/admin/answers/roster`, {
       method: "POST",
@@ -96,8 +96,8 @@ describe("名簿の取り込み", () => {
   });
 });
 
-describe("回答の入口と一覧", () => {
-  it("Web と電話の回答を数え、名簿から未回答を出す", async () => {
+describe("答えの入口と一覧", () => {
+  it("Webと電話の答えを数え、名簿からまだ答えていないを出す", async () => {
     const { ward, account, cookie } = await seedAdmin(env.DB);
     const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
     await replaceRoster(env.DB, ward.wardId, [

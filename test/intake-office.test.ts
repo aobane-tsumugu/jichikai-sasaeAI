@@ -70,7 +70,7 @@ async function makeZip(files: Record<string, string>, deflate: boolean): Promise
 const DOCX = {
   "word/document.xml": `<?xml version="1.0"?><w:document xmlns:w="x"><w:body>
 <w:p><w:pPr><w:pStyle w:val="a"/></w:pPr><w:r><w:t>お知らせ</w:t></w:r></w:p>
-<w:p><w:r><w:t xml:space="preserve">10月25日 </w:t></w:r><w:r><w:tab/><w:t>11時 &amp; 雨天は&#x516C;民館</w:t></w:r></w:p>
+<w:p><w:r><w:t xml:space="preserve">10月25日 </w:t></w:r><w:r><w:tab/><w:t>11時 &amp; 雨は&#x516C;民館</w:t></w:r></w:p>
 <w:tbl><w:tblPr/><w:tr><w:tc><w:p><w:r><w:t>相手</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>額</w:t></w:r></w:p></w:tc></w:tr>
 <w:tr><w:tc><w:p><w:r><w:t>商店A</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>6000</w:t></w:r></w:p><w:p><w:r><w:t>円</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
 <w:p/><w:p><w:r><w:t>末尾</w:t></w:r></w:p><w:sectPr/></w:body></w:document>`,
@@ -97,16 +97,16 @@ beforeAll(() => {
   extractOffice = (globalThis as unknown as { __sendOffice: { extractOffice: typeof extractOffice } }).__sendOffice.extractOffice;
 });
 
-describe("Word の展開", () => {
+describe("Wordの展開", () => {
   for (const deflate of [false, true]) {
-    it(`段落と表を取り出す（${deflate ? "deflate" : "そのまま"}の zip）`, async () => {
+    it(`段落と表を取り出す（${deflate ? "deflate" : "そのまま"}のzip）`, async () => {
       const zip = await makeZip(DOCX, deflate);
       expect(await extractOffice(zip)).toEqual({
         format: "docx",
-        paragraphs: ["お知らせ", "10月25日 \t11時 & 雨天は公民館", "末尾"],
+        paragraphs: ["お知らせ", "10月25日 \t11時 & 雨は公民館", "末尾"],
         tables: [
           {
-            name: "表 1",
+            name: "表1",
             rows: [
               ["相手", "額"],
               ["商店A", "6000\n円"],
@@ -118,9 +118,9 @@ describe("Word の展開", () => {
   }
 });
 
-describe("Excel の展開", () => {
+describe("Excelの展開", () => {
   for (const deflate of [false, true]) {
-    it(`シートごとの表にする（${deflate ? "deflate" : "そのまま"}の zip）`, async () => {
+    it(`シートごとの表にする（${deflate ? "deflate" : "そのまま"}のzip）`, async () => {
       const zip = await makeZip(XLSX, deflate);
       expect(await extractOffice(zip)).toEqual({
         format: "xlsx",
@@ -142,7 +142,7 @@ describe("Excel の展開", () => {
     });
   }
 
-  it("要素に接頭辞が付いた Excel も同じに読む", async () => {
+  it("要素に接頭辞が付いたExcelも同じに読む", async () => {
     const prefixed = Object.fromEntries(Object.entries(XLSX).map(([name, xml]) => [name, name.endsWith(".rels") ? xml : xml.replace(/<(\/?)(?=[a-zA-Z])/g, "<$1x:")]));
     const plain = await extractOffice((await makeZip(XLSX, false)).buffer as ArrayBuffer);
     expect(await extractOffice((await makeZip(prefixed, false)).buffer as ArrayBuffer)).toEqual(plain);
@@ -165,7 +165,7 @@ describe("Excel の展開", () => {
     expect(JSON.stringify(result.tables)).toContain("2026-10-22");
   });
 
-  it("当番表の時刻には架空の日付を付けず、年月日と日時はそのまま読む", async () => {
+  it("当番表の時刻には架空の日付を付けず、年月日と日ときはそのまま読む", async () => {
     const workbook = {
       ...XLSX,
       "xl/styles.xml": `<styleSheet><numFmts>
@@ -193,7 +193,7 @@ describe("Excel の展開", () => {
     ]);
   });
 
-  it("zip でない物は開けない", async () => {
+  it("zipでない物は開けない", async () => {
     await expect(extractOffice(new Uint8Array([1, 2, 3, 4]))).rejects.toThrow();
   });
 });
@@ -217,7 +217,7 @@ describe("展開した結果の検査と読み取りへの変換", () => {
           tables: [{ name: "協賛先", rows: [["相手", "額"], ["商店A", "6000"], [], ["農園B", "3000"]] }],
         },
       },
-      { originalId: "o2", text: "公民館 25日で押さえた\n\n雨天は屋内" },
+      { originalId: "o2", text: "公民館25日で押さえた\n\n雨は屋内" },
     ]);
     expect(reading.tables).toEqual([
       {
@@ -226,15 +226,15 @@ describe("展開した結果の検査と読み取りへの変換", () => {
         locator: "協賛先",
         columns: [],
         rows: [
-          { cells: ["相手", "額"], locator: "1 行目", confidence: "high" },
-          { cells: ["商店A", "6000"], locator: "2 行目", confidence: "high" },
-          { cells: ["農園B", "3000"], locator: "4 行目", confidence: "high" },
+          { cells: ["相手", "額"], locator: "1行目", confidence: "high" },
+          { cells: ["商店A", "6000"], locator: "2行目", confidence: "high" },
+          { cells: ["農園B", "3000"], locator: "4行目", confidence: "high" },
         ],
       },
     ]);
     expect(reading.text_blocks).toEqual([
-      { original_id: "o2", locator: "1 行目", text: "公民館 25日で押さえた" },
-      { original_id: "o2", locator: "3 行目", text: "雨天は屋内" },
+      { original_id: "o2", locator: "1行目", text: "公民館25日で押さえた" },
+      { original_id: "o2", locator: "3行目", text: "雨は屋内" },
     ]);
   });
 });
@@ -253,7 +253,7 @@ describe("種類の見分け", () => {
     expect(classifyUpload(new Uint8Array(), "image/jpeg", "a.jpg")).toBeNull();
   });
 
-  it("文字のファイルは UTF-8（BOM 付きも）と Shift_JIS を読める", () => {
+  it("文字のファイルはUTF-8（BOM付きも）とShift_JISを読める", () => {
     expect(decodeText(new Uint8Array([0xef, 0xbb, 0xbf, 0xe3, 0x81, 0x82]))).toBe("あ");
     expect(decodeText(new Uint8Array([0x82, 0xa0]))).toBe("あ");
   });

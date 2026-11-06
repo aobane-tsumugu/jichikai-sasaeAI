@@ -199,7 +199,7 @@ async function runTool(env: Env, wardId: string, job: JobRow | null, name: strin
       const needsSource = kind !== "draft" && kind !== "map_draft";
       const originalId = asString(args.original_id, 100);
       if (needsSource && !(await sourceExists(env.DB, job, originalId))) {
-        await recordDiscard(env.DB, job, `出どころの原本が見つからない差分を捨てました（${kind}: ${asString(args.target, 60)}）`);
+        await recordDiscard(env.DB, job, "元の資料が見つからないため、内容を取り込めませんでした。");
         return fail("出どころ（original_id）がこのプロジェクトに実在しないので、この差分は捨てました。get_reading にある original_id を使ってください。");
       }
       // 年は、繋げる AI の引数ではなく出どころの原本から取る。別の原本の年を渡されても引き継がない。

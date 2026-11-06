@@ -10,8 +10,8 @@ import { Layout, Notice } from "./ui";
 export const loginRoutes = new Hono<WardEnv>();
 
 const LoginPage = (props: { wardName: string; action: string; next: string; error?: string }) => (
-  <Layout title={`${props.wardName} 役員画面のログイン`} siteName={`${props.wardName} 役員の画面`} noindex>
-    <h1>役員画面にログイン</h1>
+  <Layout title={`${props.wardName}役員画面に入る`} siteName={`${props.wardName}役員の画面`} noindex>
+    <h1>役員画面に入る</h1>
     {props.error ? <Notice error>{props.error}</Notice> : null}
     <form method="post" action={props.action}>
       <input type="hidden" name="next" value={props.next} />
@@ -20,10 +20,10 @@ const LoginPage = (props: { wardName: string; action: string; next: string; erro
       <label for="password">パスワード</label>
       <input id="password" name="password" type="password" autocomplete="current-password" required />
       <p>
-        <button type="submit">ログイン</button>
+        <button type="submit">入る</button>
       </p>
     </form>
-    <p class="muted">パスワードは、役員の誰かが作って渡した長い文字です。この端末は、ログインすると次から入力を省けます。</p>
+    <p class="muted">パスワードは、役員の誰かが作って渡した長い文字です。この端末は、入ると次から入力を省けます。</p>
   </Layout>
 );
 
@@ -32,7 +32,7 @@ loginRoutes.get("/login", async (c) => {
   c.header("Cache-Control", "no-store");
   c.header("X-Robots-Tag", "noindex");
   const active = await c.env.DB.prepare("SELECT is_active FROM wards WHERE ward_id = ?").bind(ward.wardId).first<{ is_active: number }>();
-  if (!active || active.is_active !== 1) return c.html(<Layout title="役員画面は停止中" siteName={`${ward.name} 役員の画面`} noindex><h1>役員画面は停止中です</h1><p>区のページは引き続きご覧いただけます。</p></Layout>, 503);
+  if (!active || active.is_active !== 1) return c.html(<Layout title="役員画面は停止中" siteName={`${ward.name}役員の画面`} noindex><h1>役員画面は停止中です</h1><p>区のページは引き続きご覧いただけます。</p></Layout>, 503);
   return c.html(
     <LoginPage
       wardName={ward.name}
@@ -48,7 +48,7 @@ const DUMMY_SALT = "no-such-account";
 loginRoutes.post("/login", async (c) => {
   const ward = c.var.ward;
   const active = await c.env.DB.prepare("SELECT is_active FROM wards WHERE ward_id = ?").bind(ward.wardId).first<{ is_active: number }>();
-  if (!active || active.is_active !== 1) return c.html(<Layout title="役員画面は停止中" siteName={`${ward.name} 役員の画面`} noindex><h1>役員画面は停止中です</h1><p>区のページは引き続きご覧いただけます。</p></Layout>, 503);
+  if (!active || active.is_active !== 1) return c.html(<Layout title="役員画面は停止中" siteName={`${ward.name}役員の画面`} noindex><h1>役員画面は停止中です</h1><p>区のページは引き続きご覧いただけます。</p></Layout>, 503);
   const form = await c.req.parseBody();
   // 現行フォームは loginId。旧フォームが送る name も互換用に受け付ける。
   const hasLoginId = typeof form["loginId"] === "string";

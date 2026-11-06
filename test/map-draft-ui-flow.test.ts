@@ -100,7 +100,7 @@ it("資料のない一年目から仕事・質問・下書き・別の雨の知�
   // 配る時に人数の言い方が本文に付くので、案内の文と項目が変わらない事を見る
   const announcementBody = (raw?: string) => { const { text, items } = JSON.parse(raw ?? "{}") as { text?: string; items?: unknown }; return { text, items }; };
   expect(announcementBody((await getEditableDocument(env.DB, ward.wardId, project.projectId, "announcement"))?.body)).toEqual(announcementBody(beforeRain?.body));
-  expect((await getEditableDocument(env.DB, ward.wardId, project.projectId, "notice"))?.title).toBe("雨天の変更のお知らせ");
+  expect((await getEditableDocument(env.DB, ward.wardId, project.projectId, "notice"))?.title).toBe("雨の変更のお知らせ");
 
   for (const task of (await state()).mapTasks) expect((await postForm(realApp, `${path}/map/${task.taskId}/remove`, {}, cookie)).status).toBe(303);
   const noTasks = await (await get(realApp, `${path}/map`, cookie)).text();

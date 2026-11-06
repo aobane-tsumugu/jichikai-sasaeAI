@@ -1,8 +1,9 @@
+import { adminResult } from "../core/admin-ui";
 import { formatDateText, formatJstDate } from "../core/time";
 import { Hono } from "hono";
 import { adminPath } from "../core/auth";
 import { newId, nowIso } from "../core/ids";
-import { Hint, Layout, Notice } from "../core/ui";
+import { Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { getReadings, listJobs } from "../intake/store";
 import { getClient } from "../ai/deps";
@@ -29,7 +30,7 @@ followupAdmin.get("/inquiries", async (c) => {
     FROM inquiry_records WHERE ward_id = ? ORDER BY received_at DESC, created_at DESC LIMIT 200`)
     .bind(ward.wardId).all<{ inquiry_id: string; received_at: string; kind: "inquiry" | "request"; subject: string; answer: string; submitted_to_city: number; line_source_type: string | null; line_sender_label: string | null; line_replied_at: string | null }>();
   return c.html(<Layout title="問い合わせ" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>問い合わせと要望 <Hint text="受けた内容と、どう答えたかを残します。受けた日から順に入力してください。" /></h1>
+    <h1>問い合わせと要望</h1><p class="lead">受けた内容と、どう答えたかを残します。受けた日から順に入力してください。</p>
     {c.req.query("saved") ? <Notice>記録しました。</Notice> : null}
     <form method="post" action={adminPath(ward, "/inquiries")} class="panel">
       <label for="receivedAt">受けた日</label><input id="receivedAt" name="receivedAt" type="date" required />
@@ -42,7 +43,7 @@ followupAdmin.get("/inquiries", async (c) => {
     <h2>対応の記録</h2>
     {records.results.map((record) => <article class="panel"><p>{formatJstDate(record.received_at)} / {record.kind === "request" ? "要望" : "問い合わせ"}</p>
       <h3 class="preserve-lines">{record.subject}</h3>
-      {record.line_source_type ? <><p>送った人: {record.line_sender_label || "名前は分かりません"}（{record.line_source_type === "user" ? "公式への一対一" : "LINE グループ"}）</p>
+      {record.line_source_type ? <><p>送った人: {record.line_sender_label || "名前は分かりません"}（{record.line_source_type === "user" ? "公式への一対一" : "LINEグループ"}）</p>
         <p>{record.line_replied_at ? "AIは答えていません。送った人には「役員に伝えて、内容を確認します。」と返しました。" : "AIは答えていません。受け取った内容を役員に伝えています。"}</p></> : null}
       <p>答え: {record.answer || "まだありません"}</p><p>{record.submitted_to_city ? "行政に提出" : "行政への提出なし"}</p></article>)}
     <h2>要望の一覧</h2>
@@ -60,7 +61,7 @@ followupAdmin.post("/inquiries", async (c) => {
   const subject = String(form.get("subject") ?? "").trim();
   const answer = String(form.get("answer") ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(receivedAt) || !["inquiry", "request"].includes(kind) || !subject || !answer || subject.length > 2000 || answer.length > 2000) {
-    return c.text("入力を確かめてください。", 400);
+    return adminResult(c, "入力を確かめてください。", 400, { href: adminPath(c.var.ward, "/inquiries"), label: "問い合わせと要望に戻る" }, "受けた日と内容、どう答えたかを入れて、もう一度記録してください。");
   }
   await c.env.DB.prepare(`INSERT INTO inquiry_records
     (inquiry_id, ward_id, received_at, kind, subject, answer, submitted_to_city, created_by_account_id, created_at)
@@ -89,8 +90,8 @@ followupAdmin.get("/requests/city", async (c) => {
   }));
   rows.sort((a, b) => (a.dueOn ?? "9999-12-31").localeCompare(b.dueOn ?? "9999-12-31") || b.year - a.year);
   return c.html(<Layout title="行政の依頼" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>行政の依頼 <Hint text="行政から届いた依頼と締切を見ます。依頼の名前を選ぶと、回答案や提出した内容を記録できます。" /></h1>
-    <p>届いた通知をもとに、期限、回答、提出した物を記録します。</p>
+    <h1>行政の依頼</h1><p class="lead">行政から届いた依頼と締切を見ます。依頼の名前を選ぶと、答えの下書きや提出した内容を記録できます。</p>
+    <p>届いた通知をもとに、期限、答え、提配ったものを記録します。</p>
     {rows.map((project) => <article class="panel"><h2><a href={adminPath(ward, `/requests/city/${encodeURIComponent(project.project_id)}`)}>{project.title}</a></h2>
       <p>{project.year}年 / 期限: {project.dueOn ? formatDateText(project.dueOn) : "未入力"} / 提出: {project.submitted_on ? formatJstDate(project.submitted_on) : "未記録"}</p></article>)}
     {rows.length === 0 ? <p>行政の依頼はありません。</p> : null}
@@ -112,21 +113,21 @@ followupAdmin.get("/requests/city/:projectId", async (c) => {
   const readings = await Promise.all(jobs.map((job) => getReadings(c.env.DB, ward.wardId, job.job_id)));
   const sourceText = readings.flatMap((rows) => rows.map((row) => row.body.summary)).filter(Boolean).join("\n").slice(0, 6000);
   return c.html(<Layout title={project.title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>{project.title} <Hint text="届いた通知を読み、締切や提出先、回答案を残す画面です。まず通知の内容と締切を確認してください。" /></h1><p><a href={adminPath(ward, "/requests/city")}>行政の依頼一覧</a></p>
+    <h1>{project.title}</h1><p class="lead">届いた通知を読み、締切や提出先、答えの下書きを残す画面です。まず通知の内容と締切を確認してください。</p><p><a href={adminPath(ward, "/requests/city")}>行政の依頼一覧</a></p>
     {c.req.query("saved") ? <Notice>記録しました。</Notice> : null}
     {sourceText ? <details class="panel"><summary>通知から読んだ要点</summary><p>{sourceText}</p></details> : null}
     <form method="post" action={adminPath(ward, `/requests/city/${encodeURIComponent(projectId)}`)} class="panel">
       {readDue ? <p>通知から読んだ期限: {readDue}</p> : null}
       <label for="dueOn">期限</label><input id="dueOn" name="dueOn" type="date" value={details?.due_on ?? (/^\d{4}-\d{2}-\d{2}$/.test(readDue) ? readDue : "")} />
-      <label for="answerDraft">回答の案</label><textarea id="answerDraft" name="answerDraft" maxlength={6000} rows={10}>{details?.answer_draft ?? ""}</textarea>
-      <button class="secondary" name="operation" value="draft">通知をもとに回答案を作る</button>
-      <label for="submittedWhat">提出した物</label><input id="submittedWhat" name="submittedWhat" maxlength={1000} value={details?.submitted_what ?? ""} />
+      <label for="answerDraft">答えの下書き</label><textarea id="answerDraft" name="answerDraft" maxlength={6000} rows={10}>{details?.answer_draft ?? ""}</textarea>
+      <button class="secondary" name="operation" value="draft">通知をもとに答えの下書きを作る</button>
+      <label for="submittedWhat">提配ったもの</label><input id="submittedWhat" name="submittedWhat" maxlength={1000} value={details?.submitted_what ?? ""} />
       <label for="submittedTo">提出先</label><input id="submittedTo" name="submittedTo" maxlength={300} value={details?.submitted_to ?? ""} />
       <input type="hidden" name="submissionId" value={newId()} />
       <label for="submittedOn">提出した日</label><input id="submittedOn" name="submittedOn" type="date" value={details?.submitted_on ?? ""} />
       <label for="noticeBody">住民に配る文</label><textarea id="noticeBody" name="noticeBody" maxlength={4000} rows={6}>{details?.notice_body ?? ""}</textarea>
       <button name="operation" value="save">記録する</button>
-      <button class="secondary" name="operation" value="send">配る画面へ進む</button> <Hint text="住民に配る文を「知らせ」として保存します。次の画面で内容と配る相手を確認できます。ここではまだ配りません。" />
+      <button class="secondary" name="operation" value="send">配る画面へ進む</button> <p class="help-text">住民に配る文を「知らせ」として保存します。次の画面で内容と配る相手を確認できます。ここではまだ配りません。</p>
     </form>
   </Layout>);
 });
@@ -145,7 +146,7 @@ followupAdmin.post("/requests/city/:projectId", async (c) => {
   const submissionId = String(form.get("submissionId") ?? "");
   const submittedOn = String(form.get("submittedOn") ?? "");
   const noticeBody = String(form.get("noticeBody") ?? "").trim();
-  if ((dueOn && !/^\d{4}-\d{2}-\d{2}$/.test(dueOn)) || (submittedOn && !/^\d{4}-\d{2}-\d{2}$/.test(submittedOn))) return c.text("日付を確かめてください。", 400);
+  if ((dueOn && !/^\d{4}-\d{2}-\d{2}$/.test(dueOn)) || (submittedOn && !/^\d{4}-\d{2}-\d{2}$/.test(submittedOn))) return adminResult(c, "日付を確かめてください。", 400, { href: adminPath(c.var.ward, `/requests/city/${encodeURIComponent(c.req.param("projectId"))}`), label: "依頼の画面に戻る" }, "日付や配る文を確かめて、もう一度操作してください。");
 
   let nextAnswer = answerDraft;
   if (operation === "draft") {
@@ -155,12 +156,12 @@ followupAdmin.post("/requests/city/:projectId", async (c) => {
     const response = await getClient(c.env).messages.create({
       model: MODEL.main,
       max_tokens: 1800,
-      system: "自治会の役員が行政へ提出する回答の案を作ります。通知とプロジェクトの情報に書かれている事実だけを使い、不明点は確認事項として示してください。提出や決定は行わず、日本語で案の本文だけを書いてください。",
-      messages: [{ role: "user", content: `依頼: ${project.title}\n年度: ${project.year}\n期限: ${dueOn || "未記入"}\n通知の読み取り:\n${text || "通知の読み取りはありません。"}\n現在の案:\n${answerDraft || "ありません。"}` }],
+      system: "自治会の役員が行政へ提出する答えの下書きを作ります。通知と行事の情報に書かれている事実だけを使い、不明点は確認事項として示してください。提出や決定は行わず、日本語で下書きの本文だけを書いてください。",
+      messages: [{ role: "user", content: `依頼: ${project.title}\n年度: ${project.year}\n期限: ${dueOn || "未記入"}\n通知の読み取り:\n${text || "通知の読み取りはありません。"}\n現在の下書き:\n${answerDraft || "ありません。"}` }],
     });
     nextAnswer = response.content.filter((block) => block.type === "text").map((block) => block.text).join("\n").slice(0, 6000);
   }
-  if (operation === "send" && (!noticeBody || noticeBody.length > 4000)) return c.text("配る文を入力してください。", 400);
+  if (operation === "send" && (!noticeBody || noticeBody.length > 4000)) return adminResult(c, "配る文を入力してください。", 400, { href: adminPath(c.var.ward, `/requests/city/${encodeURIComponent(c.req.param("projectId"))}`), label: "依頼の画面に戻る" }, "日付や配る文を確かめて、もう一度操作してください。");
   const now = nowIso();
   await saveCityRequestDetails(c.env.DB, ward.wardId, projectId, dueOn || null, nextAnswer, submittedWhat, submittedTo, submittedOn || null, noticeBody, null, account.accountId, now);
   await recordSubmittedItem(c.env.DB, ward.wardId, projectId, submittedWhat, submittedTo, submittedOn, submissionId, account.accountId);
@@ -171,7 +172,7 @@ followupAdmin.post("/requests/city/:projectId", async (c) => {
       kind: "notice", title: project.title, scope: "public",
       body: JSON.stringify({ text: noticeBody, items: [] }), basedOn: current.stateVersion,
     });
-    if (!saved) return c.text("知らせを保存できませんでした。プロジェクトが開いているか確かめてください。", 400);
+    if (!saved) return adminResult(c, "知らせを保存できませんでした。行事が開いているか確かめてください。", 400, { href: adminPath(c.var.ward, `/requests/city/${encodeURIComponent(c.req.param("projectId"))}`), label: "依頼の画面に戻る" }, "日付や配る文を確かめて、もう一度操作してください。");
     return c.redirect(adminPath(ward, `/publish/${encodeURIComponent(projectId)}`), 303);
   }
   return c.redirect(`${adminPath(ward, `/requests/city/${encodeURIComponent(projectId)}`)}?saved=1`, 303);
@@ -247,17 +248,17 @@ followupAdmin.get("/ledger", async (c) => {
   for (const budget of budgets.results) if (!years.includes(budget.year)) years.push(budget.year);
   years.sort((a, b) => b - a);
   return c.html(<Layout title="帳簿" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>帳簿 <Hint text="年を選び、収入と支出、予算を見比べます。プロジェクトで残した収支も、ここに集まります。" /></h1><p>収支の記録から年ごとに集計しています。監査の判断は人が行います。</p>
+    <h1>帳簿</h1><p class="lead">年を選び、収入と支出、予算を見比べます。行事で残した収支も、ここに集まります。</p><p>収支の記録から年ごとに集計しています。監査の判断は人が行います。</p>
     {c.req.query("saved") ? <Notice>記録しました。</Notice> : null}
     {years.map((year) => {
       const total = totals.get(year) ?? { year, income: 0, expense: 0 };
       const budget = budgetByYear.get(year);
-      const draft = `収入合計: ${total.income.toLocaleString("ja-JP")} 円\n支出合計: ${total.expense.toLocaleString("ja-JP")} 円\n差引: ${(total.income - total.expense).toLocaleString("ja-JP")} 円\n監査の確認: 人が確認してください。`;
+      const draft = `収入合計: ${total.income.toLocaleString("ja-JP")}円\n支出合計: ${total.expense.toLocaleString("ja-JP")}円\n差引: ${(total.income - total.expense).toLocaleString("ja-JP")}円\n監査の確認: 人が確認してください。`;
       return <section class="panel"><h2>{year}年</h2>
-        <p>収入 {total.income.toLocaleString("ja-JP")} 円 / 予算 {budget?.budget_income.toLocaleString("ja-JP") ?? "未入力"} 円</p>
-        <p>支出 {total.expense.toLocaleString("ja-JP")} 円 / 予算 {budget?.budget_expense.toLocaleString("ja-JP") ?? "未入力"} 円</p>
-        <p>差引 {((total.income ?? 0) - (total.expense ?? 0)).toLocaleString("ja-JP")} 円</p>
-        {budget ? <p>予算との差: 収入 {(total.income - budget.budget_income).toLocaleString("ja-JP")} 円 / 支出 {(total.expense - budget.budget_expense).toLocaleString("ja-JP")} 円</p> : <p>予算との差: 予算を入力してください。</p>}
+        <p>収入{total.income.toLocaleString("ja-JP")} 円 / 予算{budget?.budget_income.toLocaleString("ja-JP") ?? "未入力"} 円</p>
+        <p>支出{total.expense.toLocaleString("ja-JP")} 円 / 予算{budget?.budget_expense.toLocaleString("ja-JP") ?? "未入力"} 円</p>
+        <p>差引{((total.income ?? 0) - (total.expense ?? 0)).toLocaleString("ja-JP")} 円</p>
+        {budget ? <p>予算との差: 収入{(total.income - budget.budget_income).toLocaleString("ja-JP")} 円 / 支出{(total.expense - budget.budget_expense).toLocaleString("ja-JP")} 円</p> : <p>予算との差: 予算を入力してください。</p>}
         <form method="post" action={adminPath(ward, "/ledger")}>
           <input type="hidden" name="year" value={year} />
           <label for={`income-${year}`}>収入の予算（円）</label><input id={`income-${year}`} name="budgetIncome" type="number" min="0" step="1" value={budget?.budget_income ?? 0} required />
@@ -267,7 +268,7 @@ followupAdmin.get("/ledger", async (c) => {
         </form>
       </section>;
     })}
-    <p><a href={adminPath(ward, "/projects")}>プロジェクトの収支記録へ</a></p>
+    <p><a href={adminPath(ward, "/projects")}>行事の収支記録へ</a></p>
   </Layout>);
 });
 
@@ -278,7 +279,7 @@ followupAdmin.post("/ledger", async (c) => {
   const budgetIncome = Number(form.get("budgetIncome"));
   const budgetExpense = Number(form.get("budgetExpense"));
   const settlementDraft = String(form.get("settlementDraft") ?? "").trim();
-  if (!Number.isInteger(year) || year < 2000 || year > 2100 || !Number.isInteger(budgetIncome) || budgetIncome < 0 || !Number.isInteger(budgetExpense) || budgetExpense < 0 || settlementDraft.length > 4000) return c.text("入力を確かめてください。", 400);
+  if (!Number.isInteger(year) || year < 2000 || year > 2100 || !Number.isInteger(budgetIncome) || budgetIncome < 0 || !Number.isInteger(budgetExpense) || budgetExpense < 0 || settlementDraft.length > 4000) return adminResult(c, "入力を確かめてください。", 400, { href: adminPath(c.var.ward, "/ledger"), label: "帳簿に戻る" }, "年と予算の金額、下書きの内容を確かめて、もう一度保存してください。");
   await c.env.DB.prepare(`INSERT INTO ward_annual_budgets
     (ward_id, year, budget_income, budget_expense, settlement_draft, updated_at, updated_by_account_id)
     VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (ward_id, year) DO UPDATE SET budget_income = excluded.budget_income,

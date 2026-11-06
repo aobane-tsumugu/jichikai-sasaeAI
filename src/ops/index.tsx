@@ -28,14 +28,14 @@ function wantsJson(c: OpsContext): boolean {
 
 const OpsPage = (props: { title: string; loggedIn?: boolean; children?: unknown }) => (
   <Layout
-    title={`${props.title} 運用の画面`}
+    title={`${props.title}運用の画面`}
     siteName="運用の画面（提供側）"
     noindex
     headerRight={
       props.loggedIn ? (
         <form class="inline" method="post" action="/ops/logout">
           <button type="submit" class="secondary">
-            ログアウト
+            このスマホやパソコンから出る
           </button>
         </form>
       ) : null
@@ -54,8 +54,8 @@ opsRoutes.use("*", async (c, next) => {
 // ---- ログイン（ログインの検査の外） ----
 
 const LoginForm = (props: { error?: string }) => (
-  <OpsPage title="ログイン">
-    <h1>運用の画面にログイン</h1>
+  <OpsPage title="入る">
+    <h1>運用の画面に入る</h1>
     {props.error ? <Notice error>{props.error}</Notice> : null}
     <form method="post" action="/ops/login">
       <label for="id">ID</label>
@@ -63,16 +63,16 @@ const LoginForm = (props: { error?: string }) => (
       <label for="password">パスワード</label>
       <input id="password" name="password" type="password" autocomplete="current-password" required />
       <p>
-        <button type="submit">ログイン</button>
+        <button type="submit">入る</button>
       </p>
     </form>
   </OpsPage>
 );
 
 const NotConfigured = () => (
-  <OpsPage title="未設定">
+  <OpsPage title="まだ決めていません">
     <h1>運用の画面は設定されていません</h1>
-    <p>Workers の secrets に OPS_ID と OPS_PASSWORD を入れると使えます。</p>
+    <p>WorkersのsecretsにOPS_IDとOPS_PASSWORDを入れると使えます。</p>
   </OpsPage>
 );
 
@@ -85,7 +85,7 @@ opsRoutes.post("/login", async (c) => {
   const password = typeof form["password"] === "string" ? form["password"] : "";
   if (!(await checkOpsLogin(c.env, id, password))) {
     await delayLoginAfterFailures(c.env.DB, "provider", c.env.OPS_ID ?? "provider");
-    return c.html(<LoginForm error="ID かパスワードが違います。" />, 401);
+    return c.html(<LoginForm error="IDかパスワードが違います。" />, 401);
   }
   await clearLoginFailures(c.env.DB, "provider", c.env.OPS_ID ?? "provider");
   setCookie(c, OPS_COOKIE, await createOpsSession(c.env), {
@@ -103,7 +103,7 @@ opsRoutes.post("/login", async (c) => {
 opsRoutes.use("*", async (c, next) => {
   if (!opsConfigured(c.env)) return c.html(<NotConfigured />, 503);
   if (!(await verifyOpsSession(c.env, getCookie(c, OPS_COOKIE)))) {
-    if (wantsJson(c)) return c.json({ ok: false, message: "ログインしていません。" }, 401);
+    if (wantsJson(c)) return c.json({ ok: false, message: "まだ入っていません。" }, 401);
     return c.redirect("/ops/login", 303);
   }
   await next();
@@ -123,14 +123,14 @@ const OpenForm = (props: { error?: string; values?: { slug: string; name: string
     <form method="post" action="/ops/wards" class="panel">
       <label for="name">区の名前</label>
       <input id="name" name="name" type="text" required maxlength={60} value={props.values?.name ?? ""} />
-      <label for="slug">区の URL（小文字の英数字とハイフン。例 aozora-ku）</label>
+      <label for="slug">区のURL（小文字の英数字とハイフン。例aozora-ku）</label>
       <input id="slug" name="slug" type="text" required maxlength={40} value={props.values?.slug ?? ""} />
       <label for="first">最初の役員の名前</label>
       <input id="first" name="firstAccountName" type="text" required maxlength={40} value={props.values?.firstAccountName ?? ""} />
-      <details><summary>公式 LINE を使う区だけ</summary>
-        <label for="line-destination">Webhook の destination（公式 LINE の送信先 ID）</label>
+      <details><summary>公式LINEを使う区だけ</summary>
+        <label for="line-destination">Webhookのdestination（公式LINEの送信先ID）</label>
         <input id="line-destination" name="lineDestination" type="text" maxlength={100} value={props.values?.lineDestination ?? ""} />
-        <p>鍵の値は入力しません。開設後に表示する名前で Workers secrets に設定してください。</p>
+        <p>鍵の値は入力しません。開いたあとに表示する名前でWorkers secretsに設定してください。</p>
       </details>
       <p>
         <button type="submit">開く</button>
@@ -153,9 +153,9 @@ opsRoutes.get("/", async (c) => {
           <section class="panel">
             <h2><a href={`/ops/wards/${w.slug}`}>{w.name}</a></h2>
             <p>区のページ: <a href={wardUrl(c.env, c.req.url, w.slug)}>{wardUrl(c.env, c.req.url, w.slug)}</a></p>
-            <p>役員のアカウント {w.accountCount} 件</p>
-            <nav class="action-links" aria-label={`${w.name} の画面`}>
-              <a class="button secondary" href={`/ops/wards/${w.slug}/sheet`}>A4 の案内</a>
+            <p>役員のアカウント{w.accountCount} 件</p>
+            <nav class="action-links" aria-label={`${w.name}の画面`}>
+              <a class="button secondary" href={`/ops/wards/${w.slug}/sheet`}>A4の案内</a>
               <a class="button secondary" href={`/ops/wards/${w.slug}/costs`}>費用</a>
               <a class="button secondary" href={`/ops/wards/${w.slug}/budget`}>予算</a>
               <a class="button secondary" href={`/ops/wards/${w.slug}/queue`}>処理状況</a>
@@ -207,8 +207,8 @@ opsRoutes.post("/wards", async (c) => {
     <OpsPage title="区を開きました" loggedIn>
       <h1>区を開きました</h1>
       <Credentials loginId={result.account.loginId} name={result.account.name} password={result.account.password} />
-      {result.line ? <><h2>公式 LINE の鍵の設定</h2>
-        <p>Workers secrets に次の名前で鍵を設定してください。値はこの画面にも D1 にも保存しません。</p>
+      {result.line ? <><h2>公式LINEの鍵の設定</h2>
+        <p>Workers secretsに次の名前で鍵を設定してください。値はこの画面にもD1にも保存しません。</p>
         <p>チャネルシークレット: <code>{result.line.channelSecretBinding}</code></p>
         <p>チャネルアクセストークン: <code>{result.line.accessTokenBinding}</code></p>
       </> : null}
@@ -220,7 +220,7 @@ opsRoutes.post("/wards", async (c) => {
 
 const WardUrls = (props: { url: string; adminUrl: string; slug: string }) => (
   <>
-    <h2>固定 URL と QR</h2>
+    <h2>固定URLとQR</h2>
     <p>
       区のページ: <a href={props.url}>{props.url}</a>
     </p>
@@ -230,10 +230,10 @@ const WardUrls = (props: { url: string; adminUrl: string; slug: string }) => (
     <div class="qrbox" dangerouslySetInnerHTML={{ __html: qrSvg(props.url) }} />
     <p>
       <a class="button secondary" href={`/ops/wards/${props.slug}/sheet`}>
-        A4 の案内を開く（印刷）
+        A4の案内を開く（印刷）
       </a>{" "}
       <a class="button secondary" href={`/ops/wards/${props.slug}/qr.svg`}>
-        QR の画像
+        QRの画像
       </a>
     </p>
   </>
@@ -279,7 +279,7 @@ opsRoutes.get("/wards/:slug", async (c) => {
       {c.req.query("labels") === "saved" ? <Notice>保存しました。次に配る案内から、この言い方で出ます。</Notice> : null}
       <form method="post" action={`/ops/wards/${ward.slug}/answer-labels`}><AnswerLabelFields labels={labels} /><button type="submit">人数の聞き方を保存する</button></form>
       <h2>役員のアカウント</h2>
-      <p class="muted">役員全員が入れなくなった時のために、提供側からも足す・初期化ができます。</p>
+      <p class="muted">役員全員が入れなくなったときのために、提供側からも足す・初期化ができます。</p>
       <table>
         <thead>
           <tr>
@@ -398,24 +398,24 @@ opsRoutes.get("/wards/:slug/sheet", async (c) => {
   if (!ward) return c.html(<WardNotFound />, 404);
   const url = wardUrl(c.env, c.req.url, ward.slug);
   return c.html(
-    <PrintDocument title={`${ward.name} 区のページの案内`}>
+    <PrintDocument title={`${ward.name}区のページの案内`}>
       <Sheet footer={<span>{ward.name}</span>}>
         <h1>{ward.name} 区のページ</h1>
         <p>案内、お知らせ、手伝いの募集は、スマートフォンやパソコンから、登録なしでご覧になれます。</p>
-        <p>下の QR をスマートフォンのカメラで読み取ると、区のページが開きます。</p>
+        <p>下のQRをスマートフォンのカメラで読み取ると、区のページが開きます。</p>
         <p style="text-align:center">
           <PrintQr text={url} sizeMm={70} />
         </p>
         <p style="text-align:center; font-size:16pt; overflow-wrap:anywhere">{url}</p>
         <CutLine label="ここから下は役員の控え" />
-        <p>役員画面（役員の名前とパスワードでログインします）: {`${url}admin/`}</p>
+        <p>役員画面（役員の名前とパスワードで入ります）: {`${url}admin/`}</p>
       </Sheet>
     </PrintDocument>,
   );
 });
 
 const usd = (cents: number) => `${(cents / 100).toLocaleString("ja-JP", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`;
-const minutes = (milliseconds: number) => `${(milliseconds / 60_000).toLocaleString("ja-JP", { maximumFractionDigits: 1 })} 分`;
+const minutes = (milliseconds: number) => `${(milliseconds / 60_000).toLocaleString("ja-JP", { maximumFractionDigits: 1 })}分`;
 
 function summarize(months: MonthlyMetrics[]) {
   return months.reduce((sum, row) => ({
@@ -441,11 +441,11 @@ function CostCard(props: { months: MonthlyMetrics[]; title: string }) {
   return (
     <section class="panel">
       <h2>{props.title}</h2>
-      <p>入力 {total.inputs.toLocaleString("ja-JP")} 件</p>
-      <p>読む {total.readRuns.toLocaleString("ja-JP")} 回・{total.readTokens.toLocaleString("ja-JP")} トークン、つなぐ {total.connectRuns.toLocaleString("ja-JP")} 回・{total.connectTokens.toLocaleString("ja-JP")} トークン</p>
-      <p>費用: 読む見積もり {usd(total.readEstimateCents)}、処理記録の金額 {usd(total.actualRunCostCents)}、合計 {usd(totalCost)}</p>
-      <p>入力一つあたり: {total.inputs ? usd(Math.round(totalCost / total.inputs)) : "—"}、平均 {total.inputs ? minutes(total.durationMs / total.inputs) : "—"}</p>
-      <p>失敗 {total.failed.toLocaleString("ja-JP")} 件、要対応 {total.attention.toLocaleString("ja-JP")} 件</p>
+      <p>入力{total.inputs.toLocaleString("ja-JP")} 件</p>
+      <p>読む{total.readRuns.toLocaleString("ja-JP")} 回・{total.readTokens.toLocaleString("ja-JP")} トークン、つなぐ{total.connectRuns.toLocaleString("ja-JP")} 回・{total.connectTokens.toLocaleString("ja-JP")} トークン</p>
+      <p>費用: 読む見積もり{usd(total.readEstimateCents)}、処理記録の金額{usd(total.actualRunCostCents)}、合計{usd(totalCost)}</p>
+      <p>入力一つあたり: {total.inputs ? usd(Math.round(totalCost / total.inputs)) : "—"}、平均{total.inputs ? minutes(total.durationMs / total.inputs) : "—"}</p>
+      <p>失敗{total.failed.toLocaleString("ja-JP")} 件、要対応{total.attention.toLocaleString("ja-JP")} 件</p>
     </section>
   );
 }
@@ -458,12 +458,12 @@ opsRoutes.get("/costs", async (c) => {
     <OpsPage title="費用" loggedIn>
       <p><a href="/ops/">区の一覧</a></p>
       <h1>費用</h1>
-      <p>読む費用は Sonnet 5.5 の公開単価による見積もりです。処理記録の金額も加算しています。</p>
+      <p>読む費用はSonnet 5.5の公開単価による見積もりです。処理記録の金額も加算しています。</p>
       <CostCard months={summaries.flatMap((ward) => ward.months)} title="全体の合計" />
       <h2>区ごと</h2>
       {summaries.map((ward) => {
         const total = summarize(ward.months);
-        return <section class="panel"><h3><a href={`/ops/wards/${ward.slug}/costs`}>{ward.name}</a></h3><p>入力 {total.inputs} 件、費用 {usd(total.readEstimateCents + total.actualRunCostCents)}</p></section>;
+        return <section class="panel"><h3><a href={`/ops/wards/${ward.slug}/costs`}>{ward.name}</a></h3><p>入力{total.inputs} 件、費用{usd(total.readEstimateCents + total.actualRunCostCents)}</p></section>;
       })}
       <h2>月ごとの全体</h2>
       {months.map((month) => <CostCard months={summaries.flatMap((ward) => ward.months.filter((row) => row.month === month))} title={month} />)}
@@ -477,10 +477,10 @@ opsRoutes.get("/wards/:slug/costs", async (c) => {
   if (!ward) return c.html(<WardNotFound />, 404);
   const metrics = await getWardMetrics(c.env.DB, ward);
   return c.html(
-    <OpsPage title={`${ward.name} の費用`} loggedIn>
+    <OpsPage title={`${ward.name}の費用`} loggedIn>
       <p><a href={`/ops/wards/${ward.slug}`}>{ward.name} の画面</a></p>
       <h1>{ward.name} の費用</h1>
-      <p>読む費用は Sonnet 5.5 の公開単価による見積もりです。処理記録の金額も加算しています。</p>
+      <p>読む費用はSonnet 5.5の公開単価による見積もりです。処理記録の金額も加算しています。</p>
       <CostCard months={metrics.months} title="全体の合計" />
       <h2>月ごと</h2>
       {metrics.months.map((row) => <CostCard months={[row]} title={row.month} />)}
@@ -500,7 +500,7 @@ opsRoutes.get("/wards/:slug/budget", async (c) => {
   const sessionBudget = await c.env.DB.prepare("SELECT session_budget_cents FROM ops_ward_limits WHERE ward_id = ?")
     .bind(ward.wardId).first<{ session_budget_cents: number }>();
   return c.html(
-    <OpsPage title={`${ward.name} の予算`} loggedIn>
+    <OpsPage title={`${ward.name}の予算`} loggedIn>
       <p><a href={`/ops/wards/${ward.slug}`}>{ward.name} の画面</a></p>
       <h1>{ward.name} の予算</h1>
       <section class="panel">
@@ -515,13 +515,13 @@ opsRoutes.get("/wards/:slug/budget", async (c) => {
       </section>
       <section class="panel">
         <h2>今月</h2>
-        <p>費用 {usd(currentCost)} / 目安上限 {metrics.monthlyLimitCents ? usd(metrics.monthlyLimitCents) : "未設定"}</p>
+        <p>費用{usd(currentCost)} / 目安上限{metrics.monthlyLimitCents ? usd(metrics.monthlyLimitCents) : "まだ決めていません"}</p>
         {metrics.monthlyLimitCents > 0 && ratio >= 1 ? <p class="notice error">目安上限に達しています。</p>
           : metrics.monthlyLimitCents > 0 && ratio >= 0.8 ? <p class="notice">目安上限に近づいています。</p>
             : null}
         <p>目安上限に達しても、役員の配る操作は止まりません。</p>
         <form method="post" action={`/ops/wards/${ward.slug}/budget`}>
-          <label for="monthlyLimit">月の目安上限（USD。0 は上限なし）</label>
+          <label for="monthlyLimit">月の目安上限（USD。0は上限なし）</label>
           <input id="monthlyLimit" name="monthlyLimit" type="number" min="0" step="0.01" required value={(metrics.monthlyLimitCents / 100).toFixed(2)} />
           <p><button type="submit">保存</button></p>
         </form>
@@ -574,10 +574,10 @@ opsRoutes.get("/wards/:slug/queue", async (c) => {
   if (!ward) return c.html(<WardNotFound />, 404);
   const jobs = await listWardQueue(c.env.DB, ward.wardId);
   return c.html(
-    <OpsPage title={`${ward.name} の処理状況`} loggedIn>
+    <OpsPage title={`${ward.name}の処理状況`} loggedIn>
       <p><a href={`/ops/wards/${ward.slug}`}>{ward.name} の画面</a></p>
       <h1>{ward.name} の処理状況</h1>
-      {jobs.length === 0 ? <p class="muted">対応が必要な物はありません。</p> : jobs.map((job) => (
+      {jobs.length === 0 ? <p class="muted">対応が必要なものはありません。</p> : jobs.map((job) => (
         <section class="panel">
           <h2>{QUEUE_STATUS[job.status]}</h2>
           <p>受け付け: {new Date(job.createdAt).toLocaleString("ja-JP")}<br />種類: {job.task === "connect" ? "入力" : "下書き"}{job.failure ? <><br />理由: {QUEUE_FAILURE[job.failure] ?? "内容を確認してください"}</> : null}</p>

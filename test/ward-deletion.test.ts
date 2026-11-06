@@ -7,7 +7,7 @@ import { requestWardDeletion, runDeletionCron } from "../src/ops/lifecycle";
 import { applyChange, createProject } from "../src/project/api";
 import { postForm, realApp } from "./helpers";
 
-it("行政の記録・席・地図の進み具合がある区も、保管物と一緒に消して印だけ残せる", async () => {
+it("行政の記録・席・段取りの進み具合がある区も、保管物と一緒に消して印だけ残せる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const otherWard = await seedWard(env.DB);
   const seatId = await seedSeat(env.DB, ward.wardId, "架空の書記");
@@ -28,7 +28,7 @@ it("行政の記録・席・地図の進み具合がある区も、保管物と�
     receivedAt: "2026-11-05", kind: "request", subject: "架空の要望", answer: "架空の対応記録",
   }, cookie)).status).toBe(303);
   expect((await postForm(realApp, `${root}/requests/city/${city.projectId}`, {
-    operation: "save", answerDraft: "架空の回答案",
+    operation: "save", answerDraft: "架空の答えの下書き",
   }, cookie)).status).toBe(303);
   expect((await postForm(realApp, `${root}/ledger`, {
     year: "2026", budgetIncome: "12000", budgetExpense: "10000", settlementDraft: "架空の決算の下書き",

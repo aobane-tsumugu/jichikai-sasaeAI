@@ -5,7 +5,7 @@ import { seedAdmin } from "../src/core/testing";
 import { createProject } from "../src/project/api";
 import { get, postForm, realApp, withEnv } from "./helpers";
 
-it("入口の四つから進み、市の通知を知らせに保存して通常の配る画面から紙と Web に出せる", async () => {
+it("入口の四つから進み、市の通知を知らせに保存して通常の配る画面から紙とWebに出せる", async () => {
   // 外部には接続せず、送信前に LINE を呼んでいないことも確かめる。
   const request = vi.fn<typeof fetch>(async () => new Response(null, { status: 503 }));
   vi.stubGlobal("fetch", request);
@@ -28,7 +28,7 @@ it("入口の四つから進み、市の通知を知らせに保存して通常�
     expect(cityPage.status).toBe(200);
     const cityHtml = await cityPage.text();
     expect(cityHtml).toContain("配る画面へ進む");
-    expect(cityHtml).not.toContain("公式 LINE で配る");
+    expect(cityHtml).not.toContain("公式LINEで配る");
     // 古い画面から operation=send を送っても、その場では送らない。
     const prepared = await postForm(realApp, cityPath, {
       operation: "send", noticeBody: FIRST_SLICE.publicAnnouncement,

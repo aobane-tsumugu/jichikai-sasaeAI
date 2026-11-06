@@ -167,7 +167,7 @@ export async function acceptLineWebhook(
         } catch (error) {
           await db.prepare("DELETE FROM line_group_notices WHERE ward_id = ? AND group_id = ? AND notice_sent_at IS NULL")
             .bind(wardId, event.source.groupId).run();
-          console.error("LINE グループへの案内を送れませんでした", wardId, error instanceof Error ? error.name : "");
+          console.error("LINEグループへの案内を送れませんでした", wardId, error instanceof Error ? error.name : "");
         }
       }
       continue;
@@ -231,7 +231,7 @@ export async function acceptLineWebhook(
         } else try {
           match = await ports.matchInboxItem(wardId, original);
         } catch (error) {
-          console.error("LINE の当て先を確認できませんでした", wardId, eventId, error instanceof Error ? error.name : "");
+          console.error("LINEの当て先を確認できませんでした", wardId, eventId, error instanceof Error ? error.name : "");
           match = { disposition: "unmatched", reason: "当て先を確認できませんでした", inquiry: original.officialAddressed };
         }
         if (original.officialAddressed && match?.inquiry) {
@@ -260,7 +260,7 @@ export async function acceptLineWebhook(
         ) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, NULL, NULL, NULL, 'unmatched', ?)
       `).bind(
         wardId, itemId, eventId, original.senderId, original.kind, original.receivedAt,
-        original.senderDisplayName, original.sourceType === "group" ? "LINE グループ" : original.sourceType === "room" ? "LINE 複数人トーク" : "LINE 個別",
+        original.senderDisplayName, original.sourceType === "group" ? "LINEグループ" : original.sourceType === "room" ? "LINE複数人トーク" : "LINE個別",
         itemId,
       ).run();
       if (original.kind === "image") {
@@ -308,7 +308,7 @@ export async function acceptLineWebhook(
   const work = processEvents();
   if (dependencies) await work;
   else ctx.waitUntil(work.catch((error) => {
-    console.error("LINE の処理に失敗しました", wardId, error instanceof Error ? error.name : "unknown");
+    console.error("LINEの処理に失敗しました", wardId, error instanceof Error ? error.name : "unknown");
   }));
   return Response.json({ ok: true });
 }

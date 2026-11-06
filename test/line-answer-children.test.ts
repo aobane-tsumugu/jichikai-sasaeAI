@@ -6,7 +6,7 @@ import { receive } from "../src/intake/receive";
 import { createLineIntakePorts } from "../src/line/intake";
 import { createProject } from "../src/project/api";
 
-it("LINE の回答で「子ども」「子供」のどちらも人数に含める", async () => {
+it("LINEの答えで「子ども」「子供」のどちらも人数に含める", async () => {
   const { ward, account } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,
@@ -25,7 +25,7 @@ it("LINE の回答で「子ども」「子供」のどちらも人数に含め�
       wardId: ward.wardId, projectId: project.projectId, via: "line_direct",
       parts: [{ kind: "text", filename: "架空のLINEの文.txt", mediaType: "text/plain", bytes: new TextEncoder().encode(text) }],
     });
-    if (!received.jobId) throw new Error("架空の回答の原本を受け付けられませんでした。");
+    if (!received.jobId) throw new Error("架空の答えの元の資料を受け付けられませんでした。");
     await ports.saveAnswerReply!(ward.wardId, project.projectId, {
       eventId: crypto.randomUUID(), senderId: "架空の送信者", sourceType: "user",
       receivedAt: new Date().toISOString(), kind: "text", text,
@@ -38,7 +38,7 @@ it("LINE の回答で「子ども」「子供」のどちらも人数に含め�
   expect((await getAnswerTotals(env.DB, ward.wardId, project.projectId)).people).toBe(6);
 });
 
-it("LINE の全角数字と半角数字が混じる人数を読み、手伝える時間の文は保つ", async () => {
+it("LINEの全角数字と半角数字が混じる人数を読み、手伝える時間の文は保つ", async () => {
   const { ward, account } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,
@@ -58,7 +58,7 @@ it("LINE の全角数字と半角数字が混じる人数を読み、手伝え�
       wardId: ward.wardId, projectId: project.projectId, via: "line_direct",
       parts: [{ kind: "text", filename: "架空のLINEの文.txt", mediaType: "text/plain", bytes: new TextEncoder().encode(text) }],
     });
-    if (!received.jobId) throw new Error("架空の回答の原本を受け付けられませんでした。");
+    if (!received.jobId) throw new Error("架空の答えの元の資料を受け付けられませんでした。");
     await ports.saveAnswerReply!(ward.wardId, project.projectId, {
       eventId: crypto.randomUUID(), senderId: "架空の送信者", sourceType: "user",
       receivedAt: new Date().toISOString(), kind: "text", text,

@@ -72,7 +72,7 @@ function rowsOf(table: { name: string; rows: string[][] }, originalId: string): 
   const rows: ReadRow[] = [];
   table.rows.forEach((cells, i) => {
     if (cells.every((c) => c.trim() === "")) return;
-    rows.push({ cells, locator: `${i + 1} 行目`, confidence: "high" });
+    rows.push({ cells, locator: `${i + 1}行目`, confidence: "high" });
   });
   return { name: table.name, original_id: originalId, locator: table.name, columns: [], rows };
 }
@@ -87,12 +87,12 @@ export function buildDirectReading(parts: DirectPart[]): Reading {
       for (const line of part.text.split(/\r?\n/)) {
         n += 1;
         if (line.trim() === "") continue;
-        textBlocks.push({ original_id: part.originalId, locator: `${n} 行目`, text: line });
+        textBlocks.push({ original_id: part.originalId, locator: `${n}行目`, text: line });
       }
     }
     if (part.extracted) {
       part.extracted.paragraphs.forEach((p, i) => {
-        if (p.trim() !== "") textBlocks.push({ original_id: part.originalId, locator: `段落 ${i + 1}`, text: p });
+        if (p.trim() !== "") textBlocks.push({ original_id: part.originalId, locator: `段落${i + 1}`, text: p });
       });
       for (const t of part.extracted.tables) tables.push(rowsOf(t, part.originalId));
     }

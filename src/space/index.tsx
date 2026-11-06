@@ -6,7 +6,7 @@ import { getCookie, setCookie } from "hono/cookie";
 import type { Context } from "hono";
 import type { Bundle } from "../core/bundle";
 import { WardBucket } from "../core/storage";
-import { Hint, Layout, Notice } from "../core/ui";
+import { Layout, Notice } from "../core/ui";
 import { AdminPage } from "../core/admin-ui";
 import { getPublicContact } from "../settings/store";
 import { formatJstDate } from "../core/time";

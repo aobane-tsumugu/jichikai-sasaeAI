@@ -41,20 +41,20 @@ export const STATUS_LABEL: Record<JobStatus, string> = {
 };
 
 const ERROR_MESSAGE: Record<ReceiveError["code"], (filename: string) => string> = {
-  empty: () => "送る物を選ぶか、一行の文を書いてください。",
-  too_many: () => "一度に送れるのは 30 までです。分けて送ってください。",
-  too_large: (f) => `${f ? `「${f}」` : "送った物"}が大きすぎます。小さくして送ってください。`,
+  empty: () => "送るものを選ぶか、一行の文を書いてください。",
+  too_many: () => "一度に送れるのは30までです。分けて送ってください。",
+  too_large: (f) => `${f ? `「${f}」` : "送ったもの"}が大きすぎます。小さくして送ってください。`,
   unsupported: (f) =>
-    `${f ? `「${f}」` : "送った物"}は読めない形式です。写真、PDF、Word（.docx）、Excel（.xlsx）、文字のファイルを送ってください。`,
+    `${f ? `「${f}」` : "送ったもの"}は読めない形式です。写真、PDF、Word（.docx）、Excel（.xlsx）、文字のファイルを送ってください。`,
   needs_expansion: (f) =>
-    `${f ? `「${f}」` : "Word や Excel"}は、この画面を開き直してから、ブラウザで送ってください（ブラウザが中身を開いて送ります）。`,
-  bad_text: () => "一行の文が長すぎます。2 万文字までです。",
-  no_project: () => "そのプロジェクトには送れません。プロジェクトを選び直してください。",
+    `${f ? `「${f}」` : "WordやExcel"}は、この画面を開き直してから、ブラウザで送ってください（ブラウザが中身を開いて送ります）。`,
+  bad_text: () => "一行の文が長すぎます。2万文字までです。",
+  no_project: () => "その行事には送れません。行事を選び直してください。",
 };
 
 const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   ...Object.fromEntries(Object.entries(ERROR_MESSAGE).map(([code, message]) => [code, message("")])),
-  withdraw_failed: "取り下げられませんでした。消す時は区の設定の「消す求め」から対象を選んでください。",
+  withdraw_failed: "取り下げられませんでした。消すときは区の設定の「消す求め」から対象を選んでください。",
   retry_failed: "今は読み直せません。送ったものを見て、このまま進めることもできます。",
 };
 
@@ -71,7 +71,7 @@ async function jobTitle(db: D1Database, wardId: string, job: JobListItem): Promi
     return text ? `${text.slice(0, 40)}${text.length > 40 ? "…" : ""}` : "一行の文";
   }
   const name = job.first_filename || (job.first_kind === "photo" ? "撮った写真" : "ファイル");
-  return job.original_count > 1 ? `${name} ほか ${job.original_count - 1} 件` : name;
+  return job.original_count > 1 ? `${name}ほか${job.original_count - 1}件` : name;
 }
 
 export const intakeAdmin = new Hono<AdminEnv>();
@@ -264,9 +264,9 @@ intakeAdmin.post("/intake", async (c) => {
     if (!wantsJson) return c.redirect(receivedPath, 303);
     const nextPage = { redirectTo: receivedPath };
     if (!outcome.jobId) {
-      return reply(true, "同じ物でした。", { jobId: null, duplicates: outcome.duplicates.length, ...nextPage });
+      return reply(true, "同じものでした。", { jobId: null, duplicates: outcome.duplicates.length, ...nextPage });
     }
-    const dup = outcome.duplicates.length > 0 ? `（${outcome.duplicates.length} 件は同じ物でした）` : "";
+    const dup = outcome.duplicates.length > 0 ? `（${outcome.duplicates.length}件は同じものでした）` : "";
     return reply(true, `${RECEIVED_MESSAGE}${dup}`, { jobId: outcome.jobId, duplicates: outcome.duplicates.length, ...nextPage });
   } catch (err) {
     if (err instanceof ReceiveError) return reply(false, ERROR_MESSAGE[err.code](err.filename), {}, 400, err.code);

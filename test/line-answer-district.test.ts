@@ -6,7 +6,7 @@ import { receive } from "../src/intake/receive";
 import { createLineIntakePorts } from "../src/line/intake";
 import { createProject } from "../src/project/api";
 
-it("別の班の同名世帯のLINE回答を分け、班が分からない文からは回答を作らない", async () => {
+it("別の班の同名世帯のLINE答えを分け、班が分からない文からは答えを作らない", async () => {
   const { ward, account } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,

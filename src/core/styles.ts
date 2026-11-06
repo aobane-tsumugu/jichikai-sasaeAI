@@ -195,8 +195,8 @@ details.fold > div { padding: 0 var(--space-3) var(--space-3); }
 .map-months { position: relative; z-index: 1; display: grid; grid-template-columns: var(--label) minmax(0, 1fr); padding-top: 1.9rem; border-bottom: 2px solid var(--fg); font-size: var(--text-note); font-weight: 700; }
 .map-months span { grid-column: 2; display: grid; grid-template-columns: 31fr 30fr 31fr 30fr; }
 .map-months i::first-line { background: var(--bg); }
-.map-months i { padding-left: var(--space-1); border-left: 1px solid var(--line-strong); font-style: normal; white-space: nowrap; }
-@container app (max-width: 35.99rem) { .map-months i { white-space: normal; overflow-wrap: anywhere; } }
+.map-months i { padding-left: var(--space-1); border-left: 1px solid var(--line-strong); font-style: normal; white-space: nowrap; overflow-wrap: normal; }
+
 .map-list { margin: 0; padding: 0; list-style: none; }
 .map-row { display: grid; grid-template-columns: var(--label) minmax(0, 1fr); align-items: stretch; min-height: var(--tap); border-bottom: 1px solid var(--line); color: var(--fg); text-decoration: none; }
 .map-row:hover, .map-row:active, .map-row.now { background: var(--info-bg); }

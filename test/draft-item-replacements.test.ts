@@ -5,12 +5,12 @@ import { getEditableDocument, saveAIDraft } from "../src/project/actions";
 import { createProject, getProjectState } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("場所と雨天会場を同時に直しても、片方の変更で別の会場を書き換えず保存・配布する", async () => {
+it("場所と雨会場を同ときに直しても、片方の変更で別の会場を書き換えず保存・配布する", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,
   });
-  const before = "場所: 架空会場(A)\n\n雨天時: 架空会場(B)";
+  const before = "場所: 架空会場(A)\n\n雨のとき: 架空会場(B)";
   expect(await saveAIDraft(env.DB, ward.wardId, project.projectId, "announcement", "replacement-test@1", {
     title: "架空の案内", text: before, items: [
       { key: "place", content: "架空会場(A)" },
@@ -29,7 +29,7 @@ it("場所と雨天会場を同時に直しても、片方の変更で別の会�
   const saved = await getEditableDocument(env.DB, ward.wardId, project.projectId, "announcement");
   if (!saved) throw new Error("保存した案内がありません。");
   expect(JSON.parse(saved.body)).toMatchObject({
-    text: "場所: 架空会場(B)\r\n\r\n雨天時: 架空会場(C)",
+    text: "場所: 架空会場(B)\r\n\r\n雨のとき: 架空会場(C)",
     items: expect.arrayContaining([
       { key: "place", content: "架空会場(B)" }, { key: "rain_plan", content: "架空会場(C)" },
     ]),
@@ -51,7 +51,7 @@ it("場所と雨天会場を同時に直しても、片方の変更で別の会�
   ]) {
     const html = await (await get(realApp, path, cookie)).text();
     expect(html).toContain("場所: 架空会場(B)");
-    expect(html).toContain("雨天時: 架空会場(C)");
+    expect(html).toContain("雨のとき: 架空会場(C)");
     expect(html).not.toContain("場所: 架空会場(C)");
   }
 });

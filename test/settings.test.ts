@@ -138,11 +138,11 @@ describe("区の設定: 役員の席とアカウント", () => {
     expect((await get(realApp, `/${ward.slug}/admin/`, cookie)).status).toBe(200); // いまの端末は残る
   });
 
-  it("他の区の席、アカウント、端末は、自分の区の URL からは触れない", async () => {
+  it("他の区の席、アカウント、端末は、自分の区のURLからは触れない", async () => {
     const a = await seedAdmin(env.DB);
     const b = await seedAdmin(env.DB);
-    await seedAccount(env.DB, b.ward.wardId, "B の二人目");
-    const bSeat = await seedSeat(env.DB, b.ward.wardId, "B の会長");
+    await seedAccount(env.DB, b.ward.wardId, "Bの二人目");
+    const bSeat = await seedSeat(env.DB, b.ward.wardId, "Bの会長");
     const bDevice = await seedDeviceCookie(env.DB, b.ward.wardId, b.account.accountId);
     const bDeviceId = (
       await env.DB.prepare("SELECT device_id FROM devices WHERE ward_id = ? ORDER BY created_at DESC LIMIT 1")
@@ -167,17 +167,17 @@ describe("区の設定: 役員の席とアカウント", () => {
     const mine = await env.DB.prepare("SELECT seat_id FROM accounts WHERE account_id = ?").bind(a.account.accountId).first<{ seat_id: string | null }>();
     expect(mine?.seat_id).toBeNull();
     const aList = await (await get(realApp, people(a.ward.slug), a.cookie)).text();
-    expect(aList).not.toContain("B の二人目");
-    expect(aList).not.toContain("B の会長");
+    expect(aList).not.toContain("Bの二人目");
+    expect(aList).not.toContain("Bの会長");
   });
 
-  it("別の origin からの POST は受けない", async () => {
+  it("別のoriginからのPOSTは受けない", async () => {
     const { ward, cookie } = await seedAdmin(env.DB);
     const res = await postForm(realApp, people(ward.slug, "/seats"), { title: "会長" }, cookie, env, { origin: "https://evil.example" });
     expect(res.status).toBe(403);
   });
 
-  it("ログインしていなければ、席もアカウントも触れない", async () => {
+  it("役員画面に入っていなければ、席もアカウントも触れない", async () => {
     const { ward } = await seedAdmin(env.DB);
     const res = await postForm(realApp, people(ward.slug, "/seats"), { title: "会長" });
     expect(res.status).toBe(303);
@@ -186,12 +186,12 @@ describe("区の設定: 役員の席とアカウント", () => {
   });
 });
 
-describe("区の設定: 区の情報と定型文", () => {
+describe("区の設定: 区の情報と決まった知らせの文", () => {
   it("公開用の連絡先と班の名前を保存し、空にすると消える", async () => {
     const { ward, cookie } = await seedAdmin(env.DB);
-    const res = await postForm(realApp, `/${ward.slug}/admin/settings/info`, { contact: "自治会の窓口\n電話 000-0000-0000（架空）", squads: " 1班\n2班\n\n2班\n 3班 " }, cookie);
+    const res = await postForm(realApp, `/${ward.slug}/admin/settings/info`, { contact: "自治会の窓口\n電話000-0000-0000（架空）", squads: " 1班\n2班\n\n2班\n 3班 " }, cookie);
     expect(res.status).toBe(303);
-    expect(await getPublicContact(env.DB, ward.wardId)).toBe("自治会の窓口\n電話 000-0000-0000（架空）");
+    expect(await getPublicContact(env.DB, ward.wardId)).toBe("自治会の窓口\n電話000-0000-0000（架空）");
     expect(await getSquads(env.DB, ward.wardId)).toEqual(["1班", "2班", "3班"]);
     const page = await (await get(realApp, `/${ward.slug}/admin/settings/info`, cookie)).text();
     expect(page).toContain("自治会の窓口");
@@ -202,7 +202,7 @@ describe("区の設定: 区の情報と定型文", () => {
     expect(await getSetting(env.DB, ward.wardId, SETTING_KEYS.squads)).toBeNull();
   });
 
-  it("長すぎる入力は保存せず、入力を残して知らせる。HTML は escape される", async () => {
+  it("長すぎる入力は保存せず、入力を残して知らせる。HTMLはescapeされる", async () => {
     const { ward, cookie } = await seedAdmin(env.DB);
     const res = await postForm(realApp, `/${ward.slug}/admin/settings/info`, { contact: "<script>alert(1)</script>", squads: `${"あ".repeat(21)}` }, cookie);
     expect(res.status).toBe(400);
@@ -213,14 +213,14 @@ describe("区の設定: 区の情報と定型文", () => {
     expect(await getSquads(env.DB, ward.wardId)).toEqual([]);
   });
 
-  it("定型文: 標準が出て、足す、直す、消す、標準に戻すができる", async () => {
+  it("決まった知らせの文: 標準が出て、足す、直す、消す、標準に戻すができる", async () => {
     const { ward, cookie } = await seedAdmin(env.DB);
     const url = `/${ward.slug}/admin/settings/templates`;
     expect(await (await get(realApp, url, cookie)).text()).toContain(DEFAULT_TEMPLATES[0]!.name);
 
     expect((await postForm(realApp, url, { name: "中止の知らせ", body: "{行事名}は中止します。" }, cookie)).status).toBe(303);
     let list = await getTemplates(env.DB, ward.wardId);
-    expect(list.map((t) => t.name)).toEqual(["雨天の変更の知らせ", "中止の知らせ"]);
+    expect(list.map((t) => t.name)).toEqual(["雨の変更の知らせ", "中止の知らせ"]);
 
     const added = list[1]!;
     expect((await postForm(realApp, `${url}/${added.id}`, { name: "中止のお知らせ", body: "{行事名}は中止です。" }, cookie)).status).toBe(303);
@@ -233,20 +233,20 @@ describe("区の設定: 区の情報と定型文", () => {
     expect((await postForm(realApp, url, { name: "", body: "x" }, cookie)).status).toBe(400);
 
     expect((await postForm(realApp, `${url}/reset`, {}, cookie)).status).toBe(303);
-    expect((await getTemplates(env.DB, ward.wardId)).map((t) => t.name)).toEqual(["雨天の変更の知らせ"]);
+    expect((await getTemplates(env.DB, ward.wardId)).map((t) => t.name)).toEqual(["雨の変更の知らせ"]);
   });
 
   it("設定は区ごとに分かれる", async () => {
     const a = await seedAdmin(env.DB);
     const b = await seedAdmin(env.DB);
-    await postForm(realApp, `/${a.ward.slug}/admin/settings/info`, { contact: "A の窓口", squads: "A1班" }, a.cookie);
+    await postForm(realApp, `/${a.ward.slug}/admin/settings/info`, { contact: "Aの窓口", squads: "A1班" }, a.cookie);
     expect(await getPublicContact(env.DB, b.ward.wardId)).toBe("");
     expect(await getSquads(env.DB, b.ward.wardId)).toEqual([]);
-    expect(await getPublicContact(env.DB, a.ward.wardId)).toBe("A の窓口");
+    expect(await getPublicContact(env.DB, a.ward.wardId)).toBe("Aの窓口");
   });
 });
 
-describe("設定の保存と定型文の部品", () => {
+describe("設定の保存と決まった知らせの文の部品", () => {
   it("上書きでき、不正なキーと大きすぎる値は拒む", async () => {
     const ward = await seedWard(env.DB);
     await setSetting(env.DB, ward.wardId, "line.enabled", "1");
@@ -258,13 +258,13 @@ describe("設定の保存と定型文の部品", () => {
     expect(await getSetting(env.DB, other.wardId, "line.enabled")).toBeNull();
   });
 
-  it("定型文の {言葉} を置き換え、値の無い言葉は残す", () => {
+  it("決まった知らせの文の {言葉}を置き換え、値のない言葉は残す", () => {
     expect(renderTemplate("{行事名}は{会場}で。{日時}", { 行事名: "収穫祭", 会場: "公民館" })).toBe("収穫祭は公民館で。{日時}");
     expect(renderTemplate("{ 会場 }", { 会場: "ホール" })).toBe("ホール");
     expect(renderTemplate("波括弧なし", {})).toBe("波括弧なし");
   });
 
   it("テキスト欄の一行に一つを整える", () => {
-    expect(linesToList(" 1班 \r\n\r\n2班\n1班\n  3  班 ")).toEqual(["1班", "2班", "3 班"]);
+    expect(linesToList(" 1班 \r\n\r\n2班\n1班\n  3班 ")).toEqual(["1班", "2班", "3班"]);
   });
 });

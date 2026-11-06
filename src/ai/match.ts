@@ -105,7 +105,7 @@ export async function matchProject(client: Anthropic, input: MatchInput): Promis
   const parsed = JSON.parse(text.text) as { choice?: unknown; reason?: unknown; intent?: unknown };
   const allowed = new Set([...ids, MATCH_NEW, MATCH_MULTIPLE, MATCH_UNRELATED]);
   if (typeof parsed.choice !== "string" || !allowed.has(parsed.choice)) {
-    throw new Error("当てるの応答が候補に無い ID を返しました");
+    throw new Error("当てるの応答が候補にないIDを返しました");
   }
   return {
     choice: parsed.choice,

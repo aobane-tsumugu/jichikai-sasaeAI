@@ -9,7 +9,7 @@ import { DEFAULT_TEMPLATES, renderTemplate, type Template } from "../settings/ke
 /** 標準の文面は見本に揃え、区が直した文面はそのまま使う。 */
 export function rainTemplate(template: Template): Template {
   return template.id === "rain" && template.body === DEFAULT_TEMPLATES.find((item) => item.id === "rain")?.body
-    ? { ...template, body: "{行事名}は、雨のため{会場}で行います。日時は{日時}です。くわしくは区のページをご覧ください。" }
+    ? { ...template, body: "{行事名}は、雨のため{会場}で行います。日ときは{日時}です。くわしくは区のページをご覧ください。" }
     : template;
 }
 
@@ -37,7 +37,7 @@ export async function rainDraft(c: Context<AdminEnv>) {
       <script type="application/json" id="rain-templates" dangerouslySetInnerHTML={{ __html: JSON.stringify(templates).replace(/</g, "\\u003c") }} />
       <script dangerouslySetInnerHTML={{ __html: `(() => { const form = document.getElementById('rain-form'); const templates = JSON.parse(document.getElementById('rain-templates').textContent); const update = () => { const data = new FormData(form); const template = templates.find(item => item.id === data.get('templateId')); if (!template) return; const values = { '行事名': data.get('eventName'), '会場': data.get('place'), '日時': data.get('dateTime') }; document.getElementById('rain-preview').textContent = template.body.replace(/\\{([^{}]+)\\}/g, (whole, key) => values[key.trim()] ?? whole); }; form.addEventListener('input', update); form.addEventListener('change', update); })();` }} />
       <div class="action-bar"><button>配る</button></div>
-    </form> : <p>{state.project.closedAt ? "このプロジェクトは閉じました。" : "案内を配ったあとに、雨の変更を知らせられます。"}</p>}
+    </form> : <p>{state.project.closedAt ? "この行事は閉じました。" : "案内を配ったあとに、雨の変更を知らせられます。"}</p>}
     <p class="muted">配ると、区のページと公式LINEに出ます。LINEで送った知らせは取り消せません。</p>
     {!template ? <p><a href={adminPath(ward, `/projects/${id}/draft/notice?edit=1`)}>知らせの下書きを書く</a></p> : null}
   </Layout>);

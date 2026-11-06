@@ -9,7 +9,7 @@ import { saveAIDraft, setMapTask } from "../src/project/actions";
 import { applyChange, createProject, getProjectState, type DocumentKind } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("去年から案を作り、新しい資料が入っても全戸に配り、地図と報告を残す", async () => {
+it("去年から下書きを作り、新しい資料が入っても全戸に配り、段取りと報告を残す", async () => {
   let broadcasts = 0;
   vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -53,7 +53,7 @@ it("去年から案を作り、新しい資料が入っても全戸に配り、�
     // AI は呼ばず、記録の内容から作った案を保存し、以後は実際の配る経路を通す。
     const saveDraft = async (kind: DocumentKind, text: string) => {
       const state = await getProjectState(env.DB, ward.wardId, project.projectId);
-      if (!state) throw new Error("プロジェクトが見つかりません");
+      if (!state) throw new Error("行事が見つかりません");
       expect(await saveAIDraft(env.DB, ward.wardId, project.projectId, kind, getDraftPack(kind).version, {
         text, items: [{ key: "place", content: FIRST_SLICE.previousPlace, source: FIRST_SLICE.oldYearSource }],
         based_on_state_version: state.project.stateVersion,
@@ -62,10 +62,10 @@ it("去年から案を作り、新しい資料が入っても全戸に配り、�
         JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
         WHERE d.ward_id = ? AND d.project_id = ? AND d.kind = ? ORDER BY v.version_no DESC LIMIT 1`)
         .bind(ward.wardId, project.projectId, kind).first<{ document_id: string; version_id: string; version_no: number }>();
-      if (!row) throw new Error("保存した案が見つかりません");
+      if (!row) throw new Error("保存した下書きが見つかりません");
       return { documentId: row.document_id, versionId: row.version_id, versionNo: String(row.version_no) };
     };
-    const announcement = await saveDraft("announcement", `${FIRST_SLICE.draftText}\n雨天時: （確認中）`);
+    const announcement = await saveDraft("announcement", `${FIRST_SLICE.draftText}\n雨のとき: （確認中）`);
     await replaceRoster(env.DB, ward.wardId, [{ household: FIRST_SLICE.firstHousehold, district: FIRST_SLICE.district }], { household: 0, district: 1 });
     expect((await applyChange(env.DB, ward.wardId, project.projectId, {
       kind: "item", itemKey: "rain_plan", value: FIRST_SLICE.rainAnnouncement,

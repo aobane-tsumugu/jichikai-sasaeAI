@@ -7,21 +7,21 @@ import { applyChange, createProject, getProjectState } from "../src/project/api"
 
 const db = env.DB;
 
-describe("閉じると来年の種", () => {
-  it("閉じたプロジェクトには中身を書けない", async () => {
+describe("閉じるとこれをもとに新しく始める", () => {
+  it("閉じた行事には中身を書けない", async () => {
     const ward = await seedWard(db);
     const account = await seedAccount(db, ward.wardId, "架空の役員");
     const project = await createProject(db, ward.wardId, { kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId });
     await db.prepare("UPDATE projects SET closed_at = ?, closed_by_account_id = ? WHERE ward_id = ? AND project_id = ?")
       .bind("2026-11-05T00:00:00.000Z", account.accountId, ward.wardId, project.projectId).run();
     const result = await applyChange(db, ward.wardId, project.projectId, {
-      kind: "item", itemKey: "content", value: "閉じた後の書き込み", source: { kind: "person", accountId: account.accountId },
+      kind: "item", itemKey: "content", value: "閉じたあとの書き込み", source: { kind: "person", accountId: account.accountId },
       confidence: "high", packVersion: "close-test@1",
     });
     expect(result).toEqual({ status: "rejected", reason: "closed" });
   });
 
-  it("去年の地図と今年の中身を種に複写し、行事の日に時期を置き直す", async () => {
+  it("去年の段取りと今年の中身を種に複写し、行事の日に時期を置き直す", async () => {
     const ward = await seedWard(db);
     const account = await seedAccount(db, ward.wardId, "架空の役員");
     const source = await createProject(db, ward.wardId, {

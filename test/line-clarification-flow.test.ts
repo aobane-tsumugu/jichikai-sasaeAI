@@ -48,7 +48,7 @@ it("写真をまとめて同じ場所で聞き、別の人の答えを受け、�
     if (path.endsWith("/message/quota")) return Response.json({ type: "limited", value: 200 });
     if (path.endsWith("/message/quota/consumption")) return Response.json({ totalUsage: 200 });
     if (path.endsWith("/members/count")) return Response.json({ count: 7 });
-    throw new Error(`試験に無い LINE 呼び出し: ${path}`);
+    throw new Error(`試験にないLINE呼び出し: ${path}`);
   };
   const ports: LineIntakePorts = {
     async receiveOriginal(wardId, original) {
@@ -65,7 +65,7 @@ it("写真をまとめて同じ場所で聞き、別の人の答えを受け、�
       await setJobProject(env.DB, wardId, jobId, projectId);
       await attachClarificationQuestions(env.DB, wardId, jobId);
     },
-    async discard() { throw new Error("この流れで原本を捨てません"); },
+    async discard() { throw new Error("この流れで元の資料を捨てません"); },
   };
   const webhook = async (events: unknown[], at = now) => {
     const body = JSON.stringify({ destination, events });
@@ -127,7 +127,7 @@ it("写真をまとめて同じ場所で聞き、別の人の答えを受け、�
     expect(sent).toHaveLength(2); // 答えがあっても無くても、自動の催促はしない。
 
     const small = await receive(runtime, { wardId: ward.wardId, projectId: project.projectId, via: "admin", parts: [{ kind: "photo", filename: FIRST_SLICE.answerSheetFilename, mediaType: "image/jpeg", bytes: image(3, 300) }] });
-    if (!small.jobId) throw new Error("小さい画像も原本として受け取る必要があります");
+    if (!small.jobId) throw new Error("小さい画像も元の資料として受け取る必要があります");
     await quickCheckPhotos(runtime, { wardId: ward.wardId, via: "admin", parts: [{ kind: "photo", filename: FIRST_SLICE.answerSheetFilename, mediaType: "image/jpeg", bytes: image(3, 300) }] }, small.jobId);
     expect((await photoChecks(env.DB, ward.wardId, small.jobId))[0]).toMatchObject({ readability: "unreadable", reason: "small" });
     const receipt = await (await get(realApp, `/${ward.slug}/admin/intake/received`, cookie, runtime)).text();

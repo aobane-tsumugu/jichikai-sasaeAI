@@ -12,7 +12,7 @@ export function formatJst(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
   const part = (type: string) => jst.formatToParts(date).find((p) => p.type === type)?.value ?? "";
-  return `${part("month")}月${part("day")}日 ${part("hour")}:${part("minute")}`;
+  return `${part("month")}月${part("day")}日${part("hour")}:${part("minute")}`;
 }
 
 const jstDate = new Intl.DateTimeFormat("ja-JP", {

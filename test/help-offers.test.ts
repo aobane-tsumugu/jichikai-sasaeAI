@@ -8,7 +8,7 @@ import { createProject } from "../src/project/api";
 import { saveDocument } from "../src/project/actions";
 import { get, postForm, realApp } from "./helpers";
 
-it("募集から班を選ばず申し込み、世帯と別に数えて当番の材料にし、行事を閉じると名前を消す", async () => {
+it("募集から班を選ばず申し込み、世帯と別に数えて当番の資料にし、行事を閉じると名前を消す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: FIRST_SLICE.nextYearTitle, year: FIRST_SLICE.eventYear, accountId: account.accountId,

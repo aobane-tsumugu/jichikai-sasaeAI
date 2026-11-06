@@ -195,7 +195,7 @@ export async function inspectSnapshots(env: Env, wardId: string): Promise<Snapsh
         if (data.format !== 1 || data.wardId !== wardId || typeof data.capturedAt !== "string" || typeof data.tables !== "object" || data.tables === null || Array.isArray(data.tables)) throw new Error("区または項目を確認できません");
         const tables = data.tables as Record<string, unknown>;
         const rows = Object.values(tables);
-        if (rows.some((tableRows) => !Array.isArray(tableRows))) throw new Error("表の内容が配列ではありません");
+        if (rows.some((tableRows) => !Array.isArray(tableRows))) throw new Error("記録の表を読み取れません");
         if (rows.some((tableRows) => (tableRows as unknown[]).some((row) =>
           typeof row !== "object" || row === null || (row as { ward_id?: unknown }).ward_id !== wardId))) {
           throw new Error("別の区の行、または区を確認できない行があります");
@@ -291,7 +291,7 @@ async function eraseJob(env: Env, item: QueueRow, projectJob?: { jobId: string; 
   const job = await env.DB.prepare("SELECT session_id FROM jobs WHERE ward_id = ? AND job_id = ?")
     .bind(wardId, jobId).first<{ session_id: string | null }>();
   if (cursor === null) {
-    if (job?.session_id && !(await deleteSession(env, wardId, jobId, job.session_id))) throw new Error("AI 側の処理を消せませんでした");
+    if (job?.session_id && !(await deleteSession(env, wardId, jobId, job.session_id))) throw new Error("AI側の処理を消せませんでした");
     await env.DB.prepare("UPDATE ops_deletion_queue SET cursor = ?, state = 'running', last_error = '' WHERE queue_id = ? AND ward_id = ?")
       .bind(nextCursor("snapshots"), item.queue_id, wardId).run();
     return "continue";
@@ -449,7 +449,7 @@ async function finishDeletion(env: Env, item: QueueRow): Promise<void> {
     const session = await env.DB.prepare("SELECT job_id, session_id FROM jobs WHERE ward_id = ? AND session_id IS NOT NULL ORDER BY connect_started_at LIMIT 1")
       .bind(item.ward_id).first<{ job_id: string; session_id: string }>();
     if (session) {
-      if (!(await deleteSession(env, item.ward_id, session.job_id, session.session_id))) throw new Error("AI 側の処理を消せませんでした");
+      if (!(await deleteSession(env, item.ward_id, session.job_id, session.session_id))) throw new Error("AI側の処理を消せませんでした");
       return;
     }
     const ai = await env.DB.prepare("SELECT vault_id FROM ward_ai WHERE ward_id = ?")

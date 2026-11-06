@@ -36,8 +36,8 @@ const IDS = {
 
 beforeEach(() => resetAnthropicAuthCache());
 
-describe("連携の JWT", () => {
-  it("ES256 で署名し、決めた中身を持ち、毎回 jti が変わる", async () => {
+describe("連携のJWT", () => {
+  it("ES256で署名し、決めた中身を持ち、毎回jtiが変わる", async () => {
     const { raw, publicKey } = await makeKey();
     const now = Date.UTC(2026, 10, 5, 0, 0, 0);
     const jwt = await signFederationJwt(raw, now);
@@ -112,7 +112,7 @@ describe("トークンの交換", () => {
     expect((error as AnthropicAuthError).message).not.toContain("秘密っぽい");
   });
 
-  it("切れる 1 分前までは使い回し、それを過ぎたら取り直す。同時の要求は一度にまとめる", async () => {
+  it("切れる1分前までは使い回し、それを過ぎたら取り直す。同ときの要求は一度にまとめる", async () => {
     const { raw } = await makeKey();
     let count = 0;
     const fetchImpl = async () => {
@@ -161,7 +161,7 @@ const emptyReading: Reading = {
   document_kind: "memo",
   original_years: [{ original_id: "o1", year: null }],
   summary: "要約",
-  text_blocks: [{ original_id: "o1", locator: "1 枚目", text: "文" }],
+  text_blocks: [{ original_id: "o1", locator: "1枚目", text: "文" }],
   fields: [{ name: "日時", value: "10月25日", confidence: "high", original_id: "取り違えたID", locator: "上" }],
   tables: [],
   decisions: [],
@@ -178,7 +178,7 @@ function message(text: string, stopReason = "end_turn") {
 }
 
 describe("読むの呼び出し", () => {
-  it("原本ごとに ID の行と画像か PDF を並べ、型付きの出力を求める", async () => {
+  it("元の資料ごとにIDの行と画像かPDFを並べ、型付きの出力を求める", async () => {
     const { client, requests } = fakeClient(() => message(JSON.stringify(emptyReading)));
     const result = await readOriginals(client, {
       kind: "general",
@@ -206,7 +206,7 @@ describe("読むの呼び出し", () => {
     expect(reading.fields[0]?.original_id).toBe("");
   });
 
-  it("原本が一つだけなら、取り違えた original_id をその原本に直す", () => {
+  it("元の資料が一つだけなら、取り違えたoriginal_idをその元の資料に直す", () => {
     const fixed = fixOriginalIds(emptyReading, ["o1"]) as Reading;
     expect(fixed.fields[0]?.original_id).toBe("o1");
     expect(fixed.text_blocks[0]?.original_id).toBe("o1");
@@ -217,17 +217,17 @@ describe("読むの呼び出し", () => {
     expect(() => buildContent([original("o1", "text/plain")])).toThrow("読めません");
   });
 
-  it("断られた、長すぎた、JSON でない、の失敗を分ける", async () => {
+  it("断られた、長すぎた、JSONでない、の失敗を分ける", async () => {
     const run = (text: string, stop?: string) =>
       readOriginals(fakeClient(() => message(text, stop)).client, { kind: "general", originals: [original("o1", "image/png")] }).catch(
         (e: unknown) => e as ReadError,
       );
     expect(await run("{}", "refusal")).toMatchObject({ failure: "refused", retryable: false });
     expect(await run("{", "max_tokens")).toMatchObject({ failure: "too_large", retryable: false });
-    expect(await run("これは JSON ではない")).toMatchObject({ failure: "error", retryable: true });
+    expect(await run("これはJSONではない")).toMatchObject({ failure: "error", retryable: true });
   });
 
-  it("API の失敗は、再試行してよい物とそうでない物に分ける。本文は例外に入れない", async () => {
+  it("APIの失敗は、再試行してよい物とそうでない物に分ける。本文は例外に入れない", async () => {
     const status = (n: number) => Object.assign(new Error("本文 秘密"), { status: n });
     const run = (err: Error) =>
       readOriginals(fakeClient(() => err).client, { kind: "general", originals: [original("o1", "image/png")] }).catch(
@@ -251,11 +251,11 @@ describe("読むの呼び出し", () => {
 
 describe("当てる", () => {
   const candidates = [
-    { id: "p-1", title: "秋の収穫祭", detail: "行事、10 月 24 日" },
+    { id: "p-1", title: "秋の収穫祭", detail: "行事、10月24日" },
     { id: "p-2", title: "防災訓練" },
   ];
 
-  it("候補の ID と三つの決まった選択肢の列挙に縛り、haiku で一回だけ呼ぶ", async () => {
+  it("候補のIDと三つの決まった選択肢の列挙に縛り、haikuで一回だけ呼ぶ", async () => {
     const { client, requests } = fakeClient(() => ({
       stop_reason: "end_turn",
       content: [{ type: "text", text: JSON.stringify({ choice: "p-1", reason: "収穫祭の日程の話です" }) }],
@@ -271,13 +271,13 @@ describe("当てる", () => {
     expect(buildMatchPrompt({ candidates, summary: "要約", excerpt: "あ".repeat(5000) })).not.toContain("あ".repeat(2001));
   });
 
-  it("候補に無い ID は受け付けない。候補の ID の不正も弾く", async () => {
+  it("候補にないIDは受け付けない。候補のIDの不正も弾く", async () => {
     const wrong = fakeClient(() => ({
       stop_reason: "end_turn",
       content: [{ type: "text", text: JSON.stringify({ choice: "p-9", reason: "" }) }],
       usage: { input_tokens: 1, output_tokens: 1 },
     }));
-    await expect(matchProject(wrong.client, { candidates, summary: "x" })).rejects.toThrow("候補に無い");
+    await expect(matchProject(wrong.client, { candidates, summary: "x" })).rejects.toThrow("候補にない");
     await expect(matchProject(wrong.client, { candidates: [{ id: "__new__", title: "x" }], summary: "x" })).rejects.toThrow("不正");
     await expect(matchProject(wrong.client, { candidates: [candidates[0] as (typeof candidates)[0], candidates[0] as (typeof candidates)[0]], summary: "x" })).rejects.toThrow("不正");
     expect(MATCH_UNRELATED).toBe("__unrelated__");

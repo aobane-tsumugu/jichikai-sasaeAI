@@ -5,7 +5,7 @@ import { seedAdmin } from "../src/core/testing";
 import { createProject } from "../src/project/api";
 import { cookieFrom, get, postForm, realApp } from "./helpers";
 
-it("役員が空間を開き、実行委員が合言葉で回答を見て、閉じた後は案内を読む", async () => {
+it("役員が実行委員と班長のページを開き、実行委員が合言葉で答えを見て、閉じたあとは案内を読む", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId,
@@ -16,7 +16,7 @@ it("役員が空間を開き、実行委員が合言葉で回答を見て、閉�
   const admin = `/${ward.slug}/admin`;
   const space = `/${ward.slug}/space/${project.projectId}`;
   const answerList = await get(realApp, `${admin}/answers`, cookie);
-  expect(await answerList.text()).toMatch(/<h1>回答(?:\s|<)/);
+  expect(await answerList.text()).toMatch(/<h1>答え(?:\s|<)/);
   const answer = await get(realApp, `${admin}/answers/${project.projectId}`, cookie);
   expect(await answer.text()).toContain("答えの一覧");
 

@@ -93,8 +93,8 @@ export function cleanLoginId(input: string): string {
 
 export function loginIdProblem(input: string): string | null {
   const id = cleanLoginId(input);
-  if (id === "") return "ID を入れてください。";
-  if (id.length > 40) return "ID は 40 文字までです。";
-  if (!/^[A-Za-z0-9]+$/.test(id)) return "ID は半角の英数字だけで入力してください。";
+  if (id === "") return "IDを入れてください。";
+  if (id.length > 40) return "IDは40文字までです。";
+  if (!/^[A-Za-z0-9]+$/.test(id)) return "IDは半角の英数字だけで入力してください。";
   return null;
 }

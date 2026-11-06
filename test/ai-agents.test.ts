@@ -103,8 +103,8 @@ afterEach(() => {
   setProjectApi(null);
 });
 
-describe("agent の用意", () => {
-  it("区ごとに environment、vault、MCP の鍵、agent を一度だけ作り、手は MCP の五つだけにする", async () => {
+describe("agentの用意", () => {
+  it("区ごとにenvironment、vault、MCPの鍵、agentを一度だけ作り、手はMCPの五つだけにする", async () => {
     const ward = await seedWard(env.DB);
     const ai = await ensureWardAi(env, ward);
     expect(ai).toMatchObject({ environment_id: "env_1", vault_id: "vlt_1", agent_id: "agent_1", agent_version: 1, pack_version: PACK_VERSION });
@@ -122,7 +122,7 @@ describe("agent の用意", () => {
     expect(fake.calls.vaults).toBe(1);
   });
 
-  it("包みの版が変われば agent を更新する", async () => {
+  it("包みの版が変わればagentを更新する", async () => {
     const ward = await seedWard(env.DB);
     await ensureWardAi(env, ward);
     await env.DB.prepare("UPDATE ward_ai SET pack_version = 'old' WHERE ward_id = ?").bind(ward.wardId).run();
@@ -136,20 +136,20 @@ describe("agent の用意", () => {
     let failOnce = true;
     const original = fake.client.beta.agents.create;
     (fake.client.beta.agents as { create: unknown }).create = async (p: never) => {
-      if (failOnce) { failOnce = false; throw new Error("一時の失敗"); }
+      if (failOnce) { failOnce = false; throw new Error("一ときの失敗"); }
       return original.call(fake.client.beta.agents, p);
     };
-    await expect(ensureWardAi(env, ward)).rejects.toThrow("一時の失敗");
+    await expect(ensureWardAi(env, ward)).rejects.toThrow("一ときの失敗");
     const ai = await ensureWardAi(env, ward);
     expect(ai.agent_id).toBe("agent_1");
     expect(fake.calls.vaults).toBe(1);
   });
 });
 
-describe("セッションとプロジェクトの中の直列化", () => {
-  it("読み終わった入力にセッションを開き、札は要約だけを持つ。原本は渡さない", async () => {
+describe("セッションと行事の中の直列化", () => {
+  it("読み終わった入力にセッションを開き、札は要約だけを持つ。元の資料は渡さない", async () => {
     const ward = await seedWard(env.DB);
-    const { jobId } = await readyJob(ward.wardId, "雨天は屋内");
+    const { jobId } = await readyJob(ward.wardId, "雨は屋内");
     expect(await dispatchProject(env, ward.wardId, PROJECT)).toBe("started");
     const job = await getJob(env.DB, ward.wardId, jobId);
     expect(job).toMatchObject({ status: "connecting", session_id: fake.sid(1), connect_attempt: 1 });
@@ -162,11 +162,11 @@ describe("セッションとプロジェクトの中の直列化", () => {
     const message = params.initial_events[0]?.content[0]?.text as string;
     const ticket = /札: (tk_\S+)/.exec(message)?.[1] as string;
     expect(job?.ticket_hash).toBe(await sha256Hex(ticket));
-    expect(message).not.toContain("雨天は屋内");
+    expect(message).not.toContain("雨は屋内");
     expect(message).not.toContain(PROJECT);
   });
 
-  it("同じプロジェクトでは一つずつ。完了すると次が開く。別のプロジェクトは待たない", async () => {
+  it("同じ行事では一つずつ。完了すると次が開く。別の行事は待たない", async () => {
     const ward = await seedWard(env.DB);
     const first = await readyJob(ward.wardId);
     await new Promise((r) => setTimeout(r, 5));
@@ -189,7 +189,7 @@ describe("セッションとプロジェクトの中の直列化", () => {
     expect(await checkSession(env, ward.wardId, first.jobId)).toBe("skipped");
   });
 
-  it("要対応（予算の上限）、失敗（終わったのに end_turn が無い）、動いている間は待つ", async () => {
+  it("要対応（予算の上限）、失敗（終わったのにend_turnがない）、動いている間は待つ", async () => {
     expect(decide("running", null).outcome).toBe("running");
     expect(decide("idle", "end_turn").outcome).toBe("done");
     expect(decide("idle", "budget_reached").outcome).toBe("attention");
@@ -214,14 +214,14 @@ describe("セッションとプロジェクトの中の直列化", () => {
     expect(await getJob(env.DB, ward.wardId, b.jobId)).toMatchObject({ status: "failed", failure: "connect" });
   });
 
-  it("セッションを消す前に、agent 側の呼び出しの数、失敗の数、エラーの文、最後の返事を記録に写す", async () => {
+  it("セッションを消す前に、agent側の呼び出しの数、失敗の数、エラーの文、最後の返事を記録に写す", async () => {
     const ward = await seedWard(env.DB);
     const a = await readyJob(ward.wardId);
     await dispatchProject(env, ward.wardId, PROJECT);
     fake.state.set(fake.sid(1), {
       status: "idle",
       events: [
-        { type: "session.error", error: { message: "MCP 接続の失敗" } },
+        { type: "session.error", error: { message: "MCP接続の失敗" } },
         { type: "agent.mcp_tool_use" },
         { type: "agent.mcp_tool_use" },
         { type: "agent.mcp_tool_result", is_error: true, content: [{ type: "text", text: "札が使えません" }] },
@@ -233,10 +233,10 @@ describe("セッションとプロジェクトの中の直列化", () => {
     expect(await checkSession(env, ward.wardId, a.jobId)).toBe("done");
     const run = await env.DB.prepare("SELECT agent_tool_calls, agent_tool_errors, agent_errors, agent_summary FROM job_runs WHERE ward_id = ? AND job_id = ? AND kind = 'connect'").bind(ward.wardId, a.jobId).first<{ agent_tool_calls: number; agent_tool_errors: number; agent_errors: string; agent_summary: string }>();
     expect(run).toMatchObject({ agent_tool_calls: 2, agent_tool_errors: 1, agent_summary: "二つ書きました" });
-    expect(JSON.parse(run?.agent_errors ?? "[]")).toEqual([expect.stringContaining("MCP 接続の失敗"), expect.stringContaining("札が使えません")]);
+    expect(JSON.parse(run?.agent_errors ?? "[]")).toEqual([expect.stringContaining("MCP接続の失敗"), expect.stringContaining("札が使えません")]);
   });
 
-  it("実在しないプロジェクトの入力は、繋げずに読み終わりのまま待つ", async () => {
+  it("実在しない行事の入力は、繋げずに読み終わりのまま待つ", async () => {
     const ward = await seedWard(env.DB);
     const { jobId } = await readyJob(ward.wardId);
     setProjectDirectory(null);
@@ -246,7 +246,7 @@ describe("セッションとプロジェクトの中の直列化", () => {
     expect(fake.calls.sessions).toHaveLength(0);
   });
 
-  it("開けなかった入力は read に戻り、試行の上限で failed になる。失敗した物は読み直さず繋げ直せる", async () => {
+  it("開けなかった入力はreadに戻り、試行の上限でfailedになる。失敗した物は読み直さず繋げ直せる", async () => {
     const ward = await seedWard(env.DB);
     const { jobId } = await readyJob(ward.wardId);
     setClientFactory(() => { throw new Error("つながらない"); });
@@ -282,7 +282,7 @@ describe("セッションとプロジェクトの中の直列化", () => {
     expect((await getJob(env.DB, ward.wardId, a.jobId))?.session_deleted_at).toBeTruthy();
   }, 15000);
 
-  it("Cron は、動き続ける入力を時間切れで失敗にし、消し損ねを消し、待っている物を送る", async () => {
+  it("Cronは、動き続ける入力を時間切れで失敗にし、消し損ねを消し、待っている物を送る", async () => {
     const ward = await seedWard(env.DB);
     const a = await readyJob(ward.wardId);
     await dispatchProject(env, ward.wardId, PROJECT);
@@ -297,7 +297,7 @@ describe("セッションとプロジェクトの中の直列化", () => {
     expect((await getJob(env.DB, ward.wardId, a.jobId))?.session_deleted_at).toBeTruthy();
   });
 
-  it("下書きなどの原本の無い仕事も、同じ順番に入る", async () => {
+  it("下書きなどの元の資料のない仕事も、同じ順番に入る", async () => {
     const ward = await seedWard(env.DB);
     const pending: Promise<unknown>[] = [];
     const id = await startTask(env, { waitUntil: (p: Promise<unknown>) => void pending.push(p) } as never, { wardId: ward.wardId, projectId: PROJECT, task: "draft", instruction: "案内の下書きを起こす" });
@@ -329,8 +329,8 @@ async function mcpSetup() {
 const call = (id: number, name: string, args: Record<string, unknown>) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
 const textOf = async (res: Response) => ((await res.json()) as { result: { content: Array<{ text: string }>; isError?: boolean } }).result;
 
-describe("MCP の口", () => {
-  it("鍵が無い、違う、他の区の鍵は 401。GET は 405", async () => {
+describe("MCPの口", () => {
+  it("鍵がない、違う、他の区の鍵は401。GETは405", async () => {
     const { ward, token } = await mcpSetup();
     expect((await rpc(ward.slug, null, { jsonrpc: "2.0", id: 1, method: "ping" })).status).toBe(401);
     expect((await rpc(ward.slug, "違う鍵", { jsonrpc: "2.0", id: 1, method: "ping" })).status).toBe(401);
@@ -340,7 +340,7 @@ describe("MCP の口", () => {
     expect(get.status).toBe(405);
   });
 
-  it("initialize、通知、ping、tools/list が決まりの形で返る。手は五つ", async () => {
+  it("initialize、通知、ping、tools/listが決まりの形で返る。手は五つ", async () => {
     const { ward, token } = await mcpSetup();
     const init = await (await rpc(ward.slug, token, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26" } })).json() as { result: { protocolVersion: string; capabilities: { tools: unknown } } };
     expect(init.result.protocolVersion).toBe("2025-03-26");
@@ -353,13 +353,13 @@ describe("MCP の口", () => {
     expect(unknown.error.code).toBe(-32601);
   });
 
-  it("札が無い、違う、完了した後は使えない。引数のプロジェクト ID は信じない", async () => {
+  it("札がない、違う、完了したあとは使えない。引数の行事IDは信じない", async () => {
     const { ward, jobId, token, ticket } = await mcpSetup();
     const bad = await textOf(await rpc(ward.slug, token, call(1, "get_reading", { ticket: "tk_違う" })));
     expect(bad.isError).toBe(true);
     const seen: string[] = [];
     setProjectApi({ ...stubApi(), getProjectState: async (_e, _w, projectId) => (seen.push(projectId), { ok: true }) });
-    const good = await textOf(await rpc(ward.slug, token, call(2, "get_project_state", { ticket, projectId: "別のプロジェクト", project_id: "別" })));
+    const good = await textOf(await rpc(ward.slug, token, call(2, "get_project_state", { ticket, projectId: "別の行事", project_id: "別" })));
     expect(good.isError).toBeUndefined();
     expect(seen).toEqual([PROJECT]);
     const reading = JSON.parse((await textOf(await rpc(ward.slug, token, call(3, "get_reading", { ticket })))).content[0]?.text as string) as { readings: Array<{ source: string }> };
@@ -371,14 +371,14 @@ describe("MCP の口", () => {
     expect(after.isError).toBe(true);
   });
 
-  it("差分を書く手は、出どころが実在する物だけを束 3 に渡し、実在しない物は捨てて残す", async () => {
+  it("差分を書く手は、出どころが実在する物だけを束3に渡し、実在しない物は捨てて残す", async () => {
     const { ward, jobId, originalId, token, ticket } = await mcpSetup();
     const writes: Array<{ kind: string; originalId: string | null; projectId: string }> = [];
     setProjectApi({
       ...stubApi(),
       applyChange: async (_e, ctx, change) => (writes.push({ kind: change.kind, originalId: change.originalId, projectId: ctx.projectId }), { status: "applied" }),
     });
-    const ok = await textOf(await rpc(ward.slug, token, call(1, "write_change", { ticket, kind: "item", original_id: originalId, locator: "1 行目", target: "日時", data: { value: "10月24日" }, confidence: "high" })));
+    const ok = await textOf(await rpc(ward.slug, token, call(1, "write_change", { ticket, kind: "item", original_id: originalId, locator: "1行目", target: "日時", data: { value: "10月24日" }, confidence: "high" })));
     expect(JSON.parse(ok.content[0]?.text as string)).toEqual({ status: "applied" });
     // 別の区の原本、でたらめな ID
     const foreign = await seedWard(env.DB);
@@ -415,7 +415,7 @@ function stubApi(): ProjectApi {
   };
 }
 
-describe("webhook の受け口", () => {
+describe("webhookの受け口", () => {
   const secret = `whsec_${btoa("test-signing-key-0123456789abcdef")}`;
 
   async function post(body: object, signed = true) {
@@ -431,7 +431,7 @@ describe("webhook の受け口", () => {
     return res;
   }
 
-  it("署名の合う物だけを受ける（SDK の unwrap が Workers で動く）。3xx は返さない", async () => {
+  it("署名の合う物だけを受ける（SDKのunwrapがWorkersで動く）。3xxは返さない", async () => {
     const res = await post({ type: "event", id: "whe_1", created_at: "2026-11-05T00:00:00Z", data: { type: "session.status_idled", id: "sesn_x" } });
     expect(res.status).toBe(204);
     const forged = await post({ type: "event", id: "whe_2", data: { type: "session.status_idled", id: "sesn_x" } }, false);
@@ -439,7 +439,7 @@ describe("webhook の受け口", () => {
     expect(res.status < 300 || res.status >= 400).toBe(true);
   });
 
-  it("session.status_idled で、その入力を完了にしてセッションを消す", async () => {
+  it("session.status_idledで、その入力を完了にしてセッションを消す", async () => {
     const ward = await seedWard(env.DB);
     const { jobId } = await readyJob(ward.wardId);
     await dispatchProject(env, ward.wardId, PROJECT);
@@ -454,8 +454,8 @@ describe("webhook の受け口", () => {
   });
 });
 
-describe("束 3 の API との繋ぎ", () => {
-  it("札から割り出したプロジェクトに、項目、表の行、決めたこと、問いを書き、実在しない出どころと不正な鍵は書かない", async () => {
+describe("束3のAPIとの繋ぎ", () => {
+  it("札から割り出した行事に、項目、表の行、決めたこと、質問を書き、実在しない出どころと不正な鍵は書かない", async () => {
     setProjectDirectory(null);
     const ward = await seedWard(env.DB);
     const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026 });
@@ -463,7 +463,7 @@ describe("束 3 の API との繋ぎ", () => {
       wardId: ward.wardId,
       via: "admin",
       projectId: project.projectId,
-      parts: [{ kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode(`${project.year}年。公民館前の広場。協賛は商店Aが 6000 円`) }],
+      parts: [{ kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode(`${project.year}年。公民館前の広場。協賛は商店Aが6000円`) }],
     });
     const originalId = out.received[0]?.originalId as string;
     await dispatchProject(env, ward.wardId, project.projectId);
@@ -475,15 +475,15 @@ describe("束 3 の API との繋ぎ", () => {
     };
     const status = (r: { body: string }) => (JSON.parse(r.body) as { status: string; reason?: string }).status;
 
-    expect(status(await run("write_change", { kind: "item", original_id: originalId, locator: "1 行目", year: 2026, target: "place", data: { value: "公民館前の広場" }, confidence: "high" }))).toBe("applied");
-    expect(status(await run("write_change", { kind: "row", original_id: originalId, locator: "1 行目", year: 2026, target: "sponsors", data: { name: "商店A", reply: "yes", amount: 6000 }, confidence: "high" }))).toBe("applied");
-    expect(status(await run("write_change", { kind: "decision", original_id: originalId, locator: "1 行目", year: 2026, target: "会場", data: { what: "会場は公民館前の広場", decidedOn: "9月12日" }, confidence: "medium" }))).toBe("applied");
-    expect(status(await run("write_question", { kind: "decide", target: "rain_plan", text: "雨天時の会場はどこにしますか", original_id: originalId, locator: "1 行目" }))).toBe("added");
+    expect(status(await run("write_change", { kind: "item", original_id: originalId, locator: "1行目", year: 2026, target: "place", data: { value: "公民館前の広場" }, confidence: "high" }))).toBe("applied");
+    expect(status(await run("write_change", { kind: "row", original_id: originalId, locator: "1行目", year: 2026, target: "sponsors", data: { name: "商店A", reply: "yes", amount: 6000 }, confidence: "high" }))).toBe("applied");
+    expect(status(await run("write_change", { kind: "decision", original_id: originalId, locator: "1行目", year: 2026, target: "会場", data: { what: "会場は公民館前の広場", decidedOn: "9月12日" }, confidence: "medium" }))).toBe("applied");
+    expect(status(await run("write_question", { kind: "decide", target: "rain_plan", text: "雨のときの会場はどこにしますか", original_id: originalId, locator: "1行目" }))).toBe("added");
 
     const state = JSON.stringify(await getProjectState(env.DB, ward.wardId, project.projectId));
     expect(state).toContain("公民館前の広場");
     expect(state).toContain("商店A");
-    expect(state).toContain("雨天時の会場はどこにしますか");
+    expect(state).toContain("雨のときの会場はどこにしますか");
 
     // 実在しない出どころは MCP の手が捨てる。不正な鍵は束 3 に渡さず断る
     expect((await run("write_change", { kind: "item", original_id: "でたらめ", target: "place", data: { value: "x" }, confidence: "high" })).isError).toBe(true);
@@ -501,7 +501,7 @@ describe("束 3 の API との繋ぎ", () => {
     expect(details).toContain("write_question decide -> added");
     expect(details).toContain("write_change item:場所 -> rejected");
     expect(calls.results.filter((c) => c.outcome === "error").length).toBeGreaterThanOrEqual(2);
-    const again = JSON.parse((await run("write_change", { kind: "item", original_id: originalId, locator: "1 行目", year: 2026, target: "place", data: { value: "公民館前の広場" }, confidence: "high" })).body) as { status: string; duplicate: boolean };
+    const again = JSON.parse((await run("write_change", { kind: "item", original_id: originalId, locator: "1行目", year: 2026, target: "place", data: { value: "公民館前の広場" }, confidence: "high" })).body) as { status: string; duplicate: boolean };
     expect(again.duplicate || again.status === "same").toBe(true);
   });
 });

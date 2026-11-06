@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 describe("秋の収穫祭の最初の一片", () => {
-  it("開設から来年の種まで役員画面と公開経路を通す", async () => {
+  it("開設からこれをもとに新しく始めるまで役員画面と公開経路を通す", async () => {
     // 段 0: 提供側の HTTP 経路で区と最初の役員を開き、発行された資格で入る。
     const opsLogin = await postForm(realApp, "/ops/login", { id: OPS_ID, password: OPS_PASSWORD }, undefined, opsEnv);
     const opsCookie = cookieFrom(opsLogin, OPS_COOKIE);
@@ -44,7 +44,7 @@ describe("秋の収穫祭の最初の一片", () => {
     if (!accountRow) throw new Error("最初の役員が見つかりません");
     const account = { accountId: accountRow.account_id };
     // 試験中に実際の Anthropic へ出ないようにし、回答票の読取だけ試験用の応答に置き換える。
-    setClientFactory(() => { throw new Error("この試験から Anthropic へ接続してはいけません"); });
+    setClientFactory(() => { throw new Error("この試験からAnthropicへ接続してはいけません"); });
     vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/v2/bot/insight/followers")) return Response.json({ status: "ready", followers: 1 });
@@ -111,7 +111,7 @@ describe("秋の収穫祭の最初の一片", () => {
     const queuedAt = new Date().toISOString();
     await env.DB.prepare(`INSERT INTO jobs (job_id, ward_id, project_id, via, task, instruction, status, created_at, updated_at)
       VALUES (?, ?, ?, 'system', 'draft', ?, 'read', ?, ?)`)
-      .bind(queuedDraftId, ward.wardId, projectId, "当番表の案を起こす。対象の文書: duty_roster。範囲: space。", queuedAt, queuedAt).run();
+      .bind(queuedDraftId, ward.wardId, projectId, "当番表の下書きを起こす。対象の文書: duty_roster。範囲: space。", queuedAt, queuedAt).run();
     const queuedDutyPage = await get(realApp, `/${ward.slug}/admin/projects/${projectId}/draft/duty_roster`, cookie);
     const queuedDutyHtml = await queuedDutyPage.text();
     expect(queuedDutyPage.status).toBe(200);

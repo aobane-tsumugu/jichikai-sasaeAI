@@ -9,7 +9,7 @@ import { get, postForm, realApp } from "./helpers";
 
 afterEach(() => vi.useRealTimers());
 
-it("案内の締切を受付に使い、回答を直して消し、手で延ばした締切は配り直しても残す", async () => {
+it("案内の締切を受付に使い、答えを直して消し、手で延ばした締切は配り直しても残す", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-10T03:00:00Z"));
   const { ward, account, cookie } = await seedAdmin(env.DB);
@@ -32,7 +32,7 @@ it("案内の締切を受付に使い、回答を直して消し、手で延ば�
       FROM document_versions v JOIN documents d ON d.ward_id = v.ward_id AND d.document_id = v.document_id
       WHERE v.ward_id = ? AND v.project_id = ? AND d.kind = 'announcement' ORDER BY v.version_no DESC LIMIT 1`)
       .bind(ward.wardId, project.projectId).first<{ document_id: string; version_id: string; version_no: number }>();
-    if (!version) throw new Error("配る案がありません。");
+    if (!version) throw new Error("配る下書きがありません。");
     expect((await postForm(realApp, `${publishPath}/send`, {
       documentId: version.document_id, versionId: version.version_id, versionNo: String(version.version_no),
       distribution: `${FIRST_SLICE.district} 2`, lineDelivery: "skip",
@@ -45,7 +45,7 @@ it("案内の締切を受付に使い、回答を直して消し、手で延ば�
     people_count: "3", helper_name: FIRST_SLICE.phoneHelper, helper_times: FIRST_SLICE.helperTime };
   expect((await postForm(realApp, `${answersPath}/phone`, input, cookie)).status).toBe(303);
   const before = (await listAnswers(env.DB, ward.wardId, project.projectId))[0];
-  if (!before) throw new Error("直す回答がありません。");
+  if (!before) throw new Error("直す答えがありません。");
   const editPath = `${answersPath}/${before.answerId}/edit`;
   const indexHtml = await (await get(realApp, `${answersPath}?view=list`, cookie)).text();
   expect(indexHtml).toContain(`href="${editPath}"`);
@@ -77,7 +77,7 @@ it("案内の締切を受付に使い、回答を直して消し、手で延ば�
   expect((await get(realApp, editPath, cookie)).status).toBe(404);
 
   vi.setSystemTime(new Date("2026-10-01T03:00:00Z"));
-  await publish("10 月 9 日（金）まで");
+  await publish("10月9日（金）まで");
   expect(await getAnswerDeadline(env.DB, ward.wardId, project.projectId)).toBe("2026-10-09");
   vi.setSystemTime(new Date("2026-10-10T03:00:00Z"));
   expect(await (await get(realApp, publicPath)).text()).toContain("答えの受付は終わりました");

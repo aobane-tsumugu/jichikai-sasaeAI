@@ -33,7 +33,7 @@ export function createApp(bundles: Bundle[]) {
     c.html(
       <Layout title="運営支援（仮称）">
         <h1>運営支援（仮称）</h1>
-        <p>自治会の役員の準備を支える仕組みです。区のページの URL（案内や掲示の QR に書かれた物）からお入りください。</p>
+        <p>自治会の役員の準備を支える仕組みです。区のページのURL（案内や掲示のQRに書かれたもの）からお入りください。</p>
       </Layout>,
     ),
   );
@@ -97,7 +97,7 @@ export function createApp(bundles: Bundle[]) {
     c.html(
       <Layout title="見つかりません">
         <h1>見つかりません</h1>
-        <p>URL をお確かめください。区のページの URL は、案内や掲示の QR に書かれています。</p>
+        <p>URLをお確かめください。区のページのURLは、案内や掲示のQRに書かれています。</p>
       </Layout>,
       404,
     ),
@@ -111,7 +111,7 @@ export function createApp(bundles: Bundle[]) {
     return c.html(
       <Layout title="うまく動きませんでした">
         <h1>うまく動きませんでした</h1>
-        <p>時間をおいて、もう一度お試しください。続く時は、提供側にお知らせください。</p>
+        <p>時間をおいて、もう一度お試しください。続くときは、提供側にお知らせください。</p>
       </Layout>,
       500,
     );
@@ -133,7 +133,7 @@ export async function runScheduled(
     if (result.status === "rejected") {
       const reason = result.reason;
       console.error(
-        `Cron が失敗しました: ${entries[i]?.[0]}`,
+        `Cronが失敗しました: ${entries[i]?.[0]}`,
         reason instanceof Error ? `${reason.name}: ${reason.message}` : "不明な失敗",
       );
     }

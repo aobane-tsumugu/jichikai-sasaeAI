@@ -8,7 +8,7 @@ import { runDeletionCron } from "../src/ops/lifecycle";
 import { get, postForm, realApp } from "./helpers";
 
 describe("消す求め", () => {
-  it("Web で受けた回答を消すと、回答の表と毎日の写しから消える", async () => {
+  it("Webで受けた答えを消すと、答えの表と毎日の写しから消える", async () => {
     const { ward, account, cookie } = await seedAdmin(env.DB);
     const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
     for (const [answerId, household] of [["answer-erase", "架空 消す世帯"], ["answer-keep", "架空 残る世帯"]] as const) {

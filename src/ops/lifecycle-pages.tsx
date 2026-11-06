@@ -12,7 +12,7 @@ async function findWard(db: D1Database, slug: string) {
 }
 
 const Page = (props: { title: string; children?: unknown }) => (
-  <Layout title={`${props.title} 運用の画面`} siteName="運用の画面（提供側）" noindex headerRight={<><a href="/ops/">区の一覧</a>{" "}<form class="inline" method="post" action="/ops/logout"><button class="secondary">ログアウト</button></form></>}>
+  <Layout title={`${props.title}運用の画面`} siteName="運用の画面（提供側）" noindex headerRight={<><a href="/ops/">区の一覧</a>{" "}<form class="inline" method="post" action="/ops/logout"><button class="secondary">このスマホやパソコンから出る</button></form></>}>
     {props.children as never}
   </Layout>
 );
@@ -33,25 +33,25 @@ lifecyclePages.get("/wards/:slug/lifecycle", async (c) => {
     <h2>日次の写し</h2>
     {latest ? <section class="panel">
       <p>最新: {latest.key.replace("snapshots/daily/", "")} / {latest.capturedAt || "日時を読めません"}</p>
-      <p>{latest.valid ? `${latest.tableCount} 種類、${latest.rowCount} 件を読み取れました。` : `確認できません: ${latest.problem}`}</p>
+      <p>{latest.valid ? `${latest.tableCount}種類、${latest.rowCount}件を読み取れました。` : `確認できません: ${latest.problem}`}</p>
     </section> : <p>日次の写しはまだありません。</p>}
-    <p>戻す時は、写しを別の D1 に読み込み、件数と区の ID を確かめてから切り替えます。この画面の検査は形式と区の ID、表の並びを確認します。実際の戻しは行いません。</p>
+    <p>戻すときは、写しを別のD1に読み込み、件数と区のIDを確かめてから切り替えます。この画面の検査は形式と区のID、表の並びを確認します。実際の戻しは行いません。</p>
     <h2>写しの一覧</h2>
     {snapshots.length ? <ul>{snapshots.slice(0, 30).map((item) => <li>{item.valid
       ? <a href={`/ops/wards/${ward.slug}/snapshots/${item.key.replace("snapshots/daily/", "").replace(".json", "")}`}>{item.key.replace("snapshots/daily/", "")}</a>
-      : item.key.replace("snapshots/daily/", "")} — {item.valid ? `${item.rowCount} 件` : item.problem}</li>)}</ul> : <p>表示できる写しはありません。</p>}
+      : item.key.replace("snapshots/daily/", "")} — {item.valid ? `${item.rowCount}件` : item.problem}</li>)}</ul> : <p>表示できる写しはありません。</p>}
     <h2>引渡し</h2>
-    <p>区の記録、原本、配布した物と R2 の内容を JSON ファイルで書き出します。保存先を選んでダウンロードしてください。</p>
+    <p>区の記録、元の資料、配布したものとR2の内容をJSONファイルで書き出します。保存先を選んでダウンロードしてください。</p>
     <p><a class="button secondary" href={`/ops/wards/${ward.slug}/export`}>区の記録を書き出す</a></p>
     <h2>区を止める</h2>
-    <p>{ward.is_active === 1 ? "役員画面へのログインと操作を止めます。区のページの読み取りは続きます。" : "停止中です。区のページの読み取りは続いています。"}</p>
+    <p>{ward.is_active === 1 ? "役員画面への入ると操作を止めます。区のページの読み取りは続きます。" : "停止中です。区のページの読み取りは続いています。"}</p>
     <form method="post" action={`/ops/wards/${ward.slug}/state`}>
       <input type="hidden" name="active" value={ward.is_active === 1 ? "0" : "1"} />
       <button class={ward.is_active === 1 ? "danger" : "secondary"}>{ward.is_active === 1 ? "区を止める" : "区を再開する"}</button>
     </form>
     <h2>区を削除する</h2>
-    <p>先に記録を書き出してください。区の記録と保管物、AI 側の処理を消し、AI 事業者側の設定を使えない状態にして、保管庫を削除します。処理済みの印だけを残します。</p>
-    <form method="post" action={`/ops/wards/${ward.slug}/delete`} onsubmit="return confirm('この区の記録を書き出した後に、区と保管物を削除します。続けますか？')">
+    <p>先に記録を書き出してください。区の記録と保管物、AI側の処理を消し、AI事業者側の設定を使えない状態にして、保管庫を削除します。処理済みの印だけを残します。</p>
+    <form method="post" action={`/ops/wards/${ward.slug}/delete`} onsubmit="return confirm('この区の記録を書き出したあとに、区と保管物を削除します。続けますか？')">
       <label><input type="checkbox" name="confirm" value="yes" required /> 書き出しを確認し、この区の削除を依頼します</label>
       <p><button class="danger">区を削除する</button></p>
     </form>

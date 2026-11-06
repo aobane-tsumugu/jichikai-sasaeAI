@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
-import { ErrorNotice, Hint, Layout, Notice } from "../core/ui";
+import { ErrorNotice, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { startTask } from "../ai/api";
 import { getProjectState, getProjectSummary } from "../project/api";
@@ -20,8 +20,8 @@ import { checkPublicDraft } from "../publish/check";
 
 const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   "restore_failed": "前の下書きに戻せませんでした",
-  "rain_input": "定型文と会場、日時を入力してください",
-  "rain_template": "定型文に置き換えられない項目があります",
+  "rain_input": "決まった知らせの文と会場、日時を入力してください",
+  "rain_template": "決まった知らせの文に置き換えられない項目があります",
   "notice_save_failed": "知らせを保存できませんでした",
   "save_failed": "保存できませんでした。入力を確かめてください",
   "duty_save_failed": "当番の行を保存できませんでした",
@@ -42,14 +42,14 @@ function parseBody(raw: string): DraftBody {
 admin.get("/projects/:projectId/draft", async (c) => {
   const { ward } = c.var; const id = c.req.param("projectId"); const project = await getProjectSummary(c.env.DB, ward.wardId, id);
   if (!project) return c.notFound();
-  return c.html(<Layout title={`案: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, `/projects/${id}`)}>プロジェクトへ</a>}>
-    <h1>{project.title} の案 <Hint text="作りたい文書を選んでください。今ある資料から AI に案を頼むか、自分で書き始められます。" /></h1><p>文書を選び、必要ならAIに案を起こさせます。AIが止まっている時も、ここで書いて保存できます。</p>
+  return c.html(<Layout title={`下書き: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, `/projects/${id}`)}>行事へ</a>}>
+    <h1>{project.title} の下書き</h1><p class="lead">作りたい文書を選んでください。今ある資料からAIに下書きを頼むか、自分で書き始められます。</p><p>文書を選び、必要ならAIに下書きを起こさせます。AIが止まっているときも、ここで書いて保存できます。</p>
     {c.req.query("notice") === "saved" ? <Notice>保存しました。今年の中身にも反映しました。</Notice> : null}
-    {c.req.query("notice") === "started" ? <Notice>案を起こす依頼を受けました。画面を閉じても処理は続きます。</Notice> : null}
-    {c.req.query("notice") === "restored" ? <Notice>前の案を戻して、新しい案として保存しました。</Notice> : null}
+    {c.req.query("notice") === "started" ? <Notice>下書きを起こす依頼を受けました。画面を閉じても処理は続きます。</Notice> : null}
+    {c.req.query("notice") === "restored" ? <Notice>前の下書きを戻して、新しい下書きとして保存しました。</Notice> : null}
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     {listDraftPacks().map((pack) => <section class="panel"><h2><a href={adminPath(ward, `/projects/${id}/draft/${pack.kind}`)}>{pack.title}</a></h2><p>範囲: {SCOPE_LABEL[pack.scope]}</p>
-      <form method="post" action={adminPath(ward, `/projects/${id}/draft/${pack.kind}/start`)}><button class="secondary">AIに案を起こしてもらう</button></form>
+      <form method="post" action={adminPath(ward, `/projects/${id}/draft/${pack.kind}/start`)}><button class="secondary">AIに下書きを起こしてもらう</button></form>
     </section>)}
     <p><a href={adminPath(ward, `/publish/${id}`)}>配る</a></p>
   </Layout>);
@@ -113,7 +113,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     {c.req.query("notice") === "restored" ? <Notice>前の下書きに戻しました。今の下書きも残ります。</Notice> : null}
     {taskNotice ? <Notice><span data-ai-status={taskNotice.status}>{taskNotice.message}</span> 画面を閉じても処理は続きます。ここで書いて保存することもできます。</Notice> : null}
     {document?.stale ? <div class="notice warn"><strong>新しい資料が届きました</strong><p>このまま直して配れます。</p><a class="quiet" href="#redo">新しい資料を入れて作り直す</a></div> : null}
-    {project.closedAt ? <Notice>このプロジェクトは閉じました。開き直すと下書きを直せます。</Notice> : null}
+    {project.closedAt ? <Notice>この行事は閉じました。開き直すと下書きを直せます。</Notice> : null}
     <form id="draft-form" method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/save`)}>
       <input type="hidden" name="based_on" value={baseVersion} />
       <div class="field"><label for="title">題</label><input id="title" name="title" value={document?.title ?? pack.title} maxlength={100} required /></div>
@@ -210,7 +210,7 @@ admin.post("/projects/:projectId/draft/rain-notice", async (c) => {
   const state = await getProjectState(c.env.DB, ward.wardId, id);
   if (!state || !state.documents.some((document) => document.kind === "announcement" && document.publishedVersionNo !== null)) return c.notFound();
   const ok = await saveDocument(c.env.DB, ward.wardId, id, account.accountId, {
-    kind: "notice", title: "雨天の変更のお知らせ", scope: "public",
+    kind: "notice", title: "雨の変更のお知らせ", scope: "public",
     body: JSON.stringify({ text, items: [] }), basedOn: state.project.stateVersion,
   });
   if (!ok) return c.redirect(`${adminPath(ward, `/projects/${id}/draft/notice`)}?error=notice_save_failed`, 303);
@@ -262,9 +262,9 @@ admin.post("/projects/:projectId/draft/:kind/start", async (c) => {
     const contact = await getPublicContact(c.env.DB, ward.wardId);
     const helpers = pack.kind === "duty_roster" ? await getDutyDraftHelpers(c.env.DB, ward.wardId, id) : [];
     const helperInstruction = helpers.length
-      ? `\n回答から集めた手伝いの希望（この一覧を当番表の案に含めてください）: ${JSON.stringify(helpers)}`
-      : "\n回答に手伝いの希望はまだありません。";
-    await startTask(c.env, c.executionCtx, { wardId: ward.wardId, projectId: id, task: "draft", instruction: `${pack.instruction}${contact ? `\n区の公開用の連絡先（問い合わせ先に使う）: ${contact}` : ""}${instruction ? `\n役員からの頼み: ${instruction}` : ""}\n対象の文書: ${pack.kind}。範囲: ${pack.scope}。data に pack_version を ${pack.version}、based_on_state_version を引いた状態の番号として含めてください。${pack.kind === "duty_roster" ? helperInstruction : ""}`, accountId: account.accountId });
+      ? `\n答えから集めた手伝いの希望（この一覧を当番表の下書きに含めてください）: ${JSON.stringify(helpers)}`
+      : "\n答えに手伝いの希望はまだありません。";
+    await startTask(c.env, c.executionCtx, { wardId: ward.wardId, projectId: id, task: "draft", instruction: `${pack.instruction}${contact ? `\n区の公開用の連絡先（問い合わせ先に使う）: ${contact}` : ""}${instruction ? `\n役員からの頼み: ${instruction}` : ""}\n対象の文書: ${pack.kind}。範囲: ${pack.scope}。dataにpack_versionを${pack.version}、based_on_state_versionを引いた状態の番号として含めてください。${pack.kind === "duty_roster" ? helperInstruction : ""}`, accountId: account.accountId });
     return c.redirect(`${adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}?notice=started`, 303);
   } catch { return c.redirect(`${adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}?error=ai_failed`, 303); }
 });

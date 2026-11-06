@@ -111,7 +111,7 @@ export const SEND_SCRIPT = String.raw`(function (root) {
       if (m[0] === '</w:tbl>') {
         depth -= 1;
         if (depth === 0) {
-          tables.push({ name: '表 ' + (tables.length + 1), rows: wTable(body.slice(start, m.index + m[0].length)) });
+          tables.push({ name: '表' + (tables.length + 1), rows: wTable(body.slice(start, m.index + m[0].length)) });
           last = m.index + m[0].length;
         }
       } else {
@@ -140,7 +140,7 @@ export const SEND_SCRIPT = String.raw`(function (root) {
   }
 
   function serialToText(serial, date1904, formatId, codes) {
-    // Excel の日付の起点から1970年1月1日までの日数を引く。
+    // Excelの日付の起点から1970年1月1日までの日数を引く。
     var d = new Date(Math.round((serial - (date1904 ? 24107 : 25569)) * 86400000));
     if (isNaN(d.getTime())) return String(serial);
     var iso = d.toISOString();
@@ -155,7 +155,7 @@ export const SEND_SCRIPT = String.raw`(function (root) {
     return serial % 1 === 0 ? iso.slice(0, 10) : iso.slice(0, 16).replace('T', ' ');
   }
 
-  // 作った道具によっては要素に x: などの接頭辞が付く。読む前に外す
+  // 作った道具によっては要素にx: などの接頭辞が付く。読む前に外す
   async function sheetXml(zip, name) {
     return (await zip.text(name)).replace(/<(\/?)[A-Za-z_][\w.-]*:/g, '<$1');
   }
@@ -272,7 +272,7 @@ export const SEND_SCRIPT = String.raw`(function (root) {
       if (el && el.files) Array.prototype.forEach.call(el.files, function (f) { picked.push({ file: f, kind: pair[1] }); });
     });
     var text = form.elements['text'].value;
-    if (picked.length === 0 && text.trim() === '') { say('送る物を選ぶか、一行の文を書いてください。', true); return; }
+    if (picked.length === 0 && text.trim() === '') { say('送るものを選ぶか、一行の文を書いてください。', true); return; }
     button.disabled = true;
     say('送っています…', false);
     try {
@@ -286,12 +286,12 @@ export const SEND_SCRIPT = String.raw`(function (root) {
             var detector = new BarcodeDetector({ formats: ['qr_code'] });
             var codes = await detector.detect(f);
             for (var q = 0; q < codes.length; q++) if (codes[q].rawValue) fd.append('paper_qr', codes[q].rawValue);
-          } catch (ignored) { /* この端末で読めない時は符号を送らず、読み取りへ進む */ }
+          } catch (ignored) { /* この端末で読めないときは符号を送らず、読み取りへ進む */ }
         }
         var extracted = '';
         if (/\.(docx|xlsx)$/i.test(f.name)) {
           try { extracted = JSON.stringify(await extractOffice(await f.arrayBuffer())); }
-          catch (e) { say('「' + f.name + '」を開けませんでした。Word か Excel の新しい形式（.docx、.xlsx）で保存し直してください。', true); button.disabled = false; return; }
+          catch (e) { say('「' + f.name + '」を開けませんでした。WordかExcelの新しい形式（.docx、.xlsx）で保存し直してください。', true); button.disabled = false; return; }
         }
         fd.append('part', f, f.name);
         fd.append('part_kind', picked[i].kind);
