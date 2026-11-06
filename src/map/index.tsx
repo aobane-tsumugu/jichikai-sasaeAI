@@ -7,6 +7,7 @@ import type { AdminEnv } from "../env";
 import { getProjectState } from "../project/api";
 import { addMapTask, removeMapTask, restoreMapTask, setEventDay, setMapTask } from "../project/actions";
 import { MAP_PROGRESS_LABEL, type DocumentKind } from "../project/model";
+import { materialChangeText } from "./material-change";
 import { nextMapTask, mapCalendar } from "./next";
 import { opensOf, type MapOpens } from "./template";
 
@@ -78,7 +79,7 @@ admin.get("/projects/:projectId/map", async (c) => {
       </section><aside>
         <ul class="rows"><li><a class="row-link" href={adminPath(ward, `/projects/${id}/questions`)}><b>{questions.length ? `質問が${questions.length}つあります` : "質問はありません"}</b><span>答えなくても配れます。</span></a></li></ul>
         <h2>最近届いた資料</h2>
-        {materials.results.length ? <ul class="rows">{materials.results.slice(0, 3).map((material) => <li><a class="row-link" href={adminPath(ward, `/intake/originals/${material.original_id}`)}><b>{material.filename || "書いたこと"}</b><span>{tasks.filter((task) => task.progressSource?.kind === "original" && task.progressSource.ref === material.original_id).map((task) => `「${task.name}」を${task.progress === "done" ? "済み" : "進行中"}にしました`).join("。") || (material.status === "done" ? "読み終わりました。届いた資料で中身を見られます" : material.status === "failed" ? "読めませんでした。届いた資料から読み直せます" : "読み取りを進めています")}</span></a></li>)}</ul> : <p>資料はまだ届いていません。</p>}
+        {materials.results.length ? <ul class="rows">{materials.results.slice(0, 3).map((material) => <li><a class="row-link" href={adminPath(ward, `/intake/originals/${material.original_id}`)}><b>{material.filename || "書いたこと"}</b><span>{materialChangeText(state, material.original_id) || (material.status === "done" ? "読み終わりました。届いた資料で中身を見られます" : material.status === "failed" ? "読めませんでした。届いた資料から読み直せます" : "読み取りを進めています")}</span></a></li>)}</ul> : <p>資料はまだ届いていません。</p>}
         {!project.closedAt ? <details class="fold" id="event-day" open={c.req.query("error") === "invalid_input"}><summary>行事の日を直す</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/map/event-day`)}>
           <div class="field"><label for="event-day-input">行事の日</label><input id="event-day-input" name="event_day" type="date" value={day ?? ""} required /></div>
           <p>済んでいない仕事の時期も動きます。案内の文は変わりません。もう一度入れ直せば戻せます。</p><button class="secondary">行事の日を保存する</button>

@@ -34,7 +34,8 @@ it("初年度の出欠を紙とWebとLINEで受け、締切後は未回答を欠
       expect(response.status).toBe(200);
       return response.text();
     };
-    expect(await read(answers)).toContain("参加しないと答えた世帯は0世帯");
+    expect(await read(answers)).toContain("答えがないときは、締切のあとに欠席として数えます。");
+    expect(await read(answers)).not.toContain("答えた0世帯");
     expect(await read(answers)).toContain("名簿はまだありません");
     const form = await read(answer);
     expect(form).toContain(`${fixture.nextYearTitle}の出欠を教えてください`);
