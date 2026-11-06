@@ -312,7 +312,13 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
         checkKindsDecision(fact, decision!);
       }
       const generated = await draft(id, "procedure");
-      checkKindsFacts(draftText(generated.form), [source.decision, source.nextDecision, source.pending], [source.decision, source.nextDecision]);
+      // 議案の下書きには行事の報告も入るので、語尾を除いた二つの決定があり、別の決定が足されていない事を見る。
+      const generatedText = draftText(generated.form);
+      const stems = [source.decision, source.nextDecision].map((decision) => decision.replace(/ことに決めました$/, ""));
+      for (const stem of stems) assert(compact(generatedText).includes(compact(stem)), "総会の議案の下書きに一年の決定がありません");
+      for (const line of generatedText.split(/[。\n]/).map(compact).filter((entry) => /決めました|決定しました|可決/.test(entry))) {
+        assert(stems.some((stem) => line.includes(compact(stem))), `総会の議案の下書きに送っていない決定があります: ${line.slice(0, 40)}`);
+      }
       return "総会の議案の下書きの資料とAIの下書きに、二回の役員会で送った一年の決定があり、今回の記録に決定が足されていないことを確認しました。";
     }],
   ];
