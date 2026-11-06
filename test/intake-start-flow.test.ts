@@ -1,0 +1,100 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { env } from "cloudflare:workers";
+import { expect, it } from "vitest";
+import { FIRST_SLICE } from "../fixtures/first-slice";
+import { setClientFactory } from "../src/ai/deps";
+import { seedAdmin } from "../src/core/testing";
+import { pendingMaterialGroups } from "../src/intake/groups";
+import { setPipelineDeps } from "../src/intake/pipeline";
+import { getReadings, listOriginals } from "../src/intake/store";
+import { applyChange, getProjectState } from "../src/project/api";
+import { removeMapTask } from "../src/project/actions";
+import { get, postForm, realApp } from "./helpers";
+
+it("新任の役員が題は案内・年不明の実際のフォームから送り、行事ごとに始め、質問と仕事が無くても下書きへ進める", async () => {
+  const { ward, cookie } = await seedAdmin(env.DB);
+  const other = await seedAdmin(env.DB);
+  const root = `/${ward.slug}/admin`;
+  const tasks: Promise<unknown>[] = [];
+  const ctx = { waitUntil: (task: Promise<unknown>) => { tasks.push(task); }, passThroughOnException() {} } as unknown as ExecutionContext;
+  const client = new Anthropic({ apiKey: "fixture-not-a-real-key", maxRetries: 0, fetch: async (_url, init) => {
+    const request = JSON.parse(String(init?.body)) as { messages: { content: string }[] };
+    const content = JSON.parse(request.messages[0]!.content) as { originals: { original_id: string; filename: string }[]; text_blocks: { text: string }[] };
+    expect(content.text_blocks.some((block) => block.text === "案内")).toBe(true);
+    // モデルの通信だけを代える。資料は実際のフォーム、受付、R2、読み取りを通す。
+    return Response.json({ id: "fixture-suggest", type: "message", role: "assistant", model: "claude-sonnet-5-5", stop_reason: "end_turn", stop_sequence: null,
+      content: [{ type: "text", text: JSON.stringify({ project_suggestions: content.originals.map((original) => ({
+        original_id: original.original_id, title: original.filename === "当番.txt" ? FIRST_SLICE.dutyTitle : FIRST_SLICE.nextYearTitle,
+        kind: original.filename === "当番.txt" ? "duty" : "event",
+        date_text: original.filename === "案内.txt" ? "10月24日（土）" : "", place: original.filename === "案内.txt" ? FIRST_SLICE.previousPlace : "",
+      })) }) }], usage: { input_tokens: 100, output_tokens: 50 } });
+  } });
+  setPipelineDeps({ createClient: () => client });
+  setClientFactory(() => { throw new Error("試験から実際のAIへは接続しません"); });
+  try {
+    const main = await (await get(realApp, `${root}/`, cookie)).text();
+    expect(main).toContain("去年の資料を送ってください");
+    expect(main).toContain("資料がないので、種類を選んで始める");
+    const formPage = await (await get(realApp, `${root}/intake`, cookie)).text();
+    expect(formPage).toContain('name="project_id" value=""');
+    expect(formPage).not.toContain('<select id="project_id"');
+
+    const form = new FormData();
+    form.set("project_id", "");
+    form.append("part", new File([`案内\n${FIRST_SLICE.nextYearTitle}\n10月24日（土）\n${FIRST_SLICE.previousPlace}`], "案内.txt", { type: "text/plain" }));
+    form.append("part", new File([`${FIRST_SLICE.nextYearTitle}\n${FIRST_SLICE.reportText}`], "報告.txt", { type: "text/plain" }));
+    form.append("part", new File([FIRST_SLICE.dutyTitle], "当番.txt", { type: "text/plain" }));
+    const accepted = await realApp.fetch(new Request(`http://localhost${root}/intake`, {
+      method: "POST", headers: { cookie, origin: "http://localhost", accept: "application/json" }, body: form,
+    }), env, ctx);
+    expect(accepted.status).toBe(200);
+    const received = await accepted.json() as { jobId: string; redirectTo: string };
+    expect(received.redirectTo).toBe(`${root}/intake/received`);
+    await Promise.all(tasks);
+    expect(await (await get(realApp, `${root}/`, cookie)).text()).toContain("送った資料");
+    expect(await (await get(realApp, received.redirectTo, cookie)).text()).toContain("受け取りました");
+    const read = await (await get(realApp, `${root}/intake/read`, cookie)).text();
+    expect(read).toContain(`${FIRST_SLICE.nextYearTitle}の資料のようです`);
+    expect(read).not.toContain("案内の資料のようです");
+    expect(read).toContain("10月24日（土）");
+    const groups = await pendingMaterialGroups(env.DB, ward.wardId);
+    const harvest = groups.find((g) => g.title === FIRST_SLICE.nextYearTitle);
+    if (!harvest) throw new Error("行事の資料がまとまっていません");
+    expect(harvest.materials).toHaveLength(2);
+    expect(groups).toHaveLength(2);
+    expect(await pendingMaterialGroups(env.DB, other.ward.wardId)).toHaveLength(0);
+    const started = await postForm(realApp, `${root}/intake/start`, { group: harvest.key, eventDay: "" }, cookie);
+    expect(started.status).toBe(303);
+    const resultPath = started.headers.get("location");
+    if (!resultPath) throw new Error("始めたあとの画面がありません");
+    const id = resultPath.split("/").at(-1)!;
+    const result = await (await get(realApp, resultPath, cookie)).text();
+    expect(result).toContain("2件の資料を読んで、8つの仕事の段取りを用意しました");
+    expect(result).toContain("案内の下書きを見る");
+    const originals = await listOriginals(env.DB, ward.wardId, received.jobId);
+    expect(originals.map((o) => o.filename)).toEqual(["当番.txt"]);
+    const remaining = await pendingMaterialGroups(env.DB, ward.wardId);
+    expect(remaining.map((g) => g.title)).toEqual([FIRST_SLICE.dutyTitle]);
+    const moved = await env.DB.prepare("SELECT job_id, original_id FROM originals WHERE ward_id = ? AND filename = ?").bind(ward.wardId, "案内.txt").first<{ job_id: string; original_id: string }>();
+    if (!moved) throw new Error("案内の原本がありません");
+    const readings = await getReadings(env.DB, ward.wardId, moved.job_id);
+    const body = readings[0]?.body;
+    if (!body || !("original_years" in body)) throw new Error("原本ごとの読み取りがありません");
+    expect(body.original_years.every((entry) => entry.year === null)).toBe(true);
+    await applyChange(env.DB, ward.wardId, id, { kind: "item", itemKey: "place", value: FIRST_SLICE.previousPlace,
+      source: { kind: "original", ref: moved.original_id, locator: "4 行目" }, confidence: "high", packVersion: "connect@12" });
+    const state = await getProjectState(env.DB, ward.wardId, id);
+    if (!state) throw new Error("段取りがありません");
+    expect(state.questions).toHaveLength(0);
+    expect(state.items.find((item) => item.key === "place")?.current).toBeNull();
+    expect(state.items.find((item) => item.key === "place")?.references).toHaveLength(1);
+    for (const task of state.mapTasks) await removeMapTask(env.DB, ward.wardId, id, task.taskId);
+    const noTasks = await (await get(realApp, `${root}/`, cookie)).text();
+    expect(noTasks).toContain("仕事はまだありません。段取りから足せます");
+    expect(await (await get(realApp, resultPath, cookie)).text()).toContain("案内の下書きを見る");
+    expect((await get(realApp, `${root}/projects/${id}/draft/announcement`, cookie)).status).toBe(200);
+  } finally {
+    setPipelineDeps(null);
+    setClientFactory(null);
+  }
+});

@@ -118,6 +118,7 @@ input[type=file]::file-selector-button {
 /* 押すと何が起きるかを言葉で書く。label をボタンの形にして、入力欄を重ねる。required の欄は選ぶと色と言葉が変わる */
 .file-button, .field .file-button { position: relative; display: flex; align-items: center; justify-content: center; min-height: var(--tap); margin: 0; padding: var(--space-2) var(--space-4); border: 2px solid var(--accent); border-radius: var(--radius); background: var(--panel); color: var(--accent); font-weight: 700; cursor: pointer; }
 .file-button input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.file-button:focus-within { outline: 3px solid var(--accent); outline-offset: 3px; }
 .file-button:has(input:required:valid) { border-color: var(--ok); background: var(--ok-bg); color: var(--ok); }
 .file-button:has(input:required:valid)::after { content: "　選びました"; }
 
@@ -278,6 +279,10 @@ summary { min-height: var(--tap); cursor: pointer; }
 details.hint { font-size: 1rem; font-weight: 400; line-height: 1.8; letter-spacing: .02em; }
 .qrbox { width: 12rem; max-width: 100%; margin: var(--space-2) 0; }
 .qrbox svg { display: block; width: 100%; height: auto; }
+button.quiet { width: auto; min-width: 0; padding: var(--space-1) 0; border: 0; background: transparent; color: var(--accent); text-decoration: underline; text-align: left; }
+.rows > .panel { margin: 0; }
+main:has(> .rows.two) { max-width: var(--width-wide); }
+@container app (min-width: 54rem) { .next > form { grid-column: 2; grid-row: 1 / span 2; } }
 table { table-layout: fixed; }
 th, td { overflow-wrap: anywhere; }
 @media (max-width: 35.99rem) { th, td { padding: var(--space-1); } }

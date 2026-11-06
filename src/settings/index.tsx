@@ -4,9 +4,10 @@ import { Hint } from "../core/ui";
 import { adminPath, clearDeviceCookie } from "../core/auth";
 import type { Bundle } from "../core/bundle";
 import type { AdminEnv } from "../env";
-import { listOpenProjects } from "../project/api";
+import { getProjectState, listOpenProjects } from "../project/api";
 import { listInboxItems } from "../line";
 import { info } from "./info";
+import { formatJstDate } from "../core/time";
 import { people } from "./people";
 import { templates } from "./templates";
 import { deletion } from "./deletion";
@@ -18,44 +19,63 @@ const admin = new Hono<AdminEnv>();
 
 admin.get("/", async (c) => {
   const { ward, account } = c.var;
-  const [projects, lineInbox, unmatchedCityCount] = await Promise.all([
-    listOpenProjects(c.env.DB, ward.wardId),
-    listInboxItems(c.env.DB, ward.wardId),
-    c.env.DB.prepare("SELECT COUNT(*) AS count FROM jobs WHERE ward_id = ? AND project_id IS NULL AND via = 'admin' AND withdrawn_at IS NULL")
-      .bind(ward.wardId).first<{ count: number }>(),
+  const [projects, lineInbox, pending] = await Promise.all([
+    listOpenProjects(c.env.DB, ward.wardId), listInboxItems(c.env.DB, ward.wardId),
+    c.env.DB.prepare(`SELECT status, COUNT(*) AS count FROM jobs WHERE ward_id = ? AND project_id IS NULL
+      AND via = 'admin' AND withdrawn_at IS NULL GROUP BY status`).bind(ward.wardId).all<{ status: string; count: number }>(),
   ]);
-  const inboxCount = lineInbox.filter((item) => item.disposition === "unmatched").length + (unmatchedCityCount?.count ?? 0);
-  return c.html(
-    <AdminPage ward={ward} account={account} title="役員画面">
-      <h1>役員画面 <Hint text="行事や総会などの仕事を始める画面です。続けるプロジェクトを選び、まだ無ければ新しく開いてください。" /></h1>
-      <h2>開いているプロジェクト</h2>
-      {projects.map((project) => <section class="panel">
-        <h3><a href={adminPath(ward, `/projects/${project.projectId}/map`)}>{project.title}</a></h3>
-        <p>{project.year}年</p>
-      </section>)}
-      {projects.length === 0 ? <>
-        <p>行事や総会など、仕事ごとにプロジェクトを開きます。</p>
-      </> : null}
-      <nav class="action-links">
-        <a class="button" href={adminPath(ward, "/projects/today")}>今やること</a>
-        <a class="button secondary" href={adminPath(ward, "/intake")}>材料を送る</a>
-        <a class="button secondary" href={adminPath(ward, "/projects")}>新しいプロジェクト</a>
-        <a class="button secondary" href={adminPath(ward, "/inbox")}>受け箱（{inboxCount}件）</a>
-      </nav>
-      <details class="panel">
-        <summary>そのほか</summary>
-        <nav class="action-links">
-          <a class="button secondary" href={adminPath(ward, "/answers/roster")}>名簿</a>
-          <a class="button secondary" href={adminPath(ward, "/archive")}>記録</a>
-          <a class="button secondary" href={adminPath(ward, "/settings")}>区の設定</a>
-          <a class="button secondary" href={adminPath(ward, "/requests/city")}>行政の依頼</a>
-          <a class="button secondary" href={adminPath(ward, "/inquiries")}>問い合わせと要望</a>
-          <a class="button secondary" href={adminPath(ward, "/ledger")}>帳簿</a>
-        </nav>
-      </details>
-      <form method="post" action={adminPath(ward, "/logout")}><button type="submit" class="secondary">このスマホやパソコンから出る</button></form>
-    </AdminPage>,
-  );
+  const sent = pending.results.reduce((sum, row) => sum + row.count, 0);
+  const read = pending.results.filter((row) => row.status === "read").reduce((sum, row) => sum + row.count, 0);
+  const reading = pending.results.filter((row) => row.status === "received" || row.status === "reading").reduce((sum, row) => sum + row.count, 0);
+  const delayed = pending.results.filter((row) => row.status === "attention").reduce((sum, row) => sum + row.count, 0);
+  const failed = pending.results.filter((row) => row.status === "failed").reduce((sum, row) => sum + row.count, 0);
+  const states = await Promise.all(projects.map((p) => getProjectState(c.env.DB, ward.wardId, p.projectId)));
+  const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+  const places = <><h2>ほかの場所</h2><ul class="links">
+    <li><a href={adminPath(ward, "/archive")}>記録を読む</a></li>
+    {projects.length ? <><li><a href={adminPath(ward, "/archive/map")}>一年の予定</a></li><li><a href={adminPath(ward, "/answers/roster")}>名簿</a></li></> : null}
+    <li><a href={adminPath(ward, "/settings")}>役員の一覧と区の情報</a></li>
+    {projects.length ? <><li><a href={adminPath(ward, "/requests/city")}>行政の依頼</a></li><li><a href={adminPath(ward, "/inquiries")}>問い合わせと要望</a></li><li><a href={adminPath(ward, "/ledger")}>帳簿</a></li></> : null}
+    <li><form method="post" action={adminPath(ward, "/logout")}><button class="quiet">このスマホやパソコンから出る</button></form></li>
+  </ul></>;
+  return c.html(<AdminPage ward={ward} account={account} title="最初の画面">
+    {projects.length === 0 ? sent === 0 ? <>
+      <h1>去年の資料を送ってください</h1>
+      <p class="lead">案内の紙でも、Wordでも、写真でも、そのまま送れます。整理はいりません。</p>
+      <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>去年の資料を送る</a></div>
+      <h2>送ると、こうなります</h2><ul>
+        <li>AIが読んで、日時、場所、協賛先などを取り出します。</li><li>資料から、今年の段取りができます。</li><li>案内の下書きができます。直して配るのは役員です。</li>
+      </ul>
+      <details class="hint"><summary>資料がどこにあるか分からないとき</summary><div><p>見つかったものから一枚だけでも送れます。何もないときは、下のボタンから始められます。</p></div></details>
+      <div class="action-links"><a class="button secondary" href={adminPath(ward, "/projects")}>資料がないので、種類を選んで始める</a></div>
+    </> : <>
+      <h1>送った資料</h1><p class="lead">{sent}件を預かっています。読み終わった分から、段取りを作れます。</p>
+      <p class="muted">{read ? `読み終わりました ${read}件。` : ""}{reading ? `読んでいます ${reading}件。` : ""}{delayed ? `読み取りが遅れています ${delayed}件。送り直す必要はありません。` : ""}{failed ? `読めませんでした ${failed}件。もう一度読むか、このまま進められます。` : ""}</p>
+      <section class="next"><strong>次は</strong><p>読み終わったものを見てください。</p><a class="button" href={adminPath(ward, "/intake/read")}>読み終わったものを見る</a></section>
+      <div class="action-links"><a class="button secondary" href={adminPath(ward, "/intake")}>続けて送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>資料がないので、種類を選んで始める</a></div>
+      <p><a href={adminPath(ward, "/intake/received")}>送ったものを見る</a></p>{places}
+    </> : <>
+      <h1>いま進めていること</h1><p class="lead">押すと段取りが開きます。手元に紙や資料があれば、先に送ってかまいません。</p>
+      <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a></div>
+      <ul class="rows two">{projects.map((p, index) => {
+        const state = states[index];
+        const tasks = state?.mapTasks.filter((task) => task.progress !== "done" && (!task.periodStart || task.periodStart <= today) && (!task.periodEnd || task.periodEnd >= today)) ?? [];
+        const questions = state?.questions.length ?? 0;
+        const due = p.deadlines.event_day ?? p.deadlines.submit_due;
+        const days = due ? Math.ceil((Date.parse(due) - Date.parse(today)) / 86400_000) : null;
+        return <li><a class="row-link" href={adminPath(ward, `/projects/${p.projectId}/map`)}><b>{p.title}</b>
+          {due ? <span>{formatJstDate(due)}{p.deadlines.submit_due && !p.deadlines.event_day ? "までに提出" : days !== null && days >= 0 ? `まで、あと${days}日` : ""}</span> : null}
+          <span>{tasks.length ? `今の時期の仕事: ${tasks.map((t) => t.name).join("、")}` : state?.mapTasks.length ? "今の時期の仕事はありません" : "仕事はまだありません。段取りから足せます"}</span>
+          {questions ? <span>質問 {questions}つ</span> : null}
+        </a></li>;
+      })}</ul>
+      <div class="action-links"><a class="button secondary" href={adminPath(ward, "/projects")}>新しく始める</a></div>
+      <h2>届いたもの</h2><ul class="rows"><li><a class="row-link" href={adminPath(ward, "/inbox")}><b>公式LINEに届いた写真と文 {lineInbox.length}件</b>
+        {lineInbox.length ? <span>{lineInbox.some((i) => i.disposition === "matched") ? "AIが行事に入れました。" : ""}{lineInbox.some((i) => i.disposition === "unmatched") ? `${lineInbox.filter((i) => i.disposition === "unmatched").length}件はどの行事か分かりませんでした` : ""}</span> : <span>まだ届いていません</span>}
+      </a></li>{sent ? <li><a class="row-link" href={adminPath(ward, "/intake/read")}><b>送った資料 {sent}件</b><span>読み終わったものを見る</span></a></li> : null}</ul>
+      {places}
+    </>}
+  </AdminPage>);
 });
 
 admin.get("/settings", (c) => {

@@ -31,10 +31,10 @@ it("入った物を名前と文で見分け、材料の文を読み、今やる�
     { kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode(text) },
   ] });
   const root = `/${ward.slug}/admin`;
-  const intake = await get(realApp, `${root}/intake`, cookie);
+  const intake = await get(realApp, `${root}/intake/received`, cookie);
   const intakeHtml = await intake.text();
   expect(intakeHtml).toContain(filename);
-  expect(intakeHtml).toContain(`<strong>${text.slice(0, 40)}…</strong>`);
+  expect(intakeHtml).toContain(`<b>${text.slice(0, 40)}…</b>`);
   const materials = await get(realApp, `${root}/projects/${project.projectId}`, cookie);
   const materialHtml = await materials.text();
   const beforeReadings = materialHtml.slice(materialHtml.indexOf('<h2 id="materials"')).split("<details>")[0];

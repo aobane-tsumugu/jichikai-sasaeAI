@@ -15,7 +15,7 @@ it("画面を開いた後に処理が進んで取り下げられなかった時�
     parts: [{ kind: "text", filename: "架空の連絡.txt", mediaType: "text/plain", bytes: new TextEncoder().encode("架空の会場の連絡") }],
   });
   const root = `/${ward.slug}/admin/intake`;
-  const initialPage = await (await get(realApp, root, cookie)).text();
+  const initialPage = await (await get(realApp, `${root}/received`, cookie)).text();
   expect(initialPage).toContain(`${root}/${received.jobId}/withdraw`);
   // ボタンのある画面を開いた後、裏の処理が繋げる段階へ進んだ場面。
   await env.DB.prepare("UPDATE jobs SET status = 'connecting' WHERE ward_id = ? AND job_id = ?")

@@ -6,9 +6,9 @@
 
 /** 包みの版。どの版で読んだかを readings に残し、直した後に古い版で読んだ物を選んで読み直せるようにする。 */
 export const READ_PACK_VERSION = {
-  general: "read-general@2",
+  general: "read-general@3",
   answer_sheet: "read-answer-sheet@3",
-  restore: "read-restore@2",
+  restore: "read-restore@3",
   /** モデルを通さない読み取り（Word、Excel、文字） */
   direct: "read-direct@2",
 } as const;
@@ -84,11 +84,21 @@ export interface OriginalYear {
   year: number | null;
 }
 
+/** 行事の見立て。資料の年や今年の決定は含めない。古い読み取りには無い。 */
+export interface ProjectSuggestion {
+  original_id: string;
+  title: string;
+  kind: "event" | "general_meeting" | "city_request" | "board_meeting" | "duty" | "request";
+  date_text?: string;
+  place?: string;
+}
+
 export interface Reading {
   document_kind: DocumentKind;
   original_years: OriginalYear[];
   /** 一行の要約 */
   summary: string;
+  project_suggestions?: ProjectSuggestion[];
   text_blocks: TextBlock[];
   fields: ReadField[];
   tables: ReadTable[];
@@ -138,7 +148,7 @@ const unreadableSchema = {
 export const GENERAL_READING_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["document_kind", "original_years", "summary", "text_blocks", "fields", "tables", "decisions", "unreadable"],
+  required: ["document_kind", "original_years", "summary", "project_suggestions", "text_blocks", "fields", "tables", "decisions", "unreadable"],
   properties: {
     document_kind: { type: "string", enum: [...DOCUMENT_KINDS] },
     original_years: {
@@ -151,6 +161,18 @@ export const GENERAL_READING_SCHEMA = {
       },
     },
     summary: str,
+    project_suggestions: {
+      type: "array",
+      items: {
+        type: "object", additionalProperties: false,
+        required: ["original_id", "title", "kind", "date_text", "place"],
+        properties: {
+          original_id: str, title: str,
+          date_text: str, place: str,
+          kind: { type: "string", enum: ["event", "general_meeting", "city_request", "board_meeting", "duty", "request"] },
+        },
+      },
+    },
     text_blocks: {
       type: "array",
       items: {

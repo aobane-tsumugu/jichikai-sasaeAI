@@ -125,13 +125,16 @@ async function discoverPrint() {
 }
 
 const shots: Shot[] = [
-  { stage: 0, name: "役員のトップ", path: `${admin}/`, heading: "役員画面" },
+  { stage: 0, name: "最初の画面", path: `${admin}/`, heading: "いま進めていること" },
   { stage: 0, name: "名簿", path: `${admin}/answers/roster`, heading: "名簿" },
   { stage: 0, name: "区の設定", path: `${admin}/settings`, heading: "区の設定" },
   { stage: 1, name: "地図", path: "project/map", heading: "地図" },
   { stage: 1, name: "材料", path: "project", heading: "材料とその影響" },
   { stage: 1, name: "問い", path: "project", heading: "問い" },
-  { stage: 1, name: "受け箱", path: `${admin}/inbox`, heading: "受け箱" },
+  { stage: 1, name: "送る", path: `${admin}/intake`, heading: "送る" },
+  { stage: 1, name: "送ったもの", path: `${admin}/intake/received`, heading: "受け取りました" },
+  { stage: 1, name: "読み終わったもの", path: `${admin}/intake/read`, heading: "読み終わりました" },
+  { stage: 1, name: "届いたもの", path: `${admin}/inbox`, heading: "届いたもの" },
   { stage: 2, name: "案", path: "project/draft", heading: "案" },
   { stage: 2, name: "配る", path: "project/publish", heading: "配る" },
   { stage: 2, name: "出す", path: "print", heading: "印刷用ページ", a4: true },

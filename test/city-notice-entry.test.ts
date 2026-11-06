@@ -16,16 +16,9 @@ it("入口の四つから進み、市の通知を知らせに保存して通常�
     const home = await get(realApp, `${root}/`, cookie, bindings);
     expect(home.status).toBe(200);
     const homeHtml = await home.text();
-    const primary = homeHtml.match(/<nav class="action-links">([\s\S]*?)<\/nav>/)?.[1];
-    if (!primary) throw new Error("よく使う四つの入口がありません");
-    expect(Array.from(primary.matchAll(/<a\b[^>]*>(.*?)<\/a>/g), (match) => match[1]))
-      .toEqual(["今やること", "材料を送る", "新しいプロジェクト", "受け箱（0件）"]);
-    // プロジェクトが無くても、同じ入口をもう一つボタンで出さない。
-    expect(homeHtml.split('<details class="panel">')[0]?.match(/<a class="button/g)).toHaveLength(4);
-    const other = homeHtml.match(/<details class="panel"><summary>そのほか<\/summary>([\s\S]*?)<\/details>/)?.[1];
-    if (!other) throw new Error("そのほかの入口が畳まれていません");
-    expect(Array.from(other.matchAll(/<a\b[^>]*>(.*?)<\/a>/g), (match) => match[1]))
-      .toEqual(["名簿", "記録", "区の設定", "行政の依頼", "問い合わせと要望", "帳簿"]);
+    expect(homeHtml).toContain("去年の資料を送ってください");
+    expect(homeHtml).toContain(`href="${root}/intake">去年の資料を送る</a>`);
+    expect(homeHtml).toContain(`href="${root}/projects">資料がないので、種類を選んで始める</a>`);
 
     const project = await createProject(env.DB, ward.wardId, {
       kind: "city_request", title: FIRST_SLICE.draftTitle, year: FIRST_SLICE.eventYear, accountId: account.accountId,

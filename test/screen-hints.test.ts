@@ -3,12 +3,12 @@ import { expect, it } from "vitest";
 import { seedAdmin } from "../src/core/testing";
 import { get, realApp } from "./helpers";
 
-it("送る画面で用途の短い説明を開ける", async () => {
+it("送る画面で用途の短い説明を読める", async () => {
   const { ward, cookie } = await seedAdmin(env.DB);
   const page = await get(realApp, `/${ward.slug}/admin/intake`, cookie);
   expect(page.status).toBe(200);
   const html = await page.text();
-  expect(html).toContain('<summary>説明を読む</summary>');
-  expect(html).toContain('<details class="hint">');
-  expect(html).toContain("資料を撮るか、ファイルや一行の文を送る画面です。分かる時だけ送り先のプロジェクトを選んでください。");
+  expect(html).toContain('<p class="lead">何枚でも一度に送れます。分類も名前付けもいりません。</p>');
+  expect(html).toContain("電話や立ち話で決まったことを書く");
+  expect(html).not.toContain('name="project_id"><option');
 });

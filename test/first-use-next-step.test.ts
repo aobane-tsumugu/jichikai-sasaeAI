@@ -8,14 +8,14 @@ import { get, realApp } from "./helpers";
 it("初めての役員にプロジェクト・資料・空間の次の操作を、その画面で示す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
-  const opening = "行事や総会など、仕事ごとにプロジェクトを開きます。";
+  const opening = "去年の資料を送ってください";
   const materials = "去年の案内や記録の紙、Word や Excel を、見つかった物から送ってください。全部そろえなくてかまいません。";
   const emptyHome = await get(realApp, `${root}/`, cookie);
   expect(emptyHome.status).toBe(200);
   const homeHtml = await emptyHome.text();
   expect(homeHtml).toContain(opening);
-  // 入口は四つにまとめている。初めての人も「新しいプロジェクト」から作成画面へ進める。
-  expect(homeHtml).toContain(`class="button secondary" href="${root}/projects">新しいプロジェクト</a>`);
+  // 資料が無い一年目でも始められる。
+  expect(homeHtml).toContain(`class="button secondary" href="${root}/projects">資料がないので、種類を選んで始める</a>`);
   const projectEntry = await get(realApp, `${root}/projects`, cookie);
   expect(projectEntry.status).toBe(200);
   const projectEntryHtml = await projectEntry.text();
