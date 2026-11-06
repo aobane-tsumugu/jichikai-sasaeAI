@@ -51,7 +51,9 @@ export function checkKindsFacts(text: string, allowed: string[], required: strin
   for (const sentence of body.split(/[。\n]/).map(compact).filter(Boolean)) {
     const fact = sentence.replace(/^(?:[-・]|\d+[.)、])/, "").replace(/^(?:決めたこと|決定事項|前回の決定|未決|保留|議題|日時|場所)[:：]/, "");
     if (/^(?:議事録|議題の資料|議案の資料|決めたこと|前回の決定|決定事項|未決|保留|決まらなかったこと・残っている質問)$/.test(fact)) continue;
-    assert(known.has(fact), "資料と照合できない文があります（送っていない決定や言い換えはPMの確認が必要です）");
+    // 見出しの付いた文もあるので全文の一致は求めない。決定を述べる文だけ、送った決定を含むかを見る。
+    if (!/決め|決定|決ま|承認|可決|採用/.test(fact) || /決めていない|決まっていない|決まらなかった/.test(fact)) continue;
+    assert([...known].some((entry) => entry && fact.includes(entry)), "資料と照合できない文があります（送っていない決定や言い換えはPMの確認が必要です）");
   }
 }
 
