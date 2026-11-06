@@ -55,6 +55,14 @@ export function checkKindsFacts(text: string, allowed: string[], required: strin
   }
 }
 
+// 閉じる画面の決めたことは、AI が語尾を整えた短い文で入る。語尾の違いだけを許し、別の決定は通さない。
+export function checkClosingDecisions(text: string, decision: string) {
+  const want = compact(decision);
+  const lines = text.split("\n").map(compact).filter(Boolean);
+  assert(lines.some((line) => want.includes(line) || line.includes(want)), "送った決定が閉じる画面にありません");
+  for (const line of lines) assert(want.includes(line) || line.includes(want), "閉じる画面に送っていない決定があります");
+}
+
 export function checkKindsDecision(text: string, decision: string) {
   // 画面が末尾に添える日付だけを外す。曜日の括弧と、決定文に含まれる括弧を区別する。
   const fact = text.replace(/（\d{1,2}月\d{1,2}日（[日月火水木金土]））\s*$/, "");
@@ -190,7 +198,7 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
       checkKindsFacts(draftText(minutes.form), [source.minutes, `${source.year}年1月10日`, "架空の集会室"], [source.decision, source.pending]);
       // AIが拾った決定を人が閉じる画面から残す。住民への報告は空欄にする。
       const closing = readForm(await get(`${admin}/close/${first}`), `/close/${first}/finalize`);
-      checkKindsFacts(closing.values.get("decisions") ?? "", [source.decision], [source.decision]);
+      checkClosingDecisions(closing.values.get("decisions") ?? "", source.decision);
       await close(first, minutes.form.values.get("text") ?? "", source.decision);
       const second = await open("board2", "board_meeting", source.year, "役員会2回目（架空）", `${source.year}-02-10`);
       const agenda = await draft(second, "procedure");
@@ -203,7 +211,7 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
       const next = await draft(second, "report");
       checkKindsFacts(draftText(next.form), [source.nextMinutes, `${source.year}年2月10日`, "架空の集会室"], [source.nextDecision]);
       const nextClose = readForm(await get(`${admin}/close/${second}`), `/close/${second}/finalize`);
-      checkKindsFacts(nextClose.values.get("decisions") ?? "", [source.nextDecision], [source.nextDecision]);
+      checkClosingDecisions(nextClose.values.get("decisions") ?? "", source.nextDecision);
       await close(second, next.form.values.get("text") ?? "", source.nextDecision);
       return "資料の受付、二回の議事録と閉じる操作、前回の決定と未決、送っていない決定がないことを確認しました。";
     }],
