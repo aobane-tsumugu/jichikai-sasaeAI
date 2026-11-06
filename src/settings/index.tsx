@@ -111,6 +111,7 @@ admin.get("/settings", (c) => {
         <li><a class="row-link" href={adminPath(ward, "/settings/people")}><b>役員の一覧</b><span>役員を足す、外す。入るためのリンクを出す。なくしたスマホやパソコンで入れないようにする。</span></a></li>
         <li><a class="row-link" href={mySignInPath(ward)}><b>自分の入り方</b><span>LINEやメールをつなぎます。</span></a></li>
         <li><a class="row-link" href={adminPath(ward, "/settings/info")}><b>区の情報</b><span>連絡先、班の名前、知らせの時刻。</span></a></li>
+        <li><a class="row-link" href={adminPath(ward, "/close/activity")}><b>区の説明</b><span>役員の仕事、加入すると担うことや得られることを、書けるところから区のページに載せます。</span></a></li>
         <li><a class="row-link" href={adminPath(ward, "/settings/templates")}><b>決まった知らせの文</b><span>雨の変更の知らせなど、くり返し出す文です。</span></a></li>
         <li><a class="row-link" href={adminPath(ward, "/settings/deletion")}><b>消す希望</b><span>住民から消してほしいと頼まれたものを消します。</span></a></li>
       </ul>
