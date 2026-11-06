@@ -85,10 +85,10 @@ pub.get("/line", async (c) => {
     {lineUrl ? <><a class="button" href={lineUrl}>LINEで友だちに追加する</a><p>LINEが開きます。</p></> : <p>この区の公式LINEは、まだ用意されていません。</p>}
     <h2>追加しなくても読めます</h2><p>案内は、このページと、紙の回覧、掲示でも読めます。LINEを使わない方は、追加しなくてかまいません。</p>
     <h2>届くもの</h2><p>案内の題と、このページへのリンクが届きます。くわしい内容は、リンクを開いて、このページで読みます。</p>
-    <div class="sheet-preview"><p><b>届く知らせの例</b></p><p style="margin-bottom: 0; overflow-wrap: anywhere">秋の収穫祭のご案内<br />{`${new URL(c.req.url).origin}/${c.var.ward.slug}/`}</p></div>
+    <div class="sheet-preview"><p><b>届く知らせの例</b></p><p style="margin-bottom: 0; overflow-wrap: anywhere">秋の収穫祭のご案内<br />{`${new URL(c.req.url).origin}/${c.var.ward.slug}/p/akimatsuri`}</p></div>
     <h2>名前や世帯の登録はいりません</h2><p>友だちに追加すれば、受け取れます。名前、世帯、班を伝える必要はありません。LINEの中で、質問したり答えたりする必要もありません。</p>
     <h2>届かなくしたいとき</h2><p>LINEで、区の公式アカウントをブロックすると、届かなくなります。もう一度追加すれば、また届きます。</p>
-    <h2>分からないときは</h2><ResidentContact contact={contact} /><a class="quiet" href={`/${c.var.ward.slug}/privacy`}>個人情報の扱い</a>
+    <h2>分からないときは</h2><ResidentContact contact={contact} /><ul class="links"><li><a href={`/${c.var.ward.slug}/privacy`}>個人情報の扱い</a></li></ul>
   </Layout>);
 });
 

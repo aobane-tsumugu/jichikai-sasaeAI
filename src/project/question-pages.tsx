@@ -15,12 +15,19 @@ export function questionOptionLabel(option: string): string {
 
 /** 長い質問は、短い見出しと本文に分ける。保存済みの質問の文もこの形で読む。 */
 function questionTitle(question: QuestionView): { heading: string; body: string } {
+  if (question.options?.some((option) => questionOptionLabel(option) === "今年のもの")) return { heading: "この資料は今年のものですか", body: question.text };
   if (question.kind === "unreadable") return { heading: "読めなかったところがあります", body: question.text };
   if (question.kind === "conflict" && isItemKey(question.target)) return {
     heading: `「${ITEM_SCREEN_LABEL[question.target]}」が資料によって違います`,
     body: question.text.replace(/^「[^」]*」が食い違っています。/, "").replace("年の書いていない", "年の書かれていない"),
   };
   return { heading: question.text, body: "" };
+}
+
+/** 一覧に出す一行。読めなかった所は何が読めなかったかを、ほかは見出しを出す。 */
+export function questionShort(question: QuestionView): string {
+  const { heading, body } = questionTitle(question);
+  return question.kind === "unreadable" && heading === "読めなかったところがあります" ? body : heading;
 }
 
 export const questionPages = new Hono<AdminEnv>();
@@ -62,7 +69,7 @@ questionPages.get("/projects/:projectId/questions", async (c) => {
     {questions.map((question) => <section class="panel" id={`question-${question.questionId}`}>
       <h2>{questionTitle(question).heading}</h2>
       {questionTitle(question).body ? <p>{questionTitle(question).body}</p> : null}
-      {question.source?.locator ? <p class="muted">{question.source.locator}</p> : null}
+      {question.source?.locator && question.source.locator !== "写真の確認" ? <p class="muted">{question.source.locator}</p> : null}
       {question.kind === "conflict" ? <p><a class="button secondary" href={adminPath(ward, `/projects/${id}/questions/${question.questionId}/compare`)}>二つを見比べる</a></p> : null}
       {!state.project.closedAt ? <form method="post" action={adminPath(ward, `/projects/${id}/questions/${question.questionId}`)}>
         {question.options?.length ? <div class="action-links">{question.options.map((option) => <button class="secondary" name="answer" value={option}>{questionOptionLabel(option)}</button>)}</div> : <>

@@ -85,7 +85,7 @@ export const ITEM_LABEL: Record<ItemKey, string> = {
 
 /** 画面と紙に出す項目の名前。ITEM_LABEL は AI と本文の見出しの突き合わせに使うので変えない。 */
 export const ITEM_SCREEN_LABEL: Record<ItemKey, string> = {
-  ...ITEM_LABEL, date_time: "いつ", place: "どこで", due: "答えの締切", public_contact: "連絡先",
+  ...ITEM_LABEL, date_time: "いつ", place: "どこで", content: "内容", due: "答えの締切", public_contact: "連絡先",
 };
 
 /** 画面で数を読む言葉。10 以上は「件」にする。 */

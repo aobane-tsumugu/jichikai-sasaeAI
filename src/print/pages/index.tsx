@@ -307,7 +307,7 @@ export function PaperBody({ body }: { body: string }) {
   try { value = JSON.parse(body); } catch { return <ArticleBody body={body} />; }
   if (!value || typeof value !== "object" || !("text" in value) || typeof value.text !== "string") return <ArticleBody body={body} />;
   const text = value.text;
-  const names: Record<string, string> = { date_time: "いつ", place: "どこで", rain_plan: "雨のとき", content: "中身", belongings: "持ち物", helper_slots: "手伝い", due: "締切", public_contact: "連絡先" };
+  const names: Record<string, string> = { date_time: "いつ", place: "どこで", rain_plan: "雨のとき", content: "内容", belongings: "持ち物", helper_slots: "手伝い", due: "締切", public_contact: "連絡先" };
   const items = Object.entries(names).flatMap(([key, label]) => {
     const content = publishedItem(body, key);
     return content && !text.includes(content.slice(0, 10)) ? [{ label, content }] : [];

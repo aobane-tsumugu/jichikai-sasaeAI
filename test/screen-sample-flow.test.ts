@@ -97,7 +97,7 @@ it("届いた資料で入ったことを一行で書き、多い時は短くす�
     mapTasks: [{ name: "会場を押さえる", progress: "done", progressSource: source("a") }],
   } as unknown as ProjectState;
   expect(materialChangeText(state, "a")).toBe("「会場を押さえる」を済みにしました。いつ、どこでを入れました。質問を一つ足しました");
-  expect(materialChangeText(state, "b")).toBe("雨のとき、中身、持ち物など4項目を入れました");
+  expect(materialChangeText(state, "b")).toBe("雨のとき、内容、持ち物など4項目を入れました");
   expect(materialChangeText(state, "c")).toBe("3軒のうち1軒の返事を入れました");
   expect(materialChangeText(state, "d")).toBe("運営メモに1行入れました");
   expect(materialChangeText(state, "e")).toBe("参考に、協賛先の一覧に1行入れました");

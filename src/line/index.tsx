@@ -134,7 +134,7 @@ admin.get("/inbox", async (c) => {
     {clarifications.length ? <p class="link-line"><a href={adminPath(ward, "/inbox/questions")}>送った資料についての質問を見る</a></p> : null}
     {assigned.length || matched.length ? <><h2>行事に入れたもの</h2><ul class="rows">
       {assigned.map((j) => <li class="panel"><b>{j.first_filename || "届いた文"}</b><p class="muted">{projects.find((p) => p.project_id === j.project_id)?.name ?? "行事"}に入れました</p><a class="quiet" href={jobPick(j.job_id)}>別の行事に入れる</a></li>)}
-      {matched.map(({ item, job }) => <li class="panel"><b>{item.original_text ? `「${item.original_text}」` : "届いた写真"}</b><p class="muted">{item.sender_display_name || "役員"}がLINEで送りました。{item.matched_project_name ? `${item.matched_project_name}に入れました` : job ? STATUS_LABEL[job.status] : "どの行事か分かりませんでした"}</p><a class="quiet" href={itemPick(item.item_id)}>別の行事に入れる</a></li>)}
+      {matched.map(({ item, job }) => <li class="panel"><b>{item.original_text ? `「${item.original_text}」` : "届いた写真"}</b><p class="muted">{item.sender_display_name || "役員"}がLINEで送りました。{(item.matched_project_name ?? projects.find((p) => p.project_id === job?.project_id)?.name) ? `${item.matched_project_name ?? projects.find((p) => p.project_id === job?.project_id)?.name}に入れました` : job ? STATUS_LABEL[job.status] : "どの行事か分かりませんでした"}</p><a class="quiet" href={itemPick(item.item_id)}>別の行事に入れる</a></li>)}
     </ul></> : null}
     <p class="muted">関係のない雑談は、AIが外しています。</p></>}
   </Layout>);

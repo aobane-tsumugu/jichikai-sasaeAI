@@ -56,3 +56,11 @@ it("配っていない行事の答えの画面は、開けない案内へ戻さ�
   expect(list).toContain("架空の配る前の行事（2026年）");
   expect(list).toContain("0世帯が答えています");
 });
+
+it("質問の一行は短くし、年を聞く質問は見本の見出しにする", async () => {
+  const { questionShort } = await import("../src/project/question-pages");
+  const base = { questionId: "q", state: "open", source: null, answer: null, detail: null };
+  expect(questionShort({ ...base, kind: "conflict", target: "place", text: "「場所」が食い違っています。今は「架空の広場」です。", options: ["架空の広場", "架空の集会所"] } as never)).toBe("「どこで」が資料によって違います");
+  expect(questionShort({ ...base, kind: "unreadable", target: null, text: "協賛先の金額が読めませんでした", options: null } as never)).toBe("協賛先の金額が読めませんでした");
+  expect(questionShort({ ...base, kind: "unreadable", target: null, text: "1枚目は、今年のものでしょうか。", options: ["今年のもの", "去年か、それより前のもの"] } as never)).toBe("この資料は今年のものですか");
+});

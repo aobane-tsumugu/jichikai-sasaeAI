@@ -64,14 +64,14 @@ admin.get("/archive/map", async (c) => {
   }
   return c.html(<Layout title="一年の予定" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/archive")}>← 記録へ</a><h1>一年の予定</h1><p class="lead">区の仕事を、始まりの月ごとに並べています。去年の記録を開くと、そこから新しく始められます。</p>
-    {rows.results.some((row) => !row.period_start) ? <p class="muted">時期が決まっていない仕事は「時期未定」の月にまとまります。</p> : null}
     {[...months.entries()].sort(([a], [b]) => b.slice(0, 4).localeCompare(a.slice(0, 4)) || a.localeCompare(b)).map(([month, entries]) => <section>
       <h2>{month.replace(/^(\d{4})-(\d{2})$/, (_, year: string, month: string) => `${year}年${Number(month)}月`)}</h2><ul class="rows two">{entries.map((entry) => <li>
         <a class="row-link" href={adminPath(ward, entry.closed_at ? `/archive/${entry.project_id}` : `/projects/${entry.project_id}/map`)}>
-          <b>{entry.name}</b><span>{entry.title}（{entry.year}年　{entry.closed_at ? "記録" : "進めています"}）</span><span>{entry.period_start && entry.period_end ? periodText(entry.period_start, entry.period_end) : entry.period_end ? `${shortDate(entry.period_end)}まで` : entry.period_start ? `${shortDate(entry.period_start)}から` : "時期はまだ決まっていません"}</span>
+          <b>{entry.name}</b><span>{entry.title}（{entry.year}年　{entry.closed_at ? "記録" : "進めています"}）</span><span>{entry.period_start && entry.period_start === entry.period_end ? formatJstDate(entry.period_start) : entry.period_start && entry.period_end ? periodText(entry.period_start, entry.period_end) : entry.period_end ? `${shortDate(entry.period_end)}まで` : entry.period_start ? `${shortDate(entry.period_start)}から` : "時期はまだ決まっていません"}</span>
         </a>
         {entry.closed_at ? <a class="quiet" href={adminPath(ward, `/archive/${entry.project_id}?view=seed`)}>この記録から新しく始める</a> : null}
       </li>)}</ul></section>)}
+    {rows.results.some((row) => !row.period_start) ? <p class="muted">時期が決まっていない仕事は「時期未定」の月にまとまります。</p> : null}
     {rows.results.length === 0 ? <><p>予定はまだありません。資料を送ると、行事の段取りがここに入ります。</p><a class="button secondary" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a></> : null}
   </Layout>);
 });

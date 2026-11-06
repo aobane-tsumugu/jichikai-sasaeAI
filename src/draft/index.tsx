@@ -52,7 +52,7 @@ admin.get("/projects/:projectId/draft", async (c) => {
   return c.html(<Layout title={`下書き: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {project.title}の段取りへ</a>
     <h1>{project.title}の下書き</h1><p class="lead">作りたい文書を選んでください。今ある資料からAIに下書きを頼むか、自分で書き始められます。</p><p>文書を選び、必要ならAIに下書きを起こさせます。AIが止まっているときも、ここで書いて保存できます。</p>
-    {c.req.query("notice") === "saved" ? <Notice>保存しました。今年の中身にも反映しました。</Notice> : null}
+    {c.req.query("notice") === "saved" ? <Notice>保存しました。今年の内容にも入れました。</Notice> : null}
     {c.req.query("notice") === "started" ? <Notice>AIに下書きを頼みました。画面を閉じても続きます。</Notice> : null}
     {c.req.query("notice") === "restored" ? <Notice>前の下書きを戻して、新しい下書きとして保存しました。</Notice> : null}
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
@@ -112,7 +112,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
       {key === "helper_slots" ? <textarea id={`item-${key}`} name={`item_${key}`} rows={3} maxlength={2000}>{value}</textarea> : <input id={`item-${key}`} name={`item_${key}`} value={value} maxlength={2000} />}
       {original ? <p class="help-text">{original.filename || "送った資料"}{source?.locator ? `（${source.locator}）` : ""}から入れました。{previous ? `去年は${previous.content}でした。` : ""}</p> : draftItem?.source ? <p class="help-text">{draftItem.source}から入れました。今年も同じか見てください。</p> : previous ? <p class="help-text">去年は{previous.content}でした。</p> : null}
       {original ? <a class="quiet" href={adminPath(ward, `/intake/originals/${original.original_id}`)}>元の資料を見る</a> : null}
-      {conflict ? <a class="quiet" href={adminPath(ward, `/projects/${id}/questions/${conflict.questionId}/compare?from=draft`)}>資料によって違います。見比べる</a> : null}
+      {conflict ? <p><a class="quiet" href={adminPath(ward, `/projects/${id}/questions/${conflict.questionId}/compare?from=draft`)}>資料によって違います。見比べる</a></p> : null}
       {key === "public_contact" ? <p class="help-text">だれでも読める案内に出ます。</p> : null}
     </div>;
   };
@@ -140,7 +140,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
       <div class="field"><label for="text">{kindRaw === "announcement" && project.kind === "event" ? "案内の文" : kindRaw === "duty_roster" ? "当番表の説明" : kindRaw === "recruitment" ? "募集の文" : `${pack.title}の文`}</label><textarea id="text" name="text" rows={10} maxlength={20000}>{body.text}</textarea>{oldDates.map((date) => <p class="warn-text">文の中に前の日付「{date}」が残っています。このままでも配れます。</p>)}</div>
       {kindRaw === "duty_roster" ? (["date_time", "place", "helper_slots", "rain_plan"] as const).map(field) : null}
       <input type="hidden" name="item_content" value={body.items.find((item) => item.key === "content")?.content ?? ""} />
-      {kindRaw === "duty_roster" ? body.items.filter((item) => !["date_time", "place", "helper_slots", "rain_plan", "content"].includes(item.key)).map((item) => <input type="hidden" name={`item_${item.key}`} value={item.content} />) : ITEMS_BY_KIND[project.kind].filter((key) => !["date_time", "place", "rain_plan", "content"].includes(key)).map(field)}
+      {kindRaw === "duty_roster" ? body.items.filter((item) => !["date_time", "place", "helper_slots", "rain_plan", "content"].includes(item.key)).map((item) => <input type="hidden" name={`item_${item.key}`} value={item.content} />) : [...ITEMS_BY_KIND[project.kind]].filter((key) => !["date_time", "place", "rain_plan", "content"].includes(key)).sort((a, b) => Number(b === "helper_slots") - Number(a === "helper_slots")).map(field)}
       <p><button class="secondary" name="after" value="paper">保存して紙の見え方を見る</button></p><p class="muted">撮って役員のグループへ送ると、見てもらえます。まだ配っていません。</p>
       {kindRaw === "duty_roster" ? null : <details class="fold"><summary>誰に見せるかを変える</summary><div class="choice">{SCOPES.map((value) => <label><input type="radio" name="scope" value={value} checked={value === scope} /> {value === "public" ? "だれでも読める" : value === "space" ? "実行委員と班長だけ" : "役員だけ"}</label>)}</div></details>}
     </form>
