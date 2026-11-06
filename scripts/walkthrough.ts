@@ -77,6 +77,51 @@ async function get(path: string) {
   const response = await req(path);
   return { response, html: await response.text() };
 }
+function visibleText(html: string) {
+  return unescapeHtml(html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, "").replace(/<[^>]+>/g, " ")).replace(/\s+/g, "").trim();
+}
+async function paper(printPath: string, kind: "announcement" | "answer" | "duty") {
+  const page = await get(printPath + "/" + kind);
+  if (!page.response.ok) throw new Error("紙を開けません: " + kind);
+  // ページの題や操作ボタンではなく、刷る範囲だけを照合する。
+  const sheets = [...page.html.matchAll(/<section\b[^>]*class="[^"]*\bsheet\b[^"]*"[^>]*>([\s\S]*?)<\/section>/gi)];
+  if (!sheets.length) throw new Error("刷る範囲がありません: " + kind);
+  return sheets.map(sheet => sheet[1] ?? "").join("\n");
+}
+function checkAnnouncement(html: string, title: string, fields: Record<string, string>) {
+  const text = visibleText(html);
+  for (const [label, expected] of [["行事名", title], ["日時", fields.item_date_time], ["場所", fields.item_place]]) {
+    if (!expected?.trim()) throw new Error("案内の" + label + "が空で、紙と照合できません");
+    if (!text.includes(expected.replace(/\s+/g, ""))) throw new Error("案内の紙に" + label + "がありません");
+  }
+}
+function checkAnswer(html: string) {
+  const give = /<div\b[^>]*class="[^"]*\bgive\b[^"]*"[^>]*>((?:\s*<div\b[^>]*>[\s\S]*?<\/div>)+)\s*<\/div>/i.exec(html)?.[1] ?? "";
+  const text = visibleText(give);
+  if (!/締切|まで/.test(text)) throw new Error("回答票の紙に締切がありません");
+  if (!/(?:班長|役員)[^。]*渡/.test(text)) throw new Error("回答票の紙に班長か役員への渡し先がありません");
+}
+function checkDuty(html: string) {
+  for (const table of html.matchAll(/<table\b[^>]*>([\s\S]*?)<\/table>/gi)) {
+    const head = /<thead\b[^>]*>([\s\S]*?)<\/thead>/i.exec(table[1] ?? "")?.[1] ?? "";
+    const headings = [...head.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].at(-1)?.[1] ?? "";
+    const assignee = [...headings.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/gi)].findIndex(cell => visibleText(cell[1] ?? "") === "担当");
+    if (assignee < 0) continue;
+    const body = /<tbody\b[^>]*>([\s\S]*?)<\/tbody>/i.exec(table[1] ?? "")?.[1] ?? "";
+    for (const row of body.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
+      const cells = [...(row[1] ?? "").matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)];
+      const name = visibleText(cells[assignee]?.[1] ?? "");
+      if (name && !/^(?:未定|未記入|未割当|調整中|なし|[-—―]+)$/.test(name)) return;
+    }
+  }
+  throw new Error("当番表の紙に担当の名前が一人もありません");
+}
+function checkNoticeOrder(html: string, notice: string, announcement: string) {
+  const articles = [...html.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article>/gi)].map(article => visibleText(article[1] ?? ""));
+  const noticeIndex = articles.findIndex(text => text.includes(notice.replace(/\s+/g, "")));
+  const announcementIndex = articles.findIndex(text => text.includes(announcement.replace(/\s+/g, "")));
+  if (noticeIndex < 0 || announcementIndex < 0 || noticeIndex >= announcementIndex) throw new Error("区のページで知らせが配った案内より上にありません");
+}
 function readForm(html: string, path: string, sectionTitle?: string) {
   for (const form of html.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/gi)) {
     const action = unescapeHtml(/\baction="([^"]*)"/i.exec(form[1] ?? "")?.[1] ?? "");
@@ -140,19 +185,21 @@ async function waitForDraft(path: string, timeoutMs = DRAFT_WAIT_LIMIT_MS): Prom
 async function publish(project: string, html: string, scope: "public" | "space", sectionTitle?: string) {
   const suffix = scope === "public" ? "/confirm" : "/space";
   const first = readForm(html, "/publish/" + project + suffix, sectionTitle);
+  if (!first.fields.documentId || !first.fields.versionNo) throw new Error("配る文書と紙を結び付けられません");
+  const printPath = admin + "/print/" + project + "/" + encodeURIComponent(first.fields.documentId) + "/" + encodeURIComponent(first.fields.versionNo);
   if (scope === "public") first.fields.lineDelivery = "skip";
   const confirm = await post(first.action, first.fields);
   if (scope === "space") {
     // 空間への配布は一度の操作で完了し、成功時は公開範囲画面へ303で戻る。
     if (confirm.status !== 303) throw new Error("実行委員と班長のページへの配布で停止 (" + confirm.status + ")");
-    return confirm;
+    return { response: confirm, printPath };
   }
   if (!confirm.ok) throw new Error("配布内容の確認で停止 (" + confirm.status + ")");
   const page = await confirm.text();
   if (!page.includes("今回は公式LINEに送りません")) throw new Error("LINEを送らない選択を確認できません");
   const final = readForm(page, "/publish/" + project + "/send");
   if (final.fields.lineDelivery !== "skip") throw new Error("LINE送信を止められません");
-  return post(final.action, final.fields);
+  return { response: await post(final.action, final.fields), printPath };
 }
 async function runPublic() {
   const start = Date.now();
@@ -174,9 +221,10 @@ async function runFull() {
   const unfinished: string[] = [];
   let publicPublished = false;
   let project = "";
+  let projectTitle = "";
+  let announcementText = "";
   let draftPath = "";
   let publicPath = "";
-  let canPublish = false;
   let start = Date.now();
   currentStage = "0";
   currentStarted = start;
@@ -204,9 +252,9 @@ async function runFull() {
   const opened = await post(admin + "/projects", { kind: "event", year: String(new Date().getFullYear()) });
   project = /\/projects\/([^/]+)\/map$/.exec(opened.headers.get("location") ?? "")?.[1] ?? "";
   if (opened.status !== 303 || !project) throw new Error("新しい行事を開けません");
-  const title = "架空 秋の収穫祭 " + stamp.slice(0, 13);
-  await post(admin + "/projects/" + project + "/title", { title });
-  record("1", "通過", "新規行事「" + title + "」を作成。", start);
+  projectTitle = "架空 秋の収穫祭 " + stamp.slice(0, 13);
+  await post(admin + "/projects/" + project + "/title", { title: projectTitle });
+  record("1", "通過", "新規行事「" + projectTitle + "」を作成。", start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";
     record("1", "停止", message, start);
@@ -257,33 +305,32 @@ async function runFull() {
       if ((await post(draft.action, draft.fields)).status !== 303) throw new Error("手書きの案内を保存できません");
     }
   }
-  canPublish = !!draft.fields.text?.trim();
+  const published = await publish(project, (await get(admin + "/publish/" + project)).html, "public");
+  if (published.response.status !== 303) throw new Error("案内を公開できません");
+  publicPath = wardPath + "/p/" + project;
+  if (!(await get(publicPath)).response.ok) throw new Error("公開ページを開けません");
+  checkAnnouncement(await paper(published.printPath, "announcement"), projectTitle, draft.fields);
+  checkAnswer(await paper(published.printPath, "answer"));
+  announcementText = draft.fields.text ?? "";
+  publicPublished = true;
   intakeOk = unfinished.length === 0;
   if (!intakeOk) process.exitCode = 1;
-  record("2", intakeOk ? "通過" : "未完了", "架空の実ファイル4件を送信。同じものはそのまま利用。" + (unfinished.length ? " 未完了: " + unfinished.join("、") : " AIの読み取り・反映と案内作成を確認。"), start);
+  record("2", intakeOk ? "通過" : "未完了", "架空の実ファイル4件を送信。同じものはそのまま利用。案内の紙に行事名・日時・場所、回答票に締切と班長か役員への渡し先を確認。公式LINEは送信なし。" + (unfinished.length ? " 未完了: " + unfinished.join("、") : " AIの読み取り・反映と案内作成を確認。"), start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";
     record("2", "停止", message, start);
     process.exitCode = 1;
   }
 
-  if (canPublish) try {
+  if (publicPublished) try {
   start = Date.now();
   currentStage = "3";
   currentStarted = start;
-  const published = await publish(project, (await get(admin + "/publish/" + project)).html, "public");
-  if (published.status !== 303) throw new Error("案内を公開できません");
-  publicPath = wardPath + "/p/" + project;
-  if (!(await get(publicPath)).response.ok) throw new Error("公開ページを開けません");
-  const printPage = await get(admin + "/publish/" + project);
-  const printPath = unescapeHtml(/href="([^"]*\/print\/[^"]+)"/.exec(printPage.html)?.[1] ?? "");
-  if (!printPath || !(await get(printPath)).response.ok) throw new Error("印刷用ページを開けません");
-  publicPublished = true;
   const answer = await post(wardPath + "/answer/" + project, {
     household: "架空 小林", district: "1班", children_count: "0", adults_count: "2", seniors_count: "0", helper_name: "架空 小林さと", helper_times: "受付10:30-12:00"
   });
   if (answer.status !== 200 || !(await answer.text()).includes("答えを受け付けました")) throw new Error("架空の答えを送れません");
-  record("3", "通過", "公開ページ、印刷用ページ、架空の答え。公式LINEは送信なし。", start);
+  record("3", "通過", "公開された案内から架空の答えを送信。", start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";
     record("3", "停止", message, start);
@@ -307,11 +354,13 @@ async function runFull() {
     if (!duty.fields.text?.trim()) duty.fields.text = "持ち場と時間帯を確認し、担当者を役員で記入してください。";
   }
   if ((await post(duty.action, duty.fields)).status !== 303) throw new Error("当番表の下書きを保存できません");
-  if ((await publish(project, (await get(admin + "/publish/" + project)).html, "space")).status !== 303) throw new Error("実行委員と班長のページに当番表を出せません");
+  const published = await publish(project, (await get(admin + "/publish/" + project)).html, "space");
+  if (published.response.status !== 303) throw new Error("実行委員と班長のページに当番表を出せません");
   if ((await post(wardPath + "/space/" + project + "/enter", { passphrase })).status !== 303) throw new Error("実行委員と班長のページに入れません");
   const space = await get(wardPath + "/space/" + project);
   if (!space.response.ok || !space.html.includes("当番表")) throw new Error("実行委員と班長のページの当番表を読めません");
-  record("4", dutyResult.ready ? "通過" : "未完了", dutyResult.ready ? "実行委員と班長のページを開き、AIの下書きを配って合言葉で読み取り。" : "AIの下書きは完了待ちの上限までに見えず、手書きの当番表を保存・配布して読み取り。", start);
+  checkDuty(await paper(published.printPath, "duty"));
+  record("4", dutyResult.ready ? "通過" : "未完了", (dutyResult.ready ? "実行委員と班長のページを開き、AIの下書きを配って合言葉で読み取り。" : "AIの下書きは完了待ちの上限までに見えず、手書きの当番表を保存・配布して読み取り。") + " 当番表の紙に担当の名前を確認。", start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";
     record("4", message.startsWith("未完了:") ? "未完了" : "停止", message.replace(/^未完了:\s*/, ""), start);
@@ -326,10 +375,11 @@ async function runFull() {
   rain.fields.text = "雨のため、会場を公民館のホールと集会室に変更します。日ときは予定どおりです。";
   if ((await post(rain.action, rain.fields)).status !== 303) throw new Error("雨のお知らせを保存できません");
   // 案内の本文を残し、別の知らせとして配る。
-  if ((await publish(project, (await get(admin + "/publish/" + project)).html, "public", "知らせ")).status !== 303) throw new Error("雨の変更を知らせられません");
+  if ((await publish(project, (await get(admin + "/publish/" + project)).html, "public", "知らせ")).response.status !== 303) throw new Error("雨の変更を知らせられません");
   const rainy = await get(publicPath);
   if (!rainy.response.ok || !rainy.html.includes("雨のため")) throw new Error("雨の変更が公開されていません");
-  record("5", "通過", "同じ公開ページに雨の変更を追加。公式LINEは送信なし。", start);
+  checkNoticeOrder(rainy.html, rain.fields.text, announcementText);
+  record("5", "通過", "同じ公開ページで雨の知らせが配った案内より上にあることを確認。公式LINEは送信なし。", start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";
     record("5", "停止", message, start);
