@@ -101,7 +101,9 @@ it("名簿のない一年目に一つの入口から紙を送り、公開の案�
   if (!ops) throw new Error("運用の画面に入れませんでした");
   const opsRoot = `/ops/wards/${ward.slug}`;
   const opsWard = await (await get(realApp, opsRoot, ops, opsEnv)).text();
-  expect(opsWard).toContain("こちらから電話して");
+  // 提供側の復旧は問い合わせの受付で、別の道で本人を確かめてから行う。
+  expect(opsWard).toContain("問い合わせの受付で本人を確かめてからリンクを出します。");
+  expect(opsWard).toContain('<a class="button" href="/ops/contacts">問い合わせを見る</a>');
   expect(opsWard).not.toContain("confirm(");
   const receivedJob = await env.DB.prepare("SELECT job_id FROM jobs WHERE ward_id = ? AND project_id = ? AND via = 'space'")
     .bind(ward.wardId, id).first<{ job_id: string }>();
@@ -119,7 +121,7 @@ it("名簿のない一年目に一つの入口から紙を送り、公開の案�
   expect(stopped.status).toBe(303);
   const stoppedPage = await get(realApp, `${admin}/`, cookie);
   expect(stoppedPage.status).toBe(503);
-  expect(await stoppedPage.text()).toContain("最初にお渡しした紙");
+  expect(await stoppedPage.text()).toContain('href="/contact"');
   const notice = await get(realApp, `${root}/p/${id}`);
   expect(notice.status).toBe(200);
   expect(await notice.text()).toContain(FIRST_SLICE.publicAnnouncement);

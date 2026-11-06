@@ -45,7 +45,7 @@ export async function openWard(
   input: { slug: string; name: string; firstAccountName: string; lineDestination?: string },
 ): Promise<{ ok: true; ward: WardInfo; account: { accountId: string; loginId: string; name: string; password: string }; line?: ReturnType<typeof lineSecretNames> } | Failure> {
   const slug = normalizeSlug(input.slug);
-  const slugError = slugProblem(slug);
+  const slugError = slug === "contact" ? "その名前は問い合わせの画面で使っています。別のURLの名前を選んでください。" : slugProblem(slug);
   if (slugError) return { ok: false, message: slugError };
 
   const name = cleanName(input.name);

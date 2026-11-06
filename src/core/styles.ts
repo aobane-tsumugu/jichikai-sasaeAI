@@ -417,4 +417,7 @@ export const POSTER_CSS = `
   .poster-qr { width:48%; max-width:70mm; }
   .poster-url { font-size:11px; }
 }
+
+.contact-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.contact-messages { margin-block: 1.5rem; }
 `;

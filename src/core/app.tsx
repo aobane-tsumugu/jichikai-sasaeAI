@@ -7,8 +7,10 @@ import { opsRoutes } from "../ops";
 import { requireAdmin } from "./auth";
 import type { Bundle } from "./bundle";
 import { loginRoutes } from "./login";
-import { Layout, WardStopped } from "./ui";
+import { Layout, ProviderContact, WardStopped } from "./ui";
 import { resolveWard } from "./ward";
+import { contactRoutes } from "../contact/pages";
+import { purgeContactPhotos } from "../contact/store";
 
 /**
  * 経路の組み立て。
@@ -34,6 +36,7 @@ export function createApp(bundles: Bundle[]) {
       <Layout title="SasaeAI">
         <h1>SasaeAI</h1>
         <p>自治会の役員の準備を支える仕組みです。区のページのURL（案内や掲示のQRに書かれたもの）からお入りください。</p>
+        <a class="quiet" href="/contact">SasaeAIに問い合わせる</a>
       </Layout>,
     ),
   );
@@ -44,7 +47,7 @@ export function createApp(bundles: Bundle[]) {
   });
 
   app.get("/robots.txt", (c) =>
-    c.text("User-agent: *\nDisallow: /ops/\nDisallow: /*/admin/\n"),
+    c.text("User-agent: *\nDisallow: /ops/\nDisallow: /contact/\nDisallow: /*/admin/\n"),
   );
 
   const hooks = new Hono<AppEnv>();
@@ -71,6 +74,7 @@ export function createApp(bundles: Bundle[]) {
 
   app.use("/ops/*", csrf());
   app.route("/ops", opsRoutes);
+  app.route("/contact", contactRoutes);
 
   const ward = new Hono<WardEnv>();
   ward.use("*", resolveWard);
@@ -100,6 +104,7 @@ export function createApp(bundles: Bundle[]) {
         <p class="lead">アドレスが違うか、ページが下げられたようです。</p>
         <section class="next"><strong>次は</strong><p>紙のQRコードをもう一度読むか、案内に書かれたアドレスを確かめてください。</p></section>
         <a class="quiet" href={c.req.param("ward") ? `/${encodeURIComponent(c.req.param("ward")!)}/` : "/"}>最初の画面に戻る</a>
+        <p>役員の方で解決しないときは、SasaeAIへ連絡してください。</p><ProviderContact />
       </Layout>,
       404,
     ),
@@ -116,8 +121,7 @@ export function createApp(bundles: Bundle[]) {
         <div class="notice warn"><strong>今は、この画面を開けません</strong><p>時間をおくと開けることがあります。</p></div>
         <section class="next"><strong>次は</strong><p>時間をおいて、もう一度開いてください。</p><a class="button" href={c.req.path}>もう一度開く</a></section>
         <a class="quiet" href={c.req.param("ward") ? `/${encodeURIComponent(c.req.param("ward")!)}/` : "/"}>最初の画面に戻る</a>
-        <p>役員の方は、入る画面の「SasaeAIに問い合わせる」から連絡してください。</p>
-        <a class="quiet" href={c.req.param("ward") ? `/${encodeURIComponent(c.req.param("ward")!)}/admin/login` : "/"}>入る画面を開く</a>
+        <p>役員の方で解決しないときは、SasaeAIへ連絡してください。</p><ProviderContact />
       </Layout>,
       500,
     );
@@ -134,12 +138,12 @@ export async function runScheduled(
   ctx: ExecutionContext,
 ): Promise<void> {
   const entries = Object.entries(bundles).filter(([, b]) => b.scheduled);
-  const results = await Promise.allSettled(entries.map(([, b]) => b.scheduled!(event, env, ctx)));
+  const results = await Promise.allSettled([...entries.map(([, b]) => b.scheduled!(event, env, ctx)), purgeContactPhotos(env)]);
   results.forEach((result, i) => {
     if (result.status === "rejected") {
       const reason = result.reason;
       console.error(
-        `Cronが失敗しました: ${entries[i]?.[0]}`,
+        `Cronが失敗しました: ${entries[i]?.[0] ?? "問い合わせの写真の消去"}`,
         reason instanceof Error ? `${reason.name}: ${reason.message}` : "不明な失敗",
       );
     }
