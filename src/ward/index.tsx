@@ -158,7 +158,7 @@ pub.get("/work/:projectId", async (c) => {
   return c.html(<Layout title={`${activity.title}の活動`} siteName={c.var.ward.name}>
     <p class="link-line"><a href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のページへ</a></p>
     <h1>{activity.title}で役員がしたこと</h1>
-    <p class="lead">役員の仕事の記録から、関わり方を考えるためにご覧ください。</p>
+    <p class="lead">役員の仕事の記録です。関わり方を考える時にご覧ください。</p>
     {body.introduction ? <p style="white-space:pre-wrap">{body.introduction}</p> : null}
     <h2>どんな仕事があったか</h2>
     <p>仕事の記録から作りました。</p>
