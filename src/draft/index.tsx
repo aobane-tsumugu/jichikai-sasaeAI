@@ -59,9 +59,10 @@ admin.get("/projects/:projectId/draft", async (c) => {
 admin.get("/projects/:projectId/draft/:kind", async (c) => {
   const { ward } = c.var; const id = c.req.param("projectId"); const kindRaw = c.req.param("kind");
   if (!isKind(kindRaw)) return c.notFound();
-  if (kindRaw === "notice" && c.req.query("edit") !== "1") return rainDraft(c);
   const [project, state, document] = await Promise.all([getProjectSummary(c.env.DB, ward.wardId, id), getProjectState(c.env.DB, ward.wardId, id), getEditableDocument(c.env.DB, ward.wardId, id, kindRaw)]);
   if (!project || !state) return c.notFound();
+  // 保存済みの知らせは通常の下書きとして開き、保存結果や前の下書きも読めるようにする。
+  if (kindRaw === "notice" && !document && c.req.query("edit") !== "1") return rainDraft(c);
   const pack = getDraftPack(kindRaw);
   const body: DraftBody = document ? parseBody(document.body) : { text: "", items: state.items.map((item) => {
     if (item.current?.content.trim()) return { key: item.key, content: item.current.content };
@@ -115,7 +116,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     {bodyCheck ? <Notice>{bodyCheck}</Notice> : null}
     {c.req.query("notice") === "restored" ? <Notice>前の下書きに戻しました。今の下書きも残ります。</Notice> : null}
     {taskNotice ? <Notice><span data-ai-status={taskNotice.status}>{taskNotice.message}</span> 画面を閉じても処理は続きます。ここで書いて保存することもできます。</Notice> : null}
-    {document?.stale ? <div class="notice warn"><strong>新しい資料が届きました</strong><p>このまま直して配れます。</p><a class="quiet" href="#redo">新しい資料を入れて作り直す</a></div> : null}
+    {document?.stale ? <div class="notice warn"><strong>新しい物が入りました</strong><p>このまま直して配れます。</p><a class="quiet" href="#redo">新しい資料を入れて作り直す</a></div> : null}
     {project.closedAt ? <Notice>この行事は閉じました。開き直すと下書きを直せます。</Notice> : null}
     <form id="draft-form" method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/save`)}>
       <input type="hidden" name="based_on" value={baseVersion} />

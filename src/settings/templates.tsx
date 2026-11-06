@@ -40,7 +40,7 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
           <textarea id={`body-${t.id}`} name="body" rows={5} required maxlength={LIMITS.templateBody}>
             {t.body}
           </textarea>
-          <p>
+          <div class="action-bar">
             <button type="submit">保存する</button>{" "}
             <button
               type="submit"
@@ -51,7 +51,7 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
             >
               消す
             </button>
-          </p>
+          </div>
         </form>
       ))}
       <form method="post" action={base(c)} class="panel">
@@ -75,7 +75,12 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
 
 templates.get("/", (c) => {
   const code = c.req.query("done");
-  return show(c, code && code in DONE ? { notice: DONE[code] } : {});
+  if (!code || !(code in DONE)) return show(c);
+  return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="保存しました" back={{ href: adminPath(c.var.ward, "/settings"), label: "区の設定へ" }}>
+    <h1>保存しました</h1><div class="notice done"><strong>{DONE[code]}</strong><p>次に知らせを作るときから、この内容で使えます。</p></div>
+    <section class="next"><strong>次は</strong><p>ほかに直すものがなければ、最初の画面へ戻ってください。</p><a class="button" href={adminPath(c.var.ward, "/")}>最初の画面へ</a></section>
+    <h2>間違えたときは</h2><p>もう一度、区の設定から開いて直し、保存してください。すでに配った案内は変わりません。</p><a class="quiet" href={base(c)}>決まった知らせの文を直す</a>
+  </AdminPage>);
 });
 
 function readFields(form: Record<string, unknown>): { name: string; body: string } | { error: string } {

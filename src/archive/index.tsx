@@ -59,17 +59,16 @@ admin.get("/archive/map", async (c) => {
     const month = row.period_start?.slice(0, 7) ?? `${row.year}年・時期未定`;
     months.set(month, [...(months.get(month) ?? []), row]);
   }
-  return c.html(<Layout title="区の段取り" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/archive")}>記録</a>}>
-    <h1>区の段取り</h1><p class="lead">区の仕事を月ごとに見ます。行事の名前から、その仕事の段取りや閉じたあとの記録を開けます。</p>
-    <p>行事の仕事を月ごとに並べています。去年の記録を開くと、その段取りから次の年の行事を始められます。</p>
-    {[...months.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([month, entries]) => <section>
-      <h2>{month.replace(/^(\d{4})-(\d{2})$/, (_, year: string, month: string) => `${year}年${Number(month)}月`)}</h2>{entries.map((entry) => <article class="panel">
-        <p>{entry.year}年 / {entry.closed_at ? "記録" : "進行中"}</p>
-        <h3><a href={adminPath(ward, entry.closed_at ? `/archive/${entry.project_id}` : `/projects/${entry.project_id}/map`)}>{entry.title}</a></h3>
-        <p>{entry.name} / {entry.period_start ? formatJstDate(entry.period_start) : "時期未定"}{entry.period_end ? ` から${formatJstDate(entry.period_end)}` : ""}</p>
-        {entry.closed_at ? <p><a href={adminPath(ward, `/archive/${entry.project_id}`)}>この段取りを開き、次の年の種にする</a></p> : null}
-      </article>)}</section>)}
-    {rows.results.length === 0 ? <p>段取りに載っている行事はありません。</p> : null}
+  return c.html(<Layout title="一年の予定" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/archive")}>記録</a>}>
+    <a class="back" href={adminPath(ward, "/archive")}>記録へ</a><h1>一年の予定</h1><p class="lead">区の仕事を、始まりの月ごとに並べています。去年の記録を開くと、そこから新しく始められます。</p>
+    {[...months.entries()].sort(([a], [b]) => b.slice(0, 4).localeCompare(a.slice(0, 4)) || a.localeCompare(b)).map(([month, entries]) => <section>
+      <h2>{month.replace(/^(\d{4})-(\d{2})$/, (_, year: string, month: string) => `${year}年${Number(month)}月`)}</h2><ul class="rows two">{entries.map((entry) => <li>
+        <a class="row-link" href={adminPath(ward, entry.closed_at ? `/archive/${entry.project_id}` : `/projects/${entry.project_id}/map`)}>
+          <b>{entry.name}</b><span>{entry.title}（{entry.year}年　{entry.closed_at ? "記録" : "進めています"}）</span><span>{entry.period_start ? formatJstDate(entry.period_start) : "時期はまだ決まっていません"}{entry.period_end ? `から${formatJstDate(entry.period_end)}` : ""}</span>
+        </a>
+        {entry.closed_at ? <a class="quiet" href={adminPath(ward, `/archive/${entry.project_id}?view=seed`)}>この記録から新しく始める</a> : null}
+      </li>)}</ul></section>)}
+    {rows.results.length === 0 ? <><p>予定はまだありません。資料を送ると、行事の段取りがここに入ります。</p><a class="button secondary" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a></> : null}
   </Layout>);
 });
 

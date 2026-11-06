@@ -320,6 +320,13 @@ main:has(> .answers-wide), main:has(> .record-split) { max-width: var(--width-wi
 .admin-answer-counts fieldset > div { display: grid; grid-template-columns: minmax(0, 1fr) 5rem 1.2em; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
 .admin-answer-counts fieldset > div label { margin: 0; font-weight: 500; }
 .admin-answer-counts input { text-align: right; }
+/* 保存欄のあとにも内容がある画面では、次の内容に重ならないようにする。 */
+form > .action-bar { margin-bottom: 0; }
+form.panel > .action-bar { margin-right: calc(var(--space-4) * -1); margin-left: calc(var(--space-4) * -1); margin-bottom: calc(var(--space-3) * -1); }
+/* 元の資料と、台帳の補足。 */
+.block { display: block; }
+.original-image { display: block; width: 100%; height: auto; }
+.original-document { display: block; width: 100%; height: 75vh; min-height: 24rem; border: 1px solid var(--line-strong); }
 `;
 
 export const PRINT_CSS = `

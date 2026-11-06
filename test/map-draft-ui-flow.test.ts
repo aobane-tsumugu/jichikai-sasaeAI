@@ -91,6 +91,11 @@ it("資料のない一年目から仕事・質問・下書き・別の雨の知�
   const afterMap = await (await get(realApp, `${path}/map?changed=${announcementTask.taskId}`, cookie)).text();
   expect(afterMap).toContain("いま済みにしました");
   expect(afterMap).toContain("雨の変更を知らせる");
+  const rainPage = await get(realApp, `${path}/draft/notice`, cookie);
+  expect(rainPage.status).toBe(200);
+  const rainHtml = await rainPage.text();
+  expect(rainHtml).toContain('id="rain-form"');
+  expect(rainHtml).toContain(`action="${path}/draft/rain-notice"`);
   const rain = await postForm(realApp, `${path}/draft/rain-notice`, {
     templateId: "rain", eventName: project.title, place: FIRST_SLICE.layoutPosition, dateTime: FIRST_SLICE.publicDayText,
   }, cookie);

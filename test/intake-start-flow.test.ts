@@ -49,7 +49,11 @@ it("新任の役員が題は案内・年不明の実際のフォームから送�
     }), env, ctx);
     expect(accepted.status).toBe(200);
     const received = await accepted.json() as { jobId: string; redirectTo: string };
-    expect(received.redirectTo).toBe(`${root}/intake/received`);
+    const receivedUrl = new URL(received.redirectTo, "http://localhost");
+    expect(receivedUrl.origin).toBe("http://localhost");
+    expect(receivedUrl.pathname).toBe(`${root}/intake/received`);
+    expect(receivedUrl.searchParams.get("back")).toBe(`${root}/`);
+    expect(receivedUrl.searchParams.has("project")).toBe(false);
     await Promise.all(tasks);
     expect(await (await get(realApp, `${root}/`, cookie)).text()).toContain("送った資料");
     expect(await (await get(realApp, received.redirectTo, cookie)).text()).toContain("受け取りました");

@@ -85,7 +85,8 @@ describe("秋の収穫祭の最初の一片", () => {
     expect(materialPage.status).toBe(200);
     const materialHtml = await materialPage.text();
     expect(materialHtml).toContain('<form id="send-form"');
-    expect(materialHtml).toContain(`<option value="${projectId}" selected="">`);
+    expect(materialHtml).toContain(`<input type="hidden" name="project_id" value="${projectId}"`);
+    expect(materialHtml).not.toContain('<select id="project_id"');
     const material = await postForm(realApp, `/${ward.slug}/admin/intake`, { project_id: projectId as string, text: FIRST_SLICE.previousMaterial }, cookie);
     expect(material.status).toBe(303);
     const original = await env.DB.prepare(`SELECT o.original_id FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id

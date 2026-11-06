@@ -383,6 +383,8 @@ else {
     cityForm.fields.operation = "save";
     const citySaved = await post(cityForm.action, cityForm.fields);
     if (citySaved.status !== 303) throw new Error("行政の依頼を保存できません");
+    const cityResultPath = citySaved.headers.get("location");
+    if (!cityResultPath || !(await get(cityResultPath)).html.includes("記録しました")) throw new Error("行政の依頼を保存したあとの案内を開けません");
     const cityReadback = await get(cityPath);
     if (!cityReadback.html.includes(FIRST_SLICE.reportText)) throw new Error("行政の依頼の保存内容を読み返せません");
     const ledgerPage = await get(admin + "/ledger");
@@ -391,6 +393,8 @@ else {
     ledgerForm.fields.settlementDraft = FIRST_SLICE.reportText;
     const ledgerSaved = await post(ledgerForm.action, ledgerForm.fields);
     if (ledgerSaved.status !== 303) throw new Error("帳簿を保存できません");
+    const ledgerResultPath = ledgerSaved.headers.get("location");
+    if (!ledgerResultPath || !(await get(ledgerResultPath)).html.includes("保存しました")) throw new Error("帳簿を保存したあとの案内を開けません");
     const ledgerReadback = await get(admin + "/ledger");
     if (!ledgerReadback.html.includes(FIRST_SLICE.reportText)) throw new Error("帳簿の保存内容を読み返せません");
     record(11, "行政の依頼と帳簿", "通過", "架空の行政依頼と帳簿の下書きを保存し、帳簿を読み返した。提出操作なし", ledgerReadback.response.status, start);
@@ -426,7 +430,7 @@ else {
   const start = Date.now();
   try {
     const peoplePage = await get(admin + "/settings/people");
-    if (!peoplePage.response.ok) throw new Error("役員の席とアカウントを開けません");
+    if (!peoplePage.response.ok) throw new Error("役員の一覧を開けません");
     const testName = FIRST_SLICE.firstOfficer + " " + stamp;
     const created = await post(admin + "/settings/people/accounts", { name: testName, seatId: "" });
     const credentialsHtml = await created.text();

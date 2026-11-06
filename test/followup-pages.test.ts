@@ -41,9 +41,16 @@ it("届いたものを名前と文で見分け、資料の文を読み、今や�
   expect(beforeReadings).toContain(text);
   const today = await get(realApp, `${root}/projects/today`, cookie);
   const todayHtml = await today.text();
-  expect(todayHtml).not.toContain(`${displayDate(yesterday)}　行事の日`);
-  expect(todayHtml).toContain(`${displayDate(tomorrow)}　行事の日`);
-  expect(todayHtml).toContain(`${displayDate(yesterday)}　答えの締切`);
+  // 仕事名と日付は別の行に出る。同じ仕事の中に期限があることを確かめる。
+  const todayRows = todayHtml.match(/<a class="row-link"[^>]*>[\s\S]*?<\/a>/g) ?? [];
+  expect(todayRows.some((row) => row.includes("済んだ行事（架空）　行事の日"))).toBe(false);
+  const nextEvent = todayRows.find((row) => row.includes("次の行事（架空）　行事の日"));
+  expect(nextEvent).toBeDefined();
+  expect(nextEvent).toContain(displayDate(tomorrow));
+  const answerDue = todayRows.find((row) => row.includes("済んだ行事（架空）　答えの締切"));
+  expect(answerDue).toBeDefined();
+  expect(answerDue).toContain(displayDate(yesterday));
+  expect(answerDue).toContain(`href="${root}/answers/${project.projectId}"`);
 });
 
 it("AIに頼んだ下書きの仕事は、届いたものの一覧に出さない", async () => {

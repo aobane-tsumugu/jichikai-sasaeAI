@@ -489,7 +489,7 @@ describe("画面", () => {
     const bytes = jpeg("開く");
     const out = await receiveOnly(mine.ward.wardId, [photo("a.jpg", bytes)]);
     const id = out.received[0]?.originalId as string;
-    const ok = await request(`/${mine.ward.slug}/admin/intake/originals/${id}`, { headers: { cookie: mine.cookie } }, ctx);
+    const ok = await request(`/${mine.ward.slug}/admin/intake/originals/${id}?raw=1`, { headers: { cookie: mine.cookie } }, ctx);
     expect(ok.status).toBe(200);
     expect(ok.headers.get("content-type")).toBe("image/jpeg");
     expect(new Uint8Array(await ok.arrayBuffer())).toEqual(bytes);

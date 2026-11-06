@@ -2,7 +2,7 @@ import { Hono, type Context } from "hono";
 import { AdminPage } from "../core/admin-ui";
 import { adminPath } from "../core/auth";
 import { formatJst } from "../core/time";
-import { Credentials, Hint, Notice } from "../core/ui";
+import { Credentials, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import {
   addAccount,
@@ -25,12 +25,12 @@ import {
 export const people = new Hono<AdminEnv>();
 
 const DONE: Record<string, string> = {
-  "seat-added": "席を足しました。",
-  "seat-removed": "席を外しました。その席にいた人は、席なしになりました。",
-  "seat-changed": "席を変えました。",
-  "account-removed": "アカウントを外しました。",
+  "seat-added": "役職を足しました。",
+  "seat-removed": "役職を外しました。その役職にいた人は、役職なしになりました。",
+  "seat-changed": "役職を変えました。",
+  "account-removed": "役員を外しました。",
   "login-id-changed": "IDを変更しました。",
-  "locked-out": "端末を締め出しました。",
+  "locked-out": "この端末で入れないようにしました。",
 };
 
 const here = (c: Context<AdminEnv>, query = "") => adminPath(c.var.ward, `/settings/people${query}`);
@@ -42,159 +42,53 @@ interface View {
 }
 
 const SeatSelect = (props: { seats: SeatRow[]; selected: string | null; name?: string; label: string }) => (
-  <select name={props.name ?? "seatId"} aria-label={props.label}>
-    <option value="" selected={props.selected === null}>
-      席なし
-    </option>
-    {props.seats.map((s) => (
-      <option value={s.seatId} selected={s.seatId === props.selected}>
-        {s.title}
-      </option>
-    ))}
-  </select>
+  <fieldset><legend>{props.label}</legend><div class="choice half">
+    <label><input type="radio" name={props.name ?? "seatId"} value="" checked={props.selected === null} />役職なし</label>
+    {props.seats.map((seat) => <label><input type="radio" name={props.name ?? "seatId"} value={seat.seatId} checked={seat.seatId === props.selected} />{seat.title}</label>)}
+  </div></fieldset>
 );
 
-const PeoplePage = (props: {
-  c: Context<AdminEnv>;
-  view: View;
-  notice?: string;
-  error?: string;
-}) => {
+const PeoplePage = (props: { c: Context<AdminEnv>; view: View; notice?: string; error?: string }) => {
   const { ward, account: me, deviceId } = props.c.var;
   const { seats, accounts } = props.view;
   const base = (rest: string) => adminPath(ward, `/settings/people${rest}`);
-  return (
-    <AdminPage ward={ward} account={me} title="役員の席とアカウント" back={{ href: adminPath(ward, "/settings"), label: "区の設定" }}>
-      <h1>役員の席とアカウント</h1><p class="lead">役員が入るためのIDや、会長・書記などの席を管理する画面です。人を足すときは、下のアカウントの欄に表示名を入れてください。</p>
-      <p class="muted">
-        席は「会長」「書記」などの役の名前です。席があるかないかで、できることは変わりません。アカウントは一人に一つで、IDとパスワードで入ります。表示名は漢字のまま使えます。
-      </p>
-      {props.notice ? <Notice>{props.notice}</Notice> : null}
-      {props.error ? <Notice error>{props.error}</Notice> : null}
-
-      <h2>席</h2>
-      {seats.length === 0 ? <p class="muted">席はまだありません。席は無くても使えます。</p> : null}
-      {seats.map((s, index) => {
-        const holders = accounts.filter((a) => a.seatId === s.seatId).map((a) => a.name);
-        return (
-          <div class="panel">
-            <strong>{s.title}</strong>
-            <span class="muted"> {holders.length > 0 ? holders.join("、") : "（だれもいません）"}</span>{" "}
-            <form
-              class="inline"
-              method="post"
-              action={base(`/seats/${s.seatId}/remove`)}
-              onsubmit="return confirm('この席を外します。その席にいる人は席なしになります（アカウントは残ります）。')"
-            >
-              <button type="submit" class="secondary">
-                席を外す
-              </button> {index === 0 ? <Hint text="この席を外し、そこにいた役員は席なしになりますが、アカウントは残ります。" /> : null}
-            </form>
-          </div>
-        );
-      })}
-      <form method="post" action={base("/seats")} class="panel">
-        <label for="seat-title">席を足す（例 会長、書記）</label>
-        <input id="seat-title" name="title" type="text" required maxlength={40} />
-        <p>
-          <button type="submit">足す</button>
-        </p>
-      </form>
-
-      <h2>アカウント</h2>
-      {accounts.map((a, index) => {
-        const mine = a.accountId === me.accountId;
-        return (
-          <div class="panel">
-            <p>
-              <strong>{a.name}</strong>
-              {mine ? <span class="muted">（あなた）</span> : null}
-            </p>
-            <form method="post" action={base(`/accounts/${a.accountId}/login-id`)}>
-              <label for={`login-id-${a.accountId}`}>ID</label>
-              <input id={`login-id-${a.accountId}`} name="loginId" type="text" required maxlength={40} value={a.loginId} autocapitalize="none" spellcheck={false} />
-              <p class="muted">半角の英数字だけ。前後の空白は取り除きます。</p>
-              <button type="submit" class="secondary">IDを変更</button>
-            </form>
-            <form method="post" action={base(`/accounts/${a.accountId}/seat`)} class="inline">
-              <SeatSelect seats={seats} selected={a.seatId} label={`${a.name}の席`} />{" "}
-              <button type="submit" class="secondary">
-                席を変える
-              </button>
-            </form>
-            <details>
-              <summary>端末{a.devices.length} 台</summary>
-              {a.devices.length === 0 ? <p class="muted">入った端末はありません。</p> : null}
-              <ul>
-                {a.devices.map((d) => (
-                  <li>
-                    {d.label || "不明な端末"}、最後に使った日時{formatJst(d.lastSeenAt)}{" "}
-                    {d.deviceId === deviceId ? (
-                      <span class="muted">（この端末）</span>
-                    ) : (
-                      <form
-                        class="inline"
-                        method="post"
-                        action={base(`/accounts/${a.accountId}/devices/${d.deviceId}/lockout`)}
-                        onsubmit="return confirm('この端末を締め出します。この端末では、もう一度IDとパスワードを入れてください。')"
-                      >
-                        <button type="submit" class="danger">
-                          締め出す
-                        </button>
-                      </form>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              {a.devices.some((d) => d.deviceId !== deviceId) ? (
-                <form
-                  method="post"
-                  action={base(`/accounts/${a.accountId}/lockout`)}
-                  onsubmit="return confirm('この端末以外の、このアカウントの全部の端末を締め出します。')"
-                >
-                  <button type="submit" class="danger">
-                    {mine ? "この端末以外を全部締め出す" : "全部の端末を締め出す"}
-                  </button>
-                </form>
-              ) : null}
-            </details>
-            <div>
-              <form
-                class="inline"
-                method="post"
-                action={base(`/accounts/${a.accountId}/reset`)}
-                onsubmit="return confirm('パスワードを作り直します。古いパスワードは使えなくなります。')"
-              >
-                <button type="submit" class="secondary">
-                  初期化（パスワードを作り直す）
-                </button> {index === 0 ? <Hint text="古いパスワードを使えなくして新しいパスワードを表示するので、本人に渡してください。" /> : null}
-              </form>{" "}
-              <form
-                class="inline"
-                method="post"
-                action={base(`/accounts/${a.accountId}/remove`)}
-                onsubmit="return confirm('このアカウントを外します。この人は入れなくなります。')"
-              >
-                <button type="submit" class="danger">
-                  外す
-                </button> {index === 0 ? <Hint text="この人が役員画面に入れなくなり、使っている端末からも締め出されます。" /> : null}
-              </form>
-            </div>
-          </div>
-        );
-      })}
-      <form method="post" action={base("/accounts")} class="panel">
-        <label for="account-name">表示名</label>
-        <input id="account-name" name="name" type="text" required maxlength={40} />
-        <label for="account-seat">席</label>
-        <SeatSelect seats={seats} selected={null} label="席" />
-        <p>
-          <button type="submit">足す</button>
-        </p>
-        <p class="muted">IDは自動で作られます。足すとIDとパスワードが一度だけ出ます。その人に渡してください。</p>
-      </form>
-    </AdminPage>
-  );
+  // 下の層から来た誤りの文も、この画面の言葉にそろえる。
+  const words = (value: string) => value.replaceAll("アカウント", "役員").replaceAll("席", "役職").replaceAll("締め出", "入れないように");
+  return <AdminPage ward={ward} account={me} title="役員の一覧" back={{ href: adminPath(ward, "/settings"), label: "区の設定へ" }}>
+    <h1>役員の一覧</h1><p class="lead">役員が入るためのIDとパスワードを、ここで足したり作り直したりします。役職があるかないかで、できることは変わりません。</p>
+    {props.notice ? <><Notice>{words(props.notice)}</Notice><section class="next"><strong>次は</strong><p>ほかに直すものがなければ、最初の画面へ戻ってください。</p><a class="button" href={adminPath(ward, "/")}>最初の画面へ</a></section><p>間違えたときは、この画面でもう一度直せます。外した役員や役職は、下の欄から足せます。</p></> : null}
+    {props.error ? <Notice error>{words(props.error)}入力した内容を確かめて、もう一度操作してください。</Notice> : null}
+    <div class="action-links"><a class="button" href="#add">役員を足す</a></div>
+    <h2>役員（{accounts.length}人）</h2>
+    {accounts.map((a) => { const mine = a.accountId === me.accountId; return <section class="panel">
+      <h3>{a.name}{mine ? "（あなた）" : ""}</h3><p class="muted">{seats.find((seat) => seat.seatId === a.seatId)?.title ?? "役職なし"}　ID{a.loginId}　端末{a.devices.length}台</p>
+      <details class="fold"><summary>この人の設定を直す</summary><div>
+        <h3>IDと役職</h3><form method="post" action={base(`/accounts/${a.accountId}/login-id`)}>
+          <label for={`login-id-${a.accountId}`}>ID</label><input id={`login-id-${a.accountId}`} name="loginId" type="text" required maxlength={40} value={a.loginId} autocapitalize="none" spellcheck={false} /><p class="help-text">半角の英数字で入れてください。前後の空白は取り除きます。</p><button class="secondary">IDを変える</button>
+        </form>
+        <form method="post" action={base(`/accounts/${a.accountId}/seat`)}><SeatSelect seats={seats} selected={a.seatId} label="役職" /><button class="secondary">役職を変える</button></form>
+        <h3>端末（{a.devices.length}台）</h3>
+        {a.devices.length === 0 ? <p class="muted">入ったことのある端末はありません。</p> : null}
+        {a.devices.map((d) => <section><p><b>{d.label || "名前の分からない端末"}</b>　最後に使った日{formatJst(d.lastSeenAt)}{d.deviceId === deviceId ? "（いま使っている端末）" : ""}</p>
+          {d.deviceId !== deviceId ? <form method="post" action={base(`/accounts/${a.accountId}/devices/${d.deviceId}/lockout`)}><button class="secondary">この端末で入れないようにする</button></form> : null}</section>)}
+        {a.devices.some((d) => d.deviceId !== deviceId) ? <form method="post" action={base(`/accounts/${a.accountId}/lockout`)}><button class="secondary">{mine ? "いま使っている端末以外を、全部入れないようにする" : "この役員の端末を全部入れないようにする"}</button></form> : null}
+        <p class="muted">入れなくなった端末でも、もう一度IDとパスワードを入れると入れます。</p>
+        <h3>パスワード</h3><p>古いパスワードは使えなくなります。新しいパスワードが一度だけ出るので、本人に渡してください。</p>
+        <form method="post" action={base(`/accounts/${a.accountId}/reset`)}><button class="secondary">パスワードを作り直す</button></form>
+        <h3>役員から外す</h3><p>この人は入れなくなり、使っている端末からも出されます。同じ人をもう一度足すと、新しいIDとパスワードになります。最後の一人は外せません。</p>
+        <form method="post" action={base(`/accounts/${a.accountId}/remove`)}><button class="danger">役員から外す</button></form>
+      </div></details>
+    </section>; })}
+    <h2 id="add">役員を足す</h2><form method="post" action={base("/accounts")}>
+      <label for="account-name">お名前</label><input id="account-name" name="name" type="text" required maxlength={40} /><p class="help-text">IDは自動で作ります。足すと、IDとパスワードが一度だけ出ます。その人に渡してください。</p>
+      <SeatSelect seats={seats} selected={null} label="役職（なくてもかまいません）" /><div class="action-links"><button class="secondary">この内容で役員を足す</button></div>
+    </form>
+    <details class="fold"><summary>役職を足す、外す</summary><div>
+      <p>役職は「会長」「書記」のような役の名前です。なくても使えます。外すと、その役職の人は役職なしになります。役員としては残ります。</p>
+      {seats.map((seat) => <section><p><b>{seat.title}</b>　{accounts.filter((a) => a.seatId === seat.seatId).map((a) => a.name).join("、") || "だれもいません"}</p><form method="post" action={base(`/seats/${seat.seatId}/remove`)}><button class="secondary">この役職を外す</button></form></section>)}
+      <form method="post" action={base("/seats")}><label for="seat-title">足す役職の名前（例会長、書記）</label><input id="seat-title" name="title" required maxlength={40} /><button class="secondary">役職を足す</button></form>
+    </div></details>
+  </AdminPage>;
 };
 
 async function loadView(c: Context<AdminEnv>): Promise<View> {
@@ -237,10 +131,13 @@ const CredentialsPage = (props: { c: Context<AdminEnv>; title: string; loginId: 
     ward={props.c.var.ward}
     account={props.c.var.account}
     title={props.title}
-    back={{ href: adminPath(props.c.var.ward, "/settings/people"), label: "役員の席とアカウントへ戻る" }}
+    back={{ href: adminPath(props.c.var.ward, "/settings/people"), label: "役員の一覧へ戻る" }}
   >
     <h1>{props.title}</h1><p class="lead">役員画面に入るためのIDとパスワードです。表示されているうちに、その人に渡してください。</p>
     <Credentials loginId={props.loginId} name={props.name} password={props.password} />
+    <section class="next"><strong>次は</strong><p>本人にIDとパスワードを渡してください。渡し終えてから、この画面を閉じてください。</p></section>
+    <h2>閉じてしまったときは</h2><p>役員の一覧から「パスワードを作り直す」を押すと、新しいパスワードを出せます。</p>
+    <a class="button secondary" href={adminPath(props.c.var.ward, "/settings/people")}>渡し終えたので役員の一覧へ</a>
   </AdminPage>
 );
 
@@ -254,7 +151,7 @@ people.post("/accounts", async (c) => {
   });
   if (!result.ok) return fail(c, result);
   c.header("Cache-Control", "no-store");
-  return c.html(<CredentialsPage c={c} title="アカウントを足しました" loginId={result.loginId} name={result.name} password={result.password} />, 201);
+  return c.html(<CredentialsPage c={c} title="役員を足しました" loginId={result.loginId} name={result.name} password={result.password} />, 201);
 });
 
 people.post("/accounts/:accountId/reset", async (c) => {
