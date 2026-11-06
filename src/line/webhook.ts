@@ -7,7 +7,7 @@ import { getClient } from "../ai/deps";
 import { matchClarificationAnswer } from "../ai/clarification";
 import { recordLineInquiry } from "../project/followup";
 import { isUnknownAnswer, replyAfterClarification, PHOTO_GROUP_GAP_MS, processPhotoBatches, registerLinePhoto, replyPhotoReceipt, replyQuickPhotoChecks, saveClarificationAnswers, sentQuestionsForSource, type ClarificationRow, type PhotoSource } from "./clarifications";
-import { rememberPhotoSource, rememberPhotoText, purgePhotoTexts, PHOTO_AFTER_MS } from "./photo-context";
+import { rememberPhotoSource, rememberPhotoText, purgePhotoTexts } from "./photo-context";
 
 const RECEIPT_RETENTION_DAYS = 30;
 
@@ -220,13 +220,7 @@ export async function acceptLineWebhook(
         receivedText = true;
         await rememberPhotoText(db, wardId, { destination: payload.destination!, sourceType: source.type, sourceId: source.id,
           eventId, receivedAt: original.receivedAt, text: original.text ?? "" }, now);
-        const waitingPhoto = await db.prepare(`SELECT batch_id FROM line_photo_batches WHERE ward_id = ? AND destination = ?
-          AND source_type = ? AND source_id = ? AND match_finished_at IS NULL AND last_received_at <= ?
-          AND last_received_at >= ? LIMIT 1`)
-          .bind(wardId, payload.destination!, source.type, source.id, original.receivedAt,
-            new Date(Date.parse(original.receivedAt) - PHOTO_AFTER_MS).toISOString()).first();
-        // 写真のあとに届く文は当てるためだけに持つ。公式への質問と、聞いたことへの答えは従来の道へ。
-        if (waitingPhoto && !activeQuestions.length && !(original.officialAddressed && looksLikeInquiry(original.text ?? ""))) continue;
+        // 写真の当ての資料として一時に持つほか、文そのものも普段どおり受ける。
         const questions = activeQuestions;
         if (event.message.quotedMessageId && questions.length) original.officialAddressed = true;
         if (postback) {
@@ -330,7 +324,7 @@ export async function acceptLineWebhook(
       }
       // 文は届いた文そのもので当てる。写真は束 2 が読み取りを終えてから当てる。
       if (match?.disposition === "matched" && match.projectId) {
-        if (!answers.length) await ports.saveAnswerReply?.(wardId, match.projectId, original, itemId);
+        if (!answers.length && match.attendanceAnswer === true) await ports.saveAnswerReply?.(wardId, match.projectId, original, itemId);
         await ports.assignProject(wardId, itemId, match.projectId);
       }
       if (original.kind === "text") await db.prepare(`
