@@ -13,6 +13,8 @@ curl -s -X POST -H "Authorization: Bearer $GH_TOKEN" -d '{"body":"[Codex] 着手
 
 `[Claude] 依頼` のうち、自分宛で「着手」が付いていない物を一つ取り、先に `[Codex] 着手` と書いてから始めます。依頼に無い作業を広げません。
 
+担当の決まりは Issue #1 の「方針: 開発体制 第1版」に従います。dot の枠も同じです。先頭は `[dot]` を使います。読めない上位文書は、読んだ事にせず着手の時に書きます。依頼に書かれたファイルだけを触り、統合、配備、D1 の変更はしません。
+
 ## Cloudflare
 
 環境変数 CLOUDFLARE_API_TOKEN と CLOUDFLARE_ACCOUNT_ID があれば `npx wrangler d1 execute DB --remote` が使えます。配備と D1 の変更は、依頼に書かれている時だけ行います。
