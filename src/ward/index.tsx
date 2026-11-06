@@ -9,13 +9,15 @@ import type { WardEnv } from "../env";
 import { getOfficialLineUrl, getPublicContact, getSetting } from "../settings/store";
 import { ArticleBody } from "../publish";
 import { listHelpOpportunities } from "../answers/help";
-import { paperHeading } from "../project/heading";
+import { documentTitle, paperHeading } from "../project/heading";
+import type { DocumentKind, ProjectKind } from "../project/model";
 import { PUBLIC_PRIVACY_NOTICE } from "../settings/keys";
 import { activityFacts } from "./activity";
 
 interface PublicProject {
   project_id: string;
-  kind: string;
+  kind: DocumentKind;
+  project_kind: ProjectKind;
   closed_at: string | null;
   title: string;
   version_no: number;
@@ -44,7 +46,7 @@ function parseActivity(raw: string): ActivityBody | null {
 }
 
 async function listPublic(db: D1Database, wardId: string, projectId?: string, includeLowered = false): Promise<PublicProject[]> {
-  const sql = `SELECT p.project_id, p.title, p.closed_at, d.kind, v.version_no, d.document_id, COALESCE(v.title, d.title) AS document_title,
+  const sql = `SELECT p.project_id, p.title, p.kind AS project_kind, p.closed_at, d.kind, v.version_no, d.document_id, COALESCE(v.title, d.title) AS document_title,
       v.body, r.published_at, r.unpublished_at
     FROM publication_records r
     JOIN projects p ON p.ward_id = r.ward_id AND p.project_id = r.project_id
@@ -55,6 +57,10 @@ async function listPublic(db: D1Database, wardId: string, projectId?: string, in
   const statement = db.prepare(sql);
   const result = projectId ? await statement.bind(wardId, projectId).all<PublicProject>() : await statement.bind(wardId).all<PublicProject>();
   return result.results;
+}
+
+function publicDocumentTitle(item: PublicProject): string {
+  return item.project_kind === "event" ? item.document_title : documentTitle(item.project_kind, item.kind);
 }
 
 async function pageFooter(c: { env: { DB: D1Database }; var: { ward: { wardId: string; slug: string } } }) {
@@ -118,7 +124,7 @@ pub.get("/", async (c) => {
   const isCurrent = (item: PublicProject) => !item.closed_at && (item.kind === "announcement" || item.kind === "notice");
   const current = unique.filter(isCurrent);
   const past = unique.filter((item) => !isCurrent(item));
-  const row = (item: PublicProject) => <li key={item.document_id}><a class="row-link" href={`/${c.var.ward.slug}/p/${encodeURIComponent(item.project_id)}`}><b>{item.kind === "announcement" ? `${item.title}のご案内` : paperHeading(item.title, item.document_title)}</b>{isCurrent(item) && publishedItem(item.body, "date_time") ? <span>{formatDateText(publishedItem(item.body, "date_time"))}</span> : null}{isCurrent(item) && publishedItem(item.body, "place") ? <span>{publishedItem(item.body, "place")}</span> : null}{isCurrent(item) && (publishedItem(item.body, "date_time") || publishedItem(item.body, "place")) ? null : <span>{formatJstDate(item.published_at)}に載せました</span>}</a></li>;
+  const row = (item: PublicProject) => <li key={item.document_id}><a class="row-link" href={`/${c.var.ward.slug}/p/${encodeURIComponent(item.project_id)}`}><b>{item.project_kind === "event" && item.kind === "announcement" ? `${item.title}のご案内` : paperHeading(item.title, publicDocumentTitle(item))}</b>{isCurrent(item) && publishedItem(item.body, "date_time") ? <span>{formatDateText(publishedItem(item.body, "date_time"))}</span> : null}{isCurrent(item) && publishedItem(item.body, "place") ? <span>{publishedItem(item.body, "place")}</span> : null}{isCurrent(item) && (publishedItem(item.body, "date_time") || publishedItem(item.body, "place")) ? null : <span>{formatJstDate(item.published_at)}に載せました</span>}</a></li>;
   const [contact, lineUrl] = await Promise.all([getPublicContact(c.env.DB, c.var.ward.wardId), getOfficialLineUrl(c.env.DB, c.var.ward.wardId)]);
   return c.html(<Layout title={`${c.var.ward.name}のお知らせ`} siteName={c.var.ward.name}>
     <h1>{c.var.ward.name}のお知らせ</h1>
@@ -148,8 +154,7 @@ pub.get("/work/:projectId", async (c) => {
   const opportunities = await listHelpOpportunities(c.env.DB, c.var.ward.wardId);
   const lineUrl = await getOfficialLineUrl(c.env.DB, c.var.ward.wardId);
   // 案内を一度も載せていない行事では、案内のページが無いのでリンクを出さない。
-  const notices = await c.env.DB.prepare("SELECT 1 AS found FROM publication_records WHERE ward_id = ? AND project_id = ? AND unpublished_at IS NULL LIMIT 1")
-    .bind(c.var.ward.wardId, projectId).first<{ found: number }>();
+  const notices = await listPublic(c.env.DB, c.var.ward.wardId, projectId);
   return c.html(<Layout title={`${activity.title}の活動`} siteName={c.var.ward.name}>
     <p class="link-line"><a href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のページへ</a></p>
     <h1>{activity.title}で役員がしたこと</h1>
@@ -169,7 +174,7 @@ pub.get("/work/:projectId", async (c) => {
     <p class="link-line"><a href={`/${c.var.ward.slug}/`}>区のページで案内を見る</a></p>
     {lineUrl ? <><p>公式LINEを友だちに追加すると、新しい案内が届きます。追加は、してもしなくてもかまいません。</p>
       <p class="link-line"><a href={`/${c.var.ward.slug}/line`}>公式LINEで案内を受け取る</a></p></> : null}
-    {notices ? <p class="link-line"><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>この行事の案内を見る</a></p> : null}
+    {notices[0] ? <p class="link-line"><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>{notices[0].project_kind === "event" ? "この行事の案内を見る" : `${publicDocumentTitle(notices[0])}を見る`}</a></p> : null}
   </Layout>);
 });
 
@@ -218,23 +223,26 @@ pub.get("/p/:projectId", async (c) => {
     ordered.some(({ latest: announcement }) => announcement.kind === "announcement" && !announcement.unpublished_at && notice.published_at > announcement.published_at));
   const renderDocument = ({ latest, earlier }: { latest: PublicProject; earlier: PublicProject[] }) => {
       const date = (item: PublicProject) => formatJstDate(item.published_at);
+      const title = publicDocumentTitle(latest);
+      const event = latest.project_kind === "event";
       if (latest.unpublished_at) return <article class="panel" key={latest.document_id}>
-        <p>{date(latest)} に載せた案内は、区のページから下げました。</p>
+        <p>{date(latest)} に載せた{event ? "案内" : title}は、区のページから下げました。</p>
       </article>;
       return <article class="panel" key={latest.document_id}>
-        <h2>{latest.kind === "announcement" ? changes ? `${date(latest)}に配った案内` : "くわしい案内" : latest.document_title}</h2>
+        <h2>{event && latest.kind === "announcement" ? changes ? `${date(latest)}に配った案内` : "くわしい案内" : title}</h2>
         {latest.kind === "announcement" && changes ? <p>変わったところは、上のお知らせのとおりです。</p> : null}
         <p>載せた日: {date(latest)}</p>
         <ArticleBody body={latest.body} />
         {earlier.map((older) => <details>
-          <summary>変更前の案内（{date(older)}に載せたもの）</summary>
+          <summary>変更前の{event ? "案内" : publicDocumentTitle(older)}（{date(older)}に載せたもの）</summary>
           <ArticleBody body={older.body} />
         </details>)}
       </article>;
     };
-  return c.html(<Layout title={items[0]!.title} siteName={c.var.ward.name}>
+  const heading = items[0]!.project_kind === "event" ? `${items[0]!.title}のご案内` : paperHeading(items[0]!.title, publicDocumentTitle(items[0]!));
+  return c.html(<Layout title={items[0]!.project_kind === "event" ? items[0]!.title : heading} siteName={c.var.ward.name}>
     <a class="back" href={`/${c.var.ward.slug}/`}>← お知らせの一覧へ</a>
-    <h1>{items[0]!.title}のご案内</h1>
+    <h1>{heading}</h1>
     {ordered.filter(({ latest }) => latest.kind === "notice").map(renderDocument)}
     {activeAnnouncement ? <>
       {!newerNotice ? <EventDetails item={context.item} due={deadline} /> : deadline ? <p>答えの締切 {formatJstDate(deadline)}まで</p> : null}
