@@ -18,8 +18,8 @@ export interface InquiryRow {
 
 /** 元の文は残し、同じ内容の比べと見出しからだけ呼びかけを外す。 */
 export const inquirySubject = (text: string) => text.trim().replace(/^公式へ[\s、,:：。]*/, "").trim();
-export const inquiryTarget = (row: InquiryRow) => row.line_user_id
-  ? row.line_source_type === "user" ? row.line_user_id : row.line_source_id : null;
+export const inquiryTarget = (row: InquiryRow) => row.line_source_type === "user" ? row.line_user_id
+  : row.line_source_type === "group" || row.line_source_type === "room" ? row.line_source_id : null;
 export const sameInquiry = (a: InquiryRow, b: InquiryRow) => inquirySubject(a.subject) === inquirySubject(b.subject)
   && (a.answer === b.answer || Boolean(a.line_reply_batch && a.line_reply_batch === b.line_reply_batch));
 

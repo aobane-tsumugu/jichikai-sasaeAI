@@ -51,11 +51,12 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
   expect(originalPage).toContain(`href="${root}/projects/${id}/ledger"`);
   expect(await read(`${root}/intake/received?project=${id}`)).toContain(`${fixture.nextYearTitle}に資料を預かりました`);
 
+  // グループには返せるが、送り先を失った一対一には返せない記録を用意する。
   for (const name of [fixture.firstHousehold, null]) {
     await recordLineInquiry(env.DB, ward.wardId, {
       eventId: crypto.randomUUID(), receivedAt: new Date().toISOString(),
       text: fixture.publicAnnouncement, sourceType: name ? "group" : "user",
-      sourceId: crypto.randomUUID(), senderLabel: name,
+      sourceId: name ? crypto.randomUUID() : "", senderLabel: name,
     });
   }
   const inquiries = await read(`${root}/inquiries`);
