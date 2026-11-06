@@ -202,6 +202,18 @@ export interface RowView {
   updatedAt: string;
 }
 
+/** 運営メモの表示。一般の項目には、保存した行がまだなくてもよい。 */
+export interface MemoRow {
+  key: string;
+  name: string;
+  hint: string;
+  data: RowData;
+  current: RowView | null;
+  reference: RowView | null;
+  removed: boolean;
+  sponsor: boolean;
+}
+
 export interface DocumentSummary {
   documentId: string;
   kind: DocumentKind;

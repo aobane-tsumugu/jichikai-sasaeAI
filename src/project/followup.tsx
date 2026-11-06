@@ -1,3 +1,4 @@
+import { memoAdmin } from "../map/memo";
 import { adminResult } from "../core/admin-ui";
 import { formatDateText, formatJstDate } from "../core/time";
 import { Hono } from "hono";
@@ -10,8 +11,6 @@ import { getClient } from "../ai/deps";
 import { MODEL } from "../ai/anthropic";
 import { applyChange, getProjectState, getProjectSummary, listProjects } from "./api";
 import { saveDocument } from "./actions";
-import { cleanRowData, displayFieldValue, rowMatchKey, type RowData } from "./model";
-import { hashOf, stableStringify } from "./util";
 
 export const followupAdmin = new Hono<AdminEnv>();
 
@@ -377,171 +376,6 @@ async function saveCityRequestDetails(
     .bind(wardId, projectId, dueOn, answerDraft, submittedWhat, submittedTo, submittedOn, noticeBody, noticeSentAt, now, accountId).run();
 }
 
-interface LedgerTotals { year: number; income: number; expense: number; sponsors: number; }
-const yen = (amount: number) => `${amount.toLocaleString("ja-JP")}円`;
-const budgetDifference = (actual: number, budget: number) => actual === budget ? "予算と同じ" : `予算より${yen(Math.abs(actual - budget))}${actual < budget ? "少ない" : "多い"}`;
-
-followupAdmin.get("/ledger", async (c) => {
-  const { ward } = c.var;
-  const rows = await c.env.DB.prepare(`SELECT p.year, p.project_id, p.title, r.table_key, r.data FROM project_rows r JOIN projects p
-    ON p.ward_id = r.ward_id AND p.project_id = r.project_id
-    WHERE r.ward_id = ? AND r.table_key IN ('ledger', 'sponsors') AND r.scope = 'current' AND r.removed_at IS NULL`)
-    .bind(ward.wardId).all<{ year: number; project_id: string; title: string; table_key: string; data: string }>();
-  const totals = new Map<number, LedgerTotals>();
-  for (const row of rows.results) {
-    const data = JSON.parse(row.data) as RowData;
-    const total = totals.get(row.year) ?? { year: row.year, income: 0, expense: 0, sponsors: 0 };
-    if (typeof data.amount === "number" && Number.isInteger(data.amount)) {
-      if (row.table_key === "sponsors") { total.sponsors += data.amount; total.income += data.amount; }
-      else if (data.direction === "income") total.income += data.amount;
-      else if (data.direction === "expense") total.expense += data.amount;
-    }
-    totals.set(row.year, total);
-  }
-  const currentYear = Number(today().slice(0, 4));
-  const budgets = await c.env.DB.prepare("SELECT year, budget_income, budget_expense, settlement_draft FROM ward_annual_budgets WHERE ward_id = ? ORDER BY year DESC")
-    .bind(ward.wardId).all<{ year: number; budget_income: number; budget_expense: number; settlement_draft: string }>();
-  const budgetByYear = new Map(budgets.results.map((b) => [b.year, b]));
-  const years = [...new Set([currentYear, ...totals.keys(), ...budgetByYear.keys()])].sort((a, b) => b - a);
-  const renderYear = (year: number, main: boolean) => {
-    const total = totals.get(year) ?? { year, income: 0, expense: 0, sponsors: 0 };
-    const budget = budgetByYear.get(year);
-    const draft = `収入合計: ${yen(total.income)}（うち協賛${yen(total.sponsors)}）\n支出合計: ${yen(total.expense)}\n差引: ${yen(total.income - total.expense)}`;
-    return <form method="post" action={adminPath(ward, "/ledger")}>
-      <h2>{year}年</h2>{rows.results.some((r) => r.year === year && typeof (JSON.parse(r.data) as RowData).amount !== "number") ? <p>金額が分からないものは、合計に含めていません。行事ごとの収支から直せます。</p> : null}<dl class="facts"><dt>収入</dt><dd>{yen(total.income)}{budget ? `（予算${yen(budget.budget_income)}）` : ""}<span class="muted block">協賛{yen(total.sponsors)}、ほかの収入{yen(total.income - total.sponsors)}</span></dd>
-        <dt>支出</dt><dd>{yen(total.expense)}{budget ? `（予算${yen(budget.budget_expense)}）` : ""}</dd><dt>差引</dt><dd>{yen(total.income - total.expense)}</dd>
-        <dt>予算との差</dt><dd>{budget ? `収入は${budgetDifference(total.income, budget.budget_income)}、支出は${budgetDifference(total.expense, budget.budget_expense)}` : "予算はまだ入っていません。下の欄に入れて保存できます。"}</dd></dl>
-      <input type="hidden" name="year" value={year} />
-      <label for={`income-${year}`}>収入の予算（円）</label><input id={`income-${year}`} name="budgetIncome" type="number" min="0" step="1" value={budget?.budget_income ?? 0} required />
-      <label for={`expense-${year}`}>支出の予算（円）</label><input id={`expense-${year}`} name="budgetExpense" type="number" min="0" step="1" value={budget?.budget_expense ?? 0} required />
-      <label for={`settlement-${year}`}>決算の下書き</label><textarea id={`settlement-${year}`} name="settlementDraft" rows={5} maxlength={4000}>{budget?.settlement_draft || draft}</textarea><p class="help-text">集計から作った文面です。直して使えます。</p>
-      <div class={main ? "action-bar" : "action-links"}><button class={main ? undefined : "secondary"}>{main ? "予算と下書きを保存する" : `${year}年の予算と下書きを保存する`}</button></div>
-    </form>;
-  };
-  if (c.req.query("saved")) return c.html(<Layout title="帳簿を保存しました" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, "/ledger")}>帳簿へ</a><h1>保存しました</h1>
-    <div class="notice done"><strong>{c.req.query("year")}年の予算と決算の下書きを保存しました</strong><p>直したいときは、帳簿の画面で書き換えて、もう一度保存してください。前の内容は新しい内容に置き換わります。</p></div>
-    <section class="next"><strong>次は</strong><p>決算の下書きは、総会の前に監査の方に見せてください。</p></section>
-    <a class="quiet" href={adminPath(ward, "/ledger")}>帳簿の画面に戻る</a>
-  </Layout>);
-  const projects = await listProjects(c.env.DB, ward.wardId, { includeClosed: true });
-  return c.html(<Layout title="帳簿" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, "/")}>最初の画面へ</a><h1>帳簿</h1>
-    <p class="lead">収入と支出を年ごとに集めています。行事で残した収支も、ここに入ります。監査の判断は、役員と監査の方が行います。</p>
-    {renderYear(currentYear, true)}
-    <h2>行事ごとの収支</h2><ul class="rows">{projects.map((p) => <li><a class="row-link" href={adminPath(ward, `/projects/${p.projectId}/ledger`)}><b>{p.title}の収支</b><span>{p.year}年　領収書の写真から読み取った収入と支出を見られます</span></a></li>)}</ul>
-    {projects.length === 0 ? <p>行事の収支はまだありません。行事を始め、領収書の写真を送ると、ここに入ります。</p> : null}
-    {years.length > 1 ? <h2>ほかの年</h2> : null}{years.filter((y) => y !== currentYear).map((year) => <details class="fold"><summary>{year}年の帳簿を開く</summary><div>{renderYear(year, false)}</div></details>)}
-  </Layout>);
-});
-
-followupAdmin.post("/ledger", async (c) => {
-  const { ward, account } = c.var;
-  const form = await c.req.formData();
-  const year = Number(form.get("year"));
-  const budgetIncome = Number(form.get("budgetIncome"));
-  const budgetExpense = Number(form.get("budgetExpense"));
-  const settlementDraft = String(form.get("settlementDraft") ?? "").trim();
-  if (!Number.isInteger(year) || year < 2000 || year > 2100 || !Number.isSafeInteger(budgetIncome) || budgetIncome < 0 || !Number.isSafeInteger(budgetExpense) || budgetExpense < 0 || settlementDraft.length > 4000) return adminResult(c, "入力を確かめてください。", 400, { href: adminPath(ward, "/ledger"), label: "帳簿に戻る" }, "年と予算の金額、下書きの内容を確かめて、もう一度保存してください。");
-  await c.env.DB.prepare(`INSERT INTO ward_annual_budgets
-    (ward_id, year, budget_income, budget_expense, settlement_draft, updated_at, updated_by_account_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (ward_id, year) DO UPDATE SET budget_income = excluded.budget_income,
-      budget_expense = excluded.budget_expense, settlement_draft = excluded.settlement_draft,
-      updated_at = excluded.updated_at, updated_by_account_id = excluded.updated_by_account_id`)
-    .bind(ward.wardId, year, budgetIncome, budgetExpense, settlementDraft, nowIso(), account.accountId).run();
-  return c.redirect(`${adminPath(ward, "/ledger")}?saved=1&year=${year}`, 303);
-});
-
-followupAdmin.get("/projects/:projectId/ledger", async (c) => {
-  const { ward } = c.var;
-  const id = c.req.param("projectId");
-  const state = await getProjectState(c.env.DB, ward.wardId, id);
-  if (!state) return c.notFound();
-  const rows = [...state.tables.sponsors, ...state.tables.ledger].filter((r) => r.scope === "current");
-  const dataFor = (row: typeof rows[number]): RowData => row.table === "sponsors" ? { counterpart: row.data.name ?? "", direction: "income", ...row.data } : row.data;
-  const income = rows.reduce((sum, row) => { const d = dataFor(row); return sum + (d.direction === "income" && typeof d.amount === "number" ? d.amount : 0); }, 0);
-  const expense = rows.reduce((sum, row) => { const d = dataFor(row); return sum + (d.direction === "expense" && typeof d.amount === "number" ? d.amount : 0); }, 0);
-  return c.html(<Layout title={`${state.project.title}の収支`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>{state.project.title}の段取りへ</a><h1>{state.project.title}の収支</h1>
-    <p class="lead">領収書の写真を送ると、読み取った内容がここに入ります。協賛の返事も、収入として並びます。</p>
-    {c.req.query("saved") ? <><Notice>収支の行を保存しました。元の資料は変わりません。</Notice><section class="next"><strong>次は</strong><p>年の集計と予算を見られます。</p><a class="button" href={adminPath(ward, "/ledger")}>年の集計と予算を見る</a></section><p>間違えたときは、同じ相手の名前を押して、もう一度直してください。</p></> : null}
-    <p>収入は{yen(income)}、支出は{yen(expense)}です。{rows.some((r) => r.data.amount === undefined) ? "金額が分からないものは、合計に含めていません。" : ""}</p>
-    <div class="action-links">{!state.project.closedAt ? <a class="button" href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}`)}>領収書の写真を送る</a> : null}<a class="button secondary" href={adminPath(ward, "/ledger")}>年の集計と予算を見る</a></div>
-    {rows.length ? <table class="stack"><thead><tr><th>相手</th><th>収入か支出</th><th>額</th><th>日付</th><th>領収書とメモ</th></tr></thead><tbody>{rows.map((row) => {
-      const data = dataFor(row); const originalId = row.source.kind === "original" ? row.source.ref : String(data.receiptOriginalId || "");
-      return <tr><td data-label="相手">{state.project.closedAt ? data.counterpart : <a href={adminPath(ward, `/projects/${id}/ledger/${row.rowId}`)}>{data.counterpart}</a>}</td><td data-label="収入か支出">{displayFieldValue("ledger", "direction", data.direction)}</td><td data-label="額" class="num">{data.amount === undefined ? "確かめ中" : displayFieldValue("ledger", "amount", data.amount)}</td><td data-label="日付">{displayFieldValue("ledger", "date", data.date)}</td><td data-label="領収書とメモ">{originalId ? <a class="quiet" href={adminPath(ward, `/intake/originals/${encodeURIComponent(originalId)}?back=${encodeURIComponent(adminPath(ward, `/projects/${id}/ledger`))}`)}>元の資料を開く</a> : null}<p>{row.table === "sponsors" ? `協賛の返事: ${displayFieldValue("sponsors", "reply", data.reply) || "まだありません"}` : ""}{data.note}</p></td></tr>;
-    })}</tbody></table> : <p>収支の記録はまだありません。領収書の写真を送ると、読み取った内容がここに入ります。</p>}
-    <p class="muted">読み違いがあるときは、相手の名前を押すと直せます。領収書の写真から入った行には、元の資料を開くリンクが付きます。</p>
-  </Layout>);
-});
-
-followupAdmin.get("/projects/:projectId/ledger/:rowId", async (c) => {
-  const { ward } = c.var;
-  const id = c.req.param("projectId");
-  const state = await getProjectState(c.env.DB, ward.wardId, id);
-  const row = [...(state?.tables.ledger ?? []), ...(state?.tables.sponsors ?? [])].find((r) => r.rowId === c.req.param("rowId") && r.scope === "current");
-  if (!state || !row) return c.notFound();
-  const originalId = row.source.kind === "original" ? row.source.ref : String(row.data.receiptOriginalId || "");
-  const back = adminPath(ward, `/projects/${id}/ledger`);
-  return c.html(<Layout title="収支の行を直す" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={back}>{state.project.title}の収支へ</a><h1>収支の行を直す</h1><p class="lead">読み違いを直せます。元の資料は変わりません。</p>
-    {state.project.closedAt ? <Notice>この行事は閉じています。開き直すと収支を直せます。</Notice> : <form method="post" action={adminPath(ward, `/projects/${id}/ledger/${row.rowId}`)}>
-      <label for="counterpart">相手</label><input id="counterpart" name="counterpart" value={String(row.data.counterpart ?? row.data.name ?? "")} maxlength={200} required />
-      <fieldset><legend>収入か支出か</legend>{row.table === "sponsors" ? <><p>協賛の収入</p><input type="hidden" name="direction" value="income" /></> : <div class="choice half"><label><input type="radio" name="direction" value="income" checked={row.data.direction === "income"} required />収入</label><label><input type="radio" name="direction" value="expense" checked={row.data.direction === "expense"} required />支出</label></div>}</fieldset>
-      <label for="amount">額（円）</label><input id="amount" name="amount" type="number" inputmode="numeric" min="0" step="1" value={row.data.amount} required />{row.data.amount === undefined ? <p class="help-text">紙の金額が読めませんでした。</p> : null}
-      {row.table === "ledger" ? <><label for="date">日付（分かれば）</label><input id="date" name="date" type="date" value={String(row.data.date ?? "")} /></> : null}
-      <label for="note">メモ（書かなくてかまいません）</label><input id="note" name="note" value={String(row.data.note ?? "")} maxlength={2000} />
-      {originalId ? <a class="quiet" href={adminPath(ward, `/intake/originals/${encodeURIComponent(originalId)}?back=${encodeURIComponent(adminPath(ward, `/projects/${id}/ledger/${row.rowId}`))}`)}>元の資料を見る</a> : null}
-      <div class="action-bar"><button>保存する</button></div>
-    </form>}
-  </Layout>);
-});
-
-/** 元の資料と出どころを保ったまま、同じ行の読み違いを直す。 */
-export async function saveLedgerRow(db: D1Database, wardId: string, projectId: string, rowId: string, accountId: string, data: RowData): Promise<boolean> {
-  const state = await getProjectState(db, wardId, projectId);
-  const row = [...(state?.tables.ledger ?? []), ...(state?.tables.sponsors ?? [])].find((r) => r.rowId === rowId && r.scope === "current");
-  if (!state || state.project.closedAt || !row || (row.table !== "ledger" && row.table !== "sponsors")) return false;
-  const cleaned = cleanRowData(row.table, data);
-  if (!cleaned.ok) return false;
-  if (stableStringify(cleaned.data) === stableStringify(row.data)) return true;
-  const changedFields = [...new Set([...Object.keys(row.data), ...Object.keys(cleaned.data)])].filter((key) => row.data[key] !== cleaned.data[key]);
-  const match = rowMatchKey(row.table, cleaned.data);
-  if (state.tables[row.table].some((r) => r.scope === "current" && r.rowId !== rowId && r.matchKey === match)) return false;
-  const now = nowIso(); const changeId = newId(); const nextVersion = state.project.stateVersion + 1;
-  const payload = { kind: "row", table: row.table, data: cleaned.data, source: { kind: "person", accountId }, before: row.data };
-  const payloadHash = await hashOf(payload);
-  const result = await db.batch([
-    db.prepare(`INSERT INTO project_changes (change_id, ward_id, project_id, kind, target, status, dedupe_key, payload_hash, payload, result, pack_version, source_kind, source_ref, confidence, state_version_after, created_at, created_by_account_id)
-      SELECT ?, ?, ?, 'row', ?, 'applied', ?, ?, ?, ?, 'ledger-row-edit@1', 'person', ?, 'high', ?, ?, ?
-      WHERE EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND state_version = ? AND closed_at IS NULL)`)
-      .bind(changeId, wardId, projectId, `${row.table}:${match}`, `ledger:${changeId}`, payloadHash, stableStringify(payload), JSON.stringify({ status: "applied", changeId, staleDocuments: ["report"], questionIds: [] }), `person:${accountId}`, nextVersion, now, accountId, wardId, projectId, state.project.stateVersion),
-    db.prepare(`UPDATE project_rows SET data = ?, match_key = ?, person_fields = ?, change_id = ?, updated_at = ? WHERE ward_id = ? AND project_id = ? AND row_id = ? AND scope = 'current' AND removed_at IS NULL
-      AND EXISTS (SELECT 1 FROM project_changes WHERE ward_id = ? AND project_id = ? AND change_id = ?)`)
-      .bind(stableStringify(cleaned.data), match, JSON.stringify([...new Set([...row.personFields, ...changedFields])]), changeId, now, wardId, projectId, rowId, wardId, projectId, changeId),
-    db.prepare(`UPDATE projects SET state_version = ? WHERE ward_id = ? AND project_id = ? AND state_version = ? AND closed_at IS NULL`)
-      .bind(nextVersion, wardId, projectId, state.project.stateVersion),
-    db.prepare(`UPDATE documents SET stale_since_version = COALESCE(stale_since_version, ?) WHERE ward_id = ? AND project_id = ? AND kind = 'report'
-      AND EXISTS (SELECT 1 FROM project_changes WHERE ward_id = ? AND project_id = ? AND change_id = ?)`)
-      .bind(nextVersion, wardId, projectId, wardId, projectId, changeId),
-  ]);
-  return result[0]?.meta.changes === 1 && result[1]?.meta.changes === 1 && result[2]?.meta.changes === 1;
-}
-
-followupAdmin.post("/projects/:projectId/ledger/:rowId", async (c) => {
-  const { ward, account } = c.var;
-  const id = c.req.param("projectId"); const rowId = c.req.param("rowId");
-  const state = await getProjectState(c.env.DB, ward.wardId, id);
-  const row = [...(state?.tables.ledger ?? []), ...(state?.tables.sponsors ?? [])].find((r) => r.rowId === rowId && r.scope === "current");
-  if (!row) return c.notFound();
-  const form = await c.req.formData();
-  const name = String(form.get("counterpart") ?? "").trim(); const amount = Number(form.get("amount"));
-  const note = String(form.get("note") ?? "").trim(); const date = String(form.get("date") ?? "");
-  const direction = String(form.get("direction") ?? "");
-  const back = { href: adminPath(ward, `/projects/${id}/ledger/${rowId}`), label: "収支の行に戻る" };
-  if (!name || name.length > 200 || !String(form.get("amount") ?? "").trim() || !Number.isSafeInteger(amount) || amount < 0 || note.length > 2000 || (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) || (row.table === "sponsors" && direction !== "income")) return adminResult(c, "相手と金額、日付を確かめてください。", 400, back, "金額は0以上の整数で入れて、もう一度保存してください。");
-  const data: RowData = { ...row.data, [row.table === "sponsors" ? "name" : "counterpart"]: name, amount, note };
-  if (row.table === "ledger") { data.direction = direction; data.date = date; }
-  if (!await saveLedgerRow(c.env.DB, ward.wardId, id, rowId, account.accountId, data)) return adminResult(c, "収支の行を保存できませんでした。", 409, back, "行事が開いているか、同じ相手と日付の行がないかを確かめて、もう一度直してください。");
-  return c.redirect(`${adminPath(ward, `/projects/${id}/ledger`)}?saved=1`, 303);
-});
+// 運営メモの入口。帳簿と決算は今回の範囲に含めない。
+followupAdmin.route("/", memoAdmin);
+export { saveLedgerRow } from "../map/memo";

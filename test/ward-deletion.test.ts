@@ -30,9 +30,9 @@ it("行政の記録・席・段取りの進み具合がある区も、保管物�
   expect((await postForm(realApp, `${root}/requests/city/${city.projectId}`, {
     operation: "save", answerDraft: "架空の答えの下書き",
   }, cookie)).status).toBe(303);
-  expect((await postForm(realApp, `${root}/ledger`, {
-    year: "2026", budgetIncome: "12000", budgetExpense: "10000", settlementDraft: "架空の決算の下書き",
-  }, cookie)).status).toBe(303);
+  // 入力画面を外しても、以前の帳簿の記録を消す処理は保つ。
+  await env.DB.prepare(`INSERT INTO ward_annual_budgets (ward_id, year, budget_income, budget_expense, settlement_draft, updated_at, updated_by_account_id)
+    VALUES (?, 2026, 12000, 10000, '架空の決算の下書き', '2026-11-05', ?)`).bind(ward.wardId, account.accountId).run();
   await env.DB.batch([
     env.DB.prepare("INSERT INTO ward_ai_route_flags (ward_id, updated_at) VALUES (?, '2026-11-05')").bind(ward.wardId),
     env.DB.prepare("INSERT INTO line_group_notices (ward_id, group_id, first_joined_at) VALUES (?, 'fictional-group', '2026-11-05')").bind(ward.wardId),

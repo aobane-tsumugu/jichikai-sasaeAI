@@ -17,6 +17,7 @@ const screens = [
   "/admin", "/admin/projects", "/admin/projects/today",
   "/admin/projects/:project", "/admin/projects/:project/questions",
   "/admin/projects/:project/map", "/admin/projects/:project/map/:task",
+  "/admin/projects/:project/ledger", "/admin/projects/:project/ledger/:row",
   "/admin/projects/:project/draft", "/admin/projects/:project/draft/:kind",
   "/admin/publish/:project", "/admin/publish/:project/preview/:document/:version",
   "/admin/publish/:project/confirm", "/admin/print/:project",

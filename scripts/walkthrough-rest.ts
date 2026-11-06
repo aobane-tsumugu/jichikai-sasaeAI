@@ -185,7 +185,7 @@ if (adminLoggedIn) {
     record(1, "新しい行事と案内", "通過", "手書きの案内を保存し、公式LINEを送らない選択で配布", distributed.status, start);
   } catch (error) { fail(1, "新しい行事と案内", error, start); }
 } else {
-  for (const [number, title] of [[2,"回答票"],[3,"今やることと区の段取り"],[5,"実態の一枚"],[6,"言葉で下書きを直す"],[7,"当番表の編集"],[8,"対象者への配布"],[10,"予備の列"],[11,"行政の依頼と帳簿"],[12,"元の資料を消す"],[13,"引渡し"]] as const) skip(number, title, "役員画面に入れず、前提の行事がありません");
+  for (const [number, title] of [[2,"回答票"],[3,"今やることと区の段取り"],[5,"実態の一枚"],[6,"言葉で下書きを直す"],[7,"当番表の編集"],[8,"対象者への配布"],[10,"予備の列"],[11,"行政の依頼と運営メモ"],[12,"元の資料を消す"],[13,"引渡し"]] as const) skip(number, title, "役員画面に入れず、前提の行事がありません");
 }
 
 // 2. 架空の回答票を読み取り、役員が確認して確定する。
@@ -404,8 +404,8 @@ else {
 if (!projectId) skip(10, "予備の列", "前提の行事を開けませんでした");
 else skip(10, "予備の列", "役員画面に予備経路の専用画面はなく、通常の手入力画面です");
 
-// 11. 行政依頼・帳簿の入力画面を読み、未提出のまま保存する。
-if (!adminLoggedIn) skip(11, "行政の依頼と帳簿", "役員画面に入れず、行政依頼を保存できません");
+// 11. 行政依頼と運営メモを保存する。帳簿と決算は対象外。
+if (!adminLoggedIn) skip(11, "行政の依頼と運営メモ", "役員画面に入れず、行政依頼を保存できません");
 else {
   const start = Date.now();
   try {
@@ -424,18 +424,19 @@ else {
     if (!cityResultPath || !(await get(cityResultPath)).html.includes("記録しました")) throw new Error("行政の依頼を保存したあとの案内を開けません");
     const cityReadback = await get(cityPath);
     if (!cityReadback.html.includes(FIRST_SLICE.reportText)) throw new Error("行政の依頼の保存内容を読み返せません");
-    const ledgerPage = await get(admin + "/ledger");
-    if (!ledgerPage.response.ok || !ledgerPage.html.includes("帳簿")) throw new Error("帳簿を開けません");
-    const ledgerForm = readForm(ledgerPage.html, "/ledger");
-    ledgerForm.fields.settlementDraft = FIRST_SLICE.reportText;
+    const memoPath = admin + "/projects/" + cityId + "/ledger";
+    const ledgerPage = await get(memoPath + "/template%3Aprinting");
+    if (!ledgerPage.response.ok || !ledgerPage.html.includes("メモ")) throw new Error("運営メモを開けません");
+    const ledgerForm = readForm(ledgerPage.html, "/ledger/");
+    ledgerForm.fields.note = FIRST_SLICE.reportText;
     const ledgerSaved = await post(ledgerForm.action, ledgerForm.fields);
-    if (ledgerSaved.status !== 303) throw new Error("帳簿を保存できません");
+    if (ledgerSaved.status !== 303) throw new Error("運営メモを保存できません");
     const ledgerResultPath = ledgerSaved.headers.get("location");
-    if (!ledgerResultPath || !(await get(ledgerResultPath)).html.includes("保存しました")) throw new Error("帳簿を保存したあとの案内を開けません");
-    const ledgerReadback = await get(admin + "/ledger");
-    if (!ledgerReadback.html.includes(FIRST_SLICE.reportText)) throw new Error("帳簿の保存内容を読み返せません");
-    record(11, "行政の依頼と帳簿", "通過", "架空の行政依頼と帳簿の下書きを保存し、帳簿を読み返した。提出操作なし", ledgerReadback.response.status, start);
-  } catch (error) { fail(11, "行政の依頼と帳簿", error, start); }
+    if (!ledgerResultPath || !(await get(ledgerResultPath)).html.includes("メモを残しました")) throw new Error("運営メモを保存したあとの案内を開けません");
+    const ledgerReadback = await get(memoPath);
+    if (!ledgerReadback.html.includes(FIRST_SLICE.reportText)) throw new Error("運営メモの保存内容を読み返せません");
+    record(11, "行政の依頼と運営メモ", "通過", "架空の行政依頼と運営メモを保存して読み返した。提出操作なし", ledgerReadback.response.status, start);
+  } catch (error) { fail(11, "行政の依頼と運営メモ", error, start); }
 }
 
 // 12. この通しの回答票の記録を「消す求め」から受け付ける。消去完了は待たない。
