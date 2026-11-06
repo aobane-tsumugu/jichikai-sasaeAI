@@ -265,15 +265,15 @@ export async function acceptLineWebhook(
             if (named.results.length === 1) match = { disposition: "matched", projectId: named.results[0]!.project_id };
             else try { match = await matchLineText(ports, wardId, { ...original, officialAddressed: false }); } catch { /* 行事が分からなくても受ける。 */ }
           }
-        } else if (original.officialAddressed && looksLikeInquiry(original.text ?? "")) {
-          match = { disposition: "unmatched", inquiry: true };
         } else try {
           match = await matchLineText(ports, wardId, original);
         } catch (error) {
           console.error("LINEの当て先を確認できませんでした", wardId, eventId, error instanceof Error ? error.name : "");
           match = { disposition: "unmatched", reason: "当て先を確認できませんでした" };
         }
-        if (original.officialAddressed && match?.inquiry) {
+        // 出欠と無関係の判定を先に使う。文の形による問い合わせ判定は、判定が得られないときだけ。
+        if (original.officialAddressed && match?.attendanceAnswer !== true && match?.disposition !== "unrelated" &&
+          (match?.inquiry ?? (!answers.length && looksLikeInquiry(original.text ?? "")))) {
           await recordLineInquiry(db, wardId, { eventId, receivedAt: original.receivedAt, text: original.text ?? "", sourceType: source.type, sourceId: source.id, userId: event.source.userId ?? null, senderLabel: original.senderDisplayName ?? null });
           if (event.replyToken) try {
             await replyLineText(accessToken, event.replyToken, "役員に伝えて、内容を確認します。", fetcher);
