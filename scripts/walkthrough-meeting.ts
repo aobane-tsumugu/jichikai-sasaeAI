@@ -224,11 +224,11 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
       assert(final.values.get("lineDelivery") === "skip", "LINE送信を止められません");
       redirected(await post(final.action, final.values), "招集を配れません");
       const page = await get(`${root}/p/${project}`, true);
-      // 行事以外は、種類に合わせた題を見出しにする。
+      // 行事以外は、種類に合わせた題をページの見出しにする。本文の見出しは行事と同じ。
       assert(page.includes(`<h1>${projectTitle} 総会の招集</h1>`), "公開のページに総会の見出しがありません");
       assert(!page.includes("答えがないときは、欠席として数えます"), "総会の公開のページに行事の文があります");
       assert(/<title>[^<]*総会の招集/.test(page), "公開のページの題が総会の招集ではありません");
-      const article = [...page.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article>/gi)].find(a => /<h2>総会の招集<\/h2>/.test(a[1] ?? ""))?.[1];
+      const article = [...page.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article>/gi)].find(a => /<h2>くわしい案内<\/h2>/.test(a[1] ?? ""))?.[1];
       // 題と同じ行と（確認中）の見出しは配る時に外れるので、文の行だけを見る。
       const sentences = (form.values.get("text") ?? "").split("\n").map(line => line.trim()).filter(line => line.includes("。") && !line.includes("（確認中）"));
       assert(article && sentences.length > 0 && sentences.every(line => visible(article).includes(visible(line))), "公開のページに招集の本文がありません");

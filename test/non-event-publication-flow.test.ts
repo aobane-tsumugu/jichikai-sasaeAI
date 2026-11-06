@@ -53,7 +53,7 @@ it("総会と役員会を種類に合う題で読み、当番の知らせは実�
       expect(html).toContain("<h2>くわしい案内</h2>");
     } else {
       const title = documentTitle(projectKind, kind);
-      expect(html).toContain(`<h2>${title}</h2>`);
+      expect(html).toContain(kind === "announcement" ? "<h2>くわしい案内</h2>" : `<h2>${title}</h2>`);
       expect(html).not.toContain(`<h1>${project.title}のご案内</h1>`);
       expect(await read(`${base}/`)).toContain(`<b>${paperHeading(project.title, title)}</b>`);
     }
