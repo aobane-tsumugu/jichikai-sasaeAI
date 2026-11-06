@@ -202,10 +202,8 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
     ["1 役員会を二回開く", async () => {
       redirected(await post(admin + "/login", { name: options.name, password: options.password }), "役員画面に入れません");
       assert(cookies.officer.has("device"), "役員画面に入るための応答がありません");
-      // 区に前の試行の会議が残っていても、今回の二回が一番新しくなるように、試行ごとに先の日付を使う。
-      const runDay = Math.floor((Date.now() - Date.UTC(2026, 10, 1)) / 300_000) * 2;
-      const dayOf = (offset: number) => new Date(Date.UTC(2030, 0, 1) + (runDay + offset) * 86_400_000).toISOString().slice(0, 10);
-      const today = dayOf(0), tomorrow = dayOf(1);
+      // 区に前の試行の会議が残っていても、同じ日なら閉じた順で今回の一回目が「前回」になる。その年の最後の日に揃える。
+      const today = `${source.year}-12-31`, tomorrow = today;
       const first = await open("board1", "board_meeting", source.year, "役員会1回目（架空）", today);
       await upload(first, "役員会の議題", source.agenda);
       await upload(first, "役員会の記録", source.minutes);
