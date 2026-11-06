@@ -316,6 +316,8 @@ export async function acceptLineWebhook(
       if (original.kind === "image") {
         await registerLinePhoto(db, wardId, { destination: payload.destination!, source, jobId: itemId, messageId: event.message.id,
           imageSet: event.message.imageSet, quoteToken: event.message.quoteToken, replyToken: event.replyToken, now });
+        // 保存できた一対一の写真には、AIの確認や当て先への接続より先に受領を返す。
+        await replyPhotoReceipt(env, wardId, itemId, { fetch: fetcher, now });
         const retake = activeQuestions.find((question) => question.topic === "unreadable");
         if (retake) {
           await db.prepare("UPDATE line_photo_items SET retake_clarification_id = ? WHERE ward_id = ? AND job_id = ?")
@@ -373,9 +375,6 @@ export async function acceptLineWebhook(
       await replyQuickPhotoChecks(env, wardId, { fetch: fetcher, now: deliveryNow });
       await processPhotoBatches(env, wardId, { fetch: fetcher, now: deliveryNow });
     } catch { console.error("写真の質問を準備できませんでした", wardId); }
-    finally {
-      for (const jobId of photoJobs) await replyPhotoReceipt(env, wardId, jobId, { fetch: fetcher, now: deliveryNow });
-    }
     // 全部の読みがそろってから、同じ送信の写真をまとめて当てる。
     for (const jobId of photoJobs) {
       try { await ports.readPhoto?.(wardId, jobId); }
