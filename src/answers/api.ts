@@ -1,6 +1,8 @@
 import { newId, nowIso } from "../core/ids";
 import { SETTING_KEYS } from "../settings/keys";
 import { listHelpOffers } from "./help";
+import type { MeetingStatus } from "./meeting";
+import { saveMeetingAnswer } from "./meeting-store";
 
 export interface RosterEntry {
   household: string;
@@ -8,6 +10,8 @@ export interface RosterEntry {
 }
 
 export interface AnswerInput extends RosterEntry {
+  meetingStatus?: MeetingStatus | null;
+  proxyName?: string | null;
   projectId: string;
   peopleCount: number;
   childrenCount?: number | null;
@@ -193,6 +197,11 @@ export async function getDistrictCopies(db: D1Database, wardId: string): Promise
 }
 
 export async function addAnswer(db: D1Database, wardId: string, input: AnswerInput): Promise<string> {
+  if (input.meetingStatus != null) {
+    const id = await saveMeetingAnswer(db, wardId, input);
+    if (!id) throw new Error("総会の答えを保存できませんでした。");
+    return id;
+  }
   const breakdown = [input.childrenCount, input.adultsCount, input.seniorsCount];
   const hasBreakdown = breakdown.some((value) => value != null);
   const peopleCount = hasBreakdown ? breakdown.reduce<number>((sum, value) => sum + (value ?? 0), 0) : input.peopleCount;
@@ -249,6 +258,7 @@ export async function listAnswers(db: D1Database, wardId: string, projectId: str
   const result = await db
     .prepare(
       `SELECT answer_id AS answerId, project_id AS projectId, household, district, people_count AS peopleCount, children_count AS childrenCount, adults_count AS adultsCount, seniors_count AS seniorsCount,
+        meeting_status AS meetingStatus, proxy_name AS proxyName,
         helper_name AS helperName, helper_times AS helperTimes, source, original_id AS originalId, sheet_row_index AS sheetRowIndex, created_at AS createdAt
        FROM project_answers WHERE ward_id = ? AND project_id = ? ORDER BY created_at, answer_id`,
     )
@@ -259,6 +269,7 @@ export async function listAnswers(db: D1Database, wardId: string, projectId: str
 
 export async function getAnswer(db: D1Database, wardId: string, projectId: string, answerId: string): Promise<AnswerRow | null> {
   return db.prepare(`SELECT answer_id AS answerId, project_id AS projectId, household, district, people_count AS peopleCount, children_count AS childrenCount, adults_count AS adultsCount, seniors_count AS seniorsCount,
+      meeting_status AS meetingStatus, proxy_name AS proxyName,
       helper_name AS helperName, helper_times AS helperTimes, source, original_id AS originalId,
       sheet_row_index AS sheetRowIndex, created_at AS createdAt
     FROM project_answers WHERE ward_id = ? AND project_id = ? AND answer_id = ?`)

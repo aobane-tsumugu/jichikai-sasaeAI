@@ -89,6 +89,8 @@ const ANSWER_SHEET_SYSTEM = `${COMMON_RULES}
 読み取りの作り方（回答票）:
 - 一枚に複数の票が写っていることがあります。票ごとに rows の一行にしてください。
 - household_name は代表者の名前、ward_group は紙に印字された班の名前です。
+- 総会の回答票・委任状は人数ではなく世帯の出席を読みます。出席に印はmeeting_statusをattend、委任に印はproxy、欠席に印はabsentにしてください。空欄、複数の印、判読不能はnullにし、noteとunreadableに残してください。委任先の記載から出欠の印を推測しません。
+- 総会のproxy_nameは委任する相手の名前を書かれたまま写します。空欄と確認できるときは空文字、判読不能はnullです。空欄を議長の名前や「議長」で補いません。総会ではchildren、adults、seniorsはnull、not_attendingはfalse、helper_namesとhelper_slotsは空にします。以下の人数の規則は総会以外に使います。総会以外のmeeting_statusはnull、proxy_nameは空文字にしてください。
 - 「参加しない」「欠席」「不参加」に印があるときは not_attending を true にし、children、adults、seniors をすべて0にしてください。参加する印だけ、または出欠の印が読めないときは false にし、読めない印は note と unreadable に残してください。
 - 回答票の近くに \`P3-D2-V1\` のような符号があれば paper_code にそのまま記載してください。見当たらなければ空文字にしてください。
 - children は子ども（中学生まで）、adults は大人（69歳まで）、seniors は高齢の方（70歳以上）の人数です。記入欄があり、空欄だと確認できるときは0にしてください。人数の文字や記入欄が読めないとき、欄がないときはnullにし、noteとunreadableに残してください。紙に印刷された言い方を優先し、合計だけの人数を年齢の区分に推測して分けないでください。
@@ -183,6 +185,7 @@ export function fixOriginalIds(body: ReadingBody, validIds: string[]): ReadingBo
 
 export interface ReadOptions {
   kind: ReadKind;
+  generalMeeting?: boolean;
   answerLabels?: AnswerLabels;
   originals: ReadableOriginal[];
   /** 考える深さ。読み取りは文字起こしが中心なので既定は low。 */
@@ -199,7 +202,7 @@ export async function readOriginals(client: Anthropic, options: ReadOptions): Pr
     response = await client.messages.create({
       model: MODEL.main,
       max_tokens: MAX_OUTPUT_TOKENS,
-      system: systemFor(options.kind) + (options.kind === "answer_sheet" && options.answerLabels ? `\nこの区の人数の聞き方（children、adults、seniors の順）: ${JSON.stringify(options.answerLabels)}。紙に書かれた言い方が異なる時は、紙を優先してください。` : ""),
+      system: systemFor(options.kind) + (options.kind === "answer_sheet" && options.generalMeeting ? "\n当て先の種類は総会です。出席・委任・欠席を読み、人数を補わないでください。" : options.kind === "answer_sheet" && options.answerLabels ? `\nこの区の人数の聞き方（children、adults、seniors の順）: ${JSON.stringify(options.answerLabels)}。紙に書かれた言い方が異なる時は、紙を優先してください。` : ""),
       messages: [{ role: "user", content }],
       output_config: {
         effort: options.effort ?? "low",

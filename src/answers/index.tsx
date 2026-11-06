@@ -1,4 +1,5 @@
 import { adminResult } from "../core/admin-ui";
+import { installMeetingRoutes } from "./meeting-routes";
 import { AttendanceFields, CountFields, countText, countUnread, parseAnswerCounts } from "./counts";
 import { type AnswerLabels } from "../settings/answer-labels";
 import { EventDetails, ReceptionClosed, ResidentContact, residentContext } from "./resident";
@@ -45,6 +46,7 @@ import {
 
 const admin = new Hono<AdminEnv>();
 const pub = new Hono<WardEnv>();
+installMeetingRoutes(admin, pub);
 
 /** Hono のテスト用 request には ExecutionContext が無い場合がある。 */
 function waitableContext(context: { executionCtx: Waitable }): Waitable {

@@ -7,7 +7,7 @@
 /** 包みの版。どの版で読んだかを readings に残し、直した後に古い版で読んだ物を選んで読み直せるようにする。 */
 export const READ_PACK_VERSION = {
   general: "read-general@4",
-  answer_sheet: "read-answer-sheet@6",
+  answer_sheet: "read-answer-sheet@7",
   restore: "read-restore@4",
   /** モデルを通さない読み取り（Word、Excel、文字） */
   direct: "read-direct@2",
@@ -108,6 +108,10 @@ export interface Reading {
 
 /** 回答票の読み取り。一枚に複数の票が写っている前提で、票ごとに一行。 */
 export interface AnswerSheetRow {
+  /** 総会の印。空欄、複数の印、判読不能はnull。行事の古い読み取りには無い。 */
+  meeting_status?: "attend" | "proxy" | "absent" | null;
+  /** 委任先。確認できる空欄は空文字、判読不能はnull。 */
+  proxy_name?: string | null;
   household_name: string;
   /** 参加しないに印がある。古い読み取りには無い。 */
   not_attending?: boolean;
@@ -245,6 +249,8 @@ export const ANSWER_SHEET_SCHEMA = {
         required: [
           "household_name",
           "not_attending",
+          "meeting_status",
+          "proxy_name",
           "ward_group",
           "adults",
           "children",
@@ -260,6 +266,8 @@ export const ANSWER_SHEET_SCHEMA = {
         properties: {
           household_name: str,
           not_attending: { type: "boolean" },
+          meeting_status: { anyOf: [{ type: "string", enum: ["attend", "proxy", "absent"] }, { type: "null" }] },
+          proxy_name: { anyOf: [str, { type: "null" }] },
           ward_group: str,
           adults: { anyOf: [{ type: "integer" }, { type: "null" }] },
           children: { anyOf: [{ type: "integer" }, { type: "null" }] },
