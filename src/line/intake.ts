@@ -4,12 +4,12 @@ import { projectApi } from "../ai/project-binding";
 import { assignProject as assignIntakeProject, receiveOriginal as receiveIntakeOriginal, withdrawJob as withdrawIntakeJob } from "../intake/api";
 import type { Waitable } from "../intake/types";
 import type { Env } from "../env";
-import { addAnswer, getRoster, normalizeHousehold } from "../answers/api";
+import { addAnswer, getRoster } from "../answers/api";
 import { quickCheckPhotos } from "../intake/photo-check";
 import { receive, type ReceiveInput } from "../intake/receive";
 import { runRead } from "../intake/pipeline";
 
-/** LINEの文の出欠はAIを呼ばず、この指示で読む。 */
+/** 当てるAIが出欠の答えと判断した文から、人数を読む。 */
 export const LINE_ANSWER_PACK = { version: "line-answer@2", notAttending: /参加しません|参加しない|不参加|欠席/ } as const;
 
 export interface LineOriginal {
@@ -31,6 +31,7 @@ export interface InboxMatch {
   projectName?: string;
   reason?: string;
   inquiry?: boolean;
+  attendanceAnswer?: boolean;
 }
 
 export interface LineIntakePorts {
@@ -50,9 +51,8 @@ async function saveLineAnswer(db: D1Database, wardId: string, projectId: string,
   let candidates = matches.filter((entry) => entry.household.length === matches[0]?.household.length);
   const namedDistricts = candidates.filter((entry) => text.includes(entry.district)).sort((a, b) => b.district.length - a.district.length);
   if (namedDistricts.length) candidates = namedDistricts.filter((entry) => entry.district.length === namedDistricts[0]!.district.length);
-  // 同名の世帯は、班も使って一つの候補に絞れた時だけ回答に入れる。
-  const household = candidates[0];
-  if (household && candidates.some((entry) => entry.district !== household.district || normalizeHousehold(entry.household) !== normalizeHousehold(household.household))) return;
+  // 一つに決まらない世帯は、書かれた名前のまま班を空にして数える。
+  const household = candidates.length === 1 ? candidates[0] : undefined;
   // 人数だけ文字の幅をそろえる。原本や手伝える時間の文は書き換えない。
   const countText = text.normalize("NFKC");
   const notAttending = LINE_ANSWER_PACK.notAttending.test(countText);
@@ -69,7 +69,7 @@ async function saveLineAnswer(db: D1Database, wardId: string, projectId: string,
   // 「大人1人です」のように、人数だけを述べた文を名前として扱わない。
   const nameIsCount = statedName !== undefined && [adults, children, seniors, total]
     .some((count) => count?.[0] === statedName.normalize("NFKC"));
-  const name = household?.household ?? (statedName && !nameIsCount ? statedName : "名前の分からない答え");
+  const name = household?.household ?? (statedName && !nameIsCount ? statedName : matches[0]?.household ?? "名前の分からない答え");
   await addAnswer(db, wardId, {
     projectId,
     household: name,
@@ -155,7 +155,7 @@ export function createLineIntakePorts(
       if (result.choice === MATCH_NEW) return { disposition: "unmatched", reason: result.reason };
       const project = open.find((candidate) => candidate.projectId === result.choice);
       return project
-        ? { disposition: "matched", projectId: project.projectId, projectName: project.title, reason: result.reason }
+        ? { disposition: "matched", projectId: project.projectId, projectName: project.title, reason: result.reason, attendanceAnswer: result.attendanceAnswer === true }
         : { disposition: "unmatched", reason: result.reason };
     },
   };

@@ -6,7 +6,7 @@ import { receive } from "../src/intake/receive";
 import { createLineIntakePorts } from "../src/line/intake";
 import { createProject } from "../src/project/api";
 
-it("別の班の同名世帯のLINE答えを分け、班が分からない文からは答えを作らない", async () => {
+it("別の班の同名世帯のLINE答えを分け、班が分からない答えも書かれたまま数える", async () => {
   const { ward, account } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,
@@ -26,16 +26,17 @@ it("別の班の同名世帯のLINE答えを分け、班が分からない文か
     }, received.jobId!);
   }
   await reply("同名世帯（架空）です。大人4人です。");
-  expect(await listAnswers(env.DB, ward.wardId, project.projectId)).toHaveLength(0);
+  expect(await listAnswers(env.DB, ward.wardId, project.projectId))
+    .toMatchObject([{ household: "同名世帯（架空）", district: "", peopleCount: 4, source: "line" }]);
   await reply("2班の同名世帯（架空）です。大人2人です。");
   expect(await listAnswers(env.DB, ward.wardId, project.projectId))
-    .toMatchObject([{ household: "同名世帯（架空）", district: "2班", peopleCount: 2, source: "line" }]);
+    .toEqual(expect.arrayContaining([expect.objectContaining({ household: "同名世帯（架空）", district: "2班", peopleCount: 2, source: "line" })]));
   await reply("1班の同名世帯（架空）です。大人3人です。");
   const answers = await listAnswers(env.DB, ward.wardId, project.projectId);
-  expect(answers).toHaveLength(2);
+  expect(answers).toHaveLength(3);
   expect(answers).toEqual(expect.arrayContaining([
     expect.objectContaining({ district: "1班", peopleCount: 3 }),
     expect.objectContaining({ district: "2班", peopleCount: 2 }),
   ]));
-  expect((await getAnswerTotals(env.DB, ward.wardId, project.projectId)).people).toBe(5);
+  expect((await getAnswerTotals(env.DB, ward.wardId, project.projectId)).people).toBe(9);
 });

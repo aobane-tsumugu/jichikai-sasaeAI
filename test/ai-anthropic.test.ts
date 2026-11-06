@@ -262,7 +262,7 @@ describe("当てる", () => {
       usage: { input_tokens: 300, output_tokens: 40 },
     }));
     const result = await matchProject(client, { candidates, summary: "雨なら公民館で", senderLabel: "副会長" });
-    expect(result).toEqual({ choice: "p-1", reason: "収穫祭の日程の話です", usage: { input_tokens: 300, output_tokens: 40 } });
+    expect(result).toEqual({ choice: "p-1", reason: "収穫祭の日程の話です", attendanceAnswer: false, usage: { input_tokens: 300, output_tokens: 40 } });
     expect(requests).toHaveLength(1);
     const req = requests[0] as { model: string; output_config: { format: { schema: { properties: { choice: { enum: string[] } } } } } };
     expect(req.model).toBe("claude-haiku-5-5");
