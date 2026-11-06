@@ -8,6 +8,7 @@ import { getJob, resetForRetry, setJobProject, withdrawJob as withdraw } from ".
 import type { Waitable } from "./types";
 import { quickCheckPhotos } from "./photo-check";
 import { attachClarificationQuestions } from "../line/clarifications";
+import { completePhotoMaterial } from "./material";
 
 export { ReceiveError } from "./receive";
 export type { ReceiveInput, ReceiveOutcome, ReceivePart } from "./receive";
@@ -77,7 +78,10 @@ export async function assignProject(
   const current = await getJob(env.DB, wardId, jobId);
   if (current && !current.withdrawn_at && current.project_id === projectId) return true;
   const changed = await setJobProject(env.DB, wardId, jobId, projectId);
+  if (changed) await env.DB.prepare(`UPDATE line_inbox_items SET disposition = ?, matched_project_id = ?,
+    matched_project_name = (SELECT title FROM projects WHERE ward_id = ? AND project_id = ?)
+    WHERE ward_id = ? AND job_id = ?`).bind(projectId ? "matched" : "unmatched", projectId, wardId, projectId, wardId, jobId).run();
   if (changed && projectId) await attachClarificationQuestions(env.DB, wardId, jobId);
-  if (changed && projectId) ctx.waitUntil(dispatchProject(env, wardId, projectId).catch(logDispatchError));
+  if (changed && projectId && !(await completePhotoMaterial(env.DB, wardId, jobId))) ctx.waitUntil(dispatchProject(env, wardId, projectId).catch(logDispatchError));
   return changed;
 }

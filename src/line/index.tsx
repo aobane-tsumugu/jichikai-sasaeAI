@@ -20,6 +20,7 @@ import { getJob, listJobs, listOriginals } from "../intake/store";
 import { pendingMaterialGroups } from "../intake/groups";
 import { adminPath } from "../core/auth";
 import { formatJst } from "../core/time";
+import { rememberPhotoSource } from "./photo-context";
 import { STATUS_LABEL } from "../intake/pages";
 
 interface InboxRow {
@@ -225,6 +226,7 @@ admin.post("/inbox/:itemId", async (c) => {
       const item = await c.env.DB.prepare("SELECT job_id FROM line_inbox_items WHERE ward_id = ? AND item_id = ?")
         .bind(wardId, itemId).first<{ job_id: string | null }>();
       if (!item?.job_id || !(await assignProject(c.env, safeContext(c), wardId, item.job_id, projectId))) return c.redirect(`/${c.var.ward.slug}/admin/inbox?error=busy`, 303);
+      await rememberPhotoSource(c.env.DB, wardId, item.job_id, projectId);
       await c.env.DB.prepare(`
         UPDATE line_inbox_items SET disposition = 'matched', matched_project_id = ?,
           matched_project_name = ?, match_reason = NULL WHERE ward_id = ? AND item_id = ?
@@ -238,7 +240,10 @@ admin.post("/inbox/:itemId", async (c) => {
       const created = await createProject(c.env.DB, wardId, { kind: kind as "event" | "general_meeting" | "city_request", title: projectName, year, accountId: c.var.account.accountId });
       const item = await c.env.DB.prepare("SELECT job_id FROM line_inbox_items WHERE ward_id = ? AND item_id = ?")
         .bind(wardId, itemId).first<{ job_id: string | null }>();
-      if (item?.job_id) await assignProject(c.env, safeContext(c), wardId, item.job_id, created.projectId);
+      if (item?.job_id) {
+        await assignProject(c.env, safeContext(c), wardId, item.job_id, created.projectId);
+        await rememberPhotoSource(c.env.DB, wardId, item.job_id, created.projectId);
+      }
       await c.env.DB.prepare(`
         UPDATE line_inbox_items SET disposition = 'matched', matched_project_id = ?,
           matched_project_name = ?, match_reason = NULL WHERE ward_id = ? AND item_id = ?

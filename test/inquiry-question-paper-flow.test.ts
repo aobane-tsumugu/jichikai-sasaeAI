@@ -4,6 +4,7 @@ import { FIRST_SLICE as fixture } from "../fixtures/first-slice";
 import type { Reading } from "../src/ai/schema";
 import { seedAdmin } from "../src/core/testing";
 import { receive } from "../src/intake/receive";
+import { claimRead, finishRead } from "../src/intake/store";
 import { attachClarificationQuestions, listClarifications, processPhotoBatches, registerLinePhoto, saveClarificationAnswers } from "../src/line/clarifications";
 import { sendOfficerDigest } from "../src/line/digest";
 import type { LineIntakePorts } from "../src/line/intake";
@@ -151,8 +152,10 @@ it("混ざった送り先の返事を残った場所へだけ送り直し、時�
       fields: [{ original_id: photo.received[0].originalId, locator: fixture.previousLocator, name: "日時", value: fixture.publicDayText, confidence: "high" }],
       tables: [], decisions: [], unreadable: [],
     };
-    await env.DB.prepare("INSERT INTO readings (reading_id, ward_id, job_id, source, pack_version, model, body, created_at) VALUES (?, ?, ?, 'model', 'u13@1', 'fictional', ?, ?)")
-      .bind(crypto.randomUUID(), ward.wardId, photo.jobId, JSON.stringify(draftReading), now.toISOString()).run();
+    const draftAttempt = await claimRead(env.DB, ward.wardId, photo.jobId, 90_000);
+    if (draftAttempt === null) throw new Error("下書きの紙を読み始められません");
+    await finishRead(env.DB, { wardId: ward.wardId, jobId: photo.jobId, attempt: draftAttempt,
+      source: "model", packVersion: "u13@1", model: "fictional", body: draftReading });
     expect(await env.DB.prepare("SELECT 1 FROM readings WHERE ward_id = ? AND job_id = ?").bind(ward.wardId, photo.jobId).first()).toBeNull();
     expect(await env.DB.prepare("SELECT 1 FROM originals WHERE ward_id = ? AND original_id = ? AND withdrawn_at IS NULL").bind(ward.wardId, photo.received[0].originalId).first()).toBeNull();
     const mixed = await receive(runtime, { wardId: ward.wardId, projectId: project.projectId, via: "admin", accountId: account.accountId,
@@ -170,8 +173,10 @@ it("混ざった送り先の返事を残った場所へだけ送り直し、時�
         { original_id: materialPhoto.originalId, locator: fixture.previousLocator, name: "場所", value: fixture.previousPlace, confidence: "high" },
       ],
     };
-    await env.DB.prepare("INSERT INTO readings (reading_id, ward_id, job_id, source, pack_version, model, body, created_at) VALUES (?, ?, ?, 'model', 'u13@1', 'fictional', ?, ?)")
-      .bind(crypto.randomUUID(), ward.wardId, mixed.jobId, JSON.stringify(mixedReading), now.toISOString()).run();
+    const mixedAttempt = await claimRead(env.DB, ward.wardId, mixed.jobId, 90_000);
+    if (mixedAttempt === null) throw new Error("一緒に送った写真を読み始められません");
+    await finishRead(env.DB, { wardId: ward.wardId, jobId: mixed.jobId, attempt: mixedAttempt,
+      source: "model", packVersion: "u13@1", model: "fictional", body: mixedReading });
     const kept = await env.DB.prepare("SELECT body FROM readings WHERE ward_id = ? AND job_id = ?").bind(ward.wardId, mixed.jobId).first<{ body: string }>();
     if (!kept) throw new Error("下書きではない写真まで外されました");
     const body = JSON.parse(kept.body) as Reading;

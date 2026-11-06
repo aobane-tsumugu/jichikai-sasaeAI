@@ -6,6 +6,8 @@ import type { Waitable } from "../intake/types";
 import type { Env } from "../env";
 import { addAnswer, getRoster, normalizeHousehold } from "../answers/api";
 import { quickCheckPhotos } from "../intake/photo-check";
+import { receive, type ReceiveInput } from "../intake/receive";
+import { runRead } from "../intake/pipeline";
 
 /** LINEの文の出欠はAIを呼ばず、この指示で読む。 */
 export const LINE_ANSWER_PACK = { version: "line-answer@2", notAttending: /参加しません|参加しない|不参加|欠席/ } as const;
@@ -32,6 +34,7 @@ export interface InboxMatch {
 }
 
 export interface LineIntakePorts {
+  readPhoto?: (wardId: string, jobId: string) => Promise<unknown>;
   checkPhoto?: (wardId: string, original: LineOriginal, jobId: string) => Promise<void>;
   receiveOriginal: (wardId: string, original: LineOriginal) => Promise<string | null>;
   matchInboxItem: (wardId: string, original: LineOriginal) => Promise<InboxMatch>;
@@ -97,6 +100,7 @@ export function createLineIntakePorts(
   match?: (wardId: string, original: LineOriginal) => Promise<MatchResult>,
 ): LineIntakePorts {
   return {
+    readPhoto: (wardId, jobId) => runRead(env, wardId, jobId),
     async checkPhoto(wardId, original, jobId) {
       if (!original.bytes) return;
       await quickCheckPhotos(env, { wardId, via: original.sourceType === "user" ? "line_direct" : "line_group",
@@ -108,7 +112,8 @@ export function createLineIntakePorts(
         ? new TextEncoder().encode(original.text ?? "")
         : original.bytes ? new Uint8Array(original.bytes) : null;
       if (!bytes) throw new Error("LINEの写真データがありません。");
-      const outcome = await receiveIntakeOriginal(env, ctx, {
+      // 写真は、送った場所とまとまりを保存して受領を返したあとに読む。
+      const input: ReceiveInput = {
         wardId,
         via: original.sourceType === "user" ? "line_direct" : "line_group",
         senderLabel: original.senderId,
@@ -118,7 +123,8 @@ export function createLineIntakePorts(
           mediaType: original.kind === "text" ? "text/plain; charset=utf-8" : original.contentType ?? "application/octet-stream",
           bytes,
         }],
-      });
+      };
+      const outcome = original.kind === "image" ? await receive(env, input) : await receiveIntakeOriginal(env, ctx, input);
       return outcome.jobId;
     },
     async assignProject(wardId, jobId, projectId) {
@@ -145,7 +151,7 @@ export function createLineIntakePorts(
         officialAddressed: item.officialAddressed,
       })))(wardId, original);
       if (original.officialAddressed && result.intent === "inquiry") return { disposition: "unmatched", reason: result.reason, inquiry: true };
-      if (result.choice === MATCH_UNRELATED) return { disposition: "unrelated", reason: result.reason };
+      if (result.choice === MATCH_UNRELATED) return { disposition: original.kind === "text" ? "unrelated" : "unmatched", reason: result.reason };
       if (result.choice === MATCH_NEW) return { disposition: "unmatched", reason: result.reason };
       const project = open.find((candidate) => candidate.projectId === result.choice);
       return project
