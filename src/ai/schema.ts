@@ -7,7 +7,7 @@
 /** 包みの版。どの版で読んだかを readings に残し、直した後に古い版で読んだ物を選んで読み直せるようにする。 */
 export const READ_PACK_VERSION = {
   general: "read-general@3",
-  answer_sheet: "read-answer-sheet@3",
+  answer_sheet: "read-answer-sheet@4",
   restore: "read-restore@3",
   /** モデルを通さない読み取り（Word、Excel、文字） */
   direct: "read-direct@2",
@@ -109,6 +109,8 @@ export interface Reading {
 /** 回答票の読み取り。一枚に複数の票が写っている前提で、票ごとに一行。 */
 export interface AnswerSheetRow {
   household_name: string;
+  /** 参加しないに印がある。古い読み取りには無い。 */
+  not_attending?: boolean;
   /** 紙に印字された班名 */
   ward_group: string;
   adults: number | null;
@@ -240,6 +242,7 @@ export const ANSWER_SHEET_SCHEMA = {
         additionalProperties: false,
         required: [
           "household_name",
+          "not_attending",
           "ward_group",
           "adults",
           "children",
@@ -254,6 +257,7 @@ export const ANSWER_SHEET_SCHEMA = {
         ],
         properties: {
           household_name: str,
+          not_attending: { type: "boolean" },
           ward_group: str,
           adults: { anyOf: [{ type: "integer" }, { type: "null" }] },
           children: { anyOf: [{ type: "integer" }, { type: "null" }] },

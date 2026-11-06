@@ -7,6 +7,9 @@ import type { Env } from "../env";
 import { addAnswer, getRoster, normalizeHousehold } from "../answers/api";
 import { quickCheckPhotos } from "../intake/photo-check";
 
+/** LINEの文の出欠はAIを呼ばず、この指示で読む。 */
+export const LINE_ANSWER_PACK = { version: "line-answer@2", notAttending: /参加しません|参加しない|不参加|欠席/ } as const;
+
 export interface LineOriginal {
   eventId: string;
   senderId: string;
@@ -49,11 +52,12 @@ async function saveLineAnswer(db: D1Database, wardId: string, projectId: string,
   if (household && candidates.some((entry) => entry.district !== household.district || normalizeHousehold(entry.household) !== normalizeHousehold(household.household))) return;
   // 人数だけ文字の幅をそろえる。原本や手伝える時間の文は書き換えない。
   const countText = text.normalize("NFKC");
+  const notAttending = LINE_ANSWER_PACK.notAttending.test(countText);
   const adults = /大人\s*(\d+)\s*人/.exec(countText);
   const children = /子(?:ども|供)\s*(\d+)\s*人/.exec(countText);
   const seniors = /(?:高齢(?:の方|者)?|シニア)\s*(\d+)\s*人/.exec(countText);
   const total = /(?:来場(?:は|が)?\s*)?(\d+)\s*人/.exec(countText);
-  const peopleCount = adults || children || seniors ? Number(adults?.[1] ?? 0) + Number(children?.[1] ?? 0) + Number(seniors?.[1] ?? 0) : Number(total?.[1]);
+  const peopleCount = notAttending ? 0 : adults || children || seniors ? Number(adults?.[1] ?? 0) + Number(children?.[1] ?? 0) + Number(seniors?.[1] ?? 0) : Number(total?.[1]);
   if (!Number.isInteger(peopleCount) || peopleCount < 0) return;
   const sourceOriginal = await db.prepare("SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ? AND withdrawn_at IS NULL ORDER BY position LIMIT 1")
     .bind(wardId, jobId).first<{ original_id: string }>();
@@ -68,7 +72,7 @@ async function saveLineAnswer(db: D1Database, wardId: string, projectId: string,
     household: name,
     district: household?.district ?? "",
     peopleCount,
-    ...(adults || children || seniors ? { childrenCount: Number(children?.[1] ?? 0), adultsCount: Number(adults?.[1] ?? 0), seniorsCount: Number(seniors?.[1] ?? 0) } : {}),
+    ...(notAttending ? { childrenCount: 0, adultsCount: 0, seniorsCount: 0 } : adults || children || seniors ? { childrenCount: Number(children?.[1] ?? 0), adultsCount: Number(adults?.[1] ?? 0), seniorsCount: Number(seniors?.[1] ?? 0) } : {}),
     ...(helperPhrase ? { helperName: name, helperTimes: helperPhrase } : {}),
     source: "line",
     ...(sourceOriginal ? { originalId: sourceOriginal.original_id } : {}),

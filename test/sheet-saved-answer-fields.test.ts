@@ -29,7 +29,7 @@ it("回答票で人が直した内容が、開き直した入力欄とそのま�
   })).toBe(true);
   const path = `/${ward.slug}/admin/answers/${project.projectId}`;
   const rowPath = `${path}/sheet/${originalId}/row/0`;
-  const corrected = { household: "架空の直した世帯", district: "架空の二班", people_count: "0", helper_name: "", helper_times: "" };
+  const corrected = { attend: "no", household: "架空の直した世帯", district: "架空の二班", children_count: "0", adults_count: "0", seniors_count: "0", helper_name: "", helper_times: "" };
   expect((await postForm(realApp, rowPath, corrected, cookie)).status).toBe(303);
   const before = await listAnswers(env.DB, ward.wardId, project.projectId);
   const page = await get(realApp, `${path}?view=list`, cookie);
@@ -38,8 +38,13 @@ it("回答票で人が直した内容が、開き直した入力欄とそのま�
   const form = [...html.matchAll(/<form\b[^>]*action="([^"]*)"[^>]*>([\s\S]*?)<\/form>/g)]
     .find((match) => match[1] === rowPath)?.[2];
   expect(form).toBeDefined();
-  const fields = Object.fromEntries([...form!.matchAll(/<input\b[^>]*name="([^"]*)"[^>]*value="([^"]*)"/g)]
-    .map((match) => [match[1]!, match[2]!]));
+  const fields: Record<string, string> = {};
+  for (const [input] of form!.matchAll(/<input\b[^>]*>/g)) {
+    if (/type="radio"/.test(input) && !/checked/.test(input)) continue;
+    const name = /name="([^"]*)"/.exec(input)?.[1];
+    const value = /value="([^"]*)"/.exec(input)?.[1];
+    if (name && value !== undefined) fields[name] = value;
+  }
   expect(fields).toMatchObject(corrected);
   expect((await postForm(realApp, rowPath, fields, cookie)).status).toBe(303);
   expect(await listAnswers(env.DB, ward.wardId, project.projectId)).toEqual(before);

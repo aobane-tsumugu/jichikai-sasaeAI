@@ -327,7 +327,7 @@ async function runFull() {
   currentStage = "3";
   currentStarted = start;
   const answer = await post(wardPath + "/answer/" + project, {
-    household: "架空 小林", district: "1班", children_count: "0", adults_count: "2", seniors_count: "0", helper_name: "架空 小林さと", helper_times: "受付10:30-12:00"
+    attend: "yes", household: "架空 小林", district: "1班", children_count: "0", adults_count: "2", seniors_count: "0", helper_name: "架空 小林さと", helper_times: "受付10:30-12:00"
   });
   if (answer.status !== 200 || !(await answer.text()).includes("答えを受け付けました")) throw new Error("架空の答えを送れません");
   record("3", "通過", "公開された案内から架空の答えを送信。", start);

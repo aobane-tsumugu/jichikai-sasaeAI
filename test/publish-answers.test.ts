@@ -74,8 +74,12 @@ describe("名簿の取り込み", () => {
       body: form,
     }, env);
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ok: true, message: "名簿を読み込みました。" });
+    const donePath = `/${ward.slug}/admin/answers/roster?done=1`;
+    expect(await response.json()).toEqual({ ok: true, message: "名簿を読み込みました。", redirectTo: donePath });
     expect(await getRoster(env.DB, ward.wardId)).toHaveLength(54);
+    const done = await get(realApp, donePath, cookie);
+    expect(done.status).toBe(200);
+    expect(await done.text()).toContain("54世帯、3班の名簿を入れました");
   });
 
   it("JSONの行を受け取り、54世帯を区ごとに保存できる", async () => {
@@ -89,10 +93,14 @@ describe("名簿の取り込み", () => {
       body: JSON.stringify({ rows_json: JSON.stringify(rows), household_column: 2, district_column: 1 }),
     }, env);
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ok: true, message: "名簿を読み込みました。" });
+    const donePath = `/${ward.slug}/admin/answers/roster?done=1`;
+    expect(await response.json()).toEqual({ ok: true, message: "名簿を読み込みました。", redirectTo: donePath });
     const roster = await getRoster(env.DB, ward.wardId);
     expect(roster).toHaveLength(54);
     expect(new Set(roster.map((entry) => entry.district))).toEqual(new Set(["1班", "2班", "3班"]));
+    const done = await get(realApp, donePath, cookie);
+    expect(done.status).toBe(200);
+    expect(await done.text()).toContain("54世帯、3班の名簿を入れました");
   });
 });
 

@@ -317,9 +317,9 @@ main:has(> .answers-wide), main:has(> .record-split) { max-width: var(--width-wi
   .answer-unanswered-print section { break-inside: avoid; }
 }
 
-.admin-answer-counts fieldset > div { display: grid; grid-template-columns: minmax(0, 1fr) 5rem 1.2em; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
-.admin-answer-counts fieldset > div label { margin: 0; font-weight: 500; }
-.admin-answer-counts input { text-align: right; }
+.answer-count-fields > div { display: grid; grid-template-columns: minmax(0, 1fr) 5rem 1.2em; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
+.answer-count-fields > div label { margin: 0; font-weight: 500; }
+.answer-count-fields input { text-align: right; }
 `;
 
 export const PRINT_CSS = `
@@ -360,6 +360,7 @@ body { margin: 0; color: #000; font: 14pt/1.65 "Hiragino Sans", "Yu Gothic", "Me
 .slip .qr { flex: none; width: 36mm; }
 .slip h2 { margin-top: 0; }
 .paper-code { font-size: 9pt; }
+.sheet .answer-slip.standalone .paper-count { min-height: 28mm; border: .4mm solid #000; padding: 2mm; }
 .sheet .give { border: .7mm solid #000; padding: 2mm; margin: 2mm 0; font-weight: 700; break-inside: avoid; }
 .sheet .leader-qr { display: flex; align-items: center; gap: 6mm; padding: 4mm; font-weight: 400; }
 .sheet .leader-qr .qr { flex: none; }

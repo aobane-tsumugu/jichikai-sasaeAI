@@ -6,6 +6,9 @@ type Counts = Pick<AnswerInput, "peopleCount" | "childrenCount" | "adultsCount" 
 
 /** 古い答えは合計だけを保つ。新しい欄の空欄は0人。 */
 export function parseAnswerCounts(form: Record<string, unknown>): Counts | null {
+  // 既に開いている古い画面からの人数だけの送信も受ける。新しい画面では出欠の選択が必須。
+  if (form.attend === "no") return { peopleCount: 0, childrenCount: 0, adultsCount: 0, seniorsCount: 0 };
+  if (form.attend !== undefined && form.attend !== "yes") return null;
   const hasFields = COUNT_FIELDS.some((key) => typeof form[key] === "string");
   const hasBreakdown = hasFields && (COUNT_FIELDS.some((key) => String(form[key] ?? "").trim() !== "") || !String(form.people_count ?? "").trim());
   const values = (hasBreakdown ? COUNT_FIELDS.map((key) => form[key] ?? "") : [form.people_count ?? ""]);
@@ -18,10 +21,18 @@ export function parseAnswerCounts(form: Record<string, unknown>): Counts | null 
   return hasBreakdown ? { peopleCount, childrenCount: counts[0]!, adultsCount: counts[1]!, seniorsCount: counts[2]! } : { peopleCount };
 }
 
+/** 新しく答えるときは何も選ばず、直すときだけ保存済みの出欠を出す。 */
+export function AttendanceFields({ title, selected, disabled = false }: { title: string; selected?: string; disabled?: boolean }) {
+  return <fieldset><legend>{title}に</legend><div class="choice half">
+    <label><input type="radio" name="attend" value="yes" checked={selected === "yes"} required disabled={disabled} /> 参加する</label>
+    <label><input type="radio" name="attend" value="no" checked={selected === "no"} required disabled={disabled} /> 参加しない</label>
+  </div></fieldset>;
+}
+
 export function CountFields({ labels, answer, prefix = "count", disabled = false, rawValues }: { labels: AnswerLabels; answer?: Counts; prefix?: string; disabled?: boolean; rawValues?: Record<string, unknown> }) {
   const values = [answer?.childrenCount, answer?.adultsCount, answer?.seniorsCount];
   const legacy = answer && values.every((value) => value == null);
-  return <fieldset><legend>参加する人数</legend>
+  return <fieldset class="answer-count-fields"><legend>参加する人数（参加しないときは空けたままで）</legend>
     {COUNT_FIELDS.map((name, index) => <div><label for={`${prefix}-${name}`}>{labels[index]}</label>
       <input id={`${prefix}-${name}`} name={name} type="number" min="0" max="1000" inputmode="numeric" value={typeof rawValues?.[name] === "string" ? String(rawValues[name]) : values[index] ?? ""} disabled={disabled} />人</div>)}
     <p class="muted">いない欄は空けたままでかまいません。</p>
@@ -30,6 +41,7 @@ export function CountFields({ labels, answer, prefix = "count", disabled = false
 }
 
 export function countText(answer: Counts, labels: AnswerLabels): string {
+  if (answer.peopleCount === 0) return "参加しない";
   const values = [answer.childrenCount, answer.adultsCount, answer.seniorsCount];
   if (values.every((value) => value == null)) return `${answer.peopleCount}人`;
   return `${answer.peopleCount}人（${values.map((value, index) => `${labels[index]}${value ?? 0}人`).join("、")}）`;
