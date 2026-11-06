@@ -231,8 +231,8 @@ pub.get("/p/:projectId", async (c) => {
       return <article class="panel" key={latest.document_id}>
         <h2>{event && latest.kind === "announcement" ? changes ? `${date(latest)}に配った案内` : "くわしい案内" : title}</h2>
         {latest.kind === "announcement" && changes ? <p>変わったところは、上のお知らせのとおりです。</p> : null}
-        <p>載せた日: {date(latest)}</p>
-        <ArticleBody body={latest.body} title={{ project: latest.title, document: latest.document_title }} kind={latest.kind} />
+        <ArticleBody body={latest.body} title={{ project: latest.title, document: latest.document_title }} kind={latest.kind} hide={latest.kind === "announcement" && !changes ? ["date_time", "place", "rain_plan", "due"] : []} />
+        <p class="muted">{date(latest)}に載せました</p>
         {earlier.map((older) => <details>
           <summary>変更前の{event ? "案内" : publicDocumentTitle(older)}（{date(older)}に載せたもの）</summary>
           <ArticleBody body={older.body} title={{ project: older.title, document: older.document_title }} kind={older.kind} />

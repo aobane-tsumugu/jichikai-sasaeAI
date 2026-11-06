@@ -206,7 +206,7 @@ details.fold > div { padding: 0 var(--space-3) var(--space-3); }
 /* MapRow。地図の一枚。月の物差しと今日の線を持つ。SVG を使わず、リストとリンクで作り、スマホでも横に動かさない */
 .map { --label: 9.6rem; position: relative; margin: var(--space-4) 0; }
 .map-months { position: relative; z-index: 1; display: grid; grid-template-columns: var(--label) minmax(0, 1fr); padding-top: 1.9rem; border-bottom: 2px solid var(--fg); font-size: var(--text-note); font-weight: 700; }
-.map-months span { grid-column: 2; display: grid; grid-template-columns: 31fr 30fr 31fr 30fr; }
+.map-months span { grid-column: 2; display: grid; grid-template-columns: 31fr 30fr 31fr 30fr; overflow-x: clip; }
 .map-months i::first-line { background: var(--bg); }
 .map-months i { padding-left: var(--space-1); border-left: 1px solid var(--line-strong); font-style: normal; white-space: nowrap; overflow-wrap: normal; }
 

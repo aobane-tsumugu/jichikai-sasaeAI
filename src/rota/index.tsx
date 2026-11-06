@@ -95,7 +95,7 @@ admin.get("/rota/exemptions", async (c) => {
       <div class="field"><label for="reason">免除の理由</label><input id="reason" name="reason" maxlength={200} required /></div>
       <div class="field"><label for="starts">始めの日</label><input id="starts" type="date" name="starts_on" required /></div>
       <div class="field"><label for="ends">終わりの日</label><input id="ends" type="date" name="ends_on" required /></div>
-      <div class="action-links"><button>免除を記録する</button></div>
+      <div class="action-bar"><button>免除を記録する</button></div>
     </form> : <section class={c.req.query("saved") ? "panel" : "next"}><strong>{c.req.query("saved") ? "名簿がまだありません" : "次は"}</strong><p>今の名簿に、班とお名前で区別できる世帯がありません。名簿を入れるか直すと、免除を書けます。</p>
       <a class="button" href={adminPath(ward, "/answers/roster")}>名簿を入れる・直す</a></section>}
     <p class="muted">書き間違えたものは取り消して、書き直せます。理由や期間は当番表や紙には載りません。</p>

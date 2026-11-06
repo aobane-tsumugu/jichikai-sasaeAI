@@ -9,15 +9,13 @@ export function withoutPending(text: string): string {
   const kept: string[] = [];
   lines.forEach((line, index) => {
     if (!line.includes(PENDING)) { kept.push(line); return; }
-    if (line.trim() === PENDING) {
-      const nextLine = lines[index + 1]?.trim();
-      while (kept.length && !kept[kept.length - 1]!.trim()) kept.pop();
-      const heading = kept[kept.length - 1]?.trim() ?? "";
-      if (!nextLine && heading && heading.length <= 30 && !/[。！？]$/.test(heading)) kept.pop();
-      return;
-    }
-    const rest = line.split(/(?<=。)/).filter((sentence) => !sentence.includes(PENDING)).join("");
-    if (rest.trim()) kept.push(rest);
+    const rest = line.trim() === PENDING ? "" : line.split(/(?<=。)/).filter((sentence) => !sentence.includes(PENDING)).join("");
+    if (rest.trim()) { kept.push(rest); return; }
+    // 中身が無くなった見出しは残さない。次の行に続きがあれば見出しは要る。
+    const nextLine = lines[index + 1]?.trim();
+    while (kept.length && !kept[kept.length - 1]!.trim()) kept.pop();
+    const heading = kept[kept.length - 1]?.trim() ?? "";
+    if (!nextLine && heading && heading.length <= 30 && !/[。！？]$/.test(heading)) kept.pop();
   });
   return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }

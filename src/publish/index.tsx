@@ -8,7 +8,7 @@ import type { Bundle } from "../core/bundle";
 import { newId, nowIso } from "../core/ids";
 import { Notice } from "../core/ui";
 import type { Context } from "hono";
-import { formatJst } from "../core/time";
+import { formatDateText, formatJst } from "../core/time";
 import type { AdminEnv } from "../env";
 import { getLineAllowance, lineAccessToken, LINE_NOT_CONFIGURED, sendLineTitleAndUrl } from "../line/api";
 import { answerDeadlineFromDraft, getRoster, parseDistribution } from "../answers/api";
@@ -188,13 +188,13 @@ admin.get("/publish/:projectId", async (c) => {
       const previous = allRecords.find((record) => record.document_id === draft.document_id && !record.unpublished_at);
       const tablesChanged = draft.scope === "space" && (draft.kind === "duty_roster" || draft.kind === "procedure") &&
         (!!previous || !!draft.published_at) && publicationTablesDiffer(previous?.tables_snapshot ?? null, currentTables);
-      return <>{index === 1 ? <h2>ほかに配れるもの</h2> : null}<section class="panel" key={draft.document_id}>
+      return <>{index === 1 ? <h2>{project.closed_at || orderedDrafts.slice(1).every((row) => row.published_at) ? "ほかの文書" : "ほかに配れるもの"}</h2> : null}<section class="panel" key={draft.document_id}>
         <h2>{paperHeading(project.title, draft.title)}</h2>
         <p>{draft.published_at ? "すでに配っています。" : "下書きがあります"}</p>
         {draft === primary ? <dl class="facts"><dt>区のページ</dt><dd>載せます</dd><dt>公式LINE</dt><dd>{canSendLine(draft.kind) ? "題とページを送ります" : "今回は送りません"}</dd><dt>紙</dt><dd>{copies ? `加入世帯に${copies}部` : "印刷して配れます"}</dd></dl> : null}
         {draft.stale_since_version !== null ? <Notice>新しいものが入っています。下書きを直すか、このまま配れます。</Notice> : null}
         {tablesChanged ? <Notice>{previous?.tables_snapshot === null ? "配ったときの表の記録がありません。今の表を配り直せます。" : "配ったときから表が変わっています。今の表を配り直せます。"}</Notice> : null}
-        {draft.scope === "space" ? <><p>実行委員と班長に配ります。区のページには載りません</p>{!project.closed_at && (!draft.published_at || tablesChanged) ? <form method="post" action={adminPath(ward, `/publish/${projectId}/confirm`)}>
+        {draft.scope === "space" ? <><p>{draft.published_at ? "実行委員と班長に配りました。" : "実行委員と班長に配ります。"}区のページには載りません</p>{!project.closed_at && (!draft.published_at || tablesChanged) ? <form method="post" action={adminPath(ward, `/publish/${projectId}/confirm`)}>
           <input type="hidden" name="documentId" value={draft.document_id} /><input type="hidden" name="versionId" value={draft.version_id} /><input type="hidden" name="versionNo" value={draft.version_no} />
           <button class={index === 0 ? "" : "secondary"} type="submit">配る内容を見る</button><p class="muted">押しても、まだ配られません。</p></form> : null}</> : null}
         {draft.scope === "public" && !project.closed_at && !draft.published_at ? <form method="post" action={adminPath(ward, `/publish/${projectId}/confirm`)}>
@@ -205,6 +205,7 @@ admin.get("/publish/:projectId", async (c) => {
       </section></>;
     })}
     <h2>これまでに配ったもの</h2>{!allRecords.length ? <p>まだありません。</p> : allRecords.map((record) => <section class="panel">
+      {drafts.some((row) => row.document_id === record.document_id) ? <b>{paperHeading(project.title, drafts.find((row) => row.document_id === record.document_id)!.title)}</b> : null}
       <p>{formatJst(record.published_at)}に配りました。</p>{record.scope === "space" ? <p>実行委員と班長に配りました。</p> : <>
         <p>紙の配布先: {paperTargetLabel(record.distribution)}</p><p>公式LINE: {record.line_status === "sent" ? `${record.line_recipients ?? ""}人に送りました` : record.line_status === "failed" || record.line_status === "not_configured" ? "送れませんでした。区のページには載っています。紙も配れます。" : record.line_status === "pending" ? "送信結果はまだ分かりません" : "今回は送っていません"}</p>
         {record.unpublished_at ? <p>区のページから下げています。</p> : <form method="post" action={adminPath(ward, `/publish/${projectId}/lower/${record.publication_id}`)}><button class="secondary" type="submit">区のページから下げる</button></form>}
@@ -461,7 +462,7 @@ admin.post("/publish/:projectId/lower/:publicationId", async (c) => {
 });
 
 /** 読む人に見せる段落。文を正とし、項目は文に書かれていない物だけ見出しを付けて足す。 */
-export function articleParagraphs(body: string, title?: { project: string; document: string }, kind?: string): string[] {
+export function articleParagraphs(body: string, title?: { project: string; document: string }, kind?: string, hide: readonly string[] = []): string[] {
   let parsed: unknown;
   try { parsed = JSON.parse(body) as unknown; } catch { parsed = body; }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return collectText(parsed);
@@ -474,14 +475,14 @@ export function articleParagraphs(body: string, title?: { project: string; docum
   if (kind === "notice" && paragraphs.length) return paragraphs;
   const missing = items.flatMap((item: unknown) => {
     const { key, content } = (item ?? {}) as { key?: unknown; content?: unknown };
-    if (typeof key !== "string" || typeof content !== "string" || content.trim() === PENDING || writtenInText(key, content, readable)) return [];
-    return [`${isItemKey(key) ? ITEM_SCREEN_LABEL[key] : key}: ${content.trim()}`];
+    if (typeof key !== "string" || typeof content !== "string" || content.trim() === PENDING || hide.includes(key) || writtenInText(key, content, readable)) return [];
+    return [`${isItemKey(key) ? ITEM_SCREEN_LABEL[key] : key}: ${formatDateText(content.trim())}`];
   });
   return [...paragraphs, ...(missing.length ? [missing.join("\n")] : [])];
 }
 
-export function ArticleBody({ body, title, kind }: { body: string; title?: { project: string; document: string }; kind?: string }) {
-  return <div>{articleParagraphs(body, title, kind).map((text, index) => <p key={index} style="white-space:pre-wrap">{text}</p>)}</div>;
+export function ArticleBody({ body, title, kind, hide }: { body: string; title?: { project: string; document: string }; kind?: string; hide?: readonly string[] }) {
+  return <div>{articleParagraphs(body, title, kind, hide).map((text, index) => <p key={index} style="white-space:pre-wrap">{text}</p>)}</div>;
 }
 
 interface DistributionTarget { district: string; copies: number; household?: string; }

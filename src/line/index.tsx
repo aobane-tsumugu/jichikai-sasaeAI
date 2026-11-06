@@ -67,7 +67,7 @@ function InboxPick({ ward, title, detail, originals, action, projects, current, 
     <section class="panel"><b>{title}</b><p class="muted">{detail}</p>{originals.map((original) => <p class="link-line"><a href={original.href}>{original.label}</a></p>)}</section>
     {projects.length ? <form method="post" action={action}>
       <fieldset><legend>入れる行事</legend><div class="choice">{projects.map((project) => <label><input type="radio" name="projectId" value={project.project_id} checked={project.project_id === current} required /> {project.name}</label>)}</div></fieldset>
-      <div class="action-links"><button name="operation" value="assign">この行事に入れる</button></div>
+      <div class="action-bar"><button name="operation" value="assign">この行事に入れる</button></div>
     </form> : <Notice>進めている行事はありません。下から新しく始められます。</Notice>}
     <details class="fold" open={!projects.length}><summary>新しい行事として始めて、入れる</summary><div><form method="post" action={action}>
       <div class="field"><label for="project-name">名前</label><input id="project-name" name="projectName" type="text" maxlength={100} required /><p class="help-text">行事の名前を入れてください。あとで直せます。</p></div>

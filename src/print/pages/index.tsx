@@ -1,3 +1,4 @@
+import { formatDateText } from "../../core/time";
 import { withoutPending, writtenInText } from "../../project/document-body";
 import { collectsAttendance, withoutTitleLine } from "../../project/heading";
 import { labelsFromBody } from "../../answers/counts";
@@ -322,12 +323,12 @@ export function PaperBody({ body, project, title, kind, itemTable = true }: { bo
   if (!value || typeof value !== "object" || !("text" in value) || typeof value.text !== "string") return <ArticleBody body={body} />;
   const pending = withoutPending(value.text);
   const text = project !== undefined && title !== undefined ? withoutTitleLine(pending, project, title) : pending;
-  const names: Record<string, string> = { date_time: "いつ", place: "どこで", rain_plan: "雨のとき", content: "内容", belongings: "持ち物", helper_slots: "手伝い", due: "締切", public_contact: "連絡先" };
+  const names: Record<string, string> = { date_time: "いつ", place: "どこで", rain_plan: "雨のとき", content: "内容", belongings: "持ち物", helper_slots: "手伝い", due: "答えの締切", public_contact: "連絡先" };
   // 知らせは本文が正。本文があれば、項目の表を足さない。
   const showItems = itemTable && !(kind === "notice" && text.trim());
   const items = !showItems ? [] : Object.entries(names).flatMap(([key, label]) => {
     const content = publishedItem(body, key);
-    return content && !writtenInText(key, content, text) ? [{ label, content }] : [];
+    return content && !writtenInText(key, content, text) ? [{ label, content: formatDateText(content) }] : [];
   });
   return <>{text.split(/\n{2,}/).filter((part) => part.trim()).map((part) => <p>{part}</p>)}
     {items.length ? <table class="paper-facts"><tbody>{items.map((item) => <tr><th>{item.label}</th><td>{item.content}</td></tr>)}</tbody></table> : null}

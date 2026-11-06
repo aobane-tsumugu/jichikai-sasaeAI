@@ -62,7 +62,7 @@ admin.get("/projects/:projectId/map", async (c) => {
       </>}
       <div class="split"><section>
         {tasks.length ? <div class="map" style={`--today: ${calendar.position(today)}`}>
-          <div class="map-months"><span style={`grid-template-columns:${calendar.months.map((month) => `${month.days}fr`).join(" ")}`}>{calendar.months.map((month) => <i>{month.label}</i>)}</span></div>
+          {calendar.dated ? <div class="map-months"><span style={`grid-template-columns:${calendar.months.map((month) => `${month.days}fr`).join(" ")}`}>{calendar.months.map((month) => <i>{month.label}</i>)}</span></div> : null}
           <ol class="map-list">{tasks.map((task) => {
             const current = task.progress !== "done" && (!task.periodStart || task.periodStart <= today) && (!task.periodEnd || task.periodEnd >= today);
             const just = task.taskId === c.req.query("changed") && task.progress === "done";
@@ -72,7 +72,7 @@ admin.get("/projects/:projectId/map", async (c) => {
               <span class="map-track">{task.periodStart || task.periodEnd ? <i style={`--from:${calendar.position(task.periodStart ?? task.periodEnd ?? calendar.first) * 100}%;--to:${calendar.position(task.periodEnd ?? task.periodStart ?? calendar.last) * 100}%`} /> : null}</span>
             </a></li>;
           })}</ol>
-          {today >= calendar.first && today <= calendar.last ? <div class="map-today"><span>今日</span></div> : null}
+          {calendar.dated && today >= calendar.first && today <= calendar.last ? <div class="map-today"><span>今日</span></div> : null}
         </div> : <p>仕事はまだありません。下の「仕事を足す、外した仕事を戻す」から足せます。</p>}
       </section><aside>
         <ul class="rows"><li><a class="row-link" href={adminPath(ward, `/projects/${id}/questions`)}><b>{questions.length ? `質問が${countWord(questions.length)}あります` : "質問はありません"}</b><span>答えなくても配れます。</span></a></li></ul>
