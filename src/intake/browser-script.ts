@@ -295,12 +295,11 @@ export const SEND_SCRIPT = PHOTO_SCRIPT + String.raw`(function (root) {
           try { extracted = JSON.stringify(await extractOffice(await f.arrayBuffer())); }
           catch (e) { say('「' + f.name + '」を開けませんでした。WordかExcelの新しい形式（.docx、.xlsx）で保存し直してください。', true); button.disabled = false; return; }
         }
-        fd.append('part', f, f.name);
+        var prepared = await root.__sendPhoto.preparePhoto(f);
+        fd.append('part', prepared.file, prepared.sourceHash ? f.name.replace(/\.[^.]*$/, '') + '.jpg' : f.name);
         fd.append('part_kind', picked[i].kind);
         fd.append('part_extracted', extracted);
-        var copy = await root.__sendPhoto.makeReadingCopy(f);
-        if (copy) fd.append('part_reading', copy, 'reading.jpg');
-        else fd.append('part_reading', '');
+        fd.append('part_source_hash', prepared.sourceHash);
       }
       var res = await fetch(form.action, { method: 'POST', body: fd, headers: { accept: 'application/json' }, credentials: 'same-origin' });
       if (!(res.headers.get('content-type') || '').toLowerCase().includes('application/json')) {

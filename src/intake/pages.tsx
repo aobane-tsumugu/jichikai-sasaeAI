@@ -6,7 +6,7 @@ import { ErrorNotice, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { receiveOriginal, ReceiveError, retryJob, withdrawJob } from "./api";
 import { SEND_SCRIPT } from "./browser-script";
-import { readingCopyFromForm } from "./photo-copy";
+import { photoSourceHash } from "./photo";
 import { projectDirectory } from "./project-port";
 import { getJob, getOriginal, getReadings, listJobs, type JobListItem } from "./store";
 import type { JobStatus, OriginalKind } from "./types";
@@ -107,7 +107,7 @@ intakeAdmin.get("/intake", async (c) => {
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     <form id="send-form" method="post" action={`${adminPath(ward, "/intake")}?${query}`} enctype="multipart/form-data">
       <div class="field"><label class="file-button">カメラで紙を撮る<input id="cam" type="file" name="part" accept="image/*" capture="environment" multiple /></label><p id="cam-count" class="help-text" aria-live="polite" /></div>
-      <div class="field"><label class="file-button">ファイルを選ぶ<input id="files" type="file" name="part" accept="image/*,application/pdf,.pdf,.docx,.xlsx,.txt,.csv" multiple /></label><p id="files-count" class="help-text" aria-live="polite" /><p class="help-text">写真、PDF、Word、Excelを送れます。</p></div>
+      <div class="field"><label class="file-button">ファイルを選ぶ<input id="files" type="file" name="part" accept="image/*,application/pdf,.pdf,.docx,.xlsx,.txt,.csv" multiple /></label><p id="files-count" class="help-text" aria-live="polite" /><p class="help-text">写真、PDF、Word、Excelを送れます。写真は紙の文字や行事の様子が分かる大きさに整えて保存します。</p></div>
       <details class="fold"><summary>電話や立ち話で決まったことを書く</summary><div><div class="field"><label for="text">決まったこと</label><textarea id="text" name="text" maxlength={2000} rows={3} /></div></div></details>
       <input type="hidden" name="project_id" value={project?.projectId ?? ""} />
       <div class="action-links"><button id="send-button" type="submit">送る</button></div>
@@ -262,7 +262,7 @@ intakeAdmin.post("/intake", async (c) => {
   const files = form.getAll("part").filter((v): v is File => typeof v !== "string" && v.size > 0);
   const kinds = form.getAll("part_kind").map(String);
   const extracted = form.getAll("part_extracted").map(String);
-  const readingCopies = form.getAll("part_reading");
+  const sourceHashes = form.getAll("part_source_hash");
   const parts: ReceivePart[] = [];
   for (let i = 0; i < files.length; i++) {
     const file = files[i] as File;
@@ -281,7 +281,7 @@ intakeAdmin.post("/intake", async (c) => {
       filename: file.name,
       mediaType: file.type,
       bytes: new Uint8Array(await file.arrayBuffer()),
-      readingCopy: await readingCopyFromForm(readingCopies[i] ?? null),
+      sourceHash: photoSourceHash(sourceHashes[i]),
       extracted: parsed,
     });
   }
@@ -359,7 +359,7 @@ intakeAdmin.get("/intake/originals/:originalId", async (c) => {
   const raw = `${adminPath(ward, `/intake/originals/${original.original_id}`)}?raw=1`;
   return c.html(<Layout title={title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={back}>← 前の画面へ</a><h1>{title}</h1>
-    <p class="lead">{original.media_type === "text/plain" && job?.via.startsWith("line") ? "公式LINEに届いたときのままの文です。" : "送ったときのままの資料です。"}この画面では直せません。</p>
+    <p class="lead">{original.media_type.startsWith("image/") ? object.customMetadata?.photoResizeFailed === "1" ? "写真の大きさを整えられなかったため、届いたまま保管しています。" : "紙の文字や行事の様子が分かる大きさで保管した写真です。" : original.media_type === "text/plain" && job?.via.startsWith("line") ? "公式LINEに届いたときのままの文です。" : "送ったときのままの資料です。"}この画面では直せません。</p>
     <dl class="facts"><dt>名前</dt><dd>{original.filename || (original.kind === "text" ? "届いた文" : "撮った写真")}</dd><dt>届いた日</dt><dd>{formatDateText(original.received_at.slice(0, 10))}</dd>{job?.via.startsWith("line") ? <><dt>届き方</dt><dd>公式LINE（{job.via === "line_direct" ? "一対一" : "グループ"}）</dd><dt>送った人</dt><dd>{job.sender_label || "名前は分かりません"}</dd></> : null}{project ? <><dt>{project.kind === "city_request" ? "依頼" : "行事"}</dt><dd>{project.title}</dd></> : null}</dl>
     {original.media_type === "text/plain" ? <div class="panel preserve-lines">{await object.text()}</div>
       : ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(original.media_type) ? <div class="sheet-preview"><img class="original-image" src={raw} alt={original.filename || "届いた資料の写真"} /></div>

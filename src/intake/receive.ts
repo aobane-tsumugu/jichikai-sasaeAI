@@ -8,8 +8,7 @@ import { buildDirectReading, MAX_READING_JSON_BYTES, parseExtracted, type Direct
 import { classifyUpload, decodeText, sha256Hex, type MediaClass } from "./media";
 import { projectDirectory } from "./project-port";
 import type { OriginalKind, ReadKind, Via } from "./types";
-import { validReadingCopy, type ReadingCopy } from "./photo-copy";
-import type { ReadableOriginal } from "../ai/read";
+import { imagesBinding, photoSourceHash, preparePhoto } from "./photo";
 
 /** 一回に送れる量。画面の送るで足りる量（六枚前後）より十分大きく、Workers の要求の上限に収まる。 */
 export const MAX_PARTS = 30;
@@ -24,7 +23,8 @@ export interface ReceivePart {
   /** ブラウザが言う種類。信じず、先頭のバイトで見る */
   mediaType: string;
   bytes: Uint8Array;
-  readingCopy?: ReadingCopy;
+  /** ブラウザで写真を整える前のSHA-256。同じ写真の再送の照合だけに使う。 */
+  sourceHash?: string;
   /** Word と Excel をブラウザで展開した結果（JSON をパースした値）。無いと Word と Excel は受けない */
   extracted?: unknown;
 }
@@ -66,8 +66,6 @@ export interface DuplicateOriginal {
 }
 
 export interface ReceiveOutcome {
-  /** 初回の読み取りまで持つ写し。原本はR2のまま。読み直しはサーバーで作る。 */
-  readingCopies?: ReadableOriginal[];
   /** 新しい物が一つも無ければ null（全部「同じ物でした」） */
   jobId: string | null;
   /** 読みが要る（画像と PDF がある）か。要るなら呼び出し側が pipeline.kick で裏の読みを始める */
@@ -77,7 +75,7 @@ export interface ReceiveOutcome {
 }
 
 interface PreparedPart {
-  readingCopy?: ReadingCopy;
+  resizeFailed?: boolean;
   part: ReceivePart;
   mediaType: string;
   mediaClass: MediaClass;
@@ -87,7 +85,7 @@ interface PreparedPart {
   text?: string;
 }
 
-async function prepare(parts: ReceivePart[], projectId: string | null): Promise<PreparedPart[]> {
+async function prepare(parts: ReceivePart[], projectId: string | null, env: Pick<Env, "DB" | "ORIGINALS">): Promise<PreparedPart[]> {
   if (parts.length === 0) throw new ReceiveError("empty");
   if (parts.length > MAX_PARTS) throw new ReceiveError("too_many");
   let total = 0;
@@ -99,6 +97,7 @@ async function prepare(parts: ReceivePart[], projectId: string | null): Promise<
       if (text.length > MAX_TEXT_CHARS) throw new ReceiveError("bad_text");
       const bytes = new TextEncoder().encode(text);
       total += bytes.length;
+      if (total > MAX_TOTAL_BYTES) throw new ReceiveError("too_large", part.filename);
       prepared.push({
         part,
         mediaType: "text/plain",
@@ -110,18 +109,22 @@ async function prepare(parts: ReceivePart[], projectId: string | null): Promise<
       });
       continue;
     }
-    if (part.bytes.length > MAX_FILE_BYTES) throw new ReceiveError("too_large", part.filename);
-    total += part.bytes.length;
-    if (total > MAX_TOTAL_BYTES) throw new ReceiveError("too_large", part.filename);
     const classified = classifyUpload(part.bytes, part.mediaType, part.filename);
     if (!classified) throw new ReceiveError("unsupported", part.filename);
+    const photo = classified.mediaClass === "image" ? await preparePhoto(part.bytes, classified.mediaType, imagesBinding(env)) : null;
+    const bytes = photo?.bytes ?? part.bytes;
+    if (bytes.length > MAX_FILE_BYTES) throw new ReceiveError("too_large", part.filename);
+    total += bytes.length;
+    if (total > MAX_TOTAL_BYTES) throw new ReceiveError("too_large", part.filename);
     const item: PreparedPart = {
-      part,
-      mediaType: classified.mediaType,
+      part: photo?.mediaType === "image/jpeg" && classified.mediaType !== "image/jpeg"
+        ? { ...part, filename: `${part.filename.replace(/\.[^.]*$/, "")}.jpg` } : part,
+      mediaType: photo?.mediaType ?? classified.mediaType,
       mediaClass: classified.mediaClass,
-      hash: await sha256Hex(part.bytes),
-      bytes: part.bytes,
-      readingCopy: classified.mediaClass === "image" ? validReadingCopy(part.readingCopy) : undefined,
+      // 変換方法とJPEGの出力差に左右されないよう、変換前の印を保つ。
+      hash: (photo ? photoSourceHash(part.sourceHash) : undefined) ?? await sha256Hex(part.bytes),
+      bytes,
+      resizeFailed: photo?.resizeFailed,
     };
     if (classified.mediaClass === "word" || classified.mediaClass === "excel") {
       const extracted = parseExtracted(part.extracted);
@@ -170,7 +173,7 @@ export async function receive(
   const projectId = input.projectId || null;
   // 存在しない、閉じたプロジェクトには送れない（繋げても、書く先が無くて全部捨てられる）
   if (projectId && !(await projectDirectory().isOpen(env.DB, input.wardId, projectId))) throw new ReceiveError("no_project");
-  const prepared = await prepare(input.parts, projectId);
+  const prepared = await prepare(input.parts, projectId, env);
 
   const existing = await findExistingHashes(
     env.DB,
@@ -205,6 +208,7 @@ export async function receive(
     rows.map((r) =>
       bucket.put(r.path, r.p.bytes, {
         httpMetadata: { contentType: r.p.mediaType },
+        customMetadata: r.p.resizeFailed ? { photoResizeFailed: "1" } : undefined,
       }),
     ),
   );
@@ -285,8 +289,6 @@ export async function receive(
   return {
     jobId,
     needsModelRead,
-    readingCopies: rows.flatMap((r) => r.p.readingCopy ? [{ originalId: r.originalId, filename: r.p.part.filename,
-      position: r.position, ...r.p.readingCopy }] : []),
     received: rows.map((r) => ({ originalId: r.originalId, filename: r.p.part.filename, kind: r.p.part.kind })),
     duplicates,
   };
