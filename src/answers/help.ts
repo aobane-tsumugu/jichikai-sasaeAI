@@ -13,6 +13,43 @@ export interface HelpOffer {
   times: string;
 }
 
+/** 取消をその場で戻すために、役員画面だけへ返す内容。 */
+export interface HelpOfferReceipt extends HelpOffer {
+  submissionId: string | null;
+  createdAt: string;
+}
+
+export async function getHelpOffer(db: D1Database, wardId: string, projectId: string, offerId: string): Promise<HelpOffer | null> {
+  return db.prepare(`SELECT offer_id AS offerId, name, times FROM project_help_offers
+    WHERE ward_id = ? AND project_id = ? AND offer_id = ?`).bind(wardId, projectId, offerId).first<HelpOffer>();
+}
+
+/** 連絡を受けた訂正は締切後も受ける。閉じた行事は変えない。 */
+export async function updateHelpOffer(db: D1Database, wardId: string, projectId: string, offerId: string, times: string): Promise<boolean> {
+  const result = await db.prepare(`UPDATE project_help_offers SET times = ?
+    WHERE ward_id = ? AND project_id = ? AND offer_id = ?
+      AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL)`)
+    .bind(times, wardId, projectId, offerId, wardId, projectId).run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
+export async function cancelHelpOffer(db: D1Database, wardId: string, projectId: string, offerId: string): Promise<HelpOfferReceipt | null> {
+  return db.prepare(`DELETE FROM project_help_offers WHERE ward_id = ? AND project_id = ? AND offer_id = ?
+    AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL)
+    RETURNING offer_id AS offerId, name, times, submission_id AS submissionId, created_at AS createdAt`)
+    .bind(wardId, projectId, offerId, wardId, projectId).first<HelpOfferReceipt>();
+}
+
+/** 募集の締切を過ぎても、押し間違えた取消は同じ申込として戻せる。 */
+export async function restoreHelpOffer(db: D1Database, wardId: string, projectId: string, offer: HelpOfferReceipt): Promise<boolean> {
+  await db.prepare(`INSERT INTO project_help_offers (offer_id, ward_id, project_id, name, times, submission_id, created_at)
+    SELECT ?, ?, p.project_id, ?, ?, ?, ? FROM projects p
+    WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL
+    ON CONFLICT DO NOTHING`)
+    .bind(offer.offerId, wardId, offer.name, offer.times, offer.submissionId, offer.createdAt, wardId, projectId).run();
+  return (await getHelpOffer(db, wardId, projectId, offer.offerId)) !== null;
+}
+
 function todayInJapan(): string {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date());
 }

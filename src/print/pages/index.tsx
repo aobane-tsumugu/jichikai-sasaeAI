@@ -13,6 +13,8 @@ import { adminPath } from "../../core/auth";
 import type { Bundle } from "../../core/bundle";
 import { getPublicContact, getSquads } from "../../settings/store";
 import { getAnswerDeadline } from "../../answers/api";
+import { helpTimeChoices } from "../../answers/help";
+import { HelpSlip } from "../../answers/help-slip";
 import { ArticleBody, articleParagraphs } from "../../publish";
 import type { AdminEnv } from "../../env";
 import { CutLine, FieldBox, PrintDocument, PrintQr, Sheet } from "../a4";
@@ -235,6 +237,21 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   const reportPhotos = row.kind === "report" && row.scope === "public"
     ? (await listPublicPhotos(c.env, ward.wardId, projectId)).filter((p) => p.document_id === documentId && p.version_no === versionNo) : [];
   const printTitle = `${row.title} ${(kind === "announcement" && !withAnswer) || (kind === "duty" && !dutyPaper) ? "本文の紙" : kindLabel(kind)}`;
+  // 募集の紙も、配った本文から時間帯を出す。世帯の回答票とは分ける。
+  if (kind === "announcement" && row.kind === "recruitment" && row.scope === "public") {
+    const helpUrl = `${baseUrl.replace(/\/+$/, "")}/${encodeURIComponent(ward.slug)}/help/${encodeURIComponent(projectId)}?d=${encodeURIComponent(documentId)}&v=${versionNo}`;
+    const choices = helpTimeChoices(row.body);
+    const give = paperGive(paperDeadline(publishedItem(row.body, "due")), "班長か役員");
+    const oneSheet = fitsAboveAnswer(row.body, choices.join("") + give.join("") + contact);
+    const slip = <HelpSlip title={row.title} body={row.body} contact={contact} url={helpUrl} />;
+    return c.html(<PrintDocument title={`${row.title} 手伝いの募集と申込用紙`} back={back} copies={copies}>
+      <Sheet footer={footer()}>
+        <h1>{paperHeading(row.title, row.document_title)}</h1><PaperBody body={row.body} project={row.title} title={row.document_title} kind={row.kind} />
+        {oneSheet ? <><CutLine />{slip}</> : null}
+      </Sheet>
+      {!oneSheet ? <Sheet footer={footer()}>{slip}</Sheet> : null}
+    </PrintDocument>);
+  }
   return c.html(<PrintDocument title={printTitle} back={back} copies={copies}>
     {reportPhotos.map((photo) => <Sheet footer={footer()}><h1>{paperHeading(row.title, row.document_title)}</h1>
       <img style="display:block;max-width:100%;max-height:220mm;object-fit:contain" src={`/${ward.slug}/photos/${projectId}/${photo.photo_id}`} alt="行事の報告の写真" />

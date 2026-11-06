@@ -1,5 +1,6 @@
 import { adminResult } from "../core/admin-ui";
 import { installMeetingRoutes } from "./meeting-routes";
+import { installHelpAdminRoutes } from "./help-admin";
 import { AttendanceFields, CountFields, countText, countUnread, parseAnswerCounts } from "./counts";
 import { type AnswerLabels } from "../settings/answer-labels";
 import { EventDetails, ReceptionClosed, ResidentContact, residentContext } from "./resident";
@@ -322,13 +323,14 @@ admin.get("/answers/:projectId", async (c) => {
     {view === "summary" ? <>
       <p class="lead">{answers.length ? "紙、電話、スマホの答えを合わせた数です。" : ""}{deadline ? `答えの締切は${formatJstDate(deadline)}です。` : "答えの締切はまだ決まっていません。"}</p>
       {!answers.length ? <div class="notice"><strong>まだ答えはありません</strong><p>紙、電話、スマホの答えが、ここに集まります。</p></div> : null}
+      <div class="counts"><div class="count"><b>{answers.length}<small>世帯</small></b><span>{roster.length ? `${roster.length}世帯のうち` : "答えた世帯"}</span></div><div class="count"><b>{totals.people}<small>人</small></b><span>参加する</span></div><div class="count"><b>{helperCount}<small>人</small></b><span>手伝い</span></div></div>
       {unread ? <div class="notice warn"><strong>人数が読めなかった答えが{unread}件あります</strong><p>参加しないには数えていません。写真を見て入れてください。</p><a class="quiet" href={`${root}?view=read`}>読み取った答えを見る</a></div> : null}
       {!answers.length ? <>
         {!closed ? <><section class="next"><strong>次は</strong><p>回答票が手元にあれば、撮って送れます。</p><a class="button" href={`${root}?view=send`}>回答票を撮って送る</a></section><a class="quiet" href={`${root}?view=hand`}>電話で聞いた答えを入れる</a></> : null}
         {!roster.length ? <p><a class="quiet" href={adminPath(c.var.ward.slug, "/answers/roster")}>名簿を入れる</a></p> : null}
         {deadlinePassed && remaining ? <p>答えのない{remaining}世帯は欠席として数えています。</p> : null}
+        <p><a class="button secondary" href={`${root}?view=helpers`}>手伝いの一覧 {helperCount}人</a></p>
       </> : <>
-      <div class="counts"><div class="count"><b>{answers.length}<small>世帯</small></b><span>{roster.length ? `${roster.length}世帯のうち` : "答えた世帯"}</span></div><div class="count"><b>{totals.people}<small>人</small></b><span>参加する</span></div><div class="count"><b>{helperCount}<small>人</small></b><span>手伝い</span></div></div>
       <p>{answers.length ? `答えた${answers.length}世帯のうち、参加する世帯は${attending}、参加しない世帯は${notAttending}です。${unread ? `人数が読めなかった世帯は${unread}です。` : ""}` : ""}{closed ? "" : !deadlinePassed ? "答えがないときは、締切のあとに欠席として数えます。" : remaining ? `答えのない${remaining}世帯も欠席として数えています。欠席は合わせて${notAttending + remaining}世帯です。` : ""}</p>
       {answers.some((answer) => answer.childrenCount != null || answer.adultsCount != null || answer.seniorsCount != null) ? <p class="muted">参加する人の内わけは、{labels.map((label, index) => `${label}${answers.reduce((sum, answer) => sum + ([answer.childrenCount, answer.adultsCount, answer.seniorsCount][index] ?? 0), 0)}人`).join("、")}です。{answers.some((answer) => answer.childrenCount == null && answer.adultsCount == null && answer.seniorsCount == null) ? "内わけのない答えは合計だけに含めています。" : ""}</p> : null}
       {!closed ? <div class="action-links"><a class="button" href={`${root}?view=send`}>回答票を撮って送る</a></div> : null}
@@ -349,7 +351,7 @@ admin.get("/answers/:projectId", async (c) => {
       <details class="hint"><summary>読みにくい字があったとき</summary><div><p>そのまま送ってください。読めないところは答えの一覧に出ます。全部を見直す必要はありません。</p></div></details>
     </> : null}
     {view === "sent" ? <><p class="lead">読み取れた分から数えに入れます。読み違いは、答えの一覧で直せます。</p><section class="next"><strong>次は</strong><p>答えの数に入ったか見てください。</p><a class="button" href={root}>答えを見る</a></section><a class="quiet" href={`${root}?view=send`}>続けて撮って送る</a><p><a class="quiet" href={`${root}?view=list`}>答えの一覧で直す</a></p><p class="muted">写真が残るので、紙は名前が読めないようにして捨ててかまいません。班長から預かった紙も同じです。</p></> : null}
-    {view === "hand" && !closed ? <><p class="lead">聞いた内容を入れてください。</p><form method="post" action={`${root}/phone`}>
+    {view === "hand" && !closed ? <><p class="lead">聞いた内容を入れてください。</p><p><a class="button secondary" href={`${root}/help`}>手伝いだけの申し込みを入れる</a></p><form method="post" action={`${root}/phone`}>
       <div class="field"><label for="household">代表者のお名前</label><input id="household" name="household" required maxlength={120} /></div>
       <fieldset><legend>班</legend><div class="choice half">{districts.map((district) => <label><input type="radio" name="district" value={district} /> {district}</label>)}<label><input type="radio" name="district" value="" checked /> 分からない</label></div></fieldset>
       <AttendanceFields title={project.title} /><div class="admin-answer-counts"><CountFields labels={labels} /></div>
@@ -368,8 +370,8 @@ admin.get("/answers/:projectId", async (c) => {
         {renderSheetRows(sheet.body, projectId, sheet.original_id, c.var.ward.slug, closed, answers, labels, project.title, districts, index === 0)}
       </section>)}
     </> : null}
-    {view === "helpers" ? <><p class="lead">世帯の答えにある手伝いと、手伝いだけの申し込みを合わせました。</p>{!closed ? <form class="action-links" method="post" action={adminPath(c.var.ward.slug, `/projects/${projectId}/draft/duty_roster/start`)}><button>当番表の下書きを作る</button></form> : null}
-      {helperCount ? <table class="stack"><thead><tr><th>お名前</th><th>時間帯</th><th>申し込み</th></tr></thead><tbody>{offers.map((offer) => <tr><td data-label="お名前">{offer.name}</td><td data-label="時間帯">{offer.times}</td><td data-label="申し込み">手伝いだけ</td></tr>)}{helpers.map((helper) => <tr><td data-label="お名前">{helper.name}</td><td data-label="時間帯">{helper.times}</td><td data-label="申し込み">世帯の答え（{helper.district || "班が分からない"}）</td></tr>)}</tbody></table> : <><div class="notice"><strong>まだ申し込みはありません</strong><p>答えに書かれた手伝いと、手伝いだけの申し込みが、ここに入ります。</p></div><a class="quiet" href={adminPath(c.var.ward.slug, `/projects/${projectId}/draft/recruitment`)}>募集の下書きを開く</a></>}<p class="muted">手伝いだけの申し込みの名前は、行事を閉じると消えます。</p></> : null}
+    {view === "helpers" ? <><p class="lead">世帯の答えにある手伝いと、手伝いだけの申し込みを合わせました。手伝いだけの申し込みは、お名前を押すと直したり取り消したりできます。</p>{!closed ? <><a class="button" href={`${root}/help`}>電話や紙の手伝いの申し込みを入れる</a><form class="action-links" method="post" action={adminPath(c.var.ward.slug, `/projects/${projectId}/draft/duty_roster/start`)}><button class="secondary">当番表の下書きを作る</button></form></> : null}
+      {helperCount ? <table class="stack"><thead><tr><th>お名前</th><th>時間帯</th><th>申し込み</th></tr></thead><tbody>{offers.map((offer) => <tr><td data-label="お名前"><a href={`${root}/help/${encodeURIComponent(offer.offerId)}`}>{offer.name}</a></td><td data-label="時間帯">{offer.times}</td><td data-label="申し込み">手伝いだけ</td></tr>)}{helpers.map((helper) => <tr><td data-label="お名前">{helper.name}</td><td data-label="時間帯">{helper.times}</td><td data-label="申し込み">世帯の答え（{helper.district || "班が分からない"}）</td></tr>)}</tbody></table> : <><div class="notice"><strong>まだ申し込みはありません</strong><p>答えに書かれた手伝いと、手伝いだけの申し込みが、ここに入ります。</p></div><a class="quiet" href={adminPath(c.var.ward.slug, `/projects/${projectId}/draft/recruitment`)}>募集の下書きを開く</a></>}<p class="muted">手伝いだけの申し込みの名前は、行事を閉じると消えます。</p></> : null}
   </AdminPage>);
 });
 
@@ -383,6 +385,8 @@ admin.use("/answers/:projectId/*", async (c, next) => {
   }
   await next();
 });
+
+installHelpAdminRoutes(admin);
 
 admin.get("/answers/:projectId/:answerId/edit", async (c) => {
   const { ward } = c.var;
