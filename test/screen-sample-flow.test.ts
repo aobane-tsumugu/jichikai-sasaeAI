@@ -45,8 +45,8 @@ it("手伝いの同じ申し込みは一件だけ残し、間違えた時は入�
     version_no, line_status, published_at, published_by_account_id) VALUES (?, ?, ?, ?, ?, ?, 'not_sent', ?, ?)`)
     .bind(ward.wardId, crypto.randomUUID(), project.projectId, version.document_id, version.version_id,
       version.version_no, new Date().toISOString(), account.accountId).run();
-  expect(await addHelpOffer(env.DB, ward.wardId, project.projectId, "架空 花子", "午前")).toBe(true);
-  expect(await addHelpOffer(env.DB, ward.wardId, project.projectId, "架空 花子", "午前")).toBe(true);
+  expect(await addHelpOffer(env.DB, ward.wardId, project.projectId, "架空 花子", "午前")).toMatchObject({ name: "架空 花子", times: "午前" });
+  expect(await addHelpOffer(env.DB, ward.wardId, project.projectId, "架空 花子", "午前")).toMatchObject({ name: "架空 花子", times: "午前" });
   expect(await listHelpOffers(env.DB, ward.wardId, project.projectId)).toHaveLength(1);
 
   const helpPath = `/${ward.slug}/help/${project.projectId}`;

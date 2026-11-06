@@ -516,9 +516,9 @@ function ResidentError({ wardName, message, next, href, label }: { wardName: str
   </Layout>;
 }
 
-function HelpForm({ wardName, slug, projectId, opportunity, contact, newer, choices, name = "", times = "", error }: {
+function HelpForm({ wardName, slug, projectId, opportunity, contact, newer, choices, name = "", times = "", error, submissionId }: {
   wardName: string; slug: string; projectId: string; opportunity: HelpOpportunity; contact: string; newer: boolean;
-  choices: string[]; name?: string; times?: string; error?: string;
+  choices: string[]; name?: string; times?: string; error?: string; submissionId?: string;
 }) {
   return <Layout title={`${opportunity.title}を一回だけ手伝う`} siteName={wardName}>
     <a class="back" href={`/${slug}/`}>← お知らせの一覧へ</a>
@@ -528,6 +528,7 @@ function HelpForm({ wardName, slug, projectId, opportunity, contact, newer, choi
     {newer ? <p class="notice">この募集のあとに、新しいお知らせを載せました。<a href={`/${slug}/p/${encodeURIComponent(projectId)}`}>新しいお知らせを読んでください</a>。</p> : null}
     <ArticleBody body={opportunity.body} />
     <form method="post" action={`/${slug}/help/${encodeURIComponent(projectId)}`}>
+      <input type="hidden" name="submission_id" value={submissionId || newId()} />
       <label for="helper-name">お名前</label><input id="helper-name" name="helper_name" type="text" maxlength={120} value={name} required />
       <label for="helper-times">手伝える時間帯</label>
       {choices.length ? <select id="helper-times" name="helper_times" required><option value="">選んでください</option>{choices.map((time) => <option value={time} selected={time === times}>{time}</option>)}</select>
@@ -538,6 +539,11 @@ function HelpForm({ wardName, slug, projectId, opportunity, contact, newer, choi
     <h2>分からないときは</h2><ResidentContact contact={contact} />
   </Layout>;
 }
+
+pub.use("/help/*", async (c, next) => {
+  c.header("Cache-Control", "private, no-store");
+  await next();
+});
 
 pub.get("/help/:projectId", async (c) => {
   const projectId = c.req.param("projectId");
@@ -553,22 +559,24 @@ pub.post("/help/:projectId", async (c) => {
   const form = await c.req.parseBody();
   const name = asString(form.helper_name).trim();
   const times = asString(form.helper_times).trim();
+  const submissionId = asString(form.submission_id);
   const href = `/${c.var.ward.slug}/help/${encodeURIComponent(projectId)}`;
-    const [opportunity] = await listHelpOpportunities(c.env.DB, c.var.ward.wardId, projectId);
+  const [opportunity] = await listHelpOpportunities(c.env.DB, c.var.ward.wardId, projectId);
   if (!opportunity) return c.html(<ResidentError wardName={c.var.ward.name} message="手伝いの受付は終わりました。" next="確認したいことは、班長か役員にお知らせください。" href={`/${c.var.ward.slug}/`} label="区のページへ" />, 400);
   const choices = helpTimeChoices(opportunity.body);
   const invalid = !name || !times ? "お名前と手伝える時間帯を入れてください。" : name.length > 120 || times.length > 240 ? "お名前か時間帯が長すぎます。短くしてください。" : choices.length && !choices.includes(times) ? "募集にある時間帯を選んでください。" : "";
   if (invalid) {
     const context = await residentContext(c.env.DB, c.var.ward.wardId, projectId);
     const newer = context.documents.some((document) => (document.kind === "notice" || document.kind === "announcement") && document.publishedAt > opportunity.publishedAt);
-    return c.html(<HelpForm wardName={c.var.ward.name} slug={c.var.ward.slug} projectId={projectId} opportunity={opportunity} contact={context.contact} newer={newer} choices={choices} name={name} times={times} error={invalid} />, 400);
+    return c.html(<HelpForm wardName={c.var.ward.name} slug={c.var.ward.slug} projectId={projectId} opportunity={opportunity} contact={context.contact} newer={newer} choices={choices} name={name} times={times} error={invalid} submissionId={submissionId} />, 400);
   }
-  if (!await addHelpOffer(c.env.DB, c.var.ward.wardId, projectId, name, times)) return c.html(<ResidentError wardName={c.var.ward.name} message="手伝いの受付は終わりました。" next="確認したいことは、班長か役員にお知らせください。" href={`/${c.var.ward.slug}/`} label="区のページへ" />, 400);
+  const offered = await addHelpOffer(c.env.DB, c.var.ward.wardId, projectId, name, times, submissionId);
+  if (!offered) return c.html(<ResidentError wardName={c.var.ward.name} message="手伝いの受付は終わりました。" next="確認したいことは、班長か役員にお知らせください。" href={`/${c.var.ward.slug}/`} label="区のページへ" />, 400);
   const context = await residentContext(c.env.DB, c.var.ward.wardId, projectId);
   return c.html(<Layout title="申し込みを受け付けました" siteName={c.var.ward.name}>
     <h1>申し込みを受け付けました</h1><p>ありがとうございました。この画面は閉じてかまいません。</p>
-    <dl><dt>お名前</dt><dd>{name}</dd><dt>時間帯</dt><dd>{times}</dd></dl>
-    <section class="next"><strong>次は</strong><EventDetails item={context.item} /><p>手伝える時間帯: {times}</p><p>変更は区のページに載せます。</p></section>
+    <dl><dt>お名前</dt><dd>{offered.name}</dd><dt>時間帯</dt><dd>{offered.times}</dd></dl>
+    <section class="next"><strong>次は</strong><EventDetails item={context.item} /><p>手伝える時間帯: {offered.times}</p><p>変更は区のページに載せます。</p></section>
     <p class="link-line"><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>案内を読む</a></p>
     <h2>都合が悪くなったときは</h2><p>間違えたときも、下の連絡先へお知らせください。</p><ResidentContact contact={context.contact} />
   </Layout>);
