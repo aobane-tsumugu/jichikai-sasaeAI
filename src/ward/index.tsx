@@ -9,7 +9,7 @@ import type { WardEnv } from "../env";
 import { getOfficialLineUrl, getPublicContact, getSetting } from "../settings/store";
 import { ArticleBody } from "../publish";
 import { listHelpOpportunities } from "../answers/help";
-import { documentTitle, paperHeading } from "../project/heading";
+import { collectsAttendance, documentTitle, paperHeading } from "../project/heading";
 import type { DocumentKind, ProjectKind } from "../project/model";
 import { PUBLIC_PRIVACY_NOTICE } from "../settings/keys";
 import { activityFacts } from "./activity";
@@ -217,7 +217,7 @@ pub.get("/p/:projectId", async (c) => {
   const squad = c.req.query("s") ?? "";
   const suffix = squad && squads.includes(squad) ? `?s=${encodeURIComponent(squad)}` : "";
   const ordered = [...documents.values()].sort((a, b) => Number(b.latest.kind === "notice") - Number(a.latest.kind === "notice"));
-  const activeAnnouncement = ordered.some(({ latest }) => latest.kind === "announcement" && !latest.unpublished_at);
+  const activeAnnouncement = ordered.some(({ latest }) => collectsAttendance(latest.project_kind, latest.kind) && !latest.unpublished_at);
   const changes = ordered.some(({ latest }) => latest.kind === "notice" && !latest.unpublished_at);
   const newerNotice = ordered.some(({ latest: notice }) => notice.kind === "notice" && !notice.unpublished_at &&
     ordered.some(({ latest: announcement }) => announcement.kind === "announcement" && !announcement.unpublished_at && notice.published_at > announcement.published_at));

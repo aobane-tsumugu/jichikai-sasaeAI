@@ -16,6 +16,8 @@ import { lookupPrintQr } from "../print/qr";
 import { getProjectState } from "../project/api";
 import { formatDateText } from "../core/time";
 import { pendingMaterialGroups, startMaterialGroup } from "./groups";
+import { initialDraftKind } from "../map/template";
+import { documentTitle } from "../project/heading";
 import { PhotoCheckNotice, photoChecks } from "./photo-check";
 
 /** Hono のテスト用 request には ExecutionContext が無い場合がある。 */
@@ -214,10 +216,12 @@ intakeAdmin.get("/intake/started/:projectId", async (c) => {
     .bind(ward.wardId, id).first<{ n: number }>();
   const questions = state.questions.filter((q) => q.state === "open" || q.state === "later").length;
   const tasks = state.mapTasks.length;
+  const draftKind = initialDraftKind(state.project.kind);
+  const draftTitle = documentTitle(state.project.kind, draftKind);
   return c.html(<Layout title={state.project.title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>{state.project.title}</h1><p class="lead">{count?.n ? `${count.n}件の資料を読んで、${tasks}${tasks > 0 && tasks < 10 ? "つ" : "件"}の仕事の段取りを用意しました` : `ふつうの${tasks}${tasks > 0 && tasks < 10 ? "つ" : "件"}の仕事の段取りを用意しました`}</p>
-    <section class="next"><strong>次は</strong><p>{questions ? "分かるものから答えてください。あとでもかまいません。" : "案内の下書きを見て、直せます。"}</p>
-      <a class="button" href={adminPath(ward, questions ? `/projects/${id}/questions` : `/projects/${id}/draft/announcement`)}>{questions ? "質問に答える" : "案内の下書きを見る"}</a></section>
+    <section class="next"><strong>次は</strong><p>{questions ? "分かるものから答えてください。あとでもかまいません。" : `${draftTitle}の下書きを見て、直せます。`}</p>
+      <a class="button" href={adminPath(ward, questions ? `/projects/${id}/questions` : `/projects/${id}/draft/${draftKind}`)}>{questions ? "質問に答える" : `${draftTitle}の下書きを見る`}</a></section>
     <p>仕事を押して直せます。</p><a class="button secondary" href={adminPath(ward, `/projects/${id}/map`)}>段取りを見る</a>
     <p class="link-line"><a href={adminPath(ward, "/inbox")}>別の行事に入れる</a></p><a class="quiet" href={adminPath(ward, "/")}>最初の画面へ</a>
   </Layout>);
@@ -228,7 +232,9 @@ intakeAdmin.post("/intake/:jobId/continue", async (c) => {
   const job = await getJob(c.env.DB, ward.wardId, c.req.param("jobId"));
   if (!job || job.withdrawn_at) return c.notFound();
   if (!job.project_id) return c.redirect(adminPath(ward, "/projects"), 303);
-  return c.redirect(adminPath(ward, `/projects/${job.project_id}/draft/announcement`), 303);
+  const state = await getProjectState(c.env.DB, ward.wardId, job.project_id);
+  if (!state) return c.notFound();
+  return c.redirect(adminPath(ward, `/projects/${job.project_id}/draft/${initialDraftKind(state.project.kind)}`), 303);
 });
 
 intakeAdmin.post("/intake", async (c) => {

@@ -7,6 +7,7 @@ import { subset } from "./reading-subset";
 import { cleanSuggestions } from "../ai/suggest";
 import { startTask } from "../ai/api";
 import { getDraftPack } from "../draft/packs";
+import { initialDraftKind } from "../map/template";
 import { getPublicContact } from "../settings/store";
 import { getJob, getReadings, listOriginals, setJobProject, type ReadingRow } from "./store";
 import type { OriginalRow, Waitable } from "./types";
@@ -112,7 +113,7 @@ export async function startMaterialGroup(env: Env, ctx: Waitable, wardId: string
     title: groupTitle(group), kind: group.kind, year, accountId, ...(eventDay ? { eventDay } : {}),
   });
   await attachGroup(env, wardId, group, project.projectId);
-  const pack = getDraftPack("announcement");
+  const pack = getDraftPack(initialDraftKind(project.kind), project.kind);
   const contact = await getPublicContact(env.DB, wardId);
   await startTask(env, ctx, { wardId, projectId: project.projectId, task: "draft", accountId,
     instruction: `${pack.instruction}${contact ? `\n区の公開用の連絡先: ${contact}` : ""}\n対象の文書: ${pack.kind}。範囲: ${pack.scope}。dataにpack_versionを${pack.version}、based_on_state_versionを引いた状態の番号として含めてください。` });

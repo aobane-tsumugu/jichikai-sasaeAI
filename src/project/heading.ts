@@ -1,5 +1,10 @@
 import { DOCUMENT_KIND_LABEL, type DocumentKind, type ProjectKind } from "./model";
 
+/** 出欠を集めるのは、行事と総会の案内だけ。 */
+export function collectsAttendance(projectKind: string, documentKind: string): boolean {
+  return (projectKind === "event" || projectKind === "general_meeting") && documentKind === "announcement";
+}
+
 /** 同じ六種類の文書を、仕事に合う題で画面と紙に出す。 */
 const TITLES: Record<Exclude<ProjectKind, "event">, Record<DocumentKind, string>> = {
   general_meeting: { announcement: "総会の招集", recruitment: "総会の手伝いの募集", duty_roster: "総会の当番表", procedure: "議案の資料", notice: "総会の変更のお知らせ", report: "議事録" },
