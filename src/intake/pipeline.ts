@@ -238,7 +238,9 @@ async function saveAnswerSheetRows(
     if (!household) return;
     // 空欄と分かる人数は読み取りで0になる。不明な人数を補って一部だけ数えない。
     // 古い読み取りに高齢の方の欄自体が無い場合（undefined）は、従来どおり扱う。
-    if (!row.not_attending && (row.adults == null || row.children == null || row.seniors === null)) return;
+    // 三つとも空で参加しないの印も無い行は、答えが無いのと同じ。0人の不参加にしない。
+    if (!row.not_attending && (row.adults == null || row.children == null || row.seniors === null ||
+      row.adults + row.children + (row.seniors ?? 0) === 0)) return;
     await addAnswer(db, wardId, {
       projectId,
       household,

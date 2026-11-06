@@ -130,6 +130,7 @@ it("過ぎた締切を知らせて配り、雨の変更後に答えと手伝い�
       { ...row, adults: null, children: 1 },
       { ...row, adults: 2, children: null },
       { ...row, adults: 2, seniors: null },
+      { ...row, adults: 0, not_attending: false },
     ] };
     // AIだけを架空の写真の読み取りで置き換え、実際の保存と集計を通す。
     expect(await runRead(env, ward.wardId, received.jobId!, { deps: {
