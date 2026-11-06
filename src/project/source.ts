@@ -17,7 +17,7 @@ function isYear(value: unknown): value is number {
  * 出どころの形を検査する。実在の確認（原本、アカウント）は apply.ts が口を通して行う。
  * 出どころの無い中身は存在しないので、形が合わなければ理由を返し、呼ぶ側は差分を捨てる。
  */
-export function checkSourceShape(source: unknown): SourceCheck {
+export function checkSourceShape(source: unknown, allowUnknownProposalYear = false): SourceCheck {
   if (typeof source !== "object" || source === null) return { ok: false, reason: "出どころがありません" };
   const s = source as Partial<Source>;
   if (typeof s.kind !== "string" || !(SOURCE_KINDS as readonly string[]).includes(s.kind)) {
@@ -44,8 +44,8 @@ export function checkSourceShape(source: unknown): SourceCheck {
       if (!s.ref) return { ok: false, reason: "出どころの答えがありません" };
       return { ok: true };
     case "ai_proposal":
-      // AI の案は、参考にした年が出どころになる（設計書 5.4）
-      if (!isYear(s.year)) return { ok: false, reason: "案の参考にした年がありません" };
+      // 当番の案は年不明の参考からも作れる。資料の年は作らない。
+      if (!allowUnknownProposalYear && !isYear(s.year)) return { ok: false, reason: "案の参考にした年がありません" };
       return { ok: true };
     default:
       return { ok: false, reason: "出どころの種類が合いません" };

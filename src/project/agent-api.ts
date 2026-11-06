@@ -2,7 +2,7 @@ import type { ProjectApi, ChangeInput, WriteContext, QuestionInput } from "../ai
 import { applyChange } from "./apply";
 import { addQuestion } from "./questions";
 import { listOpenProjects, getProjectState } from "./state";
-import { ITEM_LABEL, TABLES, DOCUMENT_KIND_LABEL, DOCUMENT_KINDS, isItemKey, isTableKey, type DocumentKind, type Source } from "./model";
+import { ITEM_LABEL, TABLES, DOCUMENT_KIND_LABEL, DOCUMENT_KINDS, cleanRowData, isItemKey, isTableKey, type DocumentKind, type RowData, type Source } from "./model";
 import { saveAIDraft } from "./actions";
 import { originalInProject } from "../intake/store";
 import { nowIso } from "../core/ids";
@@ -41,6 +41,32 @@ const agentApi: ProjectApi = {
       const kind = documentKind(change.target, data);
       if (!kind) return { status: "rejected", note: "文書の種類を特定できませんでした" };
       const packVersion = typeof data.pack_version === "string" ? data.pack_version.slice(0, 100) : ctx.packVersion;
+      if (kind === "duty_roster") {
+        if (!Array.isArray(data.duties)) return { status: "rejected", note: "duties に当番の行を入れてください" };
+        const before = await getProjectState(env.DB, ctx.wardId, ctx.projectId);
+        if (!before || typeof data.text !== "string" || !Array.isArray(data.items)) return { status: "rejected", note: "当番表の本文と items がありません" };
+        const duties: { data: RowData; year: number | null }[] = [];
+        for (const entry of data.duties) {
+          const { source_year: year, ...rawRow } = record(entry);
+          const row = cleanRowData("duties", rawRow);
+          if (!row.ok || (year !== null && (typeof year !== "number" || !Number.isInteger(year) || year < 1900 || year > 2200))) {
+            return { status: "rejected", note: "duties は {slot, task, assignee, source_year: 参考の年} の行にしてください" };
+          }
+          duties.push({ data: row.data, year });
+        }
+        for (const duty of duties) {
+          const result = await applyChange(env.DB, ctx.wardId, ctx.projectId, {
+            kind: "row", table: "duties", data: duty.data,
+            source: { kind: "ai_proposal", ...(duty.year === null ? {} : { year: duty.year }), locator: "当番表の割り当ての案" },
+            confidence: "low", packVersion, ticketId: ctx.jobId,
+          });
+          if (result.status === "rejected" || result.status === "dropped") return { status: "rejected", note: "当番の案を保存できませんでした" };
+        }
+        // 当番の行を入れた後の状態を下書きの元にする。
+        const current = await getProjectState(env.DB, ctx.wardId, ctx.projectId);
+        if (!current) return { status: "rejected", note: "プロジェクトが見つかりません" };
+        if (data.based_on_state_version === before.project.stateVersion) data.based_on_state_version = current.project.stateVersion;
+      }
       const ok = await saveAIDraft(env.DB, ctx.wardId, ctx.projectId, kind, packVersion, data);
       return { status: ok ? "applied" : "rejected", ...(ok ? {} : { note: "下書きを保存できませんでした。data は {text: 本文の文字列, items: [{key: 状態の項目の鍵, content: 文字列}], pack_version, based_on_state_version} にしてください" }) };
     }

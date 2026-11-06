@@ -46,7 +46,7 @@ interface ChangeBase {
   packVersion: string;
   source: Source;
   confidence: Confidence;
-  /** 列の記録（束 2）の札の ID。記録に残すだけで、検査には使わない。 */
+  /** 列の記録（束 2）の札の ID。原本を持たない AI の案では重複を弾く印にも使う。 */
   ticketId?: string;
   /**
    * 原本が出どころでない差分（人の入力）の重複を弾く印。フォームの二度押しを防ぎたい時に付ける。
@@ -103,6 +103,8 @@ export interface ApplyOptions {
   actorAccountId?: string;
   /** 資料を今年の物に直す時、今年の中身と違う所を上書きせず問いにする。 */
   compareCurrent?: boolean;
+  /** 配布に付いてくる項目の記録では、その文書自身に古い印を付けない。 */
+  publishedDocumentId?: string;
 }
 
 interface ResultBase {
