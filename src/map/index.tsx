@@ -6,20 +6,19 @@ import { formatJstDate } from "../core/time";
 import type { AdminEnv } from "../env";
 import { getProjectState } from "../project/api";
 import { addMapTask, removeMapTask, restoreMapTask, setEventDay, setMapTask } from "../project/actions";
-import { MAP_PROGRESS_LABEL, type DocumentKind } from "../project/model";
+import { MAP_PROGRESS_LABEL, type ProjectKind } from "../project/model";
+import { documentTitle } from "../project/heading";
 import { materialChangeText } from "./material-change";
 import { nextMapTask, mapCalendar } from "./next";
-import { opensOf, type MapOpens } from "./template";
+import { opensOf, taskDraftKind, type MapOpens } from "./template";
+export { taskDraftKind } from "./template";
 
 const ERROR_MESSAGES = { invalid_input: "入力を確認してください" };
 const admin = new Hono<AdminEnv>();
 const shortDate = (date: string) => `${Number(date.slice(5, 7))}月${Number(date.slice(8, 10))}日`;
-export function taskDraftKind(taskKey: string | null): DocumentKind {
-  return taskKey === "duty_roster" ? "duty_roster" : taskKey === "report" ? "report" : taskKey === "minutes" ? "procedure" : "announcement";
-}
-const targetPath: Record<MapOpens, (id: string, taskKey: string | null) => string> = {
+const targetPath: Record<MapOpens, (id: string, taskKey: string | null, kind: ProjectKind) => string> = {
   materials: (id) => `/intake?project=${encodeURIComponent(id)}#send-form`,
-  draft: (id, key) => `/projects/${id}/draft/${taskDraftKind(key)}`,
+  draft: (id, key, kind) => `/projects/${id}/draft/${taskDraftKind(key, kind)}`,
   answers: (id) => `/answers/${encodeURIComponent(id)}`,
   ledger: (id) => `/projects/${id}/ledger`,
 };
@@ -39,11 +38,11 @@ admin.get("/projects/:projectId/map", async (c) => {
   const first = !tasks.some((task) => task.progress !== "open") && !state.documents.some((document) => document.publishedVersionNo !== null);
   const calendar = mapCalendar(tasks, project.year);
   const next = nextMapTask(tasks, today);
-  const taskUrl = (task: (typeof tasks)[number]) => task.taskKey === "answers" ? targetPath.answers(id, task.taskKey) : task.taskKey === "report" ? `/close/${id}` : `/projects/${id}/map/${task.taskId}`;
+  const taskUrl = (task: (typeof tasks)[number]) => task.taskKey === "answers" ? targetPath.answers(id, task.taskKey, project.kind) : task.taskKey === "report" && project.kind === "event" ? `/close/${id}` : `/projects/${id}/map/${task.taskId}`;
   const day = project.deadlines.event_day;
   const daysLeft = day ? Math.ceil((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000) : null;
   const readCount = materials.results.filter((material) => material.status === "done").length;
-  const canRain = state.documents.some((document) => document.kind === "announcement" && document.publishedVersionNo !== null);
+  const canRain = project.kind === "event" && state.documents.some((document) => document.kind === "announcement" && document.publishedVersionNo !== null);
   const notice = c.req.query("notice");
   return c.html(<Layout title={`${project.title}の段取り`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <div class="map-page">
@@ -116,15 +115,16 @@ admin.get("/projects/:projectId/map/:taskId", async (c) => {
   const { project } = state;
   const owner = seats.results.find((seat) => seat.seat_id === task.seatId)?.title;
   const destinations = opensOf(project.kind, task.taskKey);
-  const draft = state.documents.find((document) => document.kind === taskDraftKind(task.taskKey));
-  const labels: Record<MapOpens, string> = { materials: "資料を送る", draft: `${task.taskKey === "duty_roster" ? "当番表" : task.taskKey === "report" ? "報告" : "案内"}の下書きを直す`, answers: "答えを見る", ledger: "運営メモを見る" };
+  const draftKind = taskDraftKind(task.taskKey, project.kind);
+  const draft = state.documents.find((document) => document.kind === draftKind);
+  const labels: Record<MapOpens, string> = { materials: "資料を送る", draft: `${documentTitle(project.kind, draftKind)}の下書きを直す`, answers: "答えを見る", ledger: "運営メモを見る" };
   return c.html(<Layout title={task.name} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {project.title}の段取りへ</a>
     <h1>{task.name}</h1><p class="lead">{task.periodStart && task.periodEnd && task.periodStart !== task.periodEnd ? `${formatJstDate(task.periodStart)}から${formatJstDate(task.periodEnd)}まで。` : task.periodEnd ? `${formatJstDate(task.periodEnd)}まで。` : "時期はまだ決まっていません。"}{owner ? `担当は${owner}です。` : "担当はあとから直せます。"}</p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     {c.req.query("notice") === "saved" ? <section class="next"><strong>直した内容を保存しました</strong><p>段取りに入りました。時期や担当はあとから直せます。</p><a class="button" href={adminPath(ward, `/projects/${id}/map`)}>段取りへ</a></section> : null}
     {draft && destinations[0] === "draft" ? <div class="notice" role="status"><strong>下書きができています</strong><p>{state.questions.length ? `質問が${state.questions.length}つ残っていますが、このまま配れます。` : "直して保存しても、まだ配られません。"}</p></div> : null}
-    <div class="action-links">{destinations.map((destination, index) => <a class={index ? "button secondary" : "button"} href={adminPath(ward, targetPath[destination](id, task.taskKey))}>{labels[destination]}</a>)}</div>
+    <div class="action-links">{destinations.map((destination, index) => <a class={index ? "button secondary" : "button"} href={adminPath(ward, targetPath[destination](id, task.taskKey, project.kind))}>{labels[destination]}</a>)}</div>
     <h2>届いた資料</h2><p><a class="quiet" href={adminPath(ward, `/projects/${id}#materials`)}>この行事に届いた資料を見る</a></p>
     {history.results.filter((entry) => entry.task_key === task.taskKey && [entry.requested_by, entry.difficulty, entry.next_year].some((value) => value.trim())).map((entry) => <><h2>去年の記録</h2><dl class="facts">
       {entry.requested_by ? <><dt>頼んだ人</dt><dd>{entry.requested_by}</dd></> : null}{entry.difficulty ? <><dt>困ったこと</dt><dd>{entry.difficulty}</dd></> : null}{entry.next_year ? <><dt>来年は</dt><dd>{entry.next_year}</dd></> : null}
