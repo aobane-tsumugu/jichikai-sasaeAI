@@ -1,0 +1,1111 @@
+{
+  "fictional": true,
+  "notice": "この一覧の区、行事、人名、会話、LINEの識別子はすべて架空です。実在の資料や住民の情報は使っていません。",
+  "projectTitle": "架空の秋の収穫祭",
+  "roster": [
+    {
+      "household": "架空参加一郎",
+      "district": "1班"
+    },
+    {
+      "household": "架空参加二郎",
+      "district": "2班"
+    },
+    {
+      "household": "架空参加三郎",
+      "district": "3班"
+    },
+    {
+      "household": "架空参加四郎",
+      "district": "4班"
+    },
+    {
+      "household": "架空参加五郎",
+      "district": "5班"
+    },
+    {
+      "household": "架空参加六郎",
+      "district": "6班"
+    },
+    {
+      "household": "架空参加七郎",
+      "district": "7班"
+    },
+    {
+      "household": "架空参加八郎",
+      "district": "8班"
+    },
+    {
+      "household": "架空参加九郎",
+      "district": "9班"
+    },
+    {
+      "household": "架空参加十郎",
+      "district": "10班"
+    },
+    {
+      "household": "架空同名一郎",
+      "district": "1班"
+    },
+    {
+      "household": "架空同名一郎",
+      "district": "2班"
+    },
+    {
+      "household": "架空同名二郎",
+      "district": "1班"
+    },
+    {
+      "household": "架空同名二郎",
+      "district": "2班"
+    },
+    {
+      "household": "架空同名三郎",
+      "district": "1班"
+    },
+    {
+      "household": "架空同名三郎",
+      "district": "2班"
+    },
+    {
+      "household": "架空同名四郎",
+      "district": "1班"
+    },
+    {
+      "household": "架空同名四郎",
+      "district": "2班"
+    },
+    {
+      "household": "架空同名五郎",
+      "district": "1班"
+    },
+    {
+      "household": "架空同名五郎",
+      "district": "2班"
+    },
+    {
+      "household": "架空同名六郎",
+      "district": "1班"
+    },
+    {
+      "household": "架空同名六郎",
+      "district": "2班"
+    },
+    {
+      "household": "架空同名七郎",
+      "district": "1班"
+    },
+    {
+      "household": "架空同名七郎",
+      "district": "2班"
+    },
+    {
+      "household": "架空同名八郎",
+      "district": "1班"
+    },
+    {
+      "household": "架空同名八郎",
+      "district": "2班"
+    },
+    {
+      "household": "架空同名九郎",
+      "district": "1班"
+    },
+    {
+      "household": "架空同名九郎",
+      "district": "2班"
+    },
+    {
+      "household": "架空同名十郎",
+      "district": "1班"
+    },
+    {
+      "household": "架空同名十郎",
+      "district": "2班"
+    },
+    {
+      "household": "架空欠席一郎",
+      "district": "1班"
+    },
+    {
+      "household": "架空欠席二郎",
+      "district": "2班"
+    },
+    {
+      "household": "架空欠席三郎",
+      "district": "3班"
+    },
+    {
+      "household": "架空欠席四郎",
+      "district": "4班"
+    },
+    {
+      "household": "架空欠席五郎",
+      "district": "5班"
+    },
+    {
+      "household": "架空欠席六郎",
+      "district": "6班"
+    },
+    {
+      "household": "架空欠席七郎",
+      "district": "7班"
+    },
+    {
+      "household": "架空欠席八郎",
+      "district": "8班"
+    },
+    {
+      "household": "架空欠席九郎",
+      "district": "9班"
+    },
+    {
+      "household": "架空欠席十郎",
+      "district": "10班"
+    }
+  ],
+  "scenes": [
+    {
+      "id": "work-1",
+      "category": "作業の連絡",
+      "talk": "work-1",
+      "group": true,
+      "messages": [
+        {
+          "text": "架空の秋の収穫祭の連絡です。設営は3人で進めます。机を12台出します。",
+          "expected": {
+            "kind": "資料に入る"
+          }
+        }
+      ]
+    },
+    {
+      "id": "work-2",
+      "category": "作業の連絡",
+      "talk": "work-2",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空の秋の収穫祭の連絡です。公民館を予約しました。",
+          "expected": {
+            "kind": "資料に入る"
+          }
+        },
+        {
+          "text": "架空の秋の収穫祭のホールは午前9時から使えます。",
+          "expected": {
+            "kind": "資料に入る"
+          }
+        }
+      ]
+    },
+    {
+      "id": "work-3",
+      "category": "作業の連絡",
+      "talk": "work-3",
+      "group": true,
+      "messages": [
+        {
+          "text": "架空の秋の収穫祭の連絡です。受付の担当を2人に増やしました。",
+          "expected": {
+            "kind": "資料に入る"
+          }
+        }
+      ]
+    },
+    {
+      "id": "work-4",
+      "category": "作業の連絡",
+      "talk": "work-4",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空の秋の収穫祭の連絡です。買い出しは4人で行きます。",
+          "expected": {
+            "kind": "資料に入る"
+          }
+        }
+      ]
+    },
+    {
+      "id": "work-5",
+      "category": "作業の連絡",
+      "talk": "work-5",
+      "group": true,
+      "messages": [
+        {
+          "text": "架空の秋の収穫祭の連絡です。片付けの当番を5人にお願いしました。",
+          "expected": {
+            "kind": "資料に入る"
+          }
+        }
+      ]
+    },
+    {
+      "id": "work-6",
+      "category": "作業の連絡",
+      "talk": "work-6",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空の秋の収穫祭の連絡です。抽選の景品を20個受け取りました。",
+          "expected": {
+            "kind": "資料に入る"
+          }
+        }
+      ]
+    },
+    {
+      "id": "work-7",
+      "category": "作業の連絡",
+      "talk": "work-7",
+      "group": true,
+      "messages": [
+        {
+          "text": "架空の秋の収穫祭の連絡です。雨のときの机の配置を変えました。",
+          "expected": {
+            "kind": "資料に入る"
+          }
+        }
+      ]
+    },
+    {
+      "id": "work-8",
+      "category": "作業の連絡",
+      "talk": "work-8",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空の秋の収穫祭の連絡です。班長3人に回答票を渡しました。",
+          "expected": {
+            "kind": "資料に入る"
+          }
+        }
+      ]
+    },
+    {
+      "id": "work-9",
+      "category": "作業の連絡",
+      "talk": "work-9",
+      "group": true,
+      "messages": [
+        {
+          "text": "架空の秋の収穫祭の連絡です。豚汁の鍋を2個借りました。",
+          "expected": {
+            "kind": "資料に入る"
+          }
+        }
+      ]
+    },
+    {
+      "id": "work-10",
+      "category": "作業の連絡",
+      "talk": "work-10",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空の秋の収穫祭の連絡です。運ぶ係は3人で、朝9時に集合します。",
+          "expected": {
+            "kind": "資料に入る"
+          }
+        }
+      ]
+    },
+    {
+      "id": "attend-1",
+      "category": "出欠の答え",
+      "talk": "attend-1",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空参加一郎です。1班です。架空の秋の収穫祭に大人2人で参加します。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空参加一郎",
+            "district": "1班",
+            "people": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "attend-2",
+      "category": "出欠の答え",
+      "talk": "attend-2",
+      "group": true,
+      "messages": [
+        {
+          "text": "架空参加二郎です。2班です。架空の秋の収穫祭に大人3人で参加します。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空参加二郎",
+            "district": "2班",
+            "people": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "attend-3",
+      "category": "出欠の答え",
+      "talk": "attend-3",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空参加三郎です。3班です。架空の秋の収穫祭に大人4人で参加します。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空参加三郎",
+            "district": "3班",
+            "people": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "attend-4",
+      "category": "出欠の答え",
+      "talk": "attend-4",
+      "group": true,
+      "messages": [
+        {
+          "text": "架空参加四郎です。4班です。架空の秋の収穫祭に大人1人で参加します。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空参加四郎",
+            "district": "4班",
+            "people": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "attend-5",
+      "category": "出欠の答え",
+      "talk": "attend-5",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空参加五郎です。5班です。架空の秋の収穫祭に大人2人で参加します。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空参加五郎",
+            "district": "5班",
+            "people": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "attend-6",
+      "category": "出欠の答え",
+      "talk": "attend-6",
+      "group": true,
+      "messages": [
+        {
+          "text": "架空参加六郎です。6班です。架空の秋の収穫祭に大人3人で参加します。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空参加六郎",
+            "district": "6班",
+            "people": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "attend-7",
+      "category": "出欠の答え",
+      "talk": "attend-7",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空参加七郎です。7班です。架空の秋の収穫祭に大人4人で参加します。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空参加七郎",
+            "district": "7班",
+            "people": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "attend-8",
+      "category": "出欠の答え",
+      "talk": "attend-8",
+      "group": true,
+      "messages": [
+        {
+          "text": "架空参加八郎です。8班です。架空の秋の収穫祭に大人1人で参加します。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空参加八郎",
+            "district": "8班",
+            "people": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "attend-9",
+      "category": "出欠の答え",
+      "talk": "attend-9",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空参加九郎です。9班です。架空の秋の収穫祭に大人2人で参加します。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空参加九郎",
+            "district": "9班",
+            "people": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "attend-10",
+      "category": "出欠の答え",
+      "talk": "attend-10",
+      "group": true,
+      "messages": [
+        {
+          "text": "架空参加十郎です。10班です。架空の秋の収穫祭に大人3人で参加します。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空参加十郎",
+            "district": "10班",
+            "people": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "same-1",
+      "category": "同名の世帯",
+      "talk": "same-1",
+      "group": true,
+      "messages": [
+        {
+          "text": "架空同名一郎です。1班です。架空の秋の収穫祭へ2人で行きます。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空同名一郎",
+            "district": "1班",
+            "people": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "same-2",
+      "category": "同名の世帯",
+      "talk": "same-2",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空同名二郎です。2班です。架空の秋の収穫祭へ3人で行きます。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空同名二郎",
+            "district": "2班",
+            "people": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "same-3",
+      "category": "同名の世帯",
+      "talk": "same-3",
+      "group": true,
+      "messages": [
+        {
+          "text": "架空同名三郎です。架空の秋の収穫祭へ1人で行きます。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空同名三郎",
+            "district": "",
+            "people": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "same-4",
+      "category": "同名の世帯",
+      "talk": "same-4",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空同名四郎です。2班です。架空の秋の収穫祭へ2人で行きます。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空同名四郎",
+            "district": "2班",
+            "people": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "same-5",
+      "category": "同名の世帯",
+      "talk": "same-5",
+      "group": true,
+      "messages": [
+        {
+          "text": "架空同名五郎です。1班です。架空の秋の収穫祭へ3人で行きます。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空同名五郎",
+            "district": "1班",
+            "people": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "same-6",
+      "category": "同名の世帯",
+      "talk": "same-6",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空同名六郎です。架空の秋の収穫祭へ1人で行きます。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空同名六郎",
+            "district": "",
+            "people": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "same-7",
+      "category": "同名の世帯",
+      "talk": "same-7",
+      "group": true,
+      "messages": [
+        {
+          "text": "架空同名七郎です。1班です。架空の秋の収穫祭へ2人で行きます。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空同名七郎",
+            "district": "1班",
+            "people": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "same-8",
+      "category": "同名の世帯",
+      "talk": "same-8",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空同名八郎です。2班です。架空の秋の収穫祭へ3人で行きます。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空同名八郎",
+            "district": "2班",
+            "people": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "same-9",
+      "category": "同名の世帯",
+      "talk": "same-9",
+      "group": true,
+      "messages": [
+        {
+          "text": "架空同名九郎です。架空の秋の収穫祭へ1人で行きます。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空同名九郎",
+            "district": "",
+            "people": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "same-10",
+      "category": "同名の世帯",
+      "talk": "same-10",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空同名十郎です。2班です。架空の秋の収穫祭へ2人で行きます。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空同名十郎",
+            "district": "2班",
+            "people": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "decline-1",
+      "category": "不参加",
+      "talk": "decline-1",
+      "group": true,
+      "messages": [
+        {
+          "text": "架空欠席一郎です。1班です。架空の秋の収穫祭は参加しません。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空欠席一郎",
+            "district": "1班",
+            "people": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "decline-2",
+      "category": "不参加",
+      "talk": "decline-2",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空欠席二郎です。2班です。架空の秋の収穫祭は今回は欠席します。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空欠席二郎",
+            "district": "2班",
+            "people": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "decline-3",
+      "category": "不参加",
+      "talk": "decline-3",
+      "group": true,
+      "messages": [
+        {
+          "text": "架空欠席三郎です。3班です。架空の秋の収穫祭は参加しない予定です。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空欠席三郎",
+            "district": "3班",
+            "people": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "decline-4",
+      "category": "不参加",
+      "talk": "decline-4",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空欠席四郎です。4班です。架空の秋の収穫祭は不参加です。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空欠席四郎",
+            "district": "4班",
+            "people": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "decline-5",
+      "category": "不参加",
+      "talk": "decline-5",
+      "group": true,
+      "messages": [
+        {
+          "text": "架空欠席五郎です。5班です。架空の秋の収穫祭は都合がつかず参加しません。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空欠席五郎",
+            "district": "5班",
+            "people": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "decline-6",
+      "category": "不参加",
+      "talk": "decline-6",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空欠席六郎です。6班です。架空の秋の収穫祭は家族全員が欠席です。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空欠席六郎",
+            "district": "6班",
+            "people": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "decline-7",
+      "category": "不参加",
+      "talk": "decline-7",
+      "group": true,
+      "messages": [
+        {
+          "text": "架空欠席七郎です。7班です。架空の秋の収穫祭は今年は参加しません。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空欠席七郎",
+            "district": "7班",
+            "people": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "decline-8",
+      "category": "不参加",
+      "talk": "decline-8",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空欠席八郎です。8班です。架空の秋の収穫祭は今回は不参加にします。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空欠席八郎",
+            "district": "8班",
+            "people": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "decline-9",
+      "category": "不参加",
+      "talk": "decline-9",
+      "group": true,
+      "messages": [
+        {
+          "text": "架空欠席九郎です。9班です。架空の秋の収穫祭は参加しないので人数は0人です。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空欠席九郎",
+            "district": "9班",
+            "people": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "decline-10",
+      "category": "不参加",
+      "talk": "decline-10",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空欠席十郎です。10班です。架空の秋の収穫祭は欠席でお願いします。",
+          "expected": {
+            "kind": "答えに数える",
+            "household": "架空欠席十郎",
+            "district": "10班",
+            "people": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "chat-1",
+      "category": "雑談",
+      "talk": "chat-1",
+      "group": true,
+      "messages": [
+        {
+          "text": "おはようございます。",
+          "expected": {
+            "kind": "残さない"
+          }
+        }
+      ]
+    },
+    {
+      "id": "chat-2",
+      "category": "雑談",
+      "talk": "chat-2",
+      "group": false,
+      "messages": [
+        {
+          "text": "今日はよく晴れていますね。",
+          "expected": {
+            "kind": "残さない"
+          }
+        }
+      ]
+    },
+    {
+      "id": "chat-3",
+      "category": "雑談",
+      "talk": "chat-3",
+      "group": true,
+      "messages": [
+        {
+          "text": "おやすみなさい。",
+          "expected": {
+            "kind": "残さない"
+          }
+        }
+      ]
+    },
+    {
+      "id": "chat-4",
+      "category": "雑談",
+      "talk": "chat-4",
+      "group": false,
+      "messages": [
+        {
+          "text": "庭の花が咲きました。",
+          "expected": {
+            "kind": "残さない"
+          }
+        },
+        {
+          "text": "花の色は白です。",
+          "expected": {
+            "kind": "残さない"
+          }
+        }
+      ]
+    },
+    {
+      "id": "chat-5",
+      "category": "雑談",
+      "talk": "chat-5",
+      "group": true,
+      "messages": [
+        {
+          "text": "昨日はテレビを見ていました。",
+          "expected": {
+            "kind": "残さない"
+          }
+        }
+      ]
+    },
+    {
+      "id": "chat-6",
+      "category": "雑談",
+      "talk": "chat-6",
+      "group": false,
+      "messages": [
+        {
+          "text": "猫が昼寝しています。",
+          "expected": {
+            "kind": "残さない"
+          }
+        }
+      ]
+    },
+    {
+      "id": "chat-7",
+      "category": "雑談",
+      "talk": "chat-7",
+      "group": true,
+      "messages": [
+        {
+          "text": "夕飯はカレーにしました。",
+          "expected": {
+            "kind": "残さない"
+          }
+        }
+      ]
+    },
+    {
+      "id": "chat-8",
+      "category": "雑談",
+      "talk": "chat-8",
+      "group": false,
+      "messages": [
+        {
+          "text": "散歩に行ってきました。",
+          "expected": {
+            "kind": "残さない"
+          }
+        }
+      ]
+    },
+    {
+      "id": "chat-9",
+      "category": "雑談",
+      "talk": "chat-9",
+      "group": true,
+      "messages": [
+        {
+          "text": "コーヒーを飲んでいます。",
+          "expected": {
+            "kind": "残さない"
+          }
+        }
+      ]
+    },
+    {
+      "id": "chat-10",
+      "category": "雑談",
+      "talk": "chat-10",
+      "group": false,
+      "messages": [
+        {
+          "text": "今日は月がきれいですね。",
+          "expected": {
+            "kind": "残さない"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inquiry-1",
+      "category": "公式への質問",
+      "talk": "inquiry-1",
+      "group": true,
+      "messages": [
+        {
+          "text": "公式へ。架空の秋の収穫祭について、何時からですか。",
+          "expected": {
+            "kind": "問い合わせ"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inquiry-2",
+      "category": "公式への質問",
+      "talk": "inquiry-2",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空の秋の収穫祭について、雨のときはどこに行けばよいですか。",
+          "expected": {
+            "kind": "問い合わせ"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inquiry-3",
+      "category": "公式への質問",
+      "talk": "inquiry-3",
+      "group": true,
+      "messages": [
+        {
+          "text": "公式へ。架空の秋の収穫祭について、車いすでも入れますか。",
+          "expected": {
+            "kind": "問い合わせ"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inquiry-4",
+      "category": "公式への質問",
+      "talk": "inquiry-4",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空の秋の収穫祭について、食べ物の持ち込みはできますか。",
+          "expected": {
+            "kind": "問い合わせ"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inquiry-5",
+      "category": "公式への質問",
+      "talk": "inquiry-5",
+      "group": true,
+      "messages": [
+        {
+          "text": "公式へ。架空の秋の収穫祭について、忘れ物をしたらどこへ連絡すればよいですか。",
+          "expected": {
+            "kind": "問い合わせ"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inquiry-6",
+      "category": "公式への質問",
+      "talk": "inquiry-6",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空の秋の収穫祭について、トイレの場所を教えてください。",
+          "expected": {
+            "kind": "問い合わせ"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inquiry-7",
+      "category": "公式への質問",
+      "talk": "inquiry-7",
+      "group": true,
+      "messages": [
+        {
+          "text": "公式へ。架空の秋の収穫祭について、手伝いは初めてでもできますか。",
+          "expected": {
+            "kind": "問い合わせ"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inquiry-8",
+      "category": "公式への質問",
+      "talk": "inquiry-8",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空の秋の収穫祭について、案内の紙をもう一枚もらえますか。",
+          "expected": {
+            "kind": "問い合わせ"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inquiry-9",
+      "category": "公式への質問",
+      "talk": "inquiry-9",
+      "group": true,
+      "messages": [
+        {
+          "text": "公式へ。架空の秋の収穫祭について、駐輪する場所を教えてください。",
+          "expected": {
+            "kind": "問い合わせ"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inquiry-10",
+      "category": "公式への質問",
+      "talk": "inquiry-10",
+      "group": false,
+      "messages": [
+        {
+          "text": "架空の秋の収穫祭について、食事の相談をしたいです。",
+          "expected": {
+            "kind": "問い合わせ"
+          }
+        }
+      ]
+    }
+  ]
+}
