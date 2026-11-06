@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { expect, it } from "vitest";
 import { seedAdmin } from "../src/core/testing";
 import { applyChange, createProject } from "../src/project/api";
-import { saveDocument } from "../src/project/actions";
+import { saveAIDraft, saveDocument } from "../src/project/actions";
 import { get, postForm, realApp } from "./helpers";
 
 it("印刷の一覧から貼れる一枚を開き、未配布の変更を混ぜず配り直した日時・場所を使う", async () => {
@@ -11,9 +11,9 @@ it("印刷の一覧から貼れる一枚を開き、未配布の変更を混ぜ�
     kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId,
   });
   const root = `/${ward.slug}/admin`;
-  const save = async (dateTime: string, place: string) => {
+  const save = async (dateTime: string, place: string, title = "秋の収穫祭（架空）") => {
     expect(await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
-      kind: "announcement", title: "秋の収穫祭（架空）", scope: "public", basedOn: 0,
+      kind: "announcement", title, scope: "public", basedOn: 0,
       body: JSON.stringify({ text: "案内の長い本文は一枚に出さない", items: [
         { key: "date_time", content: dateTime }, { key: "place", content: place },
         { key: "belongings", content: "持ち物も一枚には出さない" },
@@ -54,11 +54,21 @@ it("印刷の一覧から貼れる一枚を開き、未配布の変更を混ぜ�
     kind: "item", itemKey: "place", value: "まだ配っていない会場",
     source: { kind: "person", accountId: account.accountId }, confidence: "high", packVersion: "poster-test@1",
   });
-  const second = await save("2026年11月15日 13時〜15時", "架空の公民館");
+  expect(await saveAIDraft(env.DB, ward.wardId, project.projectId, "announcement", "poster-test@1", {
+    title: "まだ配っていないAIの題", text: "架空のAIの下書き", items: [],
+  })).toBe(true);
+  expect(await (await get(realApp, `${path(first)}/poster`, cookie)).text()).toBe(original);
+  for (const suffix of ["", "/preview", "/announcement"]) {
+    const printed = await (await get(realApp, `${path(first)}${suffix}`, cookie)).text();
+    expect(printed).toContain("秋の収穫祭（架空）");
+    expect(printed).not.toContain("まだ配っていないAIの題");
+  }
+  const second = await save("2026年11月15日 13時〜15時", "架空の公民館", "雨天の収穫祭（架空）");
   expect((await get(realApp, `${path(second)}/poster`, cookie)).status).toBe(404);
   expect(await (await get(realApp, `${path(first)}/poster`, cookie)).text()).toBe(original);
   await publish(second);
   const updated = await (await get(realApp, `${path(second)}/poster`, cookie)).text();
+  expect(updated).toContain("雨天の収穫祭（架空）");
   expect(updated).toContain("2026年11月15日 13時〜15時");
   expect(updated).toContain("架空の公民館");
   expect(updated).not.toContain("まだ配っていない会場");

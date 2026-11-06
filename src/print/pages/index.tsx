@@ -95,7 +95,7 @@ admin.get("/print/:projectId/paper/:kind", async (c) => {
 
 admin.get("/print/:projectId/:documentId/:versionNo/preview", async (c) => {
   const { ward } = c.var;
-  const row = await c.env.DB.prepare(`SELECT d.title, v.body, v.version_no FROM documents d
+  const row = await c.env.DB.prepare(`SELECT COALESCE(v.title, d.title) AS title, v.body, v.version_no FROM documents d
     JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
     WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_no = ?`)
     .bind(ward.wardId, c.req.param("projectId"), c.req.param("documentId"), Number(c.req.param("versionNo")))
@@ -114,7 +114,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   const kind = (c.req.method === "POST" ? "leader" : c.req.param("kind")) as PrintKind;
   const versionNo = Number(c.req.param("versionNo"));
   if (!printKinds.includes(kind) || !Number.isInteger(versionNo)) return c.notFound();
-  const row = await c.env.DB.prepare(`SELECT p.project_id, p.title, p.closed_at, d.document_id, d.title AS document_title,
+  const row = await c.env.DB.prepare(`SELECT p.project_id, p.title, p.closed_at, d.document_id, COALESCE(v.title, d.title) AS document_title,
       v.version_id, v.version_no, v.body, d.kind, v.scope, v.tables_snapshot
     FROM document_versions v JOIN projects p ON p.ward_id = v.ward_id AND p.project_id = v.project_id
     JOIN documents d ON d.ward_id = v.ward_id AND d.document_id = v.document_id
@@ -209,7 +209,7 @@ async function PrintChooser({ c }: { c: import("hono").Context<AdminEnv> }) {
   const projectId = c.req.param("projectId");
   const documentId = c.req.param("documentId");
   const versionNo = c.req.param("versionNo");
-  const row = await c.env.DB.prepare(`SELECT d.title, v.scope FROM documents d JOIN document_versions v
+  const row = await c.env.DB.prepare(`SELECT COALESCE(v.title, d.title) AS title, v.scope FROM documents d JOIN document_versions v
     ON v.ward_id = d.ward_id AND v.document_id = d.document_id
     LEFT JOIN publication_records r ON r.ward_id = v.ward_id AND r.version_id = v.version_id
     WHERE v.ward_id = ? AND v.project_id = ? AND v.document_id = ? AND v.version_no = ?

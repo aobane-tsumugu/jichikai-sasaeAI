@@ -218,8 +218,8 @@ export async function saveDocument(db: D1Database, wardId: string, projectId: st
   const latest = await db.prepare("SELECT COALESCE(MAX(version_no), 0) AS n FROM document_versions WHERE ward_id = ? AND project_id = ? AND document_id = ?").bind(wardId, projectId, doc.document_id).first<{ n: number }>();
   const versionId = newId();
   const statements: D1PreparedStatement[] = [db.prepare(`INSERT INTO document_versions
-    (version_id, ward_id, project_id, document_id, version_no, scope, body, based_on_state_version, origin, created_at, created_by_account_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'person', ?, ?)`).bind(versionId, wardId, projectId, doc.document_id, (latest?.n ?? 0) + 1, input.scope, JSON.stringify({ text: record.text, items }), wasCurrent ? currentProject?.state_version ?? input.basedOn : input.basedOn, now, accountId)];
+    (version_id, ward_id, project_id, document_id, version_no, scope, body, title, based_on_state_version, origin, created_at, created_by_account_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'person', ?, ?)`).bind(versionId, wardId, projectId, doc.document_id, (latest?.n ?? 0) + 1, input.scope, JSON.stringify({ text: record.text, items }), input.title.trim(), wasCurrent ? currentProject?.state_version ?? input.basedOn : input.basedOn, now, accountId)];
   for (const item of items) {
     const change = await applyChange(db, wardId, projectId, { kind: "item", itemKey: item.key, value: item.content,
       source: { kind: "person", accountId }, confidence: "high", packVersion: "person-edit@1", requestId: versionId });
@@ -267,9 +267,9 @@ export async function saveAIDraft(db: D1Database, wardId: string, projectId: str
     .bind(project.state_version, wardId, projectId, document.document_id).run();
   const latest = await db.prepare("SELECT COALESCE(MAX(version_no), 0) AS n FROM document_versions WHERE ward_id = ? AND project_id = ? AND document_id = ?")
     .bind(wardId, projectId, document.document_id).first<{ n: number }>();
-  await db.prepare(`INSERT INTO document_versions (version_id, ward_id, project_id, document_id, version_no, scope, body,
+  await db.prepare(`INSERT INTO document_versions (version_id, ward_id, project_id, document_id, version_no, scope, body, title,
     based_on_state_version, origin, pack_version, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ai', ?, ?)`)
-    .bind(newId(), wardId, projectId, document.document_id, (latest?.n ?? 0) + 1, scope, JSON.stringify({ text: data.text, items }), basedOn, packVersion, nowIso()).run();
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ai', ?, ?)`)
+    .bind(newId(), wardId, projectId, document.document_id, (latest?.n ?? 0) + 1, scope, JSON.stringify({ text: data.text, items }), title, basedOn, packVersion, nowIso()).run();
   return true;
 }

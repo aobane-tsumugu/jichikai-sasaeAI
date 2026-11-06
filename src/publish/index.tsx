@@ -259,8 +259,8 @@ admin.post("/publish/:projectId/space", async (c) => {
   const publishedVersionId = row.published_at ? newId() : versionId;
   const publish = row.published_at
     ? c.env.DB.prepare(`INSERT INTO document_versions (version_id, ward_id, project_id, document_id, version_no,
-        scope, body, based_on_state_version, origin, created_at, created_by_account_id, published_at, published_by_account_id, tables_snapshot)
-      SELECT ?, v.ward_id, v.project_id, v.document_id, v.version_no + 1, v.scope, v.body,
+        scope, body, title, based_on_state_version, origin, created_at, created_by_account_id, published_at, published_by_account_id, tables_snapshot)
+      SELECT ?, v.ward_id, v.project_id, v.document_id, v.version_no + 1, v.scope, v.body, COALESCE(v.title, d.title),
         p.state_version, 'person', ?, ?, ?, ?, ${publicationTablesSql}
       FROM document_versions v JOIN projects p ON p.ward_id = v.ward_id AND p.project_id = v.project_id
       JOIN documents d ON d.ward_id = v.ward_id AND d.document_id = v.document_id
