@@ -3,43 +3,10 @@ import type { Env } from "../env";
 import { getClient } from "../ai/deps";
 import { checkPhoto, type PhotoCheck } from "../ai/photo-check";
 import type { ReceiveInput } from "./receive";
-import { classifyUpload, sha256Hex } from "./media";
+import { WardBucket } from "../core/storage";
 import { getReadings } from "./store";
-import { validReadingCopy } from "./photo-copy";
-
-/** 画像の見出しだけを読む。画素の展開や画像処理の依存は足さない。 */
-export function imageDimensions(bytes: Uint8Array): { width: number; height: number } | null {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const size = (width: number, height: number) => width > 0 && height > 0 ? { width, height } : null;
-  if (bytes.length >= 24 && bytes[0] === 0x89 && bytes[1] === 0x50) return size(view.getUint32(16), view.getUint32(20));
-  if (bytes.length >= 10 && bytes[0] === 0x47 && bytes[1] === 0x49) return size(view.getUint16(6, true), view.getUint16(8, true));
-  if (bytes.length >= 30 && bytes[0] === 0x52 && bytes[8] === 0x57) {
-    const tag = String.fromCharCode(...bytes.subarray(12, 16));
-    if (tag === "VP8X") return size(1 + (view.getUint32(24, true) & 0xffffff), 1 + ((view.getUint32(26, true) >>> 8) & 0xffffff));
-    if (tag === "VP8 ") return size(view.getUint16(26, true) & 0x3fff, view.getUint16(28, true) & 0x3fff);
-    if (tag === "VP8L" && bytes[20] === 0x2f) {
-      const bits = view.getUint32(21, true);
-      return size(1 + (bits & 0x3fff), 1 + ((bits >>> 14) & 0x3fff));
-    }
-  }
-  if (bytes[0] === 0xff && bytes[1] === 0xd8) {
-    let offset = 2;
-    while (offset + 4 < bytes.length) {
-      if (bytes[offset] !== 0xff) break;
-      const marker = bytes[offset + 1]!;
-      if (marker === 0xff) { offset++; continue; }
-      if (marker === 0xda || marker === 0xd9) break;
-      if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) { offset += 2; continue; }
-      const length = view.getUint16(offset + 2);
-      if (length < 2 || offset + 2 + length > bytes.length) break;
-      if ([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker) && length >= 7) {
-        return size(view.getUint16(offset + 7), view.getUint16(offset + 5));
-      }
-      offset += length + 2;
-    }
-  }
-  return null;
-}
+import { imageDimensions } from "./photo";
+export { imageDimensions } from "./photo";
 
 export interface StoredPhotoCheck extends PhotoCheck {
   original_id: string;
@@ -49,21 +16,20 @@ export interface StoredPhotoCheck extends PhotoCheck {
 }
 
 export async function quickCheckPhotos(env: Env, input: ReceiveInput, jobId: string): Promise<void> {
-  const originals = await env.DB.prepare("SELECT original_id, content_hash, media_type FROM originals WHERE ward_id = ? AND job_id = ? AND withdrawn_at IS NULL ORDER BY position")
-    .bind(input.wardId, jobId).all<{ original_id: string; content_hash: string; media_type: string }>();
-  const parts = await Promise.all(input.parts.filter((part) => classifyUpload(part.bytes, part.mediaType, part.filename)?.mediaClass === "image")
-    .map(async (part) => ({ part, hash: await sha256Hex(part.bytes) })));
+  const originals = await env.DB.prepare("SELECT original_id, r2_path, media_type FROM originals WHERE ward_id = ? AND job_id = ? AND withdrawn_at IS NULL ORDER BY position")
+    .bind(input.wardId, jobId).all<{ original_id: string; r2_path: string | null; media_type: string }>();
+  const bucket = new WardBucket(env.ORIGINALS, input.wardId);
   // 全体で数秒に収める。確認が間に合わなければ通常の読み取りへ任せる。
   await Promise.all(originals.results.map(async (original) => {
     if (!original.media_type.startsWith("image/")) return;
-    const part = parts.find((candidate) => candidate.hash === original.content_hash)?.part;
-    if (!part) return;
-    const copy = validReadingCopy(part.readingCopy);
-    const bytes = copy?.bytes ?? part.bytes;
-    const mediaType = copy?.mediaType ?? original.media_type;
+    const object = original.r2_path ? await bucket.get(original.r2_path) : null;
+    if (!object) return;
+    const bytes = new Uint8Array(await object.arrayBuffer());
+    const mediaType = original.media_type;
     const dimensions = imageDimensions(bytes);
     let check: PhotoCheck = { readability: "unknown", paperKind: "other", reason: "other" };
-    if (dimensions && Math.min(dimensions.width, dimensions.height) < 480) check = { readability: "unreadable", paperKind: "other", reason: "small" };
+    if (object.customMetadata?.photoResizeFailed === "1") check = { readability: "unreadable", paperKind: "other", reason: "other" };
+    else if (dimensions && Math.min(dimensions.width, dimensions.height) < 480) check = { readability: "unreadable", paperKind: "other", reason: "small" };
     else if (dimensions && bytes.length <= 5 * 1024 * 1024) {
       try {
         check = await checkPhoto(getClient(env), bytes, mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp");

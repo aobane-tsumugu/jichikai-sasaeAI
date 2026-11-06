@@ -130,7 +130,7 @@ export function createLineIntakePorts(
         ? new TextEncoder().encode(original.text ?? "")
         : original.bytes ? new Uint8Array(original.bytes) : null;
       if (!bytes) throw new Error("LINEの写真データがありません。");
-      // 写真は、送った場所とまとまりを保存して受領を返したあとに読む。
+      // 写真は共通の受付で2400pxのJPEGに整えて保管する。受領を返したあと、その写真を読む。
       const input: ReceiveInput = {
         wardId,
         via: original.sourceType === "user" ? "line_direct" : "line_group",

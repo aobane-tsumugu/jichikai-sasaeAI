@@ -1,4 +1,5 @@
 import type { AnswerSheetReading } from "../src/ai/schema";
+import { fictionalPaperPhoto } from "./test-photo";
 
 /** 通し試験専用の架空の入力と、実際の読み取りを代わる応答。 */
 const answerSheetReading: AnswerSheetReading = {
@@ -28,7 +29,7 @@ export const FIRST_SLICE = {
   sheetHelper: "手伝い希望者（架空）",
   helperTime: "受付",
   answerSheetFilename: "回答票（架空）.jpg",
-  answerSheetPhotoBytes: [0xff, 0xd8, 0xff, 0xe0, 1, 2, 3],
+  answerSheetPhotoBytes: Array.from(fictionalPaperPhoto()),
   answerSheetReading,
   dutyTitle: "当番表（架空）",
   dutyText: "班長だけの当番表（架空）",

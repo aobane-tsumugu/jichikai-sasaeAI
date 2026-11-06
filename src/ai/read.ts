@@ -5,7 +5,7 @@ import type { AnswerLabels } from "../settings/answer-labels";
 import type Anthropic from "@anthropic-ai/sdk";
 import { MODEL } from "./anthropic";
 import { cleanSuggestions } from "./suggest";
-import { MAX_IMAGE_BYTES, MAX_READ_BYTES, validReadingCopy } from "../intake/photo-copy";
+import { MAX_IMAGE_BYTES, MAX_READ_BYTES } from "../intake/photo";
 import {
   ANSWER_SHEET_SCHEMA,
   GENERAL_READING_SCHEMA,
@@ -25,6 +25,8 @@ export interface ReadableOriginal {
   /** 送った単位の中の順（1 から） */
   position: number;
   bytes: Uint8Array;
+  /** 保存前に写真を整えられなかった。既存の質問へつなぐ。 */
+  photoResizeFailed?: boolean;
 }
 
 export interface ReadUsage {
@@ -189,7 +191,6 @@ export function fixOriginalIds(body: ReadingBody, validIds: string[]): ReadingBo
 }
 
 export interface ReadOptions {
-  images?: Pick<ImagesBinding, "input">;
   kind: ReadKind;
   generalMeeting?: boolean;
   answerLabels?: AnswerLabels;
@@ -198,25 +199,16 @@ export interface ReadOptions {
   effort?: "low" | "medium" | "high";
 }
 
-/** 写しが無いときと合計が収まらないときに、非公開のバイトからサーバーで変換を試す。 */
-export async function prepareReadOriginals(originals: ReadableOriginal[], images?: Pick<ImagesBinding, "input">,
+/** 保存した写真をそのまま読む。保管前の変換失敗は読めない箇所として質問に渡す。 */
+export async function prepareReadOriginals(originals: ReadableOriginal[],
   onUnreadable?: (original: ReadableOriginal, note: string) => void): Promise<ReadableOriginal[]> {
-  const overTotal = originals.reduce((sum, original) => sum + original.bytes.length, 0) > MAX_TOTAL_BYTES;
   const prepared: ReadableOriginal[] = [];
   for (const original of originals) {
     const image = original.mediaType.startsWith("image/");
-    const needsCopy = image && (original.bytes.length > MAX_IMAGE_BYTES || !IMAGE_TYPES.has(original.mediaType) || overTotal);
+    const unreadableImage = image && (original.photoResizeFailed || original.bytes.length > MAX_IMAGE_BYTES || !IMAGE_TYPES.has(original.mediaType));
     const oversizedPdf = original.mediaType === "application/pdf" && original.bytes.length > MAX_TOTAL_BYTES;
-    if (!needsCopy && !oversizedPdf) { prepared.push(original); continue; }
-    try {
-      if (!images) throw new Error("画像の変換が使えません");
-      const output = await images.input(new Blob([original.bytes]).stream())
-        .transform({ width: 2000, height: 2000, fit: "scale-down" })
-        .output({ format: "image/jpeg", quality: 85 });
-      const bytes = new Uint8Array(await output.response().arrayBuffer());
-      if (output.contentType() !== "image/jpeg" || !validReadingCopy({ bytes, mediaType: output.contentType() })) throw new Error("写しを作れませんでした");
-      prepared.push({ ...original, mediaType: "image/jpeg", bytes });
-    } catch {
+    if (!unreadableImage && !oversizedPdf) { prepared.push(original); continue; }
+    {
       const note = "写真や紙を読み取れませんでした。明るい場所で、紙の全体が入るように撮れますか。";
       if (!onUnreadable) throw new ReadError(note, "unreadable", false);
       onUnreadable(original, note);
@@ -235,7 +227,7 @@ export async function prepareReadOriginals(originals: ReadableOriginal[], images
 export async function readOriginals(client: Anthropic, options: ReadOptions): Promise<ReadResult> {
   if (options.originals.length === 0) throw new ReadError("読む原本がありません", "unsupported", false);
   const unreadable: ReadUnreadable[] = [];
-  const prepared = await prepareReadOriginals(options.originals, options.images,
+  const prepared = await prepareReadOriginals(options.originals,
     (original, note) => unreadable.push({ original_id: original.originalId, locator: "全体", note }));
   if (!prepared.length) {
     // 読めなかった箇所として残し、既存の撮り直しの質問へ渡す。AIに渡したとは記録しない。

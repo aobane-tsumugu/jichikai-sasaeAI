@@ -1,21 +1,37 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "cloudflare:workers";
 import { expect, it } from "vitest";
-import { prepareReadOriginals, readOriginals, type ReadableOriginal } from "../src/ai/read";
 import { setClientFactory } from "../src/ai/deps";
-import { seedAdmin } from "../src/core/testing";
+import { seedAdmin, seedWard } from "../src/core/testing";
 import { WardBucket } from "../src/core/storage";
-import { setPipelineDeps } from "../src/intake/pipeline";
+import { setPipelineDeps, runRead } from "../src/intake/pipeline";
+import { receive } from "../src/intake/receive";
+import { imageDimensions, type PhotoImages } from "../src/intake/photo";
+import { sha256Hex } from "../src/intake/media";
 import { getJob, getReadings, listOriginals } from "../src/intake/store";
 import { realApp } from "./helpers";
-import { fictionalPhonePhoto } from "./fixtures/phone-photo";
+import { fictionalPhonePhoto, fictionalStoredPhoto } from "./fixtures/phone-photo";
 
-it("スマホの8MBの架空写真を原本のまま預かり、写しで読める。写しが無いときはサーバーで試す", async () => {
+it("6.7MBの架空写真は2400pxのJPEG一つを保管して読み、縮小前後の再送を重ねず、変換失敗も質問へ渡す", async () => {
   const { ward, cookie } = await seedAdmin(env.DB);
-  // 写しの作成とモデルの通信だけを代える。受付、R2、読み取り要求と結果の保存は実物。
   const original = fictionalPhonePhoto();
-  const copy = new Uint8Array(1024 * 1024);
-  copy.set([0xff, 0xd8, 0xff, 0xe0, ...new TextEncoder().encode("架空の読み取り用の写し")]);
+  const stored = fictionalStoredPhoto();
+  expect(original.length).toBe(6_700_000);
+  expect(imageDimensions(original)).toEqual({ width: 3394, height: 4800 });
+  expect(imageDimensions(stored)).toEqual({ width: 1697, height: 2400 });
+  const sourceHash = await sha256Hex(original);
+  let conversions = 0;
+  // Imagesの通信だけを代え、出力には実際に縮小・JPEG圧縮した架空の回答票を使う。
+  const transformer: ImageTransformer = {
+    transform(options) { expect(options).toEqual({ width: 2400, height: 2400, fit: "scale-down" }); return transformer; },
+    draw() { throw new Error("重ねる処理は使いません"); },
+    async output(options) {
+      expect(options).toEqual({ format: "image/jpeg", quality: 85 }); conversions++;
+      return { response: () => new Response(stored), contentType: () => "image/jpeg", image: () => new Blob([stored]).stream() };
+    },
+  };
+  const images: PhotoImages = { input: () => transformer };
+  const runtime = Object.create(env, { IMAGES: { value: images } }) as typeof env & { IMAGES: PhotoImages };
   const tasks: Promise<unknown>[] = [];
   const context = { waitUntil: (task: Promise<unknown>) => { tasks.push(task); } } as ExecutionContext;
   let modelCalls = 0;
@@ -26,69 +42,79 @@ it("スマホの8MBの架空写真を原本のまま預かり、写しで読め�
     const image = request.messages[0]!.content.find((block) => block.type === "image");
     if (!image || image.type !== "image") throw new Error("写真の読み取り要求がありません");
     expect(image.source.media_type).toBe("image/jpeg");
-    expect(atob(image.source.data).length).toBe(copy.length);
-    expect(atob(image.source.data).slice(0, 12)).toBe(String.fromCharCode(...copy.slice(0, 12)));
+    expect(await sha256Hex(Uint8Array.from(atob(image.source.data), c => c.charCodeAt(0)))).toBe(await sha256Hex(stored));
     modelCalls++;
+    // AI通信の代用。実際の手書き認識の精度を証明する試験にはしない。
     return Response.json({ id: "fixture-phone-photo", type: "message", role: "assistant", model: "claude-sonnet-5-5",
       stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 100, output_tokens: 50 },
-      content: [{ type: "text", text: JSON.stringify({ summary: "架空の紙を読みました", rows: [{
-        original_id: "fixture-original", locator: "1行目", household_name: "架空の世帯", ward_group: "架空の班",
-        adults: 2, children: 1, seniors: 0, helper_names: ["架空の手伝う人"], helper_slots: ["受付"], note: "架空の答え", confidence: "high",
+      content: [{ type: "text", text: JSON.stringify({ summary: "架空の回答票", rows: [{
+        original_id: "fixture-original", locator: "人数欄", household_name: "架空の世帯", ward_group: "架空の班",
+        adults: 2, children: 1, seniors: 0, not_attending: false, meeting_status: null, proxy_name: "",
+        helper_names: [], helper_slots: ["受付"], note: "架空の答え", confidence: "high",
       }], unreadable: [] }) }],
     });
   } });
   setPipelineDeps({ createClient: () => client });
   setClientFactory(() => { throw new Error("試験から本物のAIは呼びません"); });
-  try {
+  const send = async (bytes: Uint8Array, hash?: string) => {
     const form = new FormData();
-    form.append("part", new File([original], "架空のスマホ写真.jpg", { type: "image/jpeg" }));
+    form.append("part", new File([bytes], "架空の回答票.jpg", { type: "image/jpeg" }));
     form.append("part_kind", "photo");
-    form.append("part_reading", new File([copy], "reading.jpg", { type: "image/jpeg" }));
+    if (hash) form.append("part_source_hash", hash);
     const response = await realApp.fetch(new Request(`http://localhost/${ward.slug}/admin/intake`, {
       method: "POST", headers: { cookie, origin: "http://localhost", accept: "application/json" }, body: form,
-    }), env, context);
+    }), runtime, context);
     expect(response.status).toBe(200);
-    const result = await response.json() as { ok: boolean; jobId: string; message: string };
+    const result = await response.json() as { ok: boolean; jobId?: string; message: string };
     expect(result.ok).toBe(true);
+    return result;
+  };
+  try {
+    const result = await send(original);
     expect(result.message).toContain("受け取りました");
+    if (!result.jobId) throw new Error("架空写真を受け付けられませんでした");
     await Promise.all(tasks);
     expect(modelCalls).toBe(1);
+    expect(conversions).toBe(1);
     expect(await getJob(env.DB, ward.wardId, result.jobId)).toMatchObject({ status: "read", failure: "" });
-    const stored = await listOriginals(env.DB, ward.wardId, result.jobId);
-    expect(stored).toHaveLength(1);
-    expect(stored[0]!.byte_size).toBe(original.length);
-    const object = await new WardBucket(env.ORIGINALS, ward.wardId).get(stored[0]!.r2_path!);
-    if (!object) throw new Error("原本が保管されていません");
-    const storedBytes = new Uint8Array(await object.arrayBuffer());
-    // 8MBを汎用の深い比較に展開せず、長さと全バイトを照合する。違えば最初の位置が分かる。
-    expect(storedBytes.length).toBe(original.length);
-    expect(storedBytes.findIndex((byte, index) => byte !== original[index])).toBe(-1);
+    const originals = await listOriginals(env.DB, ward.wardId, result.jobId);
+    expect(originals).toHaveLength(1);
+    const row = originals[0]!;
+    expect(row).toMatchObject({ media_type: "image/jpeg", byte_size: stored.length, content_hash: sourceHash });
+    const bucket = new WardBucket(env.ORIGINALS, ward.wardId);
+    const object = await bucket.get(row.r2_path!);
+    if (!object) throw new Error("保管した写真がありません");
+    const saved = new Uint8Array(await object.arrayBuffer());
+    expect(await sha256Hex(saved)).toBe(await sha256Hex(stored));
+    expect(imageDimensions(saved)).toEqual({ width: 1697, height: 2400 });
+    expect((await bucket.list("originals/")).keys.map(item => item.key)).toEqual([row.r2_path]);
     const readings = await getReadings(env.DB, ward.wardId, result.jobId);
     expect(readings).toHaveLength(1);
-    expect(readings[0]!.body).toMatchObject({ rows: [{ original_id: stored[0]!.original_id, household_name: "架空の世帯", adults: 2 }] });
+    expect(readings[0]!.body).toMatchObject({ rows: [{ original_id: row.original_id, household_name: "架空の世帯", adults: 2, children: 1, seniors: 0 }] });
+    const beforeResend = conversions;
+    expect((await send(stored, sourceHash)).message).toContain("同じ");
+    // ブラウザで整えられなかった再送と、LINEの入口からの同じ写真も同じ物になる。
+    expect((await send(original)).message).toContain("同じ");
+    const line = await receive(runtime, { wardId: ward.wardId, via: "line_direct", parts: [{ kind: "photo", filename: "LINEの写真", mediaType: "image/jpeg", bytes: original }] });
+    expect(line.jobId).toBeNull();
+    expect(line.duplicates.map(item => item.originalId)).toEqual([row.original_id]);
+    expect(conversions).toBe(beforeResend + 2);
+    expect((await bucket.list("originals/")).keys).toHaveLength(1);
+    expect(modelCalls).toBe(1);
 
-    const readable: ReadableOriginal = { originalId: stored[0]!.original_id, filename: stored[0]!.filename,
-      position: 1, mediaType: "image/jpeg", bytes: original };
-    let conversions = 0;
-    const transformer: ImageTransformer = {
-      transform(options) { expect(options).toMatchObject({ width: 2000, height: 2000, fit: "scale-down" }); return transformer; },
-      draw() { throw new Error("重ねる処理は使いません"); },
-      async output(options) {
-        expect(options).toMatchObject({ format: "image/jpeg", quality: 85 }); conversions++;
-        return { response: () => new Response(copy), contentType: () => "image/jpeg", image: () => new Blob([copy]).stream() };
-      },
-    };
-    const images: Pick<ImagesBinding, "input"> = { input: () => transformer };
-    // 元の合計24MBでは拒まない。サーバーの写し3MBで数える。
-    const prepared = await prepareReadOriginals([readable, { ...readable, originalId: "fixture-2" }, { ...readable, originalId: "fixture-3" }], images);
-    expect(prepared.map((item) => item.bytes.length)).toEqual([copy.length, copy.length, copy.length]);
-    expect(conversions).toBe(3);
-    await expect(prepareReadOriginals([readable])).rejects.toMatchObject({ failure: "unreadable", retryable: false });
-    await expect(prepareReadOriginals([readable], { input: () => { throw new Error("架空の変換失敗"); } })).rejects.toMatchObject({ failure: "unreadable" });
-    const unread = await readOriginals(client, { kind: "answer_sheet", originals: [readable] });
-    expect(unread.body.unreadable).toEqual([{ original_id: readable.originalId, locator: "全体",
-      note: "写真や紙を読み取れませんでした。明るい場所で、紙の全体が入るように撮れますか。" }]);
-    expect(unread.model).toBe("");
+    // 変換失敗でも大きい写真を保管し、通常の読み取りが既存の質問を残す。
+    const other = await seedWard(env.DB);
+    const failedImages: PhotoImages = { input: () => { throw new Error("架空の変換失敗"); } };
+    const failureEnv = Object.create(env, { IMAGES: { value: failedImages } }) as typeof runtime;
+    const failed = await receive(failureEnv, { wardId: other.wardId, via: "line_direct", parts: [{ kind: "photo", filename: "架空の回答票.jpg", mediaType: "image/jpeg", bytes: original }] });
+    if (!failed.jobId) throw new Error("変換失敗の写真を受け付けられませんでした");
+    const kept = (await listOriginals(env.DB, other.wardId, failed.jobId))[0]!;
+    expect(kept.byte_size).toBe(original.length);
+    const keptObject = await new WardBucket(env.ORIGINALS, other.wardId).get(kept.r2_path!);
+    expect(keptObject?.customMetadata?.photoResizeFailed).toBe("1");
+    expect(await runRead(failureEnv, other.wardId, failed.jobId, { deps: { createClient: () => client } })).toBe("read");
+    const unread = await getReadings(env.DB, other.wardId, failed.jobId);
+    expect(unread[0]!.body.unreadable).toEqual([{ original_id: kept.original_id, locator: "全体", note: "写真や紙を読み取れませんでした。明るい場所で、紙の全体が入るように撮れますか。" }]);
     expect(modelCalls).toBe(1);
   } finally {
     await Promise.allSettled(tasks);

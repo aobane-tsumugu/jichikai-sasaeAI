@@ -1,6 +1,7 @@
 // 入れると列: 受付、ハッシュでの束ね、原本の置き場、読みの流れ（状態、貸し出し、拾い直し）、取り下げ、画面。
 // Anthropic は呼ばない（readImpl を差し替える）。
 import { env } from "cloudflare:workers";
+import { fictionalPaperPhoto } from "../fixtures/test-photo";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setClientFactory } from "../src/ai/deps";
 import { readOriginals, ReadError, type ReadResult } from "../src/ai/read";
@@ -27,9 +28,9 @@ function ctxOf() {
   return { ctx, settle: async () => void (await Promise.all(pending.splice(0))) };
 }
 
-/** 重ならない中身の JPEG（先頭のバイトだけ本物の形）。 */
+/** 同じ印なら同じバイト列になる、寸法を持つ架空のJPEG。 */
 function jpeg(tag = crypto.randomUUID()): Uint8Array {
-  return new Uint8Array([0xff, 0xd8, 0xff, 0xe0, ...new TextEncoder().encode(tag)]);
+  return fictionalPaperPhoto(tag);
 }
 
 const photo = (name = "IMG.jpg", bytes = jpeg()): ReceivePart => ({
@@ -106,6 +107,7 @@ describe("受付", () => {
     // 実体は区の ID の下にある
     const object = await new WardBucket(env.ORIGINALS, ward.wardId).get(originals[0]?.r2_path as string);
     expect(new Uint8Array((await object?.arrayBuffer()) as ArrayBuffer)).toEqual(bytes);
+    expect(object?.customMetadata?.photoResizeFailed).toBeUndefined();
     const listed = await env.ORIGINALS.list({ prefix: `${ward.wardId}/originals/` });
     expect(listed.objects).toHaveLength(1);
     // 裏で読みが動いて終わる

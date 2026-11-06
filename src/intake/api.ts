@@ -28,7 +28,7 @@ export async function receiveOriginal(
   const outcome = await receive(env, input);
   // 受付を先に済ませる。短い確認が失敗しても、通常の読み取りは始める。
   if (outcome.jobId && outcome.needsModelRead && input.via !== "line_direct" && input.via !== "line_group") await quickCheckPhotos(env, input, outcome.jobId).catch(() => undefined);
-  if (outcome.jobId && outcome.needsModelRead) kickRead(env, ctx, input.wardId, outcome.jobId, deps, outcome.readingCopies);
+  if (outcome.jobId && outcome.needsModelRead) kickRead(env, ctx, input.wardId, outcome.jobId, deps);
   // 読みが要らない（文字と Word と Excel だけ）物は、すぐ繋げる順番に入る
   if (outcome.jobId && !outcome.needsModelRead && input.projectId) {
     ctx.waitUntil(dispatchProject(env, input.wardId, input.projectId).catch(logDispatchError));

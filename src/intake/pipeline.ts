@@ -38,7 +38,6 @@ import type { Waitable } from "./types";
 import { attachClarificationQuestions, processPhotoBatches } from "../line/clarifications";
 import { clearPhotoTexts, photoContextProject, photoMatchCandidates, PHOTO_AFTER_MS, type PhotoBatchContext } from "../line/photo-context";
 import { completePhotoMaterial } from "./material";
-import { imagesBinding, useReadingCopies } from "./photo-copy";
 
 export interface PipelineDeps {
   /** 試験で差し替える。既定は署名鍵から作る本物のクライアント */
@@ -73,7 +72,7 @@ export function runRead(
   env: Env,
   wardId: string,
   jobId: string,
-  options: { leaseMs?: number; deps?: PipelineDeps; readingCopies?: ReadableOriginal[] } = {},
+  options: { leaseMs?: number; deps?: PipelineDeps } = {},
 ): Promise<ReadOutcome> {
   const key = `${wardId}\0${jobId}`;
   const active = activeReads.get(key);
@@ -92,7 +91,7 @@ async function performRead(
   env: Env,
   wardId: string,
   jobId: string,
-  options: { leaseMs?: number; deps?: PipelineDeps; readingCopies?: ReadableOriginal[] },
+  options: { leaseMs?: number; deps?: PipelineDeps },
 ): Promise<ReadOutcome> {
   const deps = options.deps ?? defaultDeps;
   const attempt = await claimRead(env.DB, wardId, jobId, options.leaseMs ?? LEASE_AFTER_RESPONSE_MS);
@@ -152,13 +151,14 @@ async function performRead(
         mediaType: o.media_type,
         position: o.position,
         bytes: new Uint8Array(await object.arrayBuffer()),
+        photoResizeFailed: object.customMetadata?.photoResizeFailed === "1",
       });
     }
 
     const answerLabels = job.read_kind === "answer_sheet" ? await getAnswerLabels(env.DB, wardId) : undefined;
     const answerProject = job.read_kind === "answer_sheet" && job.project_id
       ? await env.DB.prepare("SELECT kind FROM projects WHERE ward_id = ? AND project_id = ?").bind(wardId, job.project_id).first<{ kind: string }>() : null;
-    const result = await (deps?.readImpl ?? readOriginals)(client, { kind: job.read_kind, originals: useReadingCopies(readable, options.readingCopies), answerLabels, generalMeeting: answerProject?.kind === "general_meeting", images: imagesBinding(env) });
+    const result = await (deps?.readImpl ?? readOriginals)(client, { kind: job.read_kind, originals: readable, answerLabels, generalMeeting: answerProject?.kind === "general_meeting" });
     const placed = await finishRead(env.DB, {
       wardId,
       jobId,
@@ -471,9 +471,9 @@ async function routeByPaperCode(db: D1Database, wardId: string, jobId: string) {
 }
 
 /** 画面の応答の後に読みを始める。応答は待たない。 */
-export function kickRead(env: Env, ctx: Waitable, wardId: string, jobId: string, deps?: PipelineDeps, readingCopies?: ReadableOriginal[]): void {
+export function kickRead(env: Env, ctx: Waitable, wardId: string, jobId: string, deps?: PipelineDeps): void {
   ctx.waitUntil(
-    runRead(env, wardId, jobId, { deps, readingCopies }).catch((err) => {
+    runRead(env, wardId, jobId, { deps }).catch((err) => {
       console.error("読みの起動に失敗しました", wardId, jobId, describe(err));
     }),
   );
