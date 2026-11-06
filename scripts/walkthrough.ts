@@ -187,16 +187,17 @@ async function waitForDraft(path: string, timeoutMs = DRAFT_WAIT_LIMIT_MS): Prom
   return { ready: false, form };
 }
 async function publish(project: string, html: string, scope: "public" | "space", sectionTitle?: string) {
-  const suffix = scope === "public" ? "/confirm" : "/space";
-  const first = readForm(html, "/publish/" + project + suffix, sectionTitle);
+  const first = readForm(html, "/publish/" + project + "/confirm", sectionTitle);
   if (!first.fields.documentId || !first.fields.versionNo) throw new Error("配る文書と紙を結び付けられません");
   const printPath = admin + "/print/" + project + "/" + encodeURIComponent(first.fields.documentId) + "/" + encodeURIComponent(first.fields.versionNo);
   if (scope === "public") first.fields.lineDelivery = "skip";
   const confirm = await post(first.action, first.fields);
   if (scope === "space") {
-    // 空間への配布は一度の操作で完了し、成功時は公開範囲画面へ303で戻る。
-    if (confirm.status !== 303) throw new Error("実行委員と班長のページへの配布で停止 (" + confirm.status + ")");
-    return { response: confirm, printPath };
+    // 空間へ配る時も内容の確認を通り、確認の「配る」で公開範囲画面へ303で戻る。
+    const second = readForm(await confirm.text(), "/publish/" + project + "/space");
+    const sent = await post(second.action, second.fields);
+    if (sent.status !== 303) throw new Error("実行委員と班長のページへの配布で停止 (" + sent.status + ")");
+    return { response: sent, printPath };
   }
   if (!confirm.ok) throw new Error("配布内容の確認で停止 (" + confirm.status + ")");
   const page = await confirm.text();
