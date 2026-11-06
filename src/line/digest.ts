@@ -63,7 +63,7 @@ export async function sendOfficerDigest(env: Env, wardId: string, slug: string, 
   const usage = await env.DB.prepare(`SELECT COALESCE(MAX(usage_before + recipients), 0) AS used
     FROM line_officer_digests WHERE ward_id = ? AND substr(day, 1, 7) = ?`).bind(wardId, month).first<{ used: number }>();
   const used = Math.max(budget.used, usage?.used ?? 0);
-  if (used + budget.recipients > budget.limit) {
+  if (budget.limit !== null && used + budget.recipients > budget.limit) {
     await deliveryAlert(env.DB, wardId, "digest", "公式LINEの通数が足りないため、問い合わせの知らせを止めました。問い合わせは役員の画面で見られます。"); return;
   }
   const base = new URL(env.PUBLIC_BASE_URL);
