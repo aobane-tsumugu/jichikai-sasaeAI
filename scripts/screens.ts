@@ -191,7 +191,7 @@ async function capture(shot: Shot, width: number) {
       if (await heading.count()) await heading.scrollIntoViewIfNeeded({ timeout: 5000 });
     }
     await page.waitForTimeout(250);
-    await page.screenshot({ path: resolve(out, file), fullPage: false, animations: "disabled" });
+    await page.screenshot({ path: resolve(out, file), fullPage: true, animations: "disabled" });
     rows.push({ stage: shot.stage, name: shot.name, width: suffix, file, result: "撮影", note: "" });
   } catch (error) {
     rows.push({ stage: shot.stage, name: shot.name, width: suffix, file, result: "未撮影", note: safeReason(error) });
