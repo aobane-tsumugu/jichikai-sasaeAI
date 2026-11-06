@@ -292,3 +292,80 @@ table { table-layout: fixed; }
 th, td { overflow-wrap: anywhere; }
 @media (max-width: 35.99rem) { th, td { padding: var(--space-1); } }
 `;
+
+export const PRINT_CSS = `
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+html { background: #d9d9d4; }
+body { margin: 0; color: #000; font: 14pt/1.65 "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif; }
+.toolbar { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 8px 12px; background: #fff; border-bottom: 1px solid #888; font-size: 18px; }
+.toolbar button { font: inherit; min-height: 48px; padding: 4px 18px; border: 1px solid #1f5f8b; border-radius: 6px; background: #1f5f8b; color: #fff; cursor: pointer; }
+.toolbar p { margin: 0; color: #333; }
+.sheet { width: 210mm; min-height: 296mm; margin: 8mm auto; padding: 14mm 16mm 10mm; background: #fff; display: flex; flex-direction: column; break-after: page; page-break-after: always; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3); }
+.sheet:last-of-type { break-after: auto; page-break-after: auto; }
+.sheet-body { flex: 1; min-height: 0; }
+.sheet .sheet-footer { margin-top: auto; }
+.sheet .float-qr { float: right; margin: 0 0 3mm 4mm; }
+.sheet table { border-collapse: collapse; width: 100%; margin: 0 0 3mm; font-size: 14pt; table-layout: fixed; }
+.sheet th, .sheet td { border: 0.3mm solid #000; padding: 1mm 2mm; text-align: left; vertical-align: top; }
+.sheet th { width: auto; }
+.sheet td, .sheet th, .sheet p { overflow-wrap: anywhere; white-space: pre-wrap; }
+.sheet thead { display: table-header-group; }
+.sheet tr, .field-box, .meeting-field, .qr { break-inside: avoid; page-break-inside: avoid; }
+.sheet h1, .sheet h2 { break-after: avoid; }
+.sheet-footer { display: flex; justify-content: space-between; align-items: flex-end; gap: 6mm; padding-top: 2mm; border-top: 0.3mm solid #000; font-size: 9pt; }
+.sheet h1 { margin: 0 0 4mm; font-size: 22pt; line-height: 1.4; }
+.sheet h2 { margin: 5mm 0 2mm; font-size: 15pt; line-height: 1.4; }
+.sheet p { margin: 0 0 3mm; }
+.cut { position: relative; height: 0; margin: 7mm 0; border-top: 0.4mm dashed #000; text-align: center; }
+.cut span { position: relative; top: -3.4mm; padding: 0 3mm; background: #fff; font-size: 9pt; }
+.qr { display: inline-block; text-align: center; font-size: 12pt; line-height: 1.45; }
+.qr svg { display: block; width: 100%; height: auto; }
+.qr small { display: block; overflow-wrap: anywhere; }
+.field-box { margin: 0 0 2mm; border: 0.4mm solid #000; padding: 1.5mm 2.5mm; }
+.field-code { float: right; font: 8pt/1.2 sans-serif; }
+.field-label { font-size: 12pt; font-weight: 700; }
+.sheet .slip { display: flex; gap: 5mm; align-items: flex-start; break-inside: avoid; }
+.sheet .answer-slip { break-inside: avoid; page-break-inside: avoid; }
+.slip-fields { flex: 1; min-width: 0; }
+.slip .qr { flex: none; width: 36mm; }
+.slip h2 { margin-top: 0; }
+.paper-code { font-size: 9pt; }
+.sheet .give { border: .7mm solid #000; padding: 2mm; margin: 2mm 0; font-weight: 700; break-inside: avoid; }
+.sheet .leader-qr { display: flex; align-items: center; gap: 6mm; padding: 4mm; font-weight: 400; }
+.sheet .leader-qr .qr { flex: none; }
+.sheet .paper-facts th { width: 26mm; }
+.meeting-field .field-box { flex: 1; }
+.sheet .field-box p { font-size: 12pt; font-weight: 400; }
+.toolbar > a { min-height: 48px; display: inline-flex; align-items: center; }
+@media screen and (max-width: 500px) { .sheet .slip, .sheet .leader-qr { flex-direction: column; } .sheet table { font-size: 14pt; } }
+@page { size: A4 portrait; margin: 0; }
+@media print {
+  html { background: #fff; }
+  .toolbar { display: none; }
+  .sheet { margin: 0; min-height: 296mm; box-shadow: none; }
+}
+@media screen and (max-width: 215mm) {
+  .sheet { width: auto; height: auto; min-height: 0; margin: 0 0 6mm; padding: 8mm 5mm; }
+}
+`;
+
+export const POSTER_CSS = `
+.sheet.poster { min-height:296mm; display:flex; flex-direction:column; justify-content:space-around; gap:8mm; text-align:center; padding:18mm 16mm; }
+.poster h1 { margin:0; font-size:30pt; line-height:1.4; overflow-wrap:anywhere; }
+.poster dl { margin:0; width:100%; }
+.poster dt { margin:5mm 0 1mm; font-size:13pt; }
+.poster dd { margin:0; font-size:22pt; font-weight:bold; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
+.poster-link { width:100%; }
+.poster-qr { width:70mm; max-width:55%; margin:0 auto; }
+.poster-qr svg { display:block; width:100%; height:auto; }
+.poster-url { display:block; margin-top:3mm; color:#000; font-size:10pt; overflow-wrap:anywhere; }
+@media screen and (max-width:215mm) {
+  .sheet.poster { width:100%; min-height:0; aspect-ratio:210 / 296; margin:0 auto; padding:6%; gap:4vw; }
+  .poster h1 { font-size:clamp(24px,7vw,40px); }
+  .poster dt { margin:3vw 0 1vw; font-size:18px; }
+  .poster dd { font-size:clamp(18px,5vw,28px); }
+  .poster-qr { width:48%; max-width:70mm; }
+  .poster-url { font-size:11px; }
+}
+`;

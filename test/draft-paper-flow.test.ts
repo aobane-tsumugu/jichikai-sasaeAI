@@ -179,13 +179,13 @@ it("資料から当番の案を行にし、役員が直して紙と空間へ配�
     const longPaper = await (await get(realApp, `${printRoot}/announcement`, cookie)).text();
     expect(longPaper).toContain(`${title} 案内`);
     expect(longPaper).toContain("回答票");
-    expect(longPaper.match(/class="sheet(?: dense)?"/g)).toHaveLength(2);
+    expect(longPaper.match(/class="sheet"/g)).toHaveLength(2);
     const answerPaper = await (await get(realApp, `${printRoot}/answer`, cookie)).text();
-    expect(answerPaper.match(/class="sheet(?: dense)?"/g)).toHaveLength(1);
+    expect(answerPaper.match(/class="sheet"/g)).toHaveLength(1);
     expect(answerPaper).toContain("代表者のお名前");
     const leaderPaper = await (await postForm(realApp, `${printRoot}/leader`, {}, cookie)).text();
-    expect(leaderPaper.match(/class="sheet(?: dense)?"/g)).toHaveLength(1);
-    expect(leaderPaper).toContain("班長へのお知らせ");
+    expect(leaderPaper.match(/class="sheet"/g)).toHaveLength(1);
+    expect(leaderPaper).toContain("班長さんへ");
     expect(leaderPaper).not.toContain("区の設定で班の名前を入れる");
     const anonymousLeader = await env.DB.prepare(`SELECT district FROM project_space_members
       WHERE ward_id = ? AND project_id = ? AND role = 'leader'`).bind(ward.wardId, id).first<{ district: string | null }>();
@@ -195,7 +195,7 @@ it("資料から当番の案を行にし、役員が直して紙と空間へ配�
     const short = await latest("announcement");
     expect((await postForm(realApp, `${root}/publish/${id}/send`, { ...fields(short), lineDelivery: "skip" }, cookie, bindings)).status).toBe(303);
     const shortPaper = await (await get(realApp, `${root}/print/${id}/${short.document_id}/${short.version_no}/announcement`, cookie)).text();
-    expect(shortPaper.match(/class="sheet(?: dense)?"/g)).toHaveLength(1);
+    expect(shortPaper.match(/class="sheet"/g)).toHaveLength(1);
     expect(shortPaper).toContain("回答票");
   } finally {
     vi.unstubAllGlobals();
