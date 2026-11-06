@@ -13,12 +13,14 @@ import { getProjectSummary } from "../project/api";
 import { listAnswers } from "../answers/api";
 import { countMeetingAnswers } from "../answers/meeting-store";
 import { meetingTotalsText } from "../answers/meeting";
-import { saveDocument } from "../project/actions";
+import { getEditableDocument, saveDocument } from "../project/actions";
 import { MAP_PROGRESS_LABEL, type MapProgress } from "../project/model";
 import { checkPublicDraft } from "../check";
 import { getDraftPack } from "../draft/packs";
 import { getPublicContact } from "../settings/store";
 import { activityFacts } from "../ward/activity";
+import { documentText } from "../draft/meeting-materials";
+import { meetingDecisionDraft, meetingDecisionStatements } from "./decisions";
 
 interface CloseTask { task_id: string; name: string; period_start: string | null; period_end: string | null; progress: MapProgress; }
 interface CloseEntry extends CloseTask { period: string; requested_by: string; difficulty: string; next_year: string; }
@@ -28,7 +30,9 @@ const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   "activity_input": "活動の紹介、加入で担うこと、得られることを入力してください",
   "activity_private": "公開に出せない情報が含まれる可能性があります。文章と仕事の一覧を見直してください",
   "answers_closed": "この行事は閉じました。答えを直すときは「もう一度開く」を押してください。",
-  "map_closed": "この行事は閉じました。段取りを直すときは「もう一度開く」を押してください。"
+  "map_closed": "この行事は閉じました。段取りを直すときは「もう一度開く」を押してください。",
+  "minutes_save": "議事録を保存できませんでした。内容を確かめて、もう一度閉じてください。",
+  "decisions_long": "決めたことは全体で12000文字まで、1行2000文字までで書いてください。"
 };
 
 const admin = new Hono<AdminEnv>();
@@ -114,7 +118,11 @@ admin.get("/close/:projectId", async (c) => {
     c.env.DB.prepare("SELECT draft_body, published_at FROM project_activity_pages WHERE ward_id = ? AND project_id = ?")
       .bind(ward.wardId, id).first<{ draft_body: string; published_at: string | null }>(),
   ]);
-  const report = (scope: "public" | "staff") => reports.results.find((r) => r.scope === scope)?.body || (scope === "public" ? generatedReport : "");
+  const minutes = project.kind === "board_meeting" || project.kind === "general_meeting";
+  const minutesDocument = minutes ? await getEditableDocument(c.env.DB, ward.wardId, id, "report") : null;
+  const decisions = minutes && !project.closedAt ? await meetingDecisionDraft(c.env.DB, ward.wardId, project) : null;
+  const report = (scope: "public" | "staff") => reports.results.find((r) => r.scope === scope)?.body ||
+    (scope === "public" ? generatedReport : minutesDocument?.scope === "staff" ? documentText(minutesDocument.body) : "");
   const root = adminPath(ward, `/close/${id}`);
   const activityView = c.req.query("view") === "activity";
   if (activityView && (c.req.query("activity") === "saved" || c.req.query("activity") === "published")) {
@@ -172,7 +180,10 @@ admin.get("/close/:projectId", async (c) => {
       <form method="post" action={`${root}/finalize`}>
         <div class="field"><label for="report-public">住民への報告</label><p class="help-text">{report("public") ? "AIが書いた下書きです。直してかまいません。" : "ここに直接書けます。"}閉じると区のページに載ります。</p><textarea id="report-public" name="body" rows={7} maxlength={12000}>{report("public")}</textarea></div>
         {warnings.length ? <div class="notice warn"><strong>報告の中に見つかったもの</strong><ul>{warnings.map((warning) => <li>{warning}</li>)}</ul><p>書き直せます。このまま閉じることもできます。</p></div> : null}
-        <div class="field"><label for="report-staff">役員だけの記録（書かなくてかまいません）</label><p class="help-text">区のページには載りません。</p><textarea id="report-staff" name="body" rows={4} maxlength={12000}>{report("staff")}</textarea></div>
+        <div class="field"><label for="report-staff">{minutes ? "議事録（役員だけ）" : "役員だけの記録（書かなくてかまいません）"}</label><p class="help-text">区のページには載りません。{minutes ? "下書きを直して閉じると、次の会議で読めます。" : ""}</p><textarea id="report-staff" name="body" rows={minutes ? 8 : 4} maxlength={12000}>{report("staff")}</textarea></div>
+        {decisions ? <div class="field"><label for="meeting-decisions">決めたこと</label><p class="help-text">{decisions.proposal ? "AIが資料から拾った下書きを含みます。" : ""}1行に一つずつ書けます。違うところは直すか消してください。閉じると、ここに書いたことが次の役員会と総会の資料に残ります。</p>
+          <textarea id="meeting-decisions" name="decisions" rows={5} maxlength={12000}>{decisions.text}</textarea>
+        </div> : null}
         <h2>来年への一言（書かなくてかまいません）</h2><p class="muted">仕事ごとに、頼んだ人、困ったこと、来年変えることを残せます。来年の段取りに出ます。運営メモに書いたことも、そのまま残ります。ここで書き直さなくてかまいません。</p>
         <a class="quiet" href={adminPath(ward, `/projects/${id}/ledger`)}>運営メモを見る</a>
         {tasks.results.length ? tasks.results.map((task) => <details class="fold" id={`task-${task.task_id}`}><summary>{task.name}</summary><div>
@@ -286,6 +297,11 @@ admin.post("/close/:projectId/finalize", async (c) => {
   await prepareDrafts(c.env.DB, ward.wardId, id, account.accountId);
   // 公開の報告を保存していなければ、閉じる画面の欄に出ていた中身（AI の下書き）を記録に残す。閉じる操作のほかに記録のための操作を求めない。
   const form = await c.req.formData();
+  const minutes = project.kind === "board_meeting" || project.kind === "general_meeting";
+  const decisionText = form.get("decisions");
+  if (minutes && typeof decisionText === "string" && (decisionText.length > 12000 || decisionText.split(/\r?\n/).some((line) => line.length > 2000))) {
+    return c.redirect(`${adminPath(ward, `/close/${id}`)}?error=decisions_long`, 303);
+  }
   const submitted = form.getAll("body");
   const shown = await generatedReportText(c.env.DB, ward.wardId, id);
   const saved = await c.env.DB.prepare("SELECT scope, body FROM project_close_reports WHERE ward_id = ? AND project_id = ?")
@@ -293,6 +309,14 @@ admin.post("/close/:projectId/finalize", async (c) => {
   const publicText = submitted.length ? String(submitted[0]).trim().slice(0, 12000) : saved.results.find((row) => row.scope === "public")?.body || shown;
   const staffText = submitted.length > 1 ? String(submitted[1]).trim().slice(0, 12000) : saved.results.find((row) => row.scope === "staff")?.body ?? "";
   const statements: D1PreparedStatement[] = [];
+  if (minutes && submitted.length > 1) {
+    const ok = await saveDocument(c.env.DB, ward.wardId, id, account.accountId, {
+      kind: "report", title: "議事録", scope: "staff", body: JSON.stringify({ text: staffText, items: [] }), basedOn: project.stateVersion,
+    });
+    const written = ok ? await getEditableDocument(c.env.DB, ward.wardId, id, "report") : null;
+    if (!written?.versionId) return c.redirect(`${adminPath(ward, `/close/${id}`)}?error=minutes_save`, 303);
+    if (typeof decisionText === "string") statements.push(...await meetingDecisionStatements(c.env.DB, ward.wardId, project, account.accountId, decisionText, written.versionId));
+  }
   for (const [scope, text] of [["public", publicText], ["staff", staffText]]) {
     statements.push(c.env.DB.prepare(`UPDATE project_close_reports SET body = ?, updated_at = ?, updated_by_account_id = ?
       WHERE ward_id = ? AND project_id = ? AND scope = ? AND EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL)`)

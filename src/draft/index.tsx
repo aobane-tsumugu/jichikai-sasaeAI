@@ -22,6 +22,7 @@ import { paperHeading } from "../project/heading";
 import { opensOf, taskDraftKind } from "../map/template";
 import { draftMaterials } from "./materials";
 import { startMaterialDraft } from "./start";
+import { getMeetingMaterials, meetingMaterialInstruction, MeetingMaterialsView } from "./meeting-materials";
 
 const SEE_LABEL: Record<Scope, string> = { public: "だれでも読める", space: "実行委員と班長だけ", staff: "役員だけ" };
 const ERROR_MESSAGES: Readonly<Record<string, string>> = {
@@ -71,6 +72,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
   // 保存済みの知らせは通常の下書きとして開き、保存結果や前の下書きも読めるようにする。
   if (project.kind === "event" && kindRaw === "notice" && !document && c.req.query("edit") !== "1") return rainDraft(c);
   const pack = getDraftPack(kindRaw, project.kind);
+  const meetingMaterials = kindRaw === "procedure" ? await getMeetingMaterials(c.env.DB, ward.wardId, project) : null;
   const minutes = kindRaw === "report" && ["general_meeting", "board_meeting"].includes(project.kind);
   const body: DraftBody = document ? parseBody(document.body) : { text: "", items: (minutes ? [] : state.items).map((item) => {
     if (item.current?.content.trim()) return { key: item.key, content: item.current.content };
@@ -131,6 +133,8 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     {taskNotice ? <Notice><span data-ai-status={taskNotice.status}>{taskNotice.message}</span>{taskNotice.status === "done" ? "" : " 画面を閉じても続きます。ここで書いて保存することもできます。"}</Notice> : null}
     {document?.stale ? <div class="notice warn"><strong>新しい資料が届きました</strong><p>このまま直して配れます。</p><a class="quiet" href="#redo">新しい資料を入れて作り直す</a></div> : null}
     {project.closedAt ? <Notice>この行事は閉じました。もう一度開くと下書きを直せます。</Notice> : null}
+    <MeetingMaterialsView ward={ward} materials={meetingMaterials} />
+    {minutes ? <a class="button secondary" href={adminPath(ward, `/close/${id}`)}>議事録を閉じて記録に残す</a> : null}
     <form id="draft-form" method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/save`)}>
       <input type="hidden" name="based_on" value={baseVersion} />
       <div class="field"><label for="title">題</label><input id="title" name="title" value={kindRaw === "announcement" && project.kind === "event" && (document?.title ?? pack.title) === pack.title ? `${project.title}のご案内` : document?.title ?? pack.title} maxlength={100} required /></div>
@@ -299,7 +303,8 @@ admin.post("/projects/:projectId/draft/:kind/start", async (c) => {
       : "\n答えに手伝いの希望はまだありません。";
     const start = project.kind === "event" ? startTask : startMaterialDraft;
     const materials = project.kind === "event" ? "" : await draftMaterials(c.env.DB, ward.wardId, id);
-    await start(c.env, c.executionCtx, { wardId: ward.wardId, projectId: id, task: "draft", instruction: `${pack.instruction}${contact ? `\n区の公開用の連絡先（問い合わせ先に使う）: ${contact}` : ""}${instruction ? `\n役員からの頼み: ${instruction}` : ""}\n対象の文書: ${pack.kind}。範囲: ${pack.scope}。dataにpack_versionを${pack.version}、based_on_state_versionを引いた状態の番号として含めてください。${pack.kind === "duty_roster" ? helperInstruction : ""}${materials}`, accountId: account.accountId });
+    const meetingMaterials = pack.kind === "procedure" ? meetingMaterialInstruction(await getMeetingMaterials(c.env.DB, ward.wardId, project)) : "";
+    await start(c.env, c.executionCtx, { wardId: ward.wardId, projectId: id, task: "draft", instruction: `${pack.instruction}${contact ? `\n区の公開用の連絡先（問い合わせ先に使う）: ${contact}` : ""}${instruction ? `\n役員からの頼み: ${instruction}` : ""}\n対象の文書: ${pack.kind}。範囲: ${pack.scope}。dataにpack_versionを${pack.version}、based_on_state_versionを引いた状態の番号として含めてください。${pack.kind === "duty_roster" ? helperInstruction : ""}${materials}${meetingMaterials}`, accountId: account.accountId });
     return c.redirect(`${adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}?notice=started`, 303);
   } catch { return c.redirect(`${adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}?error=ai_failed`, 303); }
 });
