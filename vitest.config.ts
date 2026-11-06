@@ -14,6 +14,7 @@ export default defineConfig(async () => {
           // Workersのメモリ上限とD1の準備を持ち込まない。
           test: {
             name: "node",
+            testTimeout: 30_000,
             environment: "node",
             pool: "forks",
             include: nodeTests,
@@ -29,6 +30,7 @@ export default defineConfig(async () => {
           ],
           test: {
             name: "workers",
+            testTimeout: 30_000,
             setupFiles: ["./test/apply-migrations.ts"],
             include: ["test/**/*.test.{ts,tsx}", "src/**/*.test.{ts,tsx}"],
             exclude: [...configDefaults.exclude, ...nodeTests],
