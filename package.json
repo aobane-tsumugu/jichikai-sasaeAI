@@ -17,7 +17,8 @@
     "walkthrough": "node scripts/walkthrough.ts",
     "walkthrough-rest": "node scripts/walkthrough-rest.ts",
     "screens": "node scripts/screens.ts",
-    "check-screens": "node scripts/check-screens.ts"
+    "check-screens": "node scripts/check-screens.ts",
+    "line-sim": "node scripts/line-sim.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.4.0",
