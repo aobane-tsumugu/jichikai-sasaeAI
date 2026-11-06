@@ -1,12 +1,17 @@
+import { formatJstDate } from "../core/time";
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
-import { Hint, Layout, Notice } from "../core/ui";
+import { ErrorNotice, Hint, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { getProjectState, getProjectSummary } from "../project/api";
 import { addMapTask, removeMapTask, setMapTask } from "../project/actions";
 import { MAP_PROGRESS_LABEL, SOURCE_KIND_LABEL } from "../project/model";
 import { opensOf, type MapOpens } from "./template";
+
+const ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  "invalid_input": "入力を確認してください"
+};
 
 const admin = new Hono<AdminEnv>();
 const targetPath: Record<MapOpens, (projectId: string, taskId: string) => string> = {
@@ -60,7 +65,7 @@ admin.get("/projects/:projectId/map", async (c) => {
       <a class="button secondary" href={adminPath(ward, `/space/${id}`)}>空間</a>
       <a class="button secondary" href={adminPath(ward, `/close/${id}`)}>報告と閉じる</a>
     </nav>
-    {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}
+    <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     <h2>今の時期に開いている仕事</h2>
     {currentTasks.length ? currentTasks.map((task) => <p><a href={`#task-${task.taskId}`}>{task.name}</a></p>) : <p>今の時期に開いている仕事はありません。</p>}
     <style>{".map-narrow{display:none}@media (max-width:40rem){.map-wide{display:none}.map-narrow{display:block}}"}</style>
@@ -83,7 +88,7 @@ admin.get("/projects/:projectId/map", async (c) => {
         })}
       </svg></div>;
     })}
-    {tasks.map((task, index) => <section class="panel" id={`task-${task.taskId}`}><h2>{task.name}</h2><p>{task.periodStart ?? "時期未定"} から {task.periodEnd ?? "時期未定"}</p>
+    {tasks.map((task, index) => <section class="panel" id={`task-${task.taskId}`}><h2>{task.name}</h2><p>{task.periodStart ? formatJstDate(task.periodStart) : "時期未定"} から {task.periodEnd ? formatJstDate(task.periodEnd) : "時期未定"}</p>
       <p>状態: {MAP_PROGRESS_LABEL[task.progress]} / {task.progressSource ? `出どころ: ${SOURCE_KIND_LABEL[task.progressSource.kind]}${task.progressSource.locator ? ` (${task.progressSource.locator})` : ""}` : "人の入力"}</p>
       {history.results.filter((row) => row.task_key === task.taskKey && [row.requested_by, row.difficulty, row.next_year].some((value) => value.trim())).map((row) => <div>
         <h3>去年の記録</h3>
@@ -118,15 +123,15 @@ admin.use("/projects/:projectId/map/*", async (c, next) => {
     const { ward } = c.var; const id = c.req.param("projectId");
     const project = await getProjectSummary(c.env.DB, ward.wardId, id);
     if (project?.closedAt) {
-      const error = encodeURIComponent("このプロジェクトは閉じました。地図を直す時は「開き直す」を押してください。");
+      const error = "map_closed";
       return c.redirect(`${adminPath(ward, `/close/${id}`)}?error=${error}`, 303);
     }
   }
   await next();
 });
 
-admin.post("/projects/:projectId/map/add", async (c) => { const { ward } = c.var; const f = await c.req.formData(); const ok = await addMapTask(c.env.DB, ward.wardId, c.req.param("projectId"), String(f.get("name") ?? "")); return c.redirect(`${adminPath(ward, `/projects/${c.req.param("projectId")}/map`)}${ok ? "" : "?error=入力を確認してください"}`, 303); });
-admin.post("/projects/:projectId/map/:taskId", async (c) => { const { ward } = c.var; const f = await c.req.formData(); const progress = String(f.get("progress")); const ok = ["open", "started", "done"].includes(progress) && await setMapTask(c.env.DB, ward.wardId, c.req.param("projectId"), c.req.param("taskId"), { name: String(f.get("name") ?? ""), start: String(f.get("start") ?? ""), end: String(f.get("end") ?? ""), progress: progress as "open" | "started" | "done", seatId: String(f.get("seat_id") ?? "") || null }); return c.redirect(`${adminPath(ward, `/projects/${c.req.param("projectId")}/map`)}${ok ? "" : "?error=入力を確認してください"}`, 303); });
+admin.post("/projects/:projectId/map/add", async (c) => { const { ward } = c.var; const f = await c.req.formData(); const ok = await addMapTask(c.env.DB, ward.wardId, c.req.param("projectId"), String(f.get("name") ?? "")); return c.redirect(`${adminPath(ward, `/projects/${c.req.param("projectId")}/map`)}${ok ? "" : "?error=invalid_input"}`, 303); });
+admin.post("/projects/:projectId/map/:taskId", async (c) => { const { ward } = c.var; const f = await c.req.formData(); const progress = String(f.get("progress")); const ok = ["open", "started", "done"].includes(progress) && await setMapTask(c.env.DB, ward.wardId, c.req.param("projectId"), c.req.param("taskId"), { name: String(f.get("name") ?? ""), start: String(f.get("start") ?? ""), end: String(f.get("end") ?? ""), progress: progress as "open" | "started" | "done", seatId: String(f.get("seat_id") ?? "") || null }); return c.redirect(`${adminPath(ward, `/projects/${c.req.param("projectId")}/map`)}${ok ? "" : "?error=invalid_input"}`, 303); });
 admin.post("/projects/:projectId/map/:taskId/remove", async (c) => { const { ward } = c.var; await removeMapTask(c.env.DB, ward.wardId, c.req.param("projectId"), c.req.param("taskId")); return c.redirect(adminPath(ward, `/projects/${c.req.param("projectId")}/map`), 303); });
 
 export { admin as mapAdmin };

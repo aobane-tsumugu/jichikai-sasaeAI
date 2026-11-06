@@ -8,7 +8,7 @@ it("送る画面で用途の短い説明を開ける", async () => {
   const page = await get(realApp, `/${ward.slug}/admin/intake`, cookie);
   expect(page.status).toBe(200);
   const html = await page.text();
-  expect(html).toContain('aria-label="説明"');
-  expect(html).toContain('popover="auto"');
+  expect(html).toContain('<summary>説明を読む</summary>');
+  expect(html).toContain('<details class="hint">');
   expect(html).toContain("資料を撮るか、ファイルや一行の文を送る画面です。分かる時だけ送り先のプロジェクトを選んでください。");
 });

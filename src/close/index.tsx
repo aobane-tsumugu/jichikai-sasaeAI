@@ -1,7 +1,8 @@
+import { formatDateText, formatJstDate } from "../core/time";
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
-import { Hint, Layout, Notice } from "../core/ui";
+import { ErrorNotice, Hint, Layout, Notice } from "../core/ui";
 import { newId, nowIso } from "../core/ids";
 import type { AdminEnv } from "../env";
 import type { Waitable } from "../intake/types";
@@ -17,6 +18,14 @@ interface CloseTask { task_id: string; name: string; period_start: string | null
 interface CloseEntry extends CloseTask { period: string; requested_by: string; difficulty: string; next_year: string; }
 interface ActivityTaskEdit { taskId: string; name: string; period: string; }
 interface ActivityBody { introduction: string; membershipBurden: string; membershipBenefit: string; tasks: ActivityTaskEdit[]; }
+const ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  "activity_input": "活動の紹介、加入で担うこと、得られることを入力してください",
+  "activity_private": "公開に出せない情報が含まれる可能性があります。文章と仕事の一覧を見直してください",
+  "report_private": "報告に公開できない情報が含まれる可能性があります。公開する部分を直してください。",
+  "answers_closed": "このプロジェクトは回答を受け付けていません。回答を直す時は「開き直す」を押してください。",
+  "map_closed": "このプロジェクトは閉じました。地図を直す時は「開き直す」を押してください。"
+};
+
 const admin = new Hono<AdminEnv>();
 
 function parseActivityBody(raw: string | null | undefined): ActivityBody | null {
@@ -50,7 +59,7 @@ async function prepareDrafts(db: D1Database, wardId: string, projectId: string, 
   const stmts = (tasks.results ?? []).map((task) => db.prepare(`INSERT OR IGNORE INTO project_close_map
     (ward_id, project_id, task_id, period, name, progress, requested_by, difficulty, next_year, updated_at, updated_by_account_id)
     VALUES (?, ?, ?, ?, ?, ?, '', '', '', ?, ?)`)
-    .bind(wardId, projectId, task.task_id, [task.period_start, task.period_end].filter(Boolean).join(" 〜 "), task.name, task.progress, now, accountId));
+    .bind(wardId, projectId, task.task_id, [task.period_start, task.period_end].filter((date): date is string => !!date).map(formatJstDate).join(" 〜 "), task.name, task.progress, now, accountId));
   for (const scope of ["public", "staff"] as const) stmts.push(db.prepare(`INSERT OR IGNORE INTO project_close_reports (ward_id, project_id, scope, body, updated_at, updated_by_account_id) VALUES (?, ?, ?, '', ?, ?)`)
     .bind(wardId, projectId, scope, now, accountId));
   if (stmts.length) await db.batch(stmts);
@@ -104,7 +113,7 @@ admin.get("/close/:projectId", async (c) => {
   return c.html(<Layout title={`報告と閉じる: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>{project.title} の報告と閉じる <Hint text={project.closedAt ? "閉じたプロジェクトの報告と地図を見る画面です。直したい時は「開き直す」を押してください。" : "実施後の報告と、来年に残す地図をまとめる画面です。下書きを起こすか、欄に直接書いてください。"} /></h1>
     {project.closedAt ? <Notice>このプロジェクトは閉じました。記録として読めます。</Notice> : <form method="post" action={`${root}/prepare`}><button class="secondary">報告と地図の下書きを起こす</button> <Hint text="今年の中身をもとに、AI に報告と地図の下書きを頼みます。" /></form>}
-    {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}
+    <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     {c.req.query("activity") === "saved" ? <Notice>仕事紹介の下書きを保存しました。</Notice> : null}
     {c.req.query("activity") === "published" ? <Notice>仕事紹介を区のページに載せました。</Notice> : null}
     {status.results?.map((job) => <p>{job.task === "report" ? "報告" : "地図"}: {job.status === "done"
@@ -113,34 +122,34 @@ admin.get("/close/:projectId", async (c) => {
     <h2>報告の下書き</h2>
     {(["public", "staff"] as const).map((scope) => <form class="panel" method="post" action={`${root}/report/${scope}`}>
       <h3>{scope === "public" ? "公開する部分" : "役員だけの部分"} <Hint text={scope === "public" ? "保存した内容は、閉じる時に区のページの同じ行事の所へ載ります。" : "区のページには載せず、役員の記録に残します。"} /></h3>
-      <label for={`report-${scope}`}>報告</label><textarea id={`report-${scope}`} name="body" rows={7} maxlength={12000} style="width:100%;font:inherit" disabled={!!project.closedAt}>{report(scope)}</textarea>
+      <label for={`report-${scope}`}>報告</label><textarea id={`report-${scope}`} name="body" rows={7} maxlength={12000} disabled={!!project.closedAt}>{report(scope)}</textarea>
       {!project.closedAt ? <p><button>保存</button></p> : null}
     </form>)}
     <h2>地図の下書き</h2>
     {tasks.results?.length ? <svg viewBox={`0 0 640 ${Math.max(110, tasks.results.length * 78 + 20)}`} role="img" aria-label="仕事の時期と進み具合">
-      {tasks.results.map((task, i) => <a href={`#task-${task.task_id}`}><g><rect x="8" y={8 + i * 78} width="624" height="66" rx="8" fill="var(--panel)" stroke="var(--line)"/><text x="24" y={35 + i * 78} fill="var(--fg)" font-size="18">{task.period || "時期未設定"}　{task.name}</text><text x="24" y={60 + i * 78} fill="var(--muted)" font-size="15">{MAP_PROGRESS_LABEL[task.progress]}　編集する</text></g></a>)}
+      {tasks.results.map((task, i) => <a href={`#task-${task.task_id}`}><g><rect x="8" y={8 + i * 78} width="624" height="66" rx="8" fill="var(--panel)" stroke="var(--line)"/><text x="24" y={35 + i * 78} fill="var(--fg)" font-size="18">{formatDateText(task.period) || "時期未設定"}　{task.name}</text><text x="24" y={60 + i * 78} fill="var(--muted)" font-size="15">{MAP_PROGRESS_LABEL[task.progress]}　編集する</text></g></a>)}
     </svg> : <p>地図に仕事はありません。</p>}
     {tasks.results?.map((task) => <form class="panel" id={`task-${task.task_id}`} method="post" action={`${root}/map/${task.task_id}`}>
       <h3>{task.name}</h3>
-      <label for={`period-${task.task_id}`}>仕事の時期</label><input id={`period-${task.task_id}`} name="period" type="text" value={task.period} maxlength={80} disabled={!!project.closedAt} />
+      <label for={`period-${task.task_id}`}>仕事の時期</label><input id={`period-${task.task_id}`} name="period" type="text" value={formatDateText(task.period)} maxlength={80} disabled={!!project.closedAt} />
       <label for={`name-${task.task_id}`}>仕事の名前</label><input id={`name-${task.task_id}`} name="name" type="text" value={task.name} maxlength={120} required disabled={!!project.closedAt} />
       <label for={`progress-${task.task_id}`}>進み具合</label><select id={`progress-${task.task_id}`} name="progress" disabled={!!project.closedAt}>{(["open", "started", "done"] as const).map((value) => <option value={value} selected={task.progress === value}>{MAP_PROGRESS_LABEL[value]}</option>)}</select>
       <label for={`requested-${task.task_id}`}>頼んだ人</label><input id={`requested-${task.task_id}`} name="requestedBy" value={task.requested_by} maxlength={160} disabled={!!project.closedAt} />
-      <label for={`difficulty-${task.task_id}`}>困ったこと</label><textarea id={`difficulty-${task.task_id}`} name="difficulty" rows={2} maxlength={1200} disabled={!!project.closedAt} style="width:100%;font:inherit">{task.difficulty}</textarea>
-      <label for={`next-${task.task_id}`}>来年変えること</label><textarea id={`next-${task.task_id}`} name="nextYear" rows={2} maxlength={1200} disabled={!!project.closedAt} style="width:100%;font:inherit">{task.next_year}</textarea>
+      <label for={`difficulty-${task.task_id}`}>困ったこと</label><textarea id={`difficulty-${task.task_id}`} name="difficulty" rows={2} maxlength={1200} disabled={!!project.closedAt}>{task.difficulty}</textarea>
+      <label for={`next-${task.task_id}`}>来年変えること</label><textarea id={`next-${task.task_id}`} name="nextYear" rows={2} maxlength={1200} disabled={!!project.closedAt}>{task.next_year}</textarea>
       {!project.closedAt ? <p><button>この仕事を保存</button></p> : null}
     </form>)}
     <h2>役員の仕事と活動を紹介する</h2>
     <p>AIが起こした報告と地図をもとに、役員が直してから区のページに載せます。記録に残った仕事の件数を示します。時間数や効果は測っていないため、書きません。</p>
     {activityPage?.published_at ? <Notice>区のページに掲載中です。直した内容を反映するには、もう一度掲載してください。</Notice> : null}
     <form class="panel" method="post" action={`${root}/activity`}>
-      <label for="activity-intro">この活動で役員がしたこと</label><textarea id="activity-intro" name="introduction" rows={6} maxlength={5000} style="width:100%;font:inherit">{activity.introduction}</textarea>
-      <label for="activity-burden">加入すると担うこと</label><textarea id="activity-burden" name="membershipBurden" rows={4} maxlength={3000} style="width:100%;font:inherit">{activity.membershipBurden}</textarea>
-      <label for="activity-benefit">加入すると得られること</label><textarea id="activity-benefit" name="membershipBenefit" rows={4} maxlength={3000} style="width:100%;font:inherit">{activity.membershipBenefit}</textarea>
+      <label for="activity-intro">この活動で役員がしたこと</label><textarea id="activity-intro" name="introduction" rows={6} maxlength={5000}>{activity.introduction}</textarea>
+      <label for="activity-burden">加入すると担うこと</label><textarea id="activity-burden" name="membershipBurden" rows={4} maxlength={3000}>{activity.membershipBurden}</textarea>
+      <label for="activity-benefit">加入すると得られること</label><textarea id="activity-benefit" name="membershipBenefit" rows={4} maxlength={3000}>{activity.membershipBenefit}</textarea>
       <fieldset><legend>活動の一覧に載せる仕事</legend>{tasks.results.map((task) => { const saved = activity.tasks.find((entry) => entry.taskId === task.task_id); return <div class="panel">
         <label><input type="checkbox" name="taskId" value={task.task_id} checked={!!saved} /> 活動の一覧に載せる</label>
         <label for={`activity-name-${task.task_id}`}>仕事の名前</label><input id={`activity-name-${task.task_id}`} name={`activityName_${task.task_id}`} value={saved?.name ?? task.name} maxlength={120} />
-        <label for={`activity-period-${task.task_id}`}>時期</label><input id={`activity-period-${task.task_id}`} name={`activityPeriod_${task.task_id}`} value={saved?.period ?? task.period} maxlength={80} />
+        <label for={`activity-period-${task.task_id}`}>時期</label><input id={`activity-period-${task.task_id}`} name={`activityPeriod_${task.task_id}`} value={formatDateText(saved?.period ?? task.period)} maxlength={80} />
       </div>; })}</fieldset>
       <p><button name="action" value="save">下書きを保存</button></p>
       {project.closedAt ? <p><button name="action" value="publish">区のページに載せる</button> <Hint text="入力した活動の紹介と選んだ仕事を、だれでも読める区のページに載せます。" /></p> : null}
@@ -170,11 +179,11 @@ admin.post("/close/:projectId/activity", async (c) => {
   const introduction = String(form.get("introduction") ?? "").trim().slice(0, 5000);
   const membershipBurden = String(form.get("membershipBurden") ?? "").trim().slice(0, 3000);
   const membershipBenefit = String(form.get("membershipBenefit") ?? "").trim().slice(0, 3000);
-  if (action === "publish" && (!introduction || !membershipBurden || !membershipBenefit)) return c.redirect(`${adminPath(ward, `/close/${projectId}`)}?error=${encodeURIComponent("活動の紹介、加入で担うこと、得られることを入力してください")}`, 303);
+  if (action === "publish" && (!introduction || !membershipBurden || !membershipBenefit)) return c.redirect(`${adminPath(ward, `/close/${projectId}`)}?error=activity_input`, 303);
   if (action === "publish") {
     const text = [introduction, membershipBurden, membershipBenefit, ...includedTasks.flatMap((task) => [task.period, task.name])].join("\n");
     const warnings = await checkPublicDraft(c.env.DB, ward.wardId, projectId, "report", { text, items: [] });
-    if (warnings.length) return c.redirect(`${adminPath(ward, `/close/${projectId}`)}?error=${encodeURIComponent("公開に出せない情報が含まれる可能性があります。文章と仕事の一覧を見直してください")}`, 303);
+    if (warnings.length) return c.redirect(`${adminPath(ward, `/close/${projectId}`)}?error=activity_private`, 303);
   }
   const body = JSON.stringify({ introduction, membershipBurden, membershipBenefit, tasks: includedTasks });
   const now = nowIso();
@@ -249,7 +258,7 @@ admin.post("/close/:projectId/finalize", async (c) => {
   const statements: D1PreparedStatement[] = [];
   if (publicText.trim()) {
     const warnings = await checkPublicDraft(c.env.DB, ward.wardId, id, "report", { text: publicText, items: [] });
-    if (warnings.length) return c.redirect(`${adminPath(ward, `/close/${id}`)}?error=${encodeURIComponent("報告に公開できない情報が含まれる可能性があります。公開する部分を直してください。")}`, 303);
+    if (warnings.length) return c.redirect(`${adminPath(ward, `/close/${id}`)}?error=report_private`, 303);
     const latestReport = async () => c.env.DB.prepare(`SELECT v.document_id, v.version_id, v.version_no, v.body FROM documents d
       JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id AND v.project_id = d.project_id
       WHERE d.ward_id = ? AND d.project_id = ? AND d.kind = 'report' AND d.scope = 'public' AND v.scope = 'public'

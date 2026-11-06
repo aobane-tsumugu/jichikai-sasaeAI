@@ -10,7 +10,7 @@ import { Layout, Notice } from "./ui";
 export const loginRoutes = new Hono<WardEnv>();
 
 const LoginPage = (props: { wardName: string; action: string; next: string; error?: string }) => (
-  <Layout title={`${props.wardName} 役員画面のログイン`} siteName={props.wardName} noindex>
+  <Layout title={`${props.wardName} 役員画面のログイン`} siteName={`${props.wardName} 役員の画面`} noindex>
     <h1>役員画面にログイン</h1>
     {props.error ? <Notice error>{props.error}</Notice> : null}
     <form method="post" action={props.action}>
@@ -32,7 +32,7 @@ loginRoutes.get("/login", async (c) => {
   c.header("Cache-Control", "no-store");
   c.header("X-Robots-Tag", "noindex");
   const active = await c.env.DB.prepare("SELECT is_active FROM wards WHERE ward_id = ?").bind(ward.wardId).first<{ is_active: number }>();
-  if (!active || active.is_active !== 1) return c.html(<Layout title="役員画面は停止中" siteName={ward.name} noindex><h1>役員画面は停止中です</h1><p>区のページは引き続きご覧いただけます。</p></Layout>, 503);
+  if (!active || active.is_active !== 1) return c.html(<Layout title="役員画面は停止中" siteName={`${ward.name} 役員の画面`} noindex><h1>役員画面は停止中です</h1><p>区のページは引き続きご覧いただけます。</p></Layout>, 503);
   return c.html(
     <LoginPage
       wardName={ward.name}
@@ -48,7 +48,7 @@ const DUMMY_SALT = "no-such-account";
 loginRoutes.post("/login", async (c) => {
   const ward = c.var.ward;
   const active = await c.env.DB.prepare("SELECT is_active FROM wards WHERE ward_id = ?").bind(ward.wardId).first<{ is_active: number }>();
-  if (!active || active.is_active !== 1) return c.html(<Layout title="役員画面は停止中" siteName={ward.name} noindex><h1>役員画面は停止中です</h1><p>区のページは引き続きご覧いただけます。</p></Layout>, 503);
+  if (!active || active.is_active !== 1) return c.html(<Layout title="役員画面は停止中" siteName={`${ward.name} 役員の画面`} noindex><h1>役員画面は停止中です</h1><p>区のページは引き続きご覧いただけます。</p></Layout>, 503);
   const form = await c.req.parseBody();
   // 現行フォームは loginId。旧フォームが送る name も互換用に受け付ける。
   const hasLoginId = typeof form["loginId"] === "string";
@@ -80,7 +80,7 @@ loginRoutes.post("/login", async (c) => {
         wardName={ward.name}
         action={adminPath(ward, "/login")}
         next={next}
-        error="名前かパスワードが違います。"
+        error="IDかパスワードが違います。もう一度入れてください。分からないときは、ほかの役員に作り直してもらえます"
       />,
       401,
     );

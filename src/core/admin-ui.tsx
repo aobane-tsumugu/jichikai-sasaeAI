@@ -1,4 +1,4 @@
-// 役員画面の共通の枠。各束の admin の画面はこれで包む（区の名前、ログイン中の名前、ログアウトが出る）。
+// 役員画面の共通の枠。各束の admin の画面はこれで包む（区の名前と最初の画面へのリンクが出る）。
 import type { FC, PropsWithChildren } from "hono/jsx";
 import type { AccountInfo, WardInfo } from "../env";
 import { adminPath } from "./auth";
@@ -17,17 +17,8 @@ export const AdminPage: FC<
     title={`${title} ${ward.name}`}
     siteName={ward.name}
     adminHomeHref={adminPath(ward, "/")}
+    headerRight={<span>{account.name} さん</span>}
     noindex
-    headerRight={
-      <>
-        <form class="inline" method="post" action={adminPath(ward, "/logout")}>
-          <span class="muted">{account.name} </span>
-          <button type="submit" class="secondary">
-            ログアウト
-          </button>
-        </form>
-      </>
-    }
   >
     {back ? (
       <p>

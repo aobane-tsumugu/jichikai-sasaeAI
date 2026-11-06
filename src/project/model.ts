@@ -1,3 +1,4 @@
+import { formatJstDate } from "../core/time";
 // プロジェクトの状態の型と定数（束 3）。設計書 5.2 の「プロジェクトの状態の型」の写し。
 // 画面に出す言葉（label）はここに置く。内部の言葉（派生、差分、版、冪等、札、セッション、包み、列、縁）は画面に出さない。
 
@@ -260,6 +261,7 @@ export function displayFieldValue(table: TableKey, name: string, value: string |
   const field = TABLES[table].fields[name];
   if (field?.def.type === "enum") return field.def.labels[String(value)] ?? String(value);
   if (field?.def.type === "amount") return `${Number(value).toLocaleString("ja-JP")} 円`;
+  if (["date", "decidedOn", "submittedOn"].includes(name) && /^\d{4}-\d{2}-\d{2}$/.test(String(value))) return formatJstDate(String(value));
   return String(value);
 }
 

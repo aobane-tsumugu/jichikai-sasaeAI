@@ -1,3 +1,4 @@
+import { formatDateText, formatJstDate } from "../core/time";
 import { Hono } from "hono";
 import { Hint, Layout } from "../core/ui";
 import type { Bundle } from "../core/bundle";
@@ -94,12 +95,12 @@ pub.get("/", async (c) => {
     </section> : null}
     {unique.length === 0 ? <p>公開中のお知らせはありません。</p> : unique.map((item) => <section class="panel" key={item.project_id}>
       <h2><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(item.project_id)}`}>{item.title}</a></h2>
-      <p>更新: {new Date(item.published_at).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}</p>
+      <p>更新: {formatJstDate(item.published_at)}</p>
     </section>)}
     <h2>役員の仕事と活動</h2>
     {activities.results.length === 0 ? <p>掲載中の活動紹介はありません。</p> : activities.results.map((item) => <section class="panel" key={item.project_id}>
       <h3><a href={`/${c.var.ward.slug}/work/${encodeURIComponent(item.project_id)}`}>{item.title}の活動</a></h3>
-      <p>掲載: {new Date(item.published_at).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}</p>
+      <p>掲載: {formatJstDate(item.published_at)}</p>
     </section>)}
   </Layout>);
 });
@@ -120,11 +121,11 @@ pub.get("/work/:projectId", async (c) => {
   return c.html(<Layout title={`${activity.title}の活動`} siteName={c.var.ward.name}>
     <p><a href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のページへ</a></p>
     <h1>{activity.title}で役員がしたこと</h1>
-    <p>この紹介は、役員が直して掲載したものです。掲載: {new Date(activity.published_at).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}</p>
+    <p>この紹介は、役員が直して掲載したものです。掲載: {formatJstDate(activity.published_at)}</p>
     {body.introduction ? <p style="white-space:pre-wrap">{body.introduction}</p> : null}
     <h2>活動の一覧</h2>
     <p>記録にある仕事 {listed.length} 件です。この件数は仕事の記録数で、作業時間や効果を測った数ではありません。</p>
-    {listed.length ? <ul>{listed.map((task) => <li>{task.period || "時期の記録なし"}　{task.name}</li>)}</ul> : <p>紹介する仕事はありません。</p>}
+    {listed.length ? <ul>{listed.map((task) => <li>{formatDateText(task.period) || "時期の記録なし"}　{task.name}</li>)}</ul> : <p>紹介する仕事はありません。</p>}
     <h2>加入すると担うこと</h2><p style="white-space:pre-wrap">{body.membershipBurden || "この項目の説明はありません。"}</p>
     <h2>加入すると得られること</h2><p style="white-space:pre-wrap">{body.membershipBenefit || "この項目の説明はありません。"}</p>
     <h2>一回だけ手伝う</h2>
@@ -168,7 +169,7 @@ pub.get("/p/:projectId", async (c) => {
     <p><a href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のお知らせ</a></p>
     <h1>{items[0]!.title}</h1>
     {[...documents.values()].map(({ latest, earlier }) => {
-      const date = (item: PublicProject) => new Date(item.published_at).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" });
+      const date = (item: PublicProject) => formatJstDate(item.published_at);
       if (latest.unpublished_at) return <article class="panel" key={latest.document_id}>
         <p>{date(latest)} に載せた案内は、掲載を終えました。</p>
       </article>;

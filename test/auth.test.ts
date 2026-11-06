@@ -75,8 +75,8 @@ describe("役員画面の入口", () => {
     expect(cookieFrom(unknownName, DEVICE_COOKIE)).toBeNull();
     const a = await wrongPassword.text();
     const b = await unknownName.text();
-    expect(a).toContain("名前かパスワードが違います");
-    expect(b).toContain("名前かパスワードが違います");
+    expect(a).toContain("IDかパスワードが違います。もう一度入れてください。分からないときは、ほかの役員に作り直してもらえます");
+    expect(b).toContain("IDかパスワードが違います。もう一度入れてください。分からないときは、ほかの役員に作り直してもらえます");
   });
 
   it("ログイン後の戻り先は役員画面の中だけ", async () => {

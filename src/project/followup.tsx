@@ -1,3 +1,4 @@
+import { formatDateText, formatJstDate } from "../core/time";
 import { Hono } from "hono";
 import { adminPath } from "../core/auth";
 import { newId, nowIso } from "../core/ids";
@@ -28,10 +29,10 @@ followupAdmin.get("/inquiries", async (c) => {
       <button type="submit">記録する</button>
     </form>
     <h2>対応の記録</h2>
-    {records.results.map((record) => <article class="panel"><p>{record.received_at} / {record.kind === "request" ? "要望" : "問い合わせ"}</p>
+    {records.results.map((record) => <article class="panel"><p>{formatJstDate(record.received_at)} / {record.kind === "request" ? "要望" : "問い合わせ"}</p>
       <h3>{record.subject}</h3><p>答え: {record.answer}</p><p>{record.submitted_to_city ? "行政に提出" : "行政への提出なし"}</p></article>)}
     <h2>要望の一覧</h2>
-    {records.results.filter((record) => record.kind === "request").map((record) => <article class="panel"><p>{record.received_at}</p><h3>{record.subject}</h3><p>{record.submitted_to_city ? "行政に提出" : "行政への提出なし"}</p></article>)}
+    {records.results.filter((record) => record.kind === "request").map((record) => <article class="panel"><p>{formatJstDate(record.received_at)}</p><h3>{record.subject}</h3><p>{record.submitted_to_city ? "行政に提出" : "行政への提出なし"}</p></article>)}
     {records.results.length === 0 ? <p>記録はありません。</p> : null}
     <p><a href={adminPath(ward, "/")}>役員画面へ</a></p>
   </Layout>);
@@ -77,7 +78,7 @@ followupAdmin.get("/requests/city", async (c) => {
     <h1>行政の依頼 <Hint text="行政から届いた依頼と締切を見ます。依頼の名前を選ぶと、回答案や提出した内容を記録できます。" /></h1>
     <p>届いた通知をもとに、期限、回答、提出した物を記録します。</p>
     {rows.map((project) => <article class="panel"><h2><a href={adminPath(ward, `/requests/city/${encodeURIComponent(project.project_id)}`)}>{project.title}</a></h2>
-      <p>{project.year}年 / 期限: {project.dueOn ?? "未入力"} / 提出: {project.submitted_on ?? "未記録"}</p></article>)}
+      <p>{project.year}年 / 期限: {project.dueOn ? formatDateText(project.dueOn) : "未入力"} / 提出: {project.submitted_on ? formatJstDate(project.submitted_on) : "未記録"}</p></article>)}
     {rows.length === 0 ? <p>行政の依頼はありません。</p> : null}
     <p><a href={adminPath(ward, "/")}>役員画面へ</a></p>
   </Layout>);

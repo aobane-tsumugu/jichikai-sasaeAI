@@ -27,15 +27,15 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
         <p class="muted">利用目的、委託先、消し方はこの文で案内します。消す希望は公開用の連絡先から受け付けます。</p>
         <label for="contact">公開用の連絡先</label>
         <p class="muted">区のページに載ります。役員個人の電話番号やメールは書かず、自治会の窓口にしてください。</p>
-        <textarea id="contact" name="contact" rows={4} maxlength={LIMITS.publicContact} style="width:100%;font:inherit;padding:0.5rem">
+        <textarea id="contact" name="contact" rows={4} maxlength={LIMITS.publicContact}>
           {contact}
         </textarea>
         <label for="official-line-url">公式 LINE の友だち追加の URL（任意） <Hint text="公式 LINE の管理画面で確認できる、友だち追加の URL を貼ってください。区のページに入口が出ます。空にして保存すると入口を外せます。" /></label>
-        <input id="official-line-url" name="official_line_url" type="url" value={lineUrl} style="width:100%;font:inherit;padding:0.5rem" />
+        <input id="official-line-url" name="official_line_url" type="url" value={lineUrl} />
         <p class="muted">友だち追加は任意です。住民に名前や世帯の登録を求めません。</p>
         <label for="squads">班の名前（一行に一つ）</label>
         <p class="muted">回答票に印字され、回答の入口で選ぶ一覧になります。名簿を入れると、そこから入ります。</p>
-        <textarea id="squads" name="squads" rows={8} style="width:100%;font:inherit;padding:0.5rem">
+        <textarea id="squads" name="squads" rows={8}>
           {squads}
         </textarea>
         <p>

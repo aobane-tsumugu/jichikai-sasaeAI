@@ -37,7 +37,7 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
           <label for={`name-${t.id}`}>名前</label>
           <input id={`name-${t.id}`} name="name" type="text" required maxlength={LIMITS.templateName} value={t.name} />
           <label for={`body-${t.id}`}>本文</label>
-          <textarea id={`body-${t.id}`} name="body" rows={5} required maxlength={LIMITS.templateBody} style="width:100%;font:inherit;padding:0.5rem">
+          <textarea id={`body-${t.id}`} name="body" rows={5} required maxlength={LIMITS.templateBody}>
             {t.body}
           </textarea>
           <p>
@@ -58,7 +58,7 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
         <label for="new-name">定型文を足す（名前）</label>
         <input id="new-name" name="name" type="text" required maxlength={LIMITS.templateName} />
         <label for="new-body">本文</label>
-        <textarea id="new-body" name="body" rows={5} required maxlength={LIMITS.templateBody} style="width:100%;font:inherit;padding:0.5rem"></textarea>
+        <textarea id="new-body" name="body" rows={5} required maxlength={LIMITS.templateBody}></textarea>
         <p>
           <button type="submit">足す</button>
         </p>

@@ -74,7 +74,7 @@ admin.post("/space/:projectId/invite", async (c) => {
   try {
     const token = await createInvite(c.env.DB, c.var.ward.wardId, c.req.param("projectId"), role, district, c.var.account.accountId);
       const url = `${new URL(c.req.url).origin}/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(c.req.param("projectId"))}/join/${token}`;
-    return c.html(<Layout title="招待リンク" siteName={c.var.ward.name} noindex><h1>招待リンク <Hint text="空間に入るための招待リンクです。表示されたURLを、招待したい一人にだけ渡してください。" /></h1><p>一度使うと無効になります。相手にだけ渡してください。</p><p class="secret">{url}</p><p><a href={adminPath(c.var.ward.slug, `/space/${encodeURIComponent(c.req.param("projectId"))}`)}>空間の管理に戻る</a></p></Layout>);
+    return c.html(<Layout title="招待リンク" siteName={c.var.ward.name} noindex adminHomeHref={adminPath(c.var.ward.slug, "/")}><h1>招待リンク <Hint text="空間に入るための招待リンクです。表示されたURLを、招待したい一人にだけ渡してください。" /></h1><p>一度使うと無効になります。相手にだけ渡してください。</p><p class="secret">{url}</p><p><a href={adminPath(c.var.ward.slug, `/space/${encodeURIComponent(c.req.param("projectId"))}`)}>空間の管理に戻る</a></p></Layout>);
   } catch (error) {
     return c.text(error instanceof Error ? error.message : "招待を作れませんでした。", 400);
   }
@@ -87,7 +87,7 @@ admin.post("/space/:projectId/leader", async (c) => {
   try {
     const token = await createInvite(c.env.DB, c.var.ward.wardId, c.req.param("projectId"), "leader", district, c.var.account.accountId, true);
     const url = `${new URL(c.req.url).origin}/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(c.req.param("projectId"))}/person/${token}`;
-    return c.html(<Layout title="班長の専用URL" siteName={c.var.ward.name} noindex><h1>{district}の班長の専用URL <Hint text="指定した班の出欠を見られるURLです。該当する班長にだけ渡してください。" /></h1><p>このURLを知っている人だけが使えます。該当する班長にだけ渡してください。</p><p class="secret">{url}</p><p><a href={adminPath(c.var.ward.slug, `/space/${encodeURIComponent(c.req.param("projectId"))}`)}>空間の管理に戻る</a></p></Layout>);
+    return c.html(<Layout title="班長の専用URL" siteName={c.var.ward.name} noindex adminHomeHref={adminPath(c.var.ward.slug, "/")}><h1>{district}の班長の専用URL <Hint text="指定した班の出欠を見られるURLです。該当する班長にだけ渡してください。" /></h1><p>このURLを知っている人だけが使えます。該当する班長にだけ渡してください。</p><p class="secret">{url}</p><p><a href={adminPath(c.var.ward.slug, `/space/${encodeURIComponent(c.req.param("projectId"))}`)}>空間の管理に戻る</a></p></Layout>);
   } catch (error) {
     return c.text(error instanceof Error ? error.message : "専用URLを作れませんでした。", 400);
   }
@@ -113,12 +113,12 @@ pub.post("/space/:projectId/enter", async (c) => {
   const form = await c.req.parseBody();
   const passphrase = typeof form.passphrase === "string" ? form.passphrase : "";
   const credential = await enterWithPassphrase(c.env.DB, c.var.ward.wardId, c.req.param("projectId"), passphrase);
-  if (!credential) return c.html(<Layout title="入れませんでした" siteName={c.var.ward.name}><h1>合言葉を確認してください</h1><p><a href={`/${c.var.ward.slug}/space/${c.req.param("projectId")}`}>もう一度入力する</a></p></Layout>, 403);
+  if (!credential) return c.html(<Layout title="入れませんでした" siteName={await spaceSiteName(c)}><h1>入れませんでした</h1><p>もう一度入れてください。分からないときは役員に聞いてください</p><p><a href={`/${c.var.ward.slug}/space/${c.req.param("projectId")}`}>もう一度入力する</a></p></Layout>, 403);
   setSpaceCookie(c, credential);
   return c.redirect(`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(credential.projectId)}`, 303);
 });
 
-pub.get("/space/:projectId/send-error", (c) => c.html(<Layout title="送れませんでした" siteName={c.var.ward.name}><p>送れませんでした。もう一度お願いします</p></Layout>, 400));
+pub.get("/space/:projectId/send-error", async (c) => c.html(<Layout title="送れませんでした" siteName={await spaceSiteName(c)}><p>送れませんでした。もう一度お願いします</p></Layout>, 400));
 
 pub.get("/space/:projectId/file/:originalId", async (c) => {
   const projectId = c.req.param("projectId");
@@ -175,11 +175,11 @@ async function renderSpace(c: Context<WardEnv>, direct: string | null) {
   if (!state || state.closed_at) return closedNotice(c);
   const fromCookie = await cookieMember(c, projectId);
   const credential = direct ? await findMember(c.env.DB, c.var.ward.wardId, projectId, direct) : fromCookie;
-  if (!credential) return c.html(<Layout title={`入る - ${project.title}`} siteName={c.var.ward.name}><h1>{project.title} の空間 <Hint text="実行委員や班長が資料を見る場所です。役員から届いた合言葉を入れてください。" /></h1><form method="post" action={`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/enter`}><label for="passphrase">合言葉</label><input id="passphrase" name="passphrase" type="password" required /><button type="submit">入る</button></form></Layout>);
+  if (!credential) return c.html(<Layout title={`入る - ${project.title}`} siteName={`${c.var.ward.name} ${project.title}`}><h1>{project.title} の空間 <Hint text="実行委員や班長が資料を見る場所です。役員から届いた合言葉を入れてください。" /></h1><form method="post" action={`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/enter`}><label for="passphrase">合言葉</label><input id="passphrase" name="passphrase" type="password" required /><button type="submit">入る</button></form></Layout>);
   if (direct) setSpaceCookie(c, credential);
   const data = await getSpaceMaterials(c.env.DB, c.var.ward.wardId, projectId, credential.role === "leader" ? credential.district : null);
   return c.html(
-    <Layout title={`プロジェクトの空間 - ${project.title}`} siteName={c.var.ward.name}>
+    <Layout title={`プロジェクトの空間 - ${project.title}`} siteName={`${c.var.ward.name} ${project.title}`}>
       <h1>{project.title} の空間 <Hint text="このプロジェクトの出欠や配られた資料を見る場所です。必要な資料を開き、書き込みのある紙は写真で送れます。" /></h1>
       {credential.role === "leader" && credential.district ? <p>{credential.district}の班長向け</p> : null}
       {c.req.query("sent") === "answer" ? <p role="status">回答票を受け取りました。読み取った内容は、役員画面と同じ回答の集計に入ります。</p> : c.req.query("sent") === "paper" ? <p role="status">紙を受け取りました。役員が配り直すまで、配った文書は変わりません。</p> : null}
@@ -209,8 +209,14 @@ function setSpaceCookie(c: Context<WardEnv>, credential: SpaceCredential): void 
   setCookie(c, `space_${credential.projectId}`, credential.token, { path: `/${c.var.ward.slug}/space/${credential.projectId}`, httpOnly: true, secure: new URL(c.req.url).protocol === "https:", sameSite: "Lax", maxAge: 30 * 24 * 60 * 60 });
 }
 
-function closedNotice(c: Context<WardEnv>) {
-  return c.html(<Layout title="閉じました" siteName={c.var.ward.name}><p>閉じました。役員に聞いてください</p></Layout>, 403);
+async function spaceSiteName(c: Context<WardEnv>): Promise<string> {
+  const project = await c.env.DB.prepare("SELECT title FROM projects WHERE ward_id = ? AND project_id = ?")
+    .bind(c.var.ward.wardId, c.req.param("projectId")).first<{ title: string }>();
+  return project ? c.var.ward.name + " " + project.title : c.var.ward.name;
+}
+
+async function closedNotice(c: Context<WardEnv>) {
+  return c.html(<Layout title="閉じました" siteName={await spaceSiteName(c)}><p>閉じました。役員に聞いてください</p></Layout>, 403);
 }
 
 export const space: Bundle = { admin, pub };
