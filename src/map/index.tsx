@@ -55,11 +55,10 @@ admin.get("/projects/:projectId/map", async (c) => {
         <section class="next"><strong>次は</strong>
           <p>{first && questions.length ? `質問が${questions.length}つあります。答えると、案内の下書きが整います。答えなくても進められます。` : next ? next.periodEnd ? `${shortDate(next.periodEnd)}までの仕事です。` : "時期はあとから直せます。" : "段取りの仕事は全部済みました。"}</p>
           <a class="button" href={adminPath(ward, first && questions.length ? `/projects/${id}/questions` : next ? taskUrl(next) : `/close/${id}`)}>{first && questions.length ? "質問に答える" : next?.name ?? "報告を書いて閉じる"}</a>
-          {tasks.some((task) => task.taskId === c.req.query("changed") && task.progress === "done") ? <a class="quiet" href={adminPath(ward, `/print/${id}`)}>案内の紙を印刷する</a> : null}
+          {tasks.some((task) => task.taskId === c.req.query("changed") && task.taskKey === "announcement" && task.progress === "done") ? <a class="quiet" href={adminPath(ward, `/print/${id}`)}>案内の紙を印刷する</a> : null}
         </section>
         <div class="action-links">
           <a class="button secondary" href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>資料を送る</a>
-          <a class="button secondary" href={adminPath(ward, `/print/${id}`)}>紙を印刷する</a>
         </div>
       </>}
       <div class="split"><section>
@@ -70,7 +69,7 @@ admin.get("/projects/:projectId/map", async (c) => {
             const just = task.taskId === c.req.query("changed") && task.progress === "done";
             const owner = seats.results.find((seat) => seat.seat_id === task.seatId)?.title;
             return <li><a class={`map-row${task.progress === "done" ? " done" : current ? " now" : ""}${just ? " just" : ""}`} href={adminPath(ward, taskUrl(task))}>
-              <span class="map-name"><b>{task.name}</b><small>{task.progress === "done" ? "済み" : task.periodStart && task.periodStart === task.periodEnd ? formatJstDate(task.periodStart) : current ? task.periodEnd ? `${shortDate(task.periodEnd)}まで` : MAP_PROGRESS_LABEL[task.progress] : task.periodStart ? `${shortDate(task.periodStart)}から` : "時期はまだ決まっていません"}{owner ? `　${owner}` : ""}</small>{just ? <small class="map-just">いま済みにしました</small> : null}</span>
+              <span class="map-name"><b>{task.name}</b><small>{task.progress === "done" ? "済み" : task.periodStart && task.periodStart === task.periodEnd ? formatJstDate(task.periodStart) : current ? task.periodEnd ? `${shortDate(task.periodEnd)}まで` : MAP_PROGRESS_LABEL[task.progress] : task.periodStart ? `${shortDate(task.periodStart)}から${task.periodEnd ? shortDate(task.periodEnd) : ""}` : "時期はまだ決まっていません"}{owner ? `　${owner}` : ""}</small>{just ? <small class="map-just">いま済みにしました</small> : null}</span>
               <span class="map-track">{task.periodStart || task.periodEnd ? <i style={`--from:${calendar.position(task.periodStart ?? task.periodEnd ?? calendar.first) * 100}%;--to:${calendar.position(task.periodEnd ?? task.periodStart ?? calendar.last) * 100}%`} /> : null}</span>
             </a></li>;
           })}</ol>
@@ -79,7 +78,7 @@ admin.get("/projects/:projectId/map", async (c) => {
       </section><aside>
         <ul class="rows"><li><a class="row-link" href={adminPath(ward, `/projects/${id}/questions`)}><b>{questions.length ? `質問が${questions.length}つあります` : "質問はありません"}</b><span>答えなくても配れます。</span></a></li></ul>
         <h2>最近届いた資料</h2>
-        {materials.results.length ? <ul class="rows">{materials.results.slice(0, 3).map((material) => <li><a class="row-link" href={adminPath(ward, `/intake/originals/${material.original_id}`)}><b>{material.filename || "一行の文"}</b><span>{shortDate(material.created_at)}に送りました</span></a></li>)}</ul> : <p>資料はまだ届いていません。</p>}
+        {materials.results.length ? <ul class="rows">{materials.results.slice(0, 3).map((material) => <li><a class="row-link" href={adminPath(ward, `/intake/originals/${material.original_id}`)}><b>{material.filename || "一行の文"}</b><span>{tasks.filter((task) => task.progressSource?.kind === "original" && task.progressSource.ref === material.original_id).map((task) => `「${task.name}」を${task.progress === "done" ? "済み" : "進行中"}にしました`).join("。") || (material.status === "done" ? "読み終わりました。届いた資料で中身を見られます" : material.status === "failed" ? "読めませんでした。届いた資料から読み直せます" : "読み取りを進めています")}</span></a></li>)}</ul> : <p>資料はまだ届いていません。</p>}
         {!project.closedAt ? <details class="fold" id="event-day" open={c.req.query("error") === "invalid_input"}><summary>行事の日を直す</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/map/event-day`)}>
           <div class="field"><label for="event-day-input">行事の日</label><input id="event-day-input" name="event_day" type="date" value={day ?? ""} required /></div>
           <p>済んでいない仕事の時期も動きます。案内の文は変わりません。もう一度入れ直せば戻せます。</p><button class="secondary">行事の日を保存する</button>
@@ -88,6 +87,8 @@ admin.get("/projects/:projectId/map", async (c) => {
           <form method="post" action={adminPath(ward, `/projects/${id}/map/add`)}><div class="field"><label for="new-task">足す仕事の名前</label><input id="new-task" name="name" maxlength={100} required /></div><button class="secondary">足す</button></form>
           {removed.results.length ? <><p><b>外した仕事</b></p>{removed.results.map((task) => <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.task_id}/restore`)}><p>{task.name}</p><button class="secondary">この仕事を戻す</button></form>)}</> : null}
         </div></details> : null}
+        <p><a class="quiet" href={adminPath(ward, `/projects/${id}`)}>届いた資料と今年の中身</a></p>
+        <p><a class="quiet" href={adminPath(ward, `/print/${id}`)}>紙を印刷する</a></p>
         <p><a class="quiet" href={adminPath(ward, `/answers/${id}`)}>答えを見る</a></p>
         <p><a class="quiet" href={adminPath(ward, `/space/${id}`)}>実行委員と班長のページ</a></p>
         {canRain && !project.closedAt ? <p><a class="quiet" href={adminPath(ward, `/projects/${id}/draft/notice`)}>雨の変更を知らせる</a></p> : null}

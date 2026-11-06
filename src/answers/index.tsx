@@ -98,7 +98,7 @@ admin.get("/answers/roster", async (c) => {
           <p class="help-text">Excelのファイル（.xlsx）と、.csvのファイルを読めます。先頭の行の見出しから、代表者のお名前と班の項目を見つけます。見つからないときだけ、項目を選んでもらいます。</p></div>
         <input type="hidden" name="text" value="" /><p id="send-status" class="notice" role="status"></p>
         <p>読み込むと、今の名簿は消えます。間違えたときは、正しい名簿をもう一度読み込むか、紙の名簿を撮り直して読み取ると、入れ替わります。</p>
-        <div class="action-bar"><button id="send-button" type="submit">名簿を読み込む</button></div>
+        <div class="action-bar page-action"><button id="send-button" type="submit">名簿を読み込む</button></div>
       </form><script dangerouslySetInnerHTML={{ __html: SEND_SCRIPT }} />
       <form class="panel" method="post" action={`${root}/photo`} enctype="multipart/form-data">
         <h2>紙の名簿しかないとき</h2><p>見出しのない紙でも読めます。名簿を写真に撮って送ってください。AIが表に読み取ります。</p>
@@ -292,7 +292,7 @@ admin.get("/answers/:projectId", async (c) => {
       {!roster.length ? <p>名簿はまだありません。名簿を入れると、まだ答えていない世帯を見られます。</p> : unanswered.map((group) => <section><h2>{group.district}（{group.households.length}世帯）</h2>{group.households.length ? <ul>{group.households.map((name) => <li>{name}</li>)}</ul> : <p>まだ答えていない世帯はありません。</p>}</section>)}
       <p>名前の書き方が名簿と違うと、答えていてもここに出ることがあります。</p>
     </Sheet></PrintDocument>);
-  const titles: Record<string, string> = { send: "回答票を撮って送る", sent: "回答票を受け取りました", unanswered: "まだ答えていない世帯", hand: "電話や紙の答えを手で入れる", list: "答えの一覧", helpers: "手伝いの一覧" };
+  const titles: Record<string, string> = { send: "回答票を撮って送る", sent: "回答票を受け取りました", unanswered: "まだ答えていない世帯", hand: "電話や紙の答えを手で入れる", list: "答えの一覧", read: "読み取った答えを直して入れる", helpers: "手伝いの一覧" };
   const title = titles[view] ?? `${project.title}の答え`;
   const receipt = c.req.query("done");
   if (receipt === "hand" || receipt === "deadline" || receipt === "edit" || receipt === "delete") {
@@ -317,6 +317,7 @@ admin.get("/answers/:projectId", async (c) => {
       <ul class="rows two">
         <li><a class="row-link" href={`${root}?view=unanswered`}><b>まだ答えていない世帯{remaining}世帯</b><span>班ごとに見て、印刷して班長に渡せます</span></a></li>
         {!closed ? <li><a class="row-link" href={`${root}?view=hand`}><b>電話や紙の答えを手で入れる</b><span>代表者のお名前、班、人数を入れます</span></a></li> : null}
+        <li><a class="row-link" href={`${root}?view=read`}><b>回答票から読み取った答え</b><span>写真と読み取った内容を見て、直せます</span></a></li>
         <li><a class="row-link" href={`${root}?view=list`}><b>答えの一覧</b><span>読み違いは、ここで直せます</span></a></li>
         <li><a class="row-link" href={`${root}?view=helpers`}><b>手伝いの一覧{helperCount}人</b><span>当番表の下書きを作れます</span></a></li>
       </ul>
@@ -340,7 +341,13 @@ admin.get("/answers/:projectId", async (c) => {
       <p class="muted">必要なら印刷して班長に渡せます。答えを出してもらうために回る必要はありません。名前の書き方が名簿と違うと、答えていてもここに出ることがあります。</p></> : null}
     {view === "list" ? <><p class="lead">押すと、直したり消したりできます。</p><ul class="rows two">{answers.map((answer) => <li><a class="row-link" href={`${root}/${encodeURIComponent(answer.answerId)}/edit`}><b>{answer.household}</b><span>{answer.district || "班が分からない"}　{countText(answer, labels)}</span><span>{answer.source === "web" ? "スマホの答え" : answer.source === "phone" ? "電話の答え" : answer.source === "line" ? "LINEの答え" : "紙の回答票から読みました"}</span></a></li>)}</ul>
       {!answers.length ? <p>答えはまだありません。</p> : null}<p>班が分からない{answers.filter((answer) => !answer.district).length}世帯</p>
-      {sheets.results.map((sheet) => <details class="fold"><summary>{sheet.filename || "回答票の読み取り"}</summary><div><a class="quiet" href={adminPath(c.var.ward.slug, `/intake/originals/${encodeURIComponent(sheet.original_id)}`)}>回答票の写真を読む</a>{renderSheetRows(sheet.body, projectId, sheet.original_id, c.var.ward.slug, closed, answers, labels, project.title)}</div></details>)}</> : null}
+      {sheets.results.map((sheet) => <details class="fold"><summary>{sheet.filename || "回答票の読み取り"}</summary><div><a class="quiet" href={adminPath(c.var.ward.slug, `/intake/originals/${encodeURIComponent(sheet.original_id)}`)}>回答票の写真を読む</a>{renderSheetRows(sheet.body, projectId, sheet.original_id, c.var.ward.slug, closed, answers, labels, project.title, districts)}</div></details>)}</> : null}
+    {view === "read" ? <><p class="lead">回答票の写真から読み取りました。読めなかったところを入れて、その答えの「答えに入れる」を押してください。入れた答えも直せます。</p>
+      {!sheets.results.length ? <p>回答票はまだ届いていません。</p> : sheets.results.filter((sheet) => !c.req.query("original") || sheet.original_id === c.req.query("original")).map((sheet, index) => <section>
+        <h2>{sheet.filename || "回答票の写真"}</h2><a class="quiet" href={adminPath(c.var.ward.slug, `/intake/originals/${encodeURIComponent(sheet.original_id)}`)}>元の資料（回答票の写真）を見る</a>
+        {renderSheetRows(sheet.body, projectId, sheet.original_id, c.var.ward.slug, closed, answers, labels, project.title, districts, index === 0)}
+      </section>)}
+    </> : null}
     {view === "helpers" ? <><p class="lead">世帯の答えにある手伝いと、手伝いだけの申し込みを合わせました。</p>{!closed ? <form class="action-links" method="post" action={adminPath(c.var.ward.slug, `/projects/${projectId}/draft/duty_roster/start`)}><button>当番表の下書きを作る</button></form> : null}
       {helperCount ? <table class="stack"><thead><tr><th>お名前</th><th>時間帯</th><th>申し込み</th></tr></thead><tbody>{offers.map((offer) => <tr><td data-label="お名前">{offer.name}</td><td data-label="時間帯">{offer.times}</td><td data-label="申し込み">手伝いだけ</td></tr>)}{helpers.map((helper) => <tr><td data-label="お名前">{helper.name}</td><td data-label="時間帯">{helper.times}</td><td data-label="申し込み">世帯の答え（{helper.district || "班が分からない"}）</td></tr>)}</tbody></table> : <p>手伝いの希望はまだありません。</p>}<p class="muted">手伝いだけの申し込みの名前は、行事を閉じると消えます。</p></> : null}
   </AdminPage>);
@@ -372,9 +379,9 @@ admin.get("/answers/:projectId/:answerId/edit", async (c) => {
   const back = adminPath(ward.slug, `/answers/${encodeURIComponent(projectId)}`);
   const endpoint = `${back}/${encodeURIComponent(answer.answerId)}`;
   return c.html(<Layout title="答えを直す・消す" siteName={ward.name} noindex adminHomeHref={adminPath(ward.slug, "/")}>
-    <p class="link-line"><a href={`${back}?view=list`}>答えの一覧へ戻る</a></p>
-    <h1>{answer.household}の答えを直す</h1><p class="lead">直したいところを書き換えて、保存してください。保存する前に戻ると、元のままです。</p>
-    {project.closed_at ? <p class="notice">この行事は閉じています。答えを直すときは<a href={adminPath(ward.slug, `/close/${encodeURIComponent(projectId)}`)}>「もう一度開く」の画面へ進んでください</a>。</p> : <>
+    <a class="back" href={`${back}?view=list`}>← 答えの一覧へ</a>
+    <h1>{answer.household}の答えを直す</h1>{!project.closed_at ? <p class="lead">直したいところを書き換えて、保存してください。保存する前に戻ると、元のままです。</p> : null}
+    {project.closed_at ? <><div class="notice warn"><strong>この行事は終わっています</strong><p>答えを直すときは、先に行事をもう一度開いてください。</p></div><div class="action-links"><a class="button" href={adminPath(ward.slug, `/close/${encodeURIComponent(projectId)}`)}>行事をもう一度開く画面へ</a></div><p class="muted">もう一度開いても、これまでの記録は残ります。</p></> : <>
       <form method="post" action={`${endpoint}/edit`} class="panel">
         <label for="edit-household">代表者のお名前</label><input id="edit-household" name="household" type="text" value={answer.household} required maxLength={120} />
         <fieldset><legend>班</legend><DistrictSelect districts={editDistricts} selected={answer.district} /></fieldset>
@@ -659,7 +666,7 @@ function RosterColumnPicker({ wardName, wardSlug, headers, rows }: { wardName: s
   </form></Layout>;
 }
 
-function renderSheetRows(body: string | null, projectId: string, originalId: string, wardSlug: string, closed: boolean, answers: AnswerRow[], labels: AnswerLabels, title: string) {
+function renderSheetRows(body: string | null, projectId: string, originalId: string, wardSlug: string, closed: boolean, answers: AnswerRow[], labels: AnswerLabels, title: string, districts: string[], primary = false) {
   if (!body) return <p>読み取り中です。時間をおいて開き直してください。</p>;
   let parsed: unknown;
   try {
@@ -672,22 +679,24 @@ function renderSheetRows(body: string | null, projectId: string, originalId: str
   }
   const reading = parsed as AnswerSheetReading;
   if (reading.rows.length === 0) return <p>{reading.summary || "回答票から答えを見つけられませんでした。"}</p>;
+  const firstUnsaved = reading.rows.findIndex((_, index) => !answers.some((answer) => answer.originalId === originalId && answer.sheetRowIndex === index));
   return <>
-    <p>{reading.summary}</p>
+    <div class="notice"><strong>{reading.summary}</strong><p>読み取った内容は、下の欄に入れてあります。</p></div>
     {reading.rows.map((row, index) => {
       const saved = answers.find((answer) => answer.originalId === originalId && answer.sheetRowIndex === index);
       const count = saved?.peopleCount ?? (row.not_attending ? 0 : (row.adults ?? 0) + (row.children ?? 0) + (row.seniors ?? 0));
       const endpoint = adminPath(wardSlug, `/answers/${encodeURIComponent(projectId)}/sheet/${encodeURIComponent(originalId)}/row/${index}`);
       return <form class="panel" method="post" action={endpoint}>
-        <h2>{index + 1}枚目（{row.locator}）</h2>{saved ? <p class="notice done">入れました</p> : null}
+        <h2>{index + 1}枚目（{row.locator}）{saved ? <span class="tag done">入れました</span> : null}</h2>
         <label for={`sheet-household-${originalId}-${index}`}>代表者のお名前</label><input id={`sheet-household-${originalId}-${index}`} name="household" type="text" value={saved?.household ?? row.household_name} required maxlength={120} disabled={closed} />
-        <label for={`sheet-district-${originalId}-${index}`}>班</label><input id={`sheet-district-${originalId}-${index}`} name="district" type="text" value={saved?.district ?? row.ward_group} maxlength={80} disabled={closed} />
+        <fieldset><legend>班</legend><div class="choice half">{[...new Set([...districts, saved?.district ?? row.ward_group].filter(Boolean))].map((district) => <label><input type="radio" name="district" value={district} checked={district === (saved?.district ?? row.ward_group)} disabled={closed} />{district}</label>)}<label><input type="radio" name="district" value="" checked={!(saved?.district ?? row.ward_group)} disabled={closed} />分からない</label></div></fieldset>
         <AttendanceFields title={title} selected={saved ? (saved.peopleCount > 0 ? "yes" : "no") : row.not_attending ? "no" : count > 0 ? "yes" : undefined} disabled={closed} />
         <div class="admin-answer-counts"><CountFields labels={labels} answer={saved ?? { peopleCount: count, childrenCount: row.not_attending ? 0 : row.children, adultsCount: row.not_attending ? 0 : row.adults, seniorsCount: row.not_attending ? 0 : row.seniors }} prefix={`sheet-${originalId}-${index}`} disabled={closed} /></div>
-        <label for={`sheet-helper-${originalId}-${index}`}>手伝う人の名前</label><input id={`sheet-helper-${originalId}-${index}`} name="helper_name" type="text" value={saved?.helperName ?? row.helper_names.join("、")} maxlength={240} disabled={closed} />
-        <label for={`sheet-times-${originalId}-${index}`}>手伝える時間帯</label><input id={`sheet-times-${originalId}-${index}`} name="helper_times" type="text" value={saved?.helperTimes ?? row.helper_slots.join("、")} maxlength={240} disabled={closed} />
+        {!saved && !row.not_attending && count === 0 ? <p class="warn-text">人数が読めませんでした。写真を見て入れてください。</p> : null}
+        <label for={`sheet-helper-${originalId}-${index}`}>手伝う方のお名前（書かなくてかまいません）</label><input id={`sheet-helper-${originalId}-${index}`} name="helper_name" type="text" value={saved?.helperName ?? row.helper_names.join("、")} maxlength={240} disabled={closed} />
+        <label for={`sheet-times-${originalId}-${index}`}>手伝える時間帯（書かなくてかまいません）</label><input id={`sheet-times-${originalId}-${index}`} name="helper_times" type="text" value={saved?.helperTimes ?? row.helper_slots.join("、")} maxlength={240} disabled={closed} />
         {!closed ? <><p>読み違いがあれば直して入れられます。</p>
-        <button type="submit">{saved ? "直して入れ直す" : "この答えを入れる"}</button></> : null}
+        <div class={primary && index === firstUnsaved ? "action-bar page-action" : "action-links"}><button type="submit" class={primary && index === firstUnsaved ? undefined : "secondary"}>{saved ? "直して入れ直す" : "答えに入れる"}</button></div></> : null}
       </form>;
     })}
   </>;

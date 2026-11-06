@@ -11,14 +11,13 @@ export function MaterialsTable({ table, items }: {
   if (!rows.length) return <p>まだありません。</p>;
   const fields = Object.entries(TABLES[table].fields).filter(([name]) =>
     table !== "sponsors" || name === "name" || name === "reply");
-  return <div class="panel" role="region" aria-label={TABLES[table].label}>
+  return <div role="region" aria-label={TABLES[table].label}>
     <table class="stack">
-      <caption>{table === "duties" ? "当番表" : table === "layout" ? "配置図" : "協賛先と打診"}</caption>
       <thead><tr>{fields.map(([name, field]) => <th scope="col" key={name}>{field.label}</th>)}</tr></thead>
       <tbody>{rows.map((row, index) => <tr key={index}>{fields.map(([name]) => {
         const value = row.data[name];
         const text: RowData[string] | undefined = typeof value === "string" || typeof value === "number" ? value : undefined;
-        return <td key={name} data-label={TABLES[table].fields[name]?.label} class="preserve-lines">{displayFieldValue(table, name, text) || "—"}</td>;
+        return <td key={name} data-label={TABLES[table].fields[name]?.label} class="preserve-lines">{table === "sponsors" && name === "reply" ? (["yes", "no"].includes(String(text)) ? `返事あり（${displayFieldValue(table, name, text)}）` : "返事待ち") : displayFieldValue(table, name, text) || "—"}</td>;
       })}</tr>)}</tbody>
     </table>
   </div>;

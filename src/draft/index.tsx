@@ -108,7 +108,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
   const oldDates = [...new Set(state.items.find((item) => item.key === "date_time")?.references.flatMap((ref) => ref.content.match(/\d{1,2}月\d{1,2}日/g) ?? []) ?? [])].filter((date) => body.text.includes(date) && !dateValue.includes(date));
   const bodyCheck = c.req.query("notice") === "saved" ? documentBodyCheckMessage(c.req.query("check_body")) : null;
   return c.html(<Layout title={`${pack.title}の下書きを直す`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, relatedTask ? `/projects/${id}/map/${relatedTask.taskId}` : `/projects/${id}/map`)}>← {relatedTask ? relatedTask.name : `${project.title}の段取り`}へ</a>
+    <a class="back" href={adminPath(ward, kindRaw === "duty_roster" ? `/projects/${id}/draft` : relatedTask ? `/projects/${id}/map/${relatedTask.taskId}` : `/projects/${id}/map`)}>← {kindRaw === "duty_roster" ? "下書きの一覧" : relatedTask ? relatedTask.name : `${project.title}の段取り`}へ</a>
     <h1>{pack.title}の下書きを直す</h1>
     <p class="lead">{kindRaw === "duty_roster" ? "実行委員と班長に見せる当番表です。" : kindRaw === "recruitment" && scope === "public" ? "区のページの「一回だけ手伝う」に出る募集です。" : scope === "public" ? "だれでも読める案内です。" : scope === "space" ? "実行委員と班長だけが読めます。" : "役員だけが読めます。"}直して保存しても、まだ配られません。</p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
@@ -116,28 +116,31 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     {bodyCheck ? <Notice>{bodyCheck}</Notice> : null}
     {c.req.query("notice") === "restored" ? <Notice>前の下書きに戻しました。今の下書きも残ります。</Notice> : null}
     {taskNotice ? <Notice><span data-ai-status={taskNotice.status}>{taskNotice.message}</span> 画面を閉じても処理は続きます。ここで書いて保存することもできます。</Notice> : null}
-    {document?.stale ? <div class="notice warn"><strong>新しいものが入りました</strong><p>このまま直して配れます。</p><a class="quiet" href="#redo">新しい資料を入れて作り直す</a></div> : null}
+    {document?.stale ? <div class="notice warn"><strong>新しい資料が届きました</strong><p>このまま直して配れます。</p><a class="quiet" href="#redo">新しい資料を入れて作り直す</a></div> : null}
     {project.closedAt ? <Notice>この行事は閉じました。開き直すと下書きを直せます。</Notice> : null}
     <form id="draft-form" method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/save`)}>
       <input type="hidden" name="based_on" value={baseVersion} />
       <div class="field"><label for="title">題</label><input id="title" name="title" value={document?.title ?? pack.title} maxlength={100} required /></div>
-      {ITEMS_BY_KIND[project.kind].filter((key) => ["date_time", "place", "rain_plan"].includes(key)).map(field)}
+      {kindRaw === "duty_roster" ? <><input type="hidden" name="scope" value="space" /><p>当番表は、実行委員と班長にだけ見えます。</p></> : null}
+      {kindRaw !== "duty_roster" ? ITEMS_BY_KIND[project.kind].filter((key) => ["date_time", "place", "rain_plan"].includes(key)).map(field) : null}
       <div class="field"><label for="text">{kindRaw === "announcement" ? "案内の文" : kindRaw === "duty_roster" ? "当番表の説明" : kindRaw === "recruitment" ? "募集の文" : `${pack.title}の文`}</label><textarea id="text" name="text" rows={10} maxlength={20000}>{body.text}</textarea>{oldDates.map((date) => <p class="warn-text">文の中に前の日付「{date}」が残っています。このままでも配れます。</p>)}</div>
+      {kindRaw === "duty_roster" ? (["date_time", "place", "helper_slots", "rain_plan"] as const).map(field) : null}
       <input type="hidden" name="item_content" value={body.items.find((item) => item.key === "content")?.content ?? ""} />
-      {ITEMS_BY_KIND[project.kind].filter((key) => !["date_time", "place", "rain_plan", "content"].includes(key)).map(field)}
-      <p><button class="secondary" name="after" value="paper">保存して紙の見え方を見る</button></p>
-      {kindRaw === "duty_roster" ? <><input type="hidden" name="scope" value="space" /><p>当番表は実行委員と班長にだけ見えます。</p></> : <details class="fold"><summary>だれに見せるかを変える</summary><div class="choice">{SCOPES.map((value) => <label><input type="radio" name="scope" value={value} checked={value === scope} /> {value === "public" ? "だれでも読める" : value === "space" ? "実行委員と班長だけ" : "役員だけ"}</label>)}</div></details>}
+      {kindRaw === "duty_roster" ? body.items.filter((item) => !["date_time", "place", "helper_slots", "rain_plan", "content"].includes(item.key)).map((item) => <input type="hidden" name={`item_${item.key}`} value={item.content} />) : ITEMS_BY_KIND[project.kind].filter((key) => !["date_time", "place", "rain_plan", "content"].includes(key)).map(field)}
+      <p><button class="secondary" name="after" value="paper">保存して紙の見え方を見る</button></p><p class="muted">撮って役員のグループへ送ると、見てもらえます。まだ配っていません。</p>
+      {kindRaw === "duty_roster" ? null : <details class="fold"><summary>誰に見せるかを変える</summary><div class="choice">{SCOPES.map((value) => <label><input type="radio" name="scope" value={value} checked={value === scope} /> {value === "public" ? "だれでも読める" : value === "space" ? "実行委員と班長だけ" : "役員だけ"}</label>)}</div></details>}
     </form>
     {kindRaw === "duty_roster" ? <section>
       <h2>当番の担当を直す</h2>
       <p>手伝いの申し込みと、世帯の答えにある手伝いから、AIが担当の下書きを入れます。直した行は、AIが上書きしません。</p>
-      {state.tables.duties.filter((row) => row.scope === "current").map((row) => <form class="panel" method="post" action={adminPath(ward, `/projects/${id}/draft/duty-row/${row.rowId}`)}>
+      <div class="duty-rows">{state.tables.duties.filter((row) => row.scope === "current").map((row) => <form class="panel" method="post" action={adminPath(ward, `/projects/${id}/draft/duty-row/${row.rowId}`)}>
         <label for={`slot-${row.rowId}`}>時間帯</label><input id={`slot-${row.rowId}`} name="slot" value={String(row.data.slot ?? "")} maxlength={120} required />
         <label for={`task-${row.rowId}`}>持ち場</label><input id={`task-${row.rowId}`} name="task" value={String(row.data.task ?? "")} maxlength={200} />
         <label for={`assignee-${row.rowId}`}>担当</label><input id={`assignee-${row.rowId}`} name="assignee" value={String(row.data.assignee ?? "")} maxlength={160} />
-        <label for={`attendance-${row.rowId}`}>出席</label><select id={`attendance-${row.rowId}`} name="attendance"><option value="no_change" selected={!row.data.attendance}>まだ記録しない</option><option value="present" selected={row.data.attendance === "present"}>出席</option><option value="absent" selected={row.data.attendance === "absent"}>欠席</option></select>
+        {row.data.note ? <p class="help-text">{String(row.data.note)}</p> : null}
+        <fieldset><legend>出席</legend><div class="choice half">{([ ["no_change", "まだ記録しない"], ["present", "出席"], ["absent", "欠席"] ] as const).map(([value, label]) => <label><input type="radio" name="attendance" value={value} checked={value === (row.data.attendance || "no_change")} />{label}</label>)}</div></fieldset>
         <p><button type="submit" class="secondary">この行を保存する</button></p>
-      </form>)}
+      </form>)}</div>
       {state.tables.duties.filter((row) => row.scope === "current").length === 0 ? <p>当番表の行はまだありません。下の紙の欄に書き込めます。</p> : null}
       <p>印刷した紙の当番表に、手で書き込むこともできます。</p>
     </section> : null}
@@ -150,7 +153,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
       <details class="fold" id="redo"><summary>AIに言葉で頼む</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/start`)}>
         <div class="field"><label for="instruction">頼むこと</label><input id="instruction" name="instruction" type="text" maxlength={800} /><p class="help-text">例: 雨のときの場所の変更を入れてください</p></div><button class="secondary">AIに頼む</button>
       </form></div></details>
-      <div class="action-bar"><button type="submit" form="draft-form" name="after" value="confirm">保存して配る内容を見る</button><button class="secondary" type="submit" form="draft-form">保存だけする</button></div>
+      <div class="action-bar page-action"><button type="submit" form="draft-form" name="after" value="confirm">保存して配る内容を見る</button><button class="secondary" type="submit" form="draft-form">保存だけする</button></div>
     </> : null}
   </Layout>);
 });
