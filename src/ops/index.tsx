@@ -1,3 +1,4 @@
+import { DigestFields, getDigestSettings, saveDigestSettings } from "../settings/digest";
 import { AnswerLabelFields, getAnswerLabels, saveAnswerLabels } from "../settings/answer-labels";
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
@@ -252,6 +253,7 @@ opsRoutes.get("/wards/:slug", async (c) => {
   const ward = await wardOrNull(c, c.req.param("slug"));
   if (!ward) return c.html(<WardNotFound />, 404);
   const labels = await getAnswerLabels(c.env.DB, ward.wardId);
+  const digest = await getDigestSettings(c.env.DB, ward.wardId);
   const accounts = await listAccounts(c.env.DB, ward.wardId);
   const url = wardUrl(c.env, c.req.url, ward.slug);
   return c.html(
@@ -300,6 +302,8 @@ opsRoutes.get("/wards/:slug", async (c) => {
           <button type="submit">入る人を足す</button>
         </p>
       </form>
+      {c.req.query("digest") === "saved" ? <Notice>知らせの時刻と日数を保存しました。区の情報から直すこともできます。</Notice> : null}
+      <form method="post" action={`/ops/wards/${ward.slug}/digest`}><DigestFields value={digest} /><button class="secondary">知らせの時刻と日数を保存する</button></form>
       <h2>この区のほかの画面</h2>
       <nav class="action-links" aria-label="提供側の画面">
         <a class="row-link" href={`/ops/wards/${ward.slug}/costs`}><b>費用</b><span>月ごとに、AIに読んでもらった費用を見ます</span></a>
@@ -313,6 +317,13 @@ opsRoutes.get("/wards/:slug", async (c) => {
 
     </OpsPage>,
   );
+});
+
+opsRoutes.post("/wards/:slug/digest", async (c) => {
+  const ward = await wardOrNull(c, c.req.param("slug"));
+  if (!ward) return c.html(<WardNotFound />, 404);
+  if (!await saveDigestSettings(c.env.DB, ward.wardId, await c.req.parseBody(), null)) return c.html(<OpsPage title="知らせの時刻を確かめてください" loggedIn><h1>保存していません</h1><Notice error>時刻と日数を確かめてください。日数は0から365までです。</Notice><section class="next"><strong>次は</strong><p>区の画面に戻って直し、もう一度保存してください。</p><a class="button" href={`/ops/wards/${ward.slug}`}>区の画面に戻る</a></section></OpsPage>, 400);
+  return c.redirect(`/ops/wards/${ward.slug}?digest=saved`, 303);
 });
 
 opsRoutes.post("/wards/:slug/answer-labels", async (c) => {

@@ -6,7 +6,9 @@ export const CRON = {
   DAILY: "0 18 * * *",
 } as const;
 
-/** 既存の五分ごとの処理のうち、日本時間18時の回だけを使う。 */
-export function isOfficerDigestTime(now: Date): boolean {
-  return now.getUTCHours() === 9 && now.getUTCMinutes() === 0;
+/** 今日の送る時刻を過ぎた区を、五分ごとの見回りで拾う。 */
+export function isOfficerDigestTime(now: Date, send = "08:00"): boolean {
+  const local = new Date(now.getTime() + 9 * 3600_000);
+  const [hour, minute] = send.split(":").map(Number);
+  return local.getUTCHours() * 60 + local.getUTCMinutes() >= hour! * 60 + minute!;
 }
