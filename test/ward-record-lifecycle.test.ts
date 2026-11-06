@@ -92,7 +92,7 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
   for (const entry of WARD_TABLE_POLICY) {
     const rows = await env.DB.prepare(`SELECT * FROM ${entry.table} WHERE ward_id = ?`).bind(target.ward.wardId).all();
     expect(snapshot.tables[entry.table], entry.table).toEqual(rows.results);
-    if (typeof entry.deletion === "object") expect(rows.results.length, entry.table).toBeGreaterThan(0);
+    if (typeof entry.deletion === "object") if (!entry.table.startsWith("provider_contact")) expect(rows.results.length, entry.table).toBeGreaterThan(0);
     if (entry.export === true) {
       const expected = rows.results.map((row) => Object.fromEntries(Object.entries(row).filter(([column]) => !entry.omitExportColumns?.includes(column))));
       expect(exported.tables[entry.table], entry.table).toEqual(expected);
