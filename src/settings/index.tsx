@@ -6,6 +6,7 @@ import type { Bundle } from "../core/bundle";
 import type { AdminEnv } from "../env";
 import { getProjectState, listOpenProjects } from "../project/api";
 import { listInboxItems } from "../line";
+import { INQUIRY_NOTICE, nearInquiryDates } from "../line/digest";
 import { info } from "./info";
 import { formatJstDate } from "../core/time";
 import { people } from "./people";
@@ -35,6 +36,7 @@ admin.get("/", async (c) => {
   const failed = pending.results.filter((row) => row.status === "failed").reduce((sum, row) => sum + row.count, 0);
   const states = await Promise.all(projects.map((p) => getProjectState(c.env.DB, ward.wardId, p.projectId)));
   const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+  const near = nearInquiryDates(projects, today);
   const places = <><h2>ほかの場所</h2><ul class="links">
     <li><a href={adminPath(ward, "/archive")}>記録を読む</a></li>
     {projects.length ? <><li><a href={adminPath(ward, "/archive/map")}>一年の予定</a></li><li><a href={adminPath(ward, "/answers/roster")}>名簿</a></li></> : null}
@@ -59,7 +61,9 @@ admin.get("/", async (c) => {
       <div class="action-links"><a class="button secondary" href={adminPath(ward, "/intake")}>続けて送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>資料がないので、種類を選んで始める</a></div>
       <p><a href={adminPath(ward, "/intake/received")}>送ったものを見る</a></p>{places}
     </> : <>
-      <h1>いま進めていること</h1><p class="lead">押すと段取りが開きます。手元に紙や資料があれば、先に送ってかまいません。</p>
+      <h1>いま進めていること</h1>
+      {near.length ? <div class="notice warn"><strong>{near[0]}</strong><p>{INQUIRY_NOTICE}</p><a class="quiet" href={adminPath(ward, "/inquiries")}>問い合わせを見る</a></div> : null}
+      <p class="lead">押すと段取りが開きます。手元に紙や資料があれば、先に送ってかまいません。</p>
       <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a></div>
       <ul class="rows two">{projects.map((p, index) => {
         const state = states[index];

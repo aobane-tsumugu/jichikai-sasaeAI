@@ -16,7 +16,7 @@ import { TABLES, displayFieldValue, type TableKey } from "../../project/model";
 import type { RowView } from "../../project/types";
 import { readPublicationTables } from "../../space/publication-tables";
 import { PosterPage } from "./poster";
-import { paperCopies, paperDate, paperDeadline, paperGive, publishedItem } from "../content";
+import { paperCopies, paperDate, paperDeadline, paperGive, paperHelperSlots, publishedItem } from "../content";
 
 const printKinds = ["poster", "announcement", "answer", "leader", "duty", "meeting", "sponsors"] as const;
 type PrintKind = (typeof printKinds)[number];
@@ -171,16 +171,18 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   const paperQr = (squad?: string) => <div class="qr"><PrintQr text={named(squad)} sizeMm={32} />
     <span>スマホでも答えられます。カメラを向けて、出てきた文字を押してください。</span></div>;
   const labels = labelsFromBody(row.body);
-  const helperSlots = publishedItem(row.body, "helper_slots");
-  const answerSheet = (squad: string, standalone = false) => <div class="answer-slip">
+  const helperSlots = paperHelperSlots(publishedItem(row.body, "helper_slots") || "");
+  const answerSheet = (squad: string, standalone = false) => <div class={standalone ? "answer-slip standalone" : "answer-slip"}>
     <div class="slip"><div class="slip-fields">
       {standalone ? <h1>{row.title} 回答票{squad ? `　班: ${squad}` : ""}</h1> : <h2>{row.title} 回答票{squad ? `　班: ${squad}` : ""}</h2>}
-      <FieldBox label="代表者のお名前" heightMm={15} />
+      {standalone ? <p>{[publishedItem(row.body, "date_time"), publishedItem(row.body, "place"), publishedItem(row.body, "rain_plan")].filter(Boolean).join("。")}</p> : null}
+      <p>参加しないときも、答えてください。答えがないときは、欠席として数えます。</p>
+      <FieldBox label="代表者のお名前" heightMm={standalone ? 30 : 19} />
       {!squad ? <FieldBox label="班（分からないときは空けてかまいません）" heightMm={10} /> : null}
-      <div class="field-box"><strong>参加する人数</strong><div class="paper-counts">
+      <div class="field-box"><p>□ 参加する　　□ 参加しない</p><strong>参加する人数</strong><div class="paper-counts">
         {labels.map((label) => <div class="paper-count"><div>{label}</div><span>人</span></div>)}
       </div></div>
-      <div class="field-box" style="min-height:18mm"><span class="field-label">手伝える方のお名前と時間帯（書かなくてかまいません）</span>
+      <div class="field-box" style={standalone ? "min-height:55mm" : "min-height:22mm"}><span class="field-label">手伝える方のお名前と時間帯（書かなくてかまいません）</span>
         {helperSlots ? <p>{helperSlots}</p> : null}
       </div>
     </div>{paperQr(squad)}</div>
@@ -188,7 +190,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
     {contact ? <p>連絡先：{contact}</p> : null}
   </div>;
   // 返す案内や時間帯の分も見積もる。文字を縮めず、長ければ回答票を別の紙にする。
-  const onOneSheet = fitsAboveAnswer(row.body, labels.join("") + (helperSlots ?? "") + due + contact);
+  const onOneSheet = fitsAboveAnswer(row.body, labels.join("") + helperSlots + due + contact + "参加しないときも、答えてください。答えがないときは、欠席として数えます。□参加する□参加しない");
   const tables = readPublicationTables(row.tables_snapshot);
   const published = (table: TableKey) => (tables ?? []).filter((entry) => entry.kind === table);
   const footer = (squad = "") => <><span>{ward.name}{squad ? ` ${squad}` : ""}</span><span>{distributed}　紙の番号{paperCode}</span></>;
@@ -211,8 +213,8 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
       <h2>お願いしたいこと</h2>
       <ul>
         <li>案内の紙を、{squad ? `${squad}の` : "班の"}世帯に渡してください。</li>
-        <li>{due && due.includes("まで") ? `締切は${due}です。回答票を集めてください。` : <>{due ? <>{due}までに、</> : null}回答票を集めてください。</>}</li>
-        <li>集まった回答票を、下のQRコードを開いて、回答票を撮って送ってください。一枚の写真に何枚写っていてもかまいません。</li>
+        {due ? <li>答えの締切は{due}です。答えがないときは、欠席として数えます。</li> : null}
+        <li>預かった回答票は、下のQRコードを開いて、撮って送ってください。一枚の写真に何枚写っていてもかまいません。</li>
       </ul>
       <p>写真を送るのが難しいときは、回答票を役員に渡してください。</p>
       <div class="give leader-qr"><PrintQr text={leaderUrls.get(squad)!} sizeMm={42} />

@@ -64,6 +64,32 @@ async function lineGet<T>(path: string, token: string, request: typeof fetch): P
   return (await response.json()) as T;
 }
 
+/** 提供側が区ごとに指定した役員グループだけを使う。受信したグループから推測しない。 */
+export function officerGroupId(env: Env, wardId: string): string | null {
+  return secretValue(env, `LINE_${wardId.toUpperCase().replaceAll("-", "_")}_OFFICER_GROUP_ID`);
+}
+
+/** 無料の範囲を上限にし、役員グループの人数を送信前に数える。 */
+export async function officerPushAllowance(token: string, groupId: string, request: typeof fetch = fetch) {
+  const [quota, consumption, group] = await Promise.all([
+    lineGet<{ type: string; value?: number }>("/v2/bot/message/quota", token, request),
+    lineGet<{ totalUsage: number }>("/v2/bot/message/quota/consumption", token, request),
+    lineGet<{ count: number }>(`/v2/bot/group/${encodeURIComponent(groupId)}/members/count`, token, request),
+  ]);
+  if (!Number.isSafeInteger(consumption.totalUsage) || consumption.totalUsage < 0 || !Number.isSafeInteger(group.count) || group.count < 1) return null;
+  if (quota.type === "limited" && (!Number.isSafeInteger(quota.value) || quota.value! < 0)) return null;
+  return { limit: Math.min(200, quota.type === "limited" ? quota.value! : 200), used: consumption.totalUsage, recipients: group.count };
+}
+
+/** 一つの役員グループへのPush。問い合わせの本文は呼び出し側で含めない。 */
+export async function pushOfficerDigest(token: string, groupId: string, text: string, retryKey: string, request: typeof fetch = fetch): Promise<void> {
+  const response = await request(`${LINE_API}/v2/bot/message/push`, {
+    method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "X-Line-Retry-Key": retryKey },
+    body: JSON.stringify({ to: groupId, messages: [{ type: "text", text }] }),
+  });
+  if (!response.ok) throw new Error(`LINE API request failed (${response.status})`);
+}
+
 /** LINE 側の友だち数と月の一斉送信枠を読む。友だちの一覧は取得しない。 */
 export async function getLineAllowance(
   token: string,

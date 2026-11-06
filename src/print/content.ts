@@ -24,6 +24,19 @@ export function paperDeadline(due: string | null): string {
   return due ? formatDateText(due) : "";
 }
 
+/** 書かれている持ち場を時間帯の後ろに添える。持ち場が無ければ補わない。 */
+export function paperHelperSlots(raw: string): string {
+  const role = "(準備と設営|設営|受付と模擬店|受付|模擬店|片付け)";
+  return raw.split(/[、\n]/).map((part) => {
+    const value = part.trim();
+    const first = new RegExp(`^${role}[：:\\s]+(.+)$`).exec(value);
+    const last = new RegExp(`^(.+?)[\\s]+${role}$`).exec(value);
+    const task = first?.[1] ?? last?.[2];
+    const time = first?.[2] ?? last?.[1];
+    return task && time ? `${time}（${task === "準備と設営" ? "設営" : task}）` : value;
+  }).filter(Boolean).join("、");
+}
+
 /** 締切が日付でなく文の時（「10/9まで（班長の紙で）」）は、文を分けて言い回しを崩さない。 */
 export function paperGive(due: string, whom: string): string[] {
   if (!due) return [`${whom}に渡してください。`];

@@ -55,7 +55,7 @@ function normalizeHeader(value: string): string {
 }
 
 const HEADER_ALIASES = {
-  household: ["世帯", "世帯名", "世帯主", "氏名", "名前", "household", "name"],
+  household: ["代表者のお名前", "代表者名", "世帯", "世帯名", "世帯主", "氏名", "名前", "household", "name"],
   district: ["班", "班名", "組", "組名", "district", "group"],
 } as const;
 

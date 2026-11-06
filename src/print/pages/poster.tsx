@@ -20,7 +20,7 @@ export function PosterPage({ title, body, wardUrl, due, contact, distributed, ba
         {place ? <><dt>{ITEM_LABEL.place}</dt><dd>{place}</dd></> : null}
         {rainPlan ? <><dt>{ITEM_LABEL.rain_plan}</dt><dd>{rainPlan}</dd></> : null}
       </dl> : null}
-      {due ? <p>答えの締切：{due}</p> : null}
+      {due ? <><p>答えの締切：{due}</p><p>参加しないときも、答えてください。答えがないときは、欠席として数えます。</p></> : null}
       {contact ? <p>連絡先：{contact}</p> : null}
       <div class="poster-link">
         <div class="poster-qr" role="img" aria-label="区のページを開くQR" dangerouslySetInnerHTML={{ __html: qrSvg(wardUrl) }} />

@@ -3,7 +3,8 @@ import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { WardBucket } from "../core/storage";
 import { Layout, Notice } from "../core/ui";
-import { CRON } from "../core/cron";
+import { CRON, isOfficerDigestTime } from "../core/cron";
+import { INQUIRY_NOTICE, sendOfficerDigest } from "./digest";
 import { listClarifications, processPhotoBatches } from "./clarifications";
 import type { AdminEnv, AppEnv } from "../env";
 import { getLineAllowance, lineAccessToken, sendLineTitleAndUrl } from "./api";
@@ -90,6 +91,7 @@ admin.get("/inbox", async (c) => {
       <a class="quiet" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a>
     </section>
     <h2>役員に届いた問い合わせ</h2>
+    <p>{INQUIRY_NOTICE}</p>
     {inquiries.results.length ? <ul class="rows">{inquiries.results.map((q) => <li><a class="row-link" href={adminPath(ward, "/inquiries")}><b>{q.subject}</b><span>{formatJst(q.received_at)}に届きました</span>
       {q.line_source_type ? <span>送った人: {q.line_sender_label || "名前は分かりません"}（{q.line_source_type === "user" ? "公式への一対一" : "LINEグループ"}）</span> : null}
       {q.line_replied_at ? <span>AIは答えていません。送った人には「役員に伝えて、内容を確認します。」と返しました。</span> : null}
@@ -123,7 +125,7 @@ admin.get("/inbox/questions", async (c) => {
     <h1>送った資料についての質問</h1><p class="lead">読めないところなどを残しています。分かるものだけ答えられます。答えがなくても仕事は進められます。</p>
     {questions.map((question) => <section class="panel"><h2>{question.text}</h2>
       <p><a href={adminPath(ward, `/intake/originals/${question.original_id}`)}>元の資料を見る</a></p>
-      <p>{question.sent_at ? "写真が届いた場所で聞きました。答えがなくても、催促はしません。" : "まだ公式LINEでは聞いていません。"}</p>
+      <p>{question.sent_at ? "写真が届いた場所で聞きました。答えがなくても、そのままでかまいません。" : "まだ公式LINEでは聞いていません。"}</p>
       {question.answer ? <p class="preserve-lines">届いた答え: {question.answer}</p> : null}
       {question.project_id ? <a href={adminPath(ward, `/projects/${question.project_id}/questions`)}>行事の質問を見る</a> : <p>どの行事か分からないものは、届いたものから入れ直せます。</p>}
     </section>)}
@@ -217,9 +219,16 @@ export const line: Bundle = {
   async scheduled(event, env) {
     if (event.cron !== CRON.EVERY_5_MIN) return;
     // 最初に接続先の台帳から区だけを取り出し、以後の読み書きは全てその区に限定する。
-    const wards = await env.DB.prepare(`SELECT DISTINCT l.ward_id FROM line_channels l JOIN wards w ON w.ward_id = l.ward_id
-      WHERE w.ward_id = l.ward_id AND w.is_active = 1`).all<{ ward_id: string }>();
-    for (const ward of wards.results) await processPhotoBatches(env, ward.ward_id);
+    const wards = await env.DB.prepare(`SELECT DISTINCT l.ward_id, w.slug FROM line_channels l JOIN wards w ON w.ward_id = l.ward_id
+      WHERE w.ward_id = l.ward_id AND w.is_active = 1`).all<{ ward_id: string; slug: string }>();
+    const now = new Date();
+    for (const ward of wards.results) {
+      try {
+        if (isOfficerDigestTime(new Date(event.scheduledTime))) await sendOfficerDigest(env, ward.ward_id, ward.slug, now);
+      }
+      catch { console.error("役員への知らせを送れませんでした", ward.ward_id); }
+      await processPhotoBatches(env, ward.ward_id);
+    }
   },
   hooks: new Hono<AppEnv>().post("/line", async (c) =>
     acceptLineWebhook(c.req.raw, c.env, c.env.DB, undefined, new Date(), c.executionCtx),
