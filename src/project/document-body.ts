@@ -22,9 +22,10 @@ export function reconcileDocumentBody(previous: DocumentBody, next: DocumentBody
     if (item.content !== old.content && !replacements.has(old.content)) replacements.set(old.content, item.content);
     return true;
   });
-  // 同じ文字が別の項目にもあるとき、直す先が違えば本文全体では置き換えない。
-  const shared = new Set([...replacements.keys()].filter((content) => previous.items.some((old) =>
-    old.content === content && (items.find((item) => item.key === old.key)?.content ?? old.content) !== replacements.get(content))));
+  // 別の項目の一部に当たり、その項目を意図しない中身に変える置換は本文全体にかけない。
+  const shared = new Set([...replacements].filter(([content, replacement]) => previous.items.some((old) =>
+    old.content.includes(content) && (items.find((item) => item.key === old.key)?.content ?? old.content) !== old.content.replaceAll(content, replacement)))
+    .map(([content]) => content));
   for (const content of shared) replacements.delete(content);
   if (replacements.size) {
     // 元の本文から一度で置き換え、入れた中身を別の項目の旧値として扱わない。

@@ -11,6 +11,7 @@ it.each([
   { caseName: "別々の会場を順に置き換える", place: "架空会場(A)", rain: "架空会場(B)", nextPlace: "架空会場(B)", nextRain: "架空会場(C)" },
   { caseName: "同じ会場から雨のときだけ変える", place: "架空公民館", rain: "架空公民館", nextPlace: "架空公民館", nextRain: "架空体育館" },
   { caseName: "同じ会場を別々の会場に変える", place: "架空公民館", rain: "架空公民館", nextPlace: "架空集会所", nextRain: "架空体育館" },
+  { caseName: "会場名の含まれる別館を保つ", place: "架空公民館", rain: "架空公民館別館", nextPlace: "架空体育館", nextRain: "架空公民館別館" },
 ])("$caseNameとき、別の会場を書き換えず保存・配布する", async ({ place, rain, nextPlace, nextRain }) => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
