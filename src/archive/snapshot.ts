@@ -52,6 +52,10 @@ export const WARD_TABLE_POLICY: readonly WardTablePolicy[] = [
   { table: "ward_annual_budgets", snapshot: true, export: true, deletion: true },
   { table: "ward_roster_entries", snapshot: true, export: true, deletion: true },
   { table: "ward_roster_settings", snapshot: true, export: true, deletion: true },
+  // 免除の理由は要配慮の情報。役員の記録として渡し、公開・空間・配布の表には含めない。
+  { table: "rota_exemptions", snapshot: true, export: true, deletion: true },
+  { table: "rota_preparations", snapshot: true, export: true, deletion: true },
+  { table: "rota_seat_changes", snapshot: true, export: true, deletion: true },
   { table: "project_answers", snapshot: true, export: true, deletion: true },
   { table: "project_answer_submissions", snapshot: true, export: "同じ送信の再処理を見分ける内部の番号で、区へ渡す記録ではない。", deletion: true },
   { table: "project_help_offers", snapshot: true, export: true, deletion: { cascade: "projects" } },

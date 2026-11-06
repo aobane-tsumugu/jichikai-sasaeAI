@@ -13,6 +13,7 @@ import { contactRoutes } from "../contact/pages";
 import { purgeContactPhotos } from "../contact/store";
 import { publicMetadata, seoRoutes } from "../seo";
 import { baseUrl } from "./ward";
+import { rotaAdmin } from "../rota";
 
 /**
  * 経路の組み立て。
@@ -96,6 +97,7 @@ export function createApp(bundles: Bundle[]) {
   ward.route("/admin", loginRoutes);
   const admin = new Hono<AdminEnv>();
   admin.use("*", requireAdmin);
+  admin.route("/", rotaAdmin);
   for (const bundle of bundles) if (bundle.admin) admin.route("/", bundle.admin);
   ward.route("/admin", admin);
   for (const bundle of bundles) if (bundle.pub) ward.route("/", bundle.pub);
