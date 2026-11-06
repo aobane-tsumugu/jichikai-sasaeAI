@@ -281,4 +281,11 @@ details.hint { font-size: 1rem; font-weight: 400; line-height: 1.8; letter-spaci
 table { table-layout: fixed; }
 th, td { overflow-wrap: anywhere; }
 @media (max-width: 35.99rem) { th, td { padding: var(--space-1); } }
+/* 配る確認と実行委員・班長の画面 */
+main:has(.publish-confirm), main:has(.space-page) { max-width: var(--width-wide); }
+.preserve-lines { white-space: pre-wrap; overflow-wrap: anywhere; }
+.answer-slip-preview { border-top: 2px dashed var(--fg); padding-top: var(--space-2); }
+.space-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.qty label:has(input[type=checkbox]) { grid-template-columns: auto minmax(0, 1fr) 5rem auto; }
+.action-links > form { margin: 0; }
 `;

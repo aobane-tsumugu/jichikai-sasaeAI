@@ -87,6 +87,7 @@ function readForm(html: string, path: string, sectionTitle?: string) {
     const body = form[2] ?? "";
     for (const input of body.matchAll(/<input\b([^>]*)>/gi)) {
       const a = input[1] ?? "";
+      if (/type="(?:checkbox|radio)"/i.test(a) && !/\bchecked(?:\s|=|$)/i.test(a)) continue;
       const name = /\bname="([^"]*)"/i.exec(a)?.[1];
       const type = /\btype="([^"]*)"/i.exec(a)?.[1];
       if (name && type !== "file" && type !== "submit") fields[name] = unescapeHtml(/\bvalue="([^"]*)"/i.exec(a)?.[1] ?? "");
@@ -143,7 +144,7 @@ async function publish(project: string, html: string, scope: "public" | "space",
   }
   if (!confirm.ok) throw new Error("配布内容の確認で停止 (" + confirm.status + ")");
   const page = await confirm.text();
-  if (!page.includes("今回は公式 LINE に送りません")) throw new Error("LINE を送らない選択を確認できません");
+  if (!page.includes("今回は公式LINEに送りません")) throw new Error("LINE を送らない選択を確認できません");
   const final = readForm(page, "/publish/" + project + "/send");
   if (final.fields.lineDelivery !== "skip") throw new Error("LINE 送信を止められません");
   return post(final.action, final.fields);
@@ -291,7 +292,7 @@ async function runFull() {
   try {
   const passphrase = "架空の合言葉-" + stamp.slice(0, 12);
   sensitiveValues.add(passphrase);
-  if ((await post(admin + "/space/" + project + "/open", { passphrase })).status !== 303) throw new Error("空間を開けません");
+  if ((await post(admin + "/space/" + project + "/open", { passphrase })).status !== 200) throw new Error("空間を開けません");
   if ((await post(admin + "/projects/" + project + "/draft/duty_roster/start", {})).status !== 303) throw new Error("当番表の案を頼めません");
   const dutyResult = await waitForDraft(admin + "/projects/" + project + "/draft/duty_roster");
   const duty = dutyResult.form;

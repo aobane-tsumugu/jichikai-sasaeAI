@@ -36,5 +36,5 @@ it("初めての役員にプロジェクト・資料・空間の次の操作を�
   ] });
   expect(await (await get(realApp, `${root}/projects/${project.projectId}/map`, cookie)).text()).not.toContain(materials);
   const space = await get(realApp, `${root}/space/${project.projectId}`, cookie);
-  expect(await space.text()).toContain("実行委員や班長に、当番表や出欠を見てもらう場所です。");
+  expect(await space.text()).toContain("実行委員と班長が、配られたものを見て、紙を撮って送るページです。");
 });

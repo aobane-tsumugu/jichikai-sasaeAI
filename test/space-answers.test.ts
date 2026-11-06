@@ -21,7 +21,7 @@ it("役員が空間を開き、実行委員が合言葉で回答を見て、閉�
   expect(await answer.text()).toContain("回答の一覧へ");
 
   const opened = await postForm(realApp, `${admin}/space/${project.projectId}/open`, { passphrase: "確認用の合言葉（架空）" }, cookie);
-  expect(opened.status).toBe(303);
+  expect(opened.status).toBe(200);
   const entrance = await get(realApp, space);
   expect(await entrance.text()).toContain("合言葉");
   const entered = await postForm(realApp, `${space}/enter`, { passphrase: "確認用の合言葉（架空）" });

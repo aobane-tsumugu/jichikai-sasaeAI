@@ -129,7 +129,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
       <label for="instruction">AIに一行で頼む</label><input id="instruction" name="instruction" type="text" maxlength={800} placeholder="例: 雨天時の会場変更を反映してください" />
       <p><button class="secondary">AIに案を起こしてもらう</button></p>
     </form>
-    <p><a href={adminPath(ward, `/publish/${id}`)}>配る</a></p>
+    <p><a href={adminPath(ward, `/publish/${id}/confirm?kind=${kindRaw}`)}>配る内容を見る</a></p>
   </Layout>);
 });
 

@@ -81,8 +81,8 @@ it("去年から案を作り、新しい資料が入っても全戸に配り、�
     expect(confirmed.status).toBe(200);
     const confirmHtml = await confirmed.text();
     expect(confirmHtml).toContain("ここに表示した内容で配れます。");
-    expect(confirmHtml).toContain("まだ決まっていない所: （確認中）");
-    expect(confirmHtml).toContain("配る相手: 全戸");
+    expect(confirmHtml).toContain("まだ決めていないところがあります");
+    expect(confirmHtml).toContain("全戸に3部");
     const distribution = JSON.stringify({ mode: "district", targets: [{ district: FIRST_SLICE.district, copies: 3 }] });
     const sendFields = { ...announcement, recipientScope: "all_households", distribution, lineDelivery: "skip" };
     expect((await postForm(realApp, `${root}/publish/${project.projectId}/send`, sendFields, cookie)).status).toBe(303);
@@ -116,7 +116,7 @@ it("去年から案を作り、新しい資料が入っても全戸に配り、�
     const reportConfirm = await postForm(realApp, `${root}/publish/${project.projectId}/confirm`, {
       ...confirmFields, ...report, recipientScope: "all_households", lineDelivery: "send",
     }, cookie);
-    expect(await reportConfirm.text()).toContain("今回は公式 LINE に送りません。");
+    expect(await reportConfirm.text()).toContain("今回は公式LINEに送りません。");
     expect((await postForm(realApp, `${root}/publish/${project.projectId}/send`, {
       ...sendFields, ...report, lineDelivery: "send",
     }, cookie)).status).toBe(303);

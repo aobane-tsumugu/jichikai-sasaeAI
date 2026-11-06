@@ -4,11 +4,12 @@ import { AdminPage } from "../core/admin-ui";
 import { adminPath } from "../core/auth";
 import type { Bundle } from "../core/bundle";
 import { newId, nowIso } from "../core/ids";
-import { Hint, Notice } from "../core/ui";
+import { Notice } from "../core/ui";
+import type { Context } from "hono";
+import { formatJst } from "../core/time";
 import type { AdminEnv } from "../env";
 import { getLineAllowance, lineAccessToken, LINE_NOT_CONFIGURED, sendLineTitleAndUrl } from "../line/api";
-import { getPublicContact } from "../settings/store";
-import { answerDeadlineFromDraft, getDistrictCopies, getRoster, parseDistribution } from "../answers/api";
+import { answerDeadlineFromDraft, getRoster, parseDistribution } from "../answers/api";
 import { checkPublicDraft } from "./check";
 import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, isItemKey, type DocumentKind } from "../project/model";
 import { applyChange } from "../project/apply";
@@ -44,6 +45,7 @@ interface PublicationRow {
   tables_snapshot: string | null;
   publication_id: string;
   document_id: string;
+  version_id: string;
   version_no: number;
   published_at: string;
   unpublished_at: string | null;
@@ -53,12 +55,6 @@ interface PublicationRow {
   line_error: string | null;
   recipient_scope: string;
   distribution: string;
-}
-
-interface DraftHistoryRow { document_id: string; version_no: number; body: string; created_at: string; }
-
-function bodyLines(body: string): string[] {
-  return articleParagraphs(body).flatMap((paragraph) => paragraph.split("\n")).map((line) => line.trim()).filter(Boolean);
 }
 
 function paperTargetLabel(raw: string): string {
@@ -71,15 +67,15 @@ function paperTargetLabel(raw: string): string {
         const row = entry as { district?: unknown; household?: unknown; copies?: unknown };
         return typeof row.household === "string" && typeof row.district === "string"
           ? `${row.district} / ${row.household}`
-          : typeof row.district === "string" && typeof row.copies === "number" ? `${row.district}（${row.copies} 部）` : "";
+          : typeof row.district === "string" && typeof row.copies === "number" ? `${row.district}（${row.copies}部）` : "";
       }).filter(Boolean);
       // 名簿に同じ名前の世帯がある時は、一つにまとめて部数を添える。
       const counts = new Map<string, number>();
       for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1);
-      return [...counts].map(([label, count]) => count > 1 ? `${label}（${count} 部）` : label).join("、") || "指定なし";
+      return [...counts].map(([label, count]) => count > 1 ? `${label}（${count}部）` : label).join("、") || "指定なし";
     }
     if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-      return Object.entries(value as Record<string, unknown>).map(([district, copies]) => `${district}（${String(copies)} 部）`).join("、") || "指定なし";
+      return Object.entries(value as Record<string, unknown>).map(([district, copies]) => `${district}（${String(copies)}部）`).join("、") || "指定なし";
     }
   } catch { /* 古い記録の形式は個別表示しない */ }
   return "指定なし";
@@ -125,118 +121,87 @@ admin.get("/publish/:projectId", async (c) => {
   const project = await getProject(c.env.DB, ward.wardId, projectId);
   if (!project) return c.notFound();
   const drafts = await getDrafts(c.env.DB, ward.wardId, projectId);
-  const history = await c.env.DB.prepare(`SELECT document_id, version_no, body, created_at FROM document_versions
-    WHERE ward_id = ? AND project_id = ? ORDER BY document_id, version_no`).bind(ward.wardId, projectId).all<DraftHistoryRow>();
-  const historyByDocument = new Map<string, DraftHistoryRow[]>();
-  for (const row of history.results) historyByDocument.set(row.document_id, [...(historyByDocument.get(row.document_id) ?? []), row]);
-  const districtCopies = await getDistrictCopies(c.env.DB, ward.wardId);
-  const roster = await getRoster(c.env.DB, ward.wardId);
-  const records = await c.env.DB.prepare(`SELECT publication_id, document_id, version_no, published_at, unpublished_at,
+  const records = await c.env.DB.prepare(`SELECT publication_id, document_id, version_id, version_no, published_at, unpublished_at,
       line_status, line_recipients, line_sent_at, line_error, recipient_scope, distribution,
       (SELECT tables_snapshot FROM document_versions v WHERE v.ward_id = publication_records.ward_id AND v.version_id = publication_records.version_id) AS tables_snapshot,
       (SELECT scope FROM document_versions v WHERE v.ward_id = publication_records.ward_id AND v.version_id = publication_records.version_id) AS scope
     FROM publication_records WHERE ward_id = ? AND project_id = ? ORDER BY published_at DESC, rowid DESC`)
     .bind(ward.wardId, projectId).all<PublicationRow>();
   // 空間の配布は公開用の記録に入れない。区のページは公開用の記録だけを読む。
-  const spaceRecords = await c.env.DB.prepare(`SELECT v.version_id AS publication_id, v.document_id, v.version_no,
+  const spaceRecords = await c.env.DB.prepare(`SELECT v.version_id AS publication_id, v.version_id, v.document_id, v.version_no,
       v.published_at, NULL AS unpublished_at, 'not_sent' AS line_status, NULL AS line_recipients,
       NULL AS line_sent_at, NULL AS line_error, 'member_households' AS recipient_scope, '{}' AS distribution,
       v.tables_snapshot, v.scope
     FROM document_versions v WHERE v.ward_id = ? AND v.project_id = ? AND v.scope = 'space' AND v.published_at IS NOT NULL
     ORDER BY v.published_at DESC, v.rowid DESC`).bind(ward.wardId, projectId).all<PublicationRow>();
   const allRecords = [...records.results, ...spaceRecords.results].sort((a, b) => b.published_at.localeCompare(a.published_at) || b.version_no - a.version_no);
-  const currentTables = await currentPublicationTables(c.env.DB, ward.wardId, projectId);
-  const firstPublishedId = records.results.find((record) => !record.unpublished_at)?.publication_id;
-  let allowance = null;
-  let allowanceError = "";
-  if (drafts.some((draft) => canSendLine(draft.kind))) try {
-    const token = await lineAccessToken(c.env, ward.wardId);
-    if (token) allowance = await getLineAllowance(token);
-    else allowanceError = LINE_NOT_CONFIGURED;
-  } catch {
-    allowanceError = "公式 LINE の通数を読み取れません。配る操作後に送信結果を確認してください。";
-  }
   c.header("Cache-Control", "no-store");
-  return c.html(
-    <AdminPage ward={ward} account={account} title="配る" back={{ href: adminPath(ward, "/projects"), label: "プロジェクト一覧へ" }}>
-      <h1>{project.title} を配る <Hint text="案を選び、配る内容と相手を確認して区のページに載せます。まだ直す時は案の画面へ戻れます。" /></h1>
-      {project.closed_at ? <Notice error>このプロジェクトは閉じています。</Notice> : null}
-      {c.req.query("space") === "sent" ? <Notice>プロジェクトの空間に出しました。</Notice> : null}
-      {allowance ? <p>公式 LINE の友だち {allowance.friends ?? "確認中"} 人、今月の残り {allowance.remaining ?? "制限なし"} 通です。</p> : null}
-      {allowanceError ? <Notice error>{allowanceError}</Notice> : null}
-      {drafts.length === 0 ? <Notice>配れる案内はありません。案内の下書きを先に用意してください。</Notice> : null}
-      {drafts.map((draft) => {
-        const previous = allRecords.find((record) => record.document_id === draft.document_id && !record.unpublished_at);
-        const tablesChanged = draft.scope === "space" && (draft.kind === "duty_roster" || draft.kind === "procedure") &&
-          (!!previous || !!draft.published_at) && publicationTablesDiffer(previous?.tables_snapshot ?? null, currentTables);
-        return (
-        <section class="panel" key={draft.document_id}>
-          <h2>{draft.title}</h2>
-          <p>{draft.published_at ? "すでに出しています。" : "まだ出していません。"}</p>
-          {tablesChanged ? <Notice>{previous?.tables_snapshot === null
-            ? "配った時の表の記録がありません。今の表を空間に配り直せます。"
-            : "配った時から表が変わっています。今の表を空間に配り直せます。"}</Notice> : null}
-          {draft.stale_since_version !== null
-            ? <Notice error>新しい物が入っています。案を直すか、このまま配るか選んでください。</Notice>
-            : null}
-          <p><a href={adminPath(ward, `/publish/${projectId}/preview/${draft.document_id}/${draft.version_no}`)}>見た内容を確認する</a></p>
-          {(historyByDocument.get(draft.document_id) ?? []).length > 1 ? <details><summary>これまでの案と前の案との違い</summary>{(historyByDocument.get(draft.document_id) ?? []).slice(0, -1).reverse().map((old, index, rows) => {
-            const next = rows[index - 1] ?? draft;
-            const before = bodyLines(old.body); const after = bodyLines(next.body);
-            const removed = before.filter((line) => !after.includes(line)); const added = after.filter((line) => !before.includes(line));
-            return <section><h3>作成 {new Date(old.created_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}</h3><p>次の案に変わった所</p>{removed.length ? <p>前にあった内容: {removed.join(" / ")}</p> : null}{added.length ? <p>加わった内容: {added.join(" / ")}</p> : null}{!removed.length && !added.length ? <p>文章に違いはありません。</p> : null}</section>;
-          })}</details> : null}
-          {draft.scope === "space" ? <>
-            <p>実行委員と班長に見せる物です。公開ページには出ません。</p>
-            {!project.closed_at && (!draft.published_at || tablesChanged) ? <form method="post" action={adminPath(ward, `/publish/${projectId}/space`)}>
-              <input type="hidden" name="documentId" value={draft.document_id} />
-              <input type="hidden" name="versionId" value={draft.version_id} />
-              <input type="hidden" name="versionNo" value={draft.version_no} />
-              <button type="submit">{draft.published_at ? "空間に配り直す" : "空間に配る"}</button> <Hint text={`${DOCUMENT_KIND_LABEL[draft.kind as DocumentKind]}と、今の当番・配置・協賛先の表を実行委員と班長に配ります。配った後に表を直しても、次に配るまでは空間と紙は変わりません。`} />
-            </form> : null}
-          </> : null}
-          {draft.scope === "public" && !project.closed_at ? <form method="post" action={adminPath(ward, `/publish/${projectId}/confirm`)}>
-            <input type="hidden" name="documentId" value={draft.document_id} />
-            <input type="hidden" name="versionId" value={draft.version_id} />
-            <input type="hidden" name="versionNo" value={draft.version_no} />
-            <input type="hidden" name="targetMode" value="district" />
-            <label for={`recipients-${draft.document_id}`}>紙を配る相手</label>
-            <select id={`recipients-${draft.document_id}`} name="recipientScope"><option value="member_households">加入世帯</option><option value="all_households">全戸（加入していない世帯も含む）</option></select>
-            <Hint text="全戸を選ぶと、名簿にない世帯の分も含めて部数を入れられます。区で全戸に配る時に選んでください。" />
-            <fieldset><legend>班ごとの部数</legend>{districtCopies.map((row, index) => <p>
-              <label><input type="checkbox" name="district" value={row.district} checked /> {row.district}（名簿 {row.copies} 世帯）</label>
-              部数 <input type="number" name={`copies_${index}`} min="1" value={row.copies} style="width:6rem" />
-            </p>)}</fieldset>
-            {roster.length === 0 ? <p><label>全戸に配る時の部数 <input type="number" name="allCopies" min="1" style="width:6rem" /></label></p> : null}
-            <details><summary>世帯を選ぶ</summary><p>加入世帯の一部に配る時は、世帯に印を付けてください。全戸に配る時は、上の班ごとの部数を使います。</p>{householdChoices(roster).map(({ district, household, count }) => <label>
-              <input type="checkbox" name="household" value={JSON.stringify([district, household])} /> {district} / {household}{count > 1 ? `（名簿に同じ名前が ${count} 世帯あり、${count} 部）` : ""}
-            </label>)}</details>
-            <p>紙の部数と配る相手の指定は、公開ページに表示されません。</p>
-            {canSendLine(draft.kind) ? <>
-              <label for={`line-${draft.document_id}`}>公式 LINE</label>
-              <select id={`line-${draft.document_id}`} name="lineDelivery"><option value="send">題と URL を送る</option><option value="skip">今回は送らない</option></select>
-            </> : <p>公式 LINE には送らず、区のページに載せます。</p>}
-            <p><button type="submit">配る内容を確認する</button> <Hint text={`${DOCUMENT_KIND_LABEL[draft.kind as DocumentKind]}の本文と配る相手を確認する画面を開くだけで、まだ配りません。`} /></p>
-          </form> : null}
-        </section>
-      ); })}
-      <h2>これまでに配った物</h2>
-      {allRecords.length === 0 ? <p>まだ配っていません。</p> : allRecords.map((record) => (
-        <section class="panel" key={record.publication_id}>
-          <p>{new Date(record.published_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}に配りました。</p>
-          {record.scope === "space" ? <p>実行委員と班長に配りました。</p> : <>
-          <p>紙の配布先: {paperTargetLabel(record.distribution)}</p>
-          <p>配る相手: {record.recipient_scope === "all_households" ? "全戸" : "加入世帯"}</p>
-          <p>公式 LINE: {record.line_status === "sent" ? `${record.line_recipients ?? 0} 人に送信済み` : record.line_status === "failed" ? "送信できませんでした" : record.line_status === "not_sent" ? "今回は送っていません" : record.line_status === "not_configured" ? "接続設定なし" : "送信待ち"}</p>
-          {record.line_error ? <p>{record.line_error}</p> : null}
-          {record.unpublished_at ? <p>現在は公開を下げています。</p> : <form class="inline" method="post" action={adminPath(ward, `/publish/${projectId}/lower/${record.publication_id}`)}><button class="danger" type="submit">公開を下げる</button> {record.publication_id === firstPublishedId ? <Hint text="配った記録を残したまま、この案内を区のページから下げます。" /> : null}</form>}
-          </>}
-          <p><a href={adminPath(ward, `/print/${projectId}/${record.document_id}/${record.version_no}`)}>印刷用ページを開く</a></p>
-        </section>
-      ))}
-      <p><a href={`/${ward.slug}/p/${encodeURIComponent(projectId)}`}>区のページを見る</a></p>
-    </AdminPage>,
-  );
+  const done = records.results.find((record) => record.publication_id === c.req.query("done"));
+  const lowered = allRecords.find((record) => record.publication_id === c.req.query("lowered") && record.unpublished_at);
+  if (done || lowered) {
+    const record = (done ?? lowered)!;
+    const draft = drafts.find((row) => row.document_id === record.document_id);
+    const rain = draft?.kind === "notice" && draft.title.includes("雨");
+    const kind = draft?.kind ?? "announcement";
+    const task = await c.env.DB.prepare(`SELECT task_id, name FROM project_map_tasks
+      WHERE ward_id = ? AND project_id = ? AND removed_at IS NULL AND progress = 'done' AND progress_source_ref = ?`)
+      .bind(ward.wardId, projectId, record.version_id).first<{ task_id: string; name: string }>();
+    const mapHref = adminPath(ward, `/projects/${projectId}/map${task ? `?changed=${encodeURIComponent(task.task_id)}` : ""}`);
+    const editHref = adminPath(ward, `/projects/${projectId}/draft/${kind}`);
+    const printHref = adminPath(ward, `/print/${projectId}/${record.document_id}/${record.version_no}`);
+    const failed = record.line_status === "failed" || record.line_status === "not_configured";
+    return c.html(<AdminPage ward={ward} account={account} title={lowered ? "区のページから下げました" : rain ? "雨の変更を配りました" : "配りました"} back={{ href: mapHref, label: `${project.title}の段取りへ` }}>
+      <h1>{lowered ? "区のページから下げました" : rain ? "雨の変更を配りました" : `${DOCUMENT_KIND_LABEL[kind as DocumentKind]}を配りました`}</h1>
+      {lowered ? <Notice>下げました。配った記録は残ります。LINEの知らせは取り消せません。</Notice> :
+        <div class={failed ? "notice warn" : "notice done"} role="status"><strong>{failed ? "公式LINEには送れませんでした" : "区のページに載せました"}</strong>
+          <p>{failed ? "区のページには載っています。紙も配れます。LINEは送らないままでもかまいません。" : record.line_status === "sent" ? `公式LINE${record.line_recipients === null ? "に" : `の友だち${record.line_recipients}人に`}送りました。` : record.line_status === "pending" ? "公式LINEの送信結果はまだ分かりません。" : "今回は公式LINEに送りませんでした。"}{task ? `段取りの「${task.name}」を済みにしました。` : ""}</p>
+        </div>}
+      <section class="next"><strong>次は</strong>{lowered ? <><p>内容を直して、配り直せます。</p><a class="button" href={editHref}>直して配り直す</a></> : rain ? <p>班長に電話して伝えてください。掲示も張り替えてください。ここは画面では済みません。</p> : <><p>案内と班長への一枚を印刷して、班長に渡してください。</p><a class="button" href={printHref}>案内を印刷する</a><a class="quiet" href={`${printHref}/leader`}>班長への一枚を印刷する</a></>}</section>
+      {!rain && !lowered ? <DistributionFacts raw={record.distribution} /> : null}
+      {!lowered ? <div class="action-links"><a class="button secondary" href={`/${ward.slug}/p/${encodeURIComponent(projectId)}`}>区のページで見る</a></div> : null}
+      <h2>間違えたときは</h2><p>{rain ? "直して配り直すと、区のページは新しい知らせに変わります。LINEで送った知らせは取り消せません。" : "直して配り直すと、区のページは新しい案内に変わります。"}</p>
+      <div class="action-links"><a class="button secondary" href={editHref}>直して配り直す</a>{!rain && !record.unpublished_at ? <form method="post" action={adminPath(ward, `/publish/${projectId}/lower/${record.publication_id}`)}><button class="secondary" type="submit">区のページから下げる</button></form> : null}</div>
+      {!rain ? <p class="muted">下げても、配った記録は残ります。LINEで送った知らせは取り消せません。</p> : null}
+      <a class="quiet" href={adminPath(ward, `/publish/${projectId}`)}>配る画面へ</a>
+    </AdminPage>);
+  }
+  const currentTables = await currentPublicationTables(c.env.DB, ward.wardId, projectId);
+  const orderedDrafts = [...drafts].sort((a, b) => Number(Boolean(a.published_at)) - Number(Boolean(b.published_at)));
+  const primary = orderedDrafts.find((draft) => draft.scope === "public" && !draft.published_at);
+  const copies = (await getRoster(c.env.DB, ward.wardId)).length;
+
+  return c.html(<AdminPage ward={ward} account={account} title="配る" back={{ href: adminPath(ward, `/projects/${projectId}/map`), label: `${project.title}の段取りへ` }}>
+    <h1>{primary ? paperHeading(project.title, primary.title) : project.title}を配る</h1><p class="lead">配ると、同じ内容が区のページと紙に出ます。</p>
+    {project.closed_at ? <Notice>この行事は閉じています。</Notice> : null}
+    {c.req.query("space") === "sent" ? <><Notice>実行委員と班長のページに配りました。</Notice><section class="next"><strong>次は</strong><p>配られたものを実行委員と班長に伝えてください。</p><a class="button" href={adminPath(ward, `/space/${projectId}`)}>実行委員と班長のページへ</a></section><p>間違えたときは、下書きを直して配り直せます。</p></> : null}
+    {!drafts.length ? <><p>配れる下書きはまだありません。</p><a class="button" href={adminPath(ward, `/projects/${projectId}/draft/announcement`)}>案内の下書きを書く</a></> : null}
+    {orderedDrafts.map((draft, index) => {
+      const previous = allRecords.find((record) => record.document_id === draft.document_id && !record.unpublished_at);
+      const tablesChanged = draft.scope === "space" && (draft.kind === "duty_roster" || draft.kind === "procedure") &&
+        (!!previous || !!draft.published_at) && publicationTablesDiffer(previous?.tables_snapshot ?? null, currentTables);
+      return <section class="panel" key={draft.document_id}>
+        {index === 1 ? <h2>ほかに配れるもの</h2> : null}<h2>{paperHeading(project.title, draft.title)}</h2>
+        <p>{draft.published_at ? "すでに配っています。" : "下書きがあります"}</p>
+        {draft === primary ? <dl class="facts"><dt>区のページ</dt><dd>載せます</dd><dt>公式LINE</dt><dd>{canSendLine(draft.kind) ? "題とページを送ります" : "今回は送りません"}</dd><dt>紙</dt><dd>{copies ? `加入世帯に${copies}部` : "印刷して配れます"}</dd></dl> : null}
+        {draft.stale_since_version !== null ? <Notice>新しいものが入っています。下書きを直すか、このまま配れます。</Notice> : null}
+        {tablesChanged ? <Notice>{previous?.tables_snapshot === null ? "配ったときの表の記録がありません。今の表を配り直せます。" : "配ったときから表が変わっています。今の表を配り直せます。"}</Notice> : null}
+        {draft.scope === "space" ? <><p>実行委員と班長に配ります。区のページには載りません</p>{!project.closed_at && (!draft.published_at || tablesChanged) ? <form method="post" action={adminPath(ward, `/publish/${projectId}/space`)}>
+          <input type="hidden" name="documentId" value={draft.document_id} /><input type="hidden" name="versionId" value={draft.version_id} /><input type="hidden" name="versionNo" value={draft.version_no} />
+          <button class={index === 0 ? "" : "secondary"} type="submit">{draft.published_at ? "実行委員と班長に配り直す" : "実行委員と班長に配る"}</button></form> : null}</> : null}
+        {draft.scope === "public" && !project.closed_at && !draft.published_at ? <form method="post" action={adminPath(ward, `/publish/${projectId}/confirm`)}>
+          <input type="hidden" name="documentId" value={draft.document_id} /><input type="hidden" name="versionId" value={draft.version_id} /><input type="hidden" name="versionNo" value={draft.version_no} />
+          <button class={index === 0 ? "" : "secondary"} type="submit">配る内容を見る</button><p class="muted">押しても、まだ配られません。</p>{!canSendLine(draft.kind) ? <p>公式LINEには送らず、区のページに載せます。</p> : null}
+        </form> : null}
+        <a class="quiet" href={adminPath(ward, `/projects/${projectId}/draft/${draft.kind}`)}>下書きを直す</a>
+      </section>;
+    })}
+    <h2>これまでに配ったもの</h2>{!allRecords.length ? <p>まだありません。</p> : allRecords.map((record) => <section class="panel">
+      <p>{formatJst(record.published_at)}に配りました。</p>{record.scope === "space" ? <p>実行委員と班長に配りました。</p> : <>
+        <p>紙の配布先: {paperTargetLabel(record.distribution)}</p><p>公式LINE: {record.line_status === "sent" ? `${record.line_recipients ?? ""}人に送りました` : record.line_status === "failed" || record.line_status === "not_configured" ? "送れませんでした。区のページには載っています。紙も配れます。" : record.line_status === "pending" ? "送信結果はまだ分かりません" : "今回は送っていません"}</p>
+        {record.unpublished_at ? <p>区のページから下げています。</p> : <form method="post" action={adminPath(ward, `/publish/${projectId}/lower/${record.publication_id}`)}><button class="secondary" type="submit">区のページから下げる</button></form>}
+      </>}<a class="quiet" href={adminPath(ward, `/print/${projectId}/${record.document_id}/${record.version_no}`)}>印刷用ページを開く</a>
+    </section>)}
+  </AdminPage>);
 });
 
 admin.post("/publish/:projectId/space", async (c) => {
@@ -280,7 +245,7 @@ admin.post("/publish/:projectId/space", async (c) => {
     .bind(now, account.accountId, ward.wardId, projectId, ward.wardId, projectId, documentId, versionId, versionNo,
       ward.wardId, documentId, ward.wardId, documentId, ward.wardId, projectId);
   const result = await publish.run();
-  if (result.meta.changes !== 1) return c.text("案の内容が変わったか、すでに配っています。配る画面で内容を確かめてください。", 409);
+  if (result.meta.changes !== 1) return c.text("下書きの内容が変わったか、すでに配っています。配る画面で内容を確かめてください。", 409);
   await recordPublishedItems(c.env.DB, ward.wardId, projectId, publishedVersionId, account.accountId);
   if (row.kind === "duty_roster") await markDistributedTask(c.env.DB, ward.wardId, projectId, account.accountId, "duty_roster", publishedVersionId);
   return c.redirect(adminPath(ward, `/publish/${projectId}?space=sent`), 303);
@@ -295,90 +260,86 @@ admin.get("/publish/:projectId/preview/:documentId/:versionNo", async (c) => {
     .first<{ title: string; scope: string; body: string; version_no: number }>();
   if (!row) return c.notFound();
   return c.html(<AdminPage ward={ward} account={account} title={row.title} back={{ href: adminPath(ward, `/publish/${c.req.param("projectId")}`), label: "配る画面へ戻る" }}>
-    <h1>{row.title} <Hint text="配る前の案を読む画面です。ここでは区のページには載りません。" /></h1><ArticleBody body={row.body} />
+    <h1>{row.title}</h1><p class="lead">配る前の下書きを読む画面です。ここでは区のページには載りません。</p><ArticleBody body={row.body} />
     <p><a href={adminPath(ward, `/print/${c.req.param("projectId")}/${c.req.param("documentId")}/${row.version_no}/preview`)}>印刷用ページで見る</a></p>
-    <p>見せるだけの確認用ページです。配る操作をするまで、出した内容にはなりません。</p>
-    {row.scope === "public" ? <p>配る相手と紙の部数は、配る画面から選んでください。</p> : <p>この物は実行委員と班長に配る内容です。</p>}
+    <p>配る前の見え方です。配る操作をするまで、区のページには載りません。</p>
+    {row.scope === "public" ? <p>配る相手と紙の部数は、配る内容を見る画面で変えられます。</p> : <p>この物は実行委員と班長に配る内容です。</p>}
   </AdminPage>);
 });
 
-admin.post("/publish/:projectId/confirm", async (c) => {
+async function confirmPublication(c: Context<AdminEnv>) {
   const { ward, account } = c.var;
-  const form = await c.req.formData();
-  const documentId = String(form.get("documentId") ?? "");
-  const requestedVersionId = String(form.get("versionId") ?? "");
-  const requestedVersionNo = Number(form.get("versionNo"));
-  const project = await getProject(c.env.DB, ward.wardId, c.req.param("projectId"));
+  const projectId = c.req.param("projectId")!;
+  const form = c.req.method === "POST" ? await c.req.formData() : new FormData();
+  const project = await getProject(c.env.DB, ward.wardId, projectId);
   if (!project || project.closed_at) return c.notFound();
-  const draft = await c.env.DB.prepare(`SELECT d.kind, COALESCE(v.title, d.title) AS title, d.scope, d.stale_since_version, v.version_id, v.version_no,
-      v.body, v.based_on_state_version, v.published_at
-    FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
-    WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_no = ?`)
-    .bind(ward.wardId, project.project_id, documentId, requestedVersionNo)
-    .first<DraftRow>();
-  if (!draft || (requestedVersionId && requestedVersionId !== draft.version_id)) return c.notFound();
-  if (draft.scope !== "public") return c.text("公開する案内は公開の範囲にしてください。", 400);
-  if (draft.kind === "duty_roster") return c.text("当番表は公開せず、プロジェクトの空間に配ってください。", 400);
-  if (!(DOCUMENT_KINDS as readonly string[]).includes(draft.kind)) return c.text("文書の種類を確認できません。", 400);
-  const warnings = await checkPublicDraft(c.env.DB, ward.wardId, project.project_id, draft.kind as DocumentKind, draft.body);
+  const drafts = await getDrafts(c.env.DB, ward.wardId, projectId);
+  const documentId = String(form.get("documentId") ?? c.req.query("documentId") ?? "");
+  const draft = drafts.find((row) => documentId ? row.document_id === documentId : row.kind === c.req.query("kind"));
+  if (!draft || draft.published_at || (form.get("versionId") && form.get("versionId") !== draft.version_id) ||
+    (form.get("versionNo") && Number(form.get("versionNo")) !== draft.version_no)) return c.notFound();
+  if (draft.scope !== "public" && !(draft.scope === "space" && ["duty_roster", "procedure"].includes(draft.kind))) return c.notFound();
+  const publicScope = draft.scope === "public";
   const roster = await getRoster(c.env.DB, ward.wardId);
   const recipientScope = form.get("recipientScope") === "all_households" ? "all_households" : "member_households";
-  const targetMode = form.get("targetMode");
-  let distribution: PaperDistribution | null;
-  if (targetMode === null) {
-    const districts = [...new Set(roster.map((entry) => entry.district))];
-    const legacy = parseDistribution(String(form.get("distribution") ?? ""), districts);
-    distribution = { mode: "district", targets: Object.entries(legacy).map(([district, copies]) => ({ district, copies })) };
-  } else {
-    const selectedDistricts = new Set(form.getAll("district").map(String));
-    const selectedHouseholds = new Set(form.getAll("household").map(String));
-    // 世帯に印があれば、選びの欄が班のままでも世帯に配る。印を黙って捨てて全ての班に配らないため。
-    distribution = buildDistribution(roster, recipientScope === "all_households" ? "district" : selectedHouseholds.size > 0 ? "household" : String(targetMode), selectedDistricts, selectedHouseholds,
-      (index) => Number(form.get(`copies_${index}`)), recipientScope === "all_households");
-  }
-  // 名簿は入れなくても動く。無い区は部数の割り振りなしで配る。
-  if (roster.length === 0) distribution = recipientScope === "all_households" && form.get("allCopies")
-    ? allHouseholdCopies(Number(form.get("allCopies"))) : { mode: "district", targets: [] };
-  if (!distribution) return c.text("配る班と部数を確かめてください。加入世帯に配る部数は名簿の世帯数までです。全戸に配る時は「全戸」を選んでください。", 400);
-  const lineDelivery = !canSendLine(draft.kind) || form.get("lineDelivery") === "skip" ? "skip" : "send";
-  const contacts = await getPublicContact(c.env.DB, ward.wardId);
-  let allowance = null;
+  const distribution = distributionFromForm(form, roster, recipientScope === "all_households");
+  if (!distribution) return c.html(<AdminPage ward={ward} account={account} title="部数を確かめてください"><h1>部数を確かめてください</h1><p>加入世帯に配る部数は名簿の世帯数までです。全戸に配るときは「全戸」を選んでください。</p><a class="button" href={adminPath(ward, `/publish/${projectId}/confirm?documentId=${draft.document_id}`)}>配る内容に戻る</a></AdminPage>, 400);
+  const rain = draft.kind === "notice" && draft.title.includes("雨");
+  const lineDelivery = !publicScope || !canSendLine(draft.kind) || form.get("lineDelivery") === "skip" ? "skip" : "send";
+  const warnings = publicScope ? await checkPublicDraft(c.env.DB, ward.wardId, projectId, draft.kind as DocumentKind, draft.body) : [];
+  let friends: number | null = null;
+  let remaining: number | null = null;
   let lineNotice = "";
   if (lineDelivery === "send") try {
     const token = await lineAccessToken(c.env, ward.wardId);
-    if (token) allowance = await getLineAllowance(token);
-    else lineNotice = LINE_NOT_CONFIGURED;
-  } catch { /* 送信結果として記録する */ }
-  return c.html(<AdminPage ward={ward} account={account} title="配る内容の確認" back={{ href: adminPath(ward, `/publish/${project.project_id}`), label: "案に戻る" }}>
-    <h1>配る内容の確認 <Hint text="本文と配る相手を読んでから「配る」を押すと、区のページに載ります。公式 LINE に送るかどうかも確認してください。" /></h1>
-    <ArticleBody body={draft.body} />
-    {draft.stale_since_version !== null ? <Notice>新しい物が入っています。ここに表示した内容で配れます。直す時は案に戻ってください。</Notice> : null}
-    {warnings.length > 0 ? <section class="panel"><h2>混入の検査で見つかった所</h2><p>公開する前に内容を確認してください。配る操作は続けられます。</p><ul>{warnings.map((warning) => <li>{warning}</li>)}</ul></section> : null}
-    <p>配ります。区のページに載ります。{lineDelivery === "skip" ? "今回は公式 LINE に送りません。" : lineNotice || `公式 LINE は${allowance?.friends === null || allowance === null ? "人数確認後" : `${allowance.friends} 人`}に届きます。`}</p>
-    {distribution.targets.length ? <p>紙の配布先: {paperTargetLabel(JSON.stringify(distribution))}</p> : <p>名簿が無いため、紙の配布先と部数は指定していません。</p>}
-    <p>配る相手: {recipientScope === "all_households" ? "全戸" : "加入世帯"}</p>
-    <p>公開用の連絡先: {contacts || "未設定"}</p>
-    <form method="post" action={adminPath(ward, `/publish/${project.project_id}/send`)}>
-      <input type="hidden" name="documentId" value={documentId} />
-      <input type="hidden" name="versionId" value={draft.version_id} />
-      <input type="hidden" name="versionNo" value={draft.version_no} />
-      <input type="hidden" name="distribution" value={JSON.stringify(distribution)} />
-      <input type="hidden" name="recipientScope" value={recipientScope} />
-      <input type="hidden" name="lineDelivery" value={lineDelivery} />
-      <button type="submit">配る</button>
-    </form>
+    if (token) {
+      const allowance = await getLineAllowance(token);
+      friends = allowance.friends;
+      remaining = allowance.remaining;
+    }
+    else lineNotice = "公式LINEの準備ができていません。区のページに載せて、紙を配れます。";
+  } catch { lineNotice = "公式LINEの人数を読み取れませんでした。配ったあとに結果を知らせます。"; }
+  const copies = distribution.targets.reduce((sum, target) => sum + target.copies, 0);
+  const printHref = adminPath(ward, `/print/${projectId}/${draft.document_id}/${draft.version_no}/preview`);
+  const editHref = adminPath(ward, `/projects/${projectId}/draft/${draft.kind}`);
+  c.header("Cache-Control", "no-store");
+  return c.html(<AdminPage ward={ward} account={account} title="配る内容を見る" back={{ href: editHref, label: "下書きへ" }}>
+    <div class="publish-confirm"><h1>次の内容で配ります</h1><p class="lead">まだ配っていません。読んで、よければ「配る」を押してください。LINEで送った知らせは取り消せません。</p>
+    <dl class="facts"><dt>{publicScope ? "区のページ" : "実行委員と班長のページ"}</dt><dd>載ります</dd>{publicScope ? <><dt>公式LINE</dt><dd>{lineDelivery === "skip" ? "今回は公式LINEに送りません。" : lineNotice || (friends === null ? "題とページを送ります" : `友だち${friends}人に届きます`)}</dd></> : null}{!rain ? <><dt>紙</dt><dd>{copies ? `${copies}部を印刷できます` : "印刷して配れます"}</dd></> : null}</dl>
+    <form method="post" action={adminPath(ward, `/publish/${projectId}/${publicScope ? "send" : "space"}`)}>
+      <input type="hidden" name="documentId" value={draft.document_id} /><input type="hidden" name="versionId" value={draft.version_id} /><input type="hidden" name="versionNo" value={draft.version_no} />
+      {publicScope && !rain ? <details class="fold"><summary>配る相手や部数を変える</summary><div>
+        <input type="hidden" name="targetMode" value="district" />
+        <fieldset><legend>紙を配る相手</legend><select name="recipientScope"><option value="member_households" selected={recipientScope === "member_households"}>加入世帯</option><option value="all_households" selected={recipientScope === "all_households"}>全戸（加入していない世帯も）</option></select></fieldset>
+        <fieldset><legend>班ごとの部数</legend><div class="qty">{[...new Set(roster.map((row) => row.district))].map((district, index) => {
+          const target = distribution.targets.find((row) => row.district === district);
+          return <label><input type="checkbox" name="district" value={district} checked={Boolean(target)} />{district}<input type="number" name={`copies_${index}`} min="1" value={target?.copies ?? roster.filter((row) => row.district === district).length} /><span>部</span></label>;
+        })}</div>{!roster.length ? <label>全戸に配るときの部数<input type="number" name="allCopies" min="1" value={distribution.targets[0]?.copies} /></label> : null}</fieldset>
+        {roster.length ? <details class="fold"><summary>世帯を選ぶ</summary><p>加入世帯の一部に配るときは、世帯に印を付けてください。</p>{householdChoices(roster).map(({ district, household, count }) => <label><input type="checkbox" name="household" value={JSON.stringify([district, household])} checked={distribution.mode === "household" && distribution.targets.some((target) => target.district === district && target.household === household)} />{district} / {household}{count > 1 ? `（${count}部）` : ""}</label>)}</details> : null}
+        {canSendLine(draft.kind) ? <fieldset><legend>公式LINE</legend><select name="lineDelivery"><option value="send" selected={lineDelivery === "send"}>題とページを送る</option><option value="skip" selected={lineDelivery === "skip"}>今回は送らない</option></select></fieldset> : <input type="hidden" name="lineDelivery" value="skip" />}
+      </div></details> : <><input type="hidden" name="distribution" value={JSON.stringify({ mode: "district", targets: [] })} /><input type="hidden" name="lineDelivery" value={lineDelivery} /></>}
+      {lineDelivery === "send" && remaining !== null ? <p class="muted">今月、公式LINEで送れるのはあと{remaining}通です。送れなかったときも、区のページに載せて紙を配れます。</p> : null}
+      {draft.stale_since_version !== null ? <Notice>新しいものが入っています。ここに表示した内容で配れます。直すときは下書きに戻ってください。</Notice> : null}
+      {warnings.map((warning) => <PublicWarning finding={warning} />)}
+      <div class="compare"><section class="compare-paper"><b>紙{copies ? `（${recipientScope === "all_households" ? "全戸" : "加入世帯"}に${copies}部）` : ""}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} />{draft.kind === "announcement" ? <p class="answer-slip-preview"><b>回答票</b>　切り取って班長か役員に渡します。代表者のお名前、人数、手伝いの欄があります。</p> : null}</div></section>
+        <section><b>{publicScope ? "区のページ" : "実行委員と班長のページ"}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} />{draft.kind === "announcement" ? <p class="muted">この下に「参加する人数を答える」のボタンが出ます。</p> : null}</div></section></div>
+      <p class="compare-link"><a class="quiet" href={printHref}>紙の見え方を見る</a></p><p class="muted">{publicScope ? "配ったあとも、区のページからは下げられます。" : "実行委員と班長に配ります。区のページには載りません。"}</p>
+      <div class="action-bar"><button type="submit">配る</button><a class="button secondary" href={editHref}>下書きに戻る</a></div>
+    </form></div>
   </AdminPage>);
-});
+}
+admin.get("/publish/:projectId/confirm", confirmPublication);
+admin.post("/publish/:projectId/confirm", confirmPublication);
 
 admin.post("/publish/:projectId/send", async (c) => {
   const { ward, account } = c.var;
-  const form = await c.req.parseBody();
+  const form = await c.req.formData();
   const projectId = c.req.param("projectId");
   const project = await getProject(c.env.DB, ward.wardId, projectId);
-  const documentId = typeof form.documentId === "string" ? form.documentId : "";
-  const versionId = typeof form.versionId === "string" ? form.versionId : "";
-  const versionNo = Number(form.versionNo);
-  const recipientScope = form.recipientScope === "all_households" ? "all_households" : "member_households";
+  const documentId = String(form.get("documentId") ?? "");
+  const versionId = String(form.get("versionId") ?? "");
+  const versionNo = Number(form.get("versionNo"));
+  const recipientScope = form.get("recipientScope") === "all_households" ? "all_households" : "member_households";
   if (!project || project.closed_at) return c.notFound();
   const row = await c.env.DB.prepare(`SELECT d.kind, COALESCE(v.title, d.title) AS title, d.scope, d.stale_since_version, v.body, v.based_on_state_version,
       v.published_at FROM documents d JOIN document_versions v
@@ -391,7 +352,7 @@ admin.post("/publish/:projectId/send", async (c) => {
   const now = nowIso();
   const publicationId = newId();
   const roster = await getRoster(c.env.DB, ward.wardId);
-  const rawDistribution = typeof form.distribution === "string" ? form.distribution : "";
+  const rawDistribution = String(form.get("distribution") ?? "");
   let distribution: PaperDistribution | null = roster.length === 0 && recipientScope !== "all_households"
     ? { mode: "district", targets: [] } : validateDistribution(rawDistribution, roster, recipientScope === "all_households");
   if (!distribution && !rawDistribution.trim().startsWith("{")) {
@@ -399,6 +360,7 @@ admin.post("/publish/:projectId/send", async (c) => {
     const legacy = parseDistribution(rawDistribution, districts);
     distribution = { mode: "district", targets: Object.entries(legacy).map(([district, copies]) => ({ district, copies })) };
   }
+  if (form.has("targetMode")) distribution = distributionFromForm(form, roster, recipientScope === "all_households");
   if (!distribution) return c.text("紙の配布先が名簿と合いません。配布内容を選び直してください。", 400);
   const draftDue = row.kind === "announcement" ? answerDeadlineFromDraft(row.body, project.year) : null;
   // 過ぎた日を受付の締切に入れると、配った途端に回答が閉じる。去年の中身の案でも起きるので入れない
@@ -435,14 +397,14 @@ admin.post("/publish/:projectId/send", async (c) => {
       .bind(answerDue, now, ward.wardId, projectId, publicationId)] : []),
   ]);
   if (publication[0]?.meta.changes !== 1 || publication[1]?.meta.changes !== 1) {
-    return c.html(<AdminPage ward={ward} account={account} title="配る内容を確かめてください" back={{ href: adminPath(ward, `/publish/${projectId}`), label: "案に戻る" }}>
-      <h1>配る内容を確かめてください</h1><p>案の内容が変わったか、すでに配っています。配る画面で内容を確かめてください。</p>
+    return c.html(<AdminPage ward={ward} account={account} title="配る内容を確かめてください" back={{ href: adminPath(ward, `/publish/${projectId}`), label: "下書きに戻る" }}>
+      <h1>配る内容を確かめてください</h1><p>下書きの内容が変わったか、すでに配っています。配る画面で内容を確かめてください。</p>
     </AdminPage>, 409);
   }
   await recordPublishedItems(c.env.DB, ward.wardId, projectId, versionId, account.accountId);
   if (row.kind === "announcement") await markDistributedTask(c.env.DB, ward.wardId, projectId, account.accountId, "announcement", versionId);
   const publicUrl = `${(c.env.PUBLIC_BASE_URL || new URL(c.req.url).origin).replace(/\/+$/, "")}/${ward.slug}/p/${encodeURIComponent(projectId)}`;
-  const sendLine = canSendLine(row.kind) && form.lineDelivery !== "skip";
+  const sendLine = canSendLine(row.kind) && form.get("lineDelivery") !== "skip";
   let lineStatus: PublicationRow["line_status"] = sendLine ? "not_configured" : "not_sent";
   let lineRecipients: number | null = null;
   let lineSentAt: string | null = null;
@@ -473,7 +435,7 @@ admin.post("/publish/:projectId/lower/:publicationId", async (c) => {
   await c.env.DB.prepare(`UPDATE publication_records SET unpublished_at = ?
     WHERE ward_id = ? AND project_id = ? AND publication_id = ? AND unpublished_at IS NULL`)
     .bind(nowIso(), ward.wardId, c.req.param("projectId"), c.req.param("publicationId")).run();
-  return c.redirect(adminPath(ward, `/publish/${c.req.param("projectId")}`), 303);
+  return c.redirect(adminPath(ward, `/publish/${c.req.param("projectId")}?lowered=${encodeURIComponent(c.req.param("publicationId"))}`), 303);
 });
 
 /** 読む人に見せる段落。文を正とし、項目は文に書かれていない物だけ見出しを付けて足す。 */
@@ -498,6 +460,46 @@ export function ArticleBody({ body }: { body: string }) {
 
 interface DistributionTarget { district: string; copies: number; household?: string; }
 interface PaperDistribution { mode: "district" | "household"; targets: DistributionTarget[]; }
+
+function distributionFromForm(form: FormData, roster: Array<{ district: string; household: string }>, allHouseholds: boolean): PaperDistribution | null {
+  if (!roster.length) return allHouseholds && form.get("allCopies")
+    ? allHouseholdCopies(Number(form.get("allCopies"))) : { mode: "district", targets: [] };
+  if (!form.has("targetMode")) {
+    if (form.get("distribution")) {
+      const raw = String(form.get("distribution"));
+      if (raw.trim().startsWith("{")) return validateDistribution(raw, roster, allHouseholds);
+      const legacy = parseDistribution(raw, [...new Set(roster.map((row) => row.district))]);
+      return { mode: "district", targets: Object.entries(legacy).map(([district, copies]) => ({ district, copies })) };
+    }
+    const names = [...new Set(roster.map((row) => row.district))];
+    return { mode: "district", targets: names.map((district) => ({ district, copies: roster.filter((row) => row.district === district).length })) };
+  }
+  const households = new Set(form.getAll("household").map(String));
+  return buildDistribution(roster, allHouseholds ? "district" : households.size ? "household" : String(form.get("targetMode")),
+    new Set(form.getAll("district").map(String)), households, (index) => Number(form.get(`copies_${index}`)), allHouseholds);
+}
+
+function DistributionFacts({ raw }: { raw: string }) {
+  const parsed: unknown = JSON.parse(raw);
+  const targets = typeof parsed === "object" && parsed !== null && "targets" in parsed && Array.isArray(parsed.targets) ? parsed.targets : null;
+  if (!targets) return <p>紙の配布先: {paperTargetLabel(raw)}</p>;
+  return <dl class="facts">{targets.map((target: { district: string; household?: string; copies: number }) => <><dt>{target.district}{target.household ? ` / ${target.household}` : ""}</dt><dd>{target.copies}部</dd></>)}</dl>;
+}
+
+/** 検査の結果だけを、配る人が読める文にする。警告で操作を止めない。 */
+function PublicWarning({ finding }: { finding: string }) {
+  const separator = finding.indexOf(": ");
+  const kind = separator < 0 ? finding : finding.slice(0, separator);
+  const value = separator < 0 ? "" : finding.slice(separator + 2);
+  const messages: Record<string, { title: string; text: string }> = {
+    "名簿の名前": { title: "名簿の名前と同じ文字があります", text: `「${value}」が本文にあります。だれでも読める案内に出てよければ、このまま配れます。` },
+    "協賛の額": { title: "協賛の金額と同じ数字があります", text: `「${value}」が本文にあります。だれでも読める案内に出てよければ、このまま配れます。` },
+    "個人の連絡先": { title: "個人の連絡先と思われる文字があります", text: `「${value}」が本文にあります。だれでも読める案内に出てよければ、このまま配れます。` },
+    "まだ決まっていない所": { title: "まだ決めていないところがあります", text: `「${value}」が本文にあります。このまま配れます。直すときは下書きに戻ってください。` },
+  };
+  const message = messages[kind] ?? { title: "本文を読み取れないところがあります", text: "下に出ている内容を読んで、このまま配れます。直すときは下書きに戻ってください。" };
+  return <div class="notice warn"><strong>{message.title}</strong><p>{message.text}</p></div>;
+}
 
 function allHouseholdCopies(copies: number): PaperDistribution | null {
   return Number.isInteger(copies) && copies > 0 ? { mode: "district", targets: [{ district: "全戸", copies }] } : null;
