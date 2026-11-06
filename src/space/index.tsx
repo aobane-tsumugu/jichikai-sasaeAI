@@ -125,7 +125,7 @@ pub.post("/space/:projectId/enter", async (c) => {
   const form = await c.req.parseBody();
   const passphrase = typeof form.passphrase === "string" ? form.passphrase : "";
   const credential = await enterWithPassphrase(c.env.DB, c.var.ward.wardId, c.req.param("projectId"), passphrase);
-  if (!credential) return c.html(<Layout title="入れませんでした" siteName={await spaceSiteName(c)}><h1>入れませんでした</h1><p>もう一度入れてください。分からないときは役員に聞いてください</p><p><a href={`/${c.var.ward.slug}/space/${c.req.param("projectId")}`}>もう一度入力する</a></p></Layout>, 403);
+  if (!credential) return c.html(<Layout title="入れませんでした" siteName={await spaceSiteName(c)}><h1>入れませんでした</h1><p>もう一度入れてください。分からないときは役員に聞いてください</p><p class="link-line"><a href={`/${c.var.ward.slug}/space/${c.req.param("projectId")}`}>もう一度入力する</a></p></Layout>, 403);
   setSpaceCookie(c, credential);
   return c.redirect(`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(credential.projectId)}`, 303);
 });

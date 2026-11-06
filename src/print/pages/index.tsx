@@ -49,8 +49,8 @@ admin.get("/print/:projectId", async (c) => {
     <p class="lead">案内を配る前から使えます。電話や役員会で決まったことを紙に書き、番号といっしょに撮って送ってください。</p>
     <p>{project.title}</p>
     <ul class="rows">{(["meeting", "sponsors"] as const).map((kind) => <li><a class="row-link" href={adminPath(ward, `/print/${id}/paper/${kind}`)}><b>{kindLabel(kind)}</b></a></li>)}</ul>
-    <p><a href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>書いた紙を撮って送る</a></p>
-    <p><a href={adminPath(ward, `/publish/${id}`)}>配った案内や回答票を印刷する</a></p>
+    <p class="link-line"><a href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>書いた紙を撮って送る</a></p>
+    <p class="link-line"><a href={adminPath(ward, `/publish/${id}`)}>配った案内や回答票を印刷する</a></p>
   </AdminPage>);
 });
 
@@ -155,7 +155,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
       return c.html(<AdminPage ward={ward} account={c.var.account} title="班長への一枚" back={{ href: back, label: "印刷用ページへ戻る" }}>
         <h1>班長への一枚</h1>
         <p class="lead">班長が自分の班の答えを見たり、回答票を撮って送ったりできる専用のQRを印刷します。その班長にだけ渡してください。</p>
-        {!space || space.closed_at ? <p><a href={adminPath(ward, `/space/${projectId}`)}>実行委員と班長のページを開いてから印刷する</a></p>
+        {!space || space.closed_at ? <p class="link-line"><a href={adminPath(ward, `/space/${projectId}`)}>実行委員と班長のページを開いてから印刷する</a></p>
           : <form method="post"><button>班長の専用QRを作って印刷する</button></form>}
       </AdminPage>);
     }

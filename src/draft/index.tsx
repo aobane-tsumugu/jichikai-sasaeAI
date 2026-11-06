@@ -52,7 +52,7 @@ admin.get("/projects/:projectId/draft", async (c) => {
     {listDraftPacks().map((pack) => <section class="panel"><h2><a href={adminPath(ward, `/projects/${id}/draft/${pack.kind}`)}>{pack.title}</a></h2><p>範囲: {SCOPE_LABEL[pack.scope]}</p>
       <form method="post" action={adminPath(ward, `/projects/${id}/draft/${pack.kind}/start`)}><button class="secondary">AIに下書きを起こしてもらう</button></form>
     </section>)}
-    <p><a href={adminPath(ward, `/publish/${id}`)}>配る</a></p>
+    <p class="link-line"><a href={adminPath(ward, `/publish/${id}`)}>配る</a></p>
   </Layout>);
 });
 
@@ -112,7 +112,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     <h1>{pack.title}の下書きを直す</h1>
     <p class="lead">直して保存しても、まだ配られません。{scope === "public" ? "だれでも読める案内です。" : scope === "space" ? "実行委員と班長だけが読めます。" : "役員だけが読めます。"}</p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
-    {c.req.query("notice") === "saved" ? <section class="next"><strong>保存しました。まだ配っていません</strong><p>前の下書きにも戻せます。</p><a class="button" href={adminPath(ward, `/publish/${id}/confirm?kind=${kindRaw}`)}>配る画面へ</a><a class="quiet" href="#previous-drafts">前の下書きに戻す</a></section> : null}
+    {c.req.query("notice") === "saved" ? <section class="next"><strong>保存しました。まだ配っていません</strong><p>前の下書きにも戻せます。</p><a class="button secondary" href={adminPath(ward, `/publish/${id}/confirm?kind=${kindRaw}`)}>配る画面へ</a><a class="quiet" href="#previous-drafts">前の下書きに戻す</a></section> : null}
     {bodyCheck ? <Notice>{bodyCheck}</Notice> : null}
     {c.req.query("notice") === "restored" ? <Notice>前の下書きに戻しました。今の下書きも残ります。</Notice> : null}
     {taskNotice ? <Notice><span data-ai-status={taskNotice.status}>{taskNotice.message}</span> 画面を閉じても処理は続きます。ここで書いて保存することもできます。</Notice> : null}
@@ -135,7 +135,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
         <label for={`task-${row.rowId}`}>持ち場</label><input id={`task-${row.rowId}`} name="task" value={String(row.data.task ?? "")} maxlength={200} />
         <label for={`assignee-${row.rowId}`}>担当</label><input id={`assignee-${row.rowId}`} name="assignee" value={String(row.data.assignee ?? "")} maxlength={160} />
         <label for={`attendance-${row.rowId}`}>出席</label><select id={`attendance-${row.rowId}`} name="attendance"><option value="no_change" selected={!row.data.attendance}>まだ記録しない</option><option value="present" selected={row.data.attendance === "present"}>出席</option><option value="absent" selected={row.data.attendance === "absent"}>欠席</option></select>
-        <p><button type="submit">この行を保存</button></p>
+        <p><button type="submit" class="secondary">この行を保存</button></p>
       </form>)}
       {state.tables.duties.filter((row) => row.scope === "current").length === 0 ? <p>当番表の行はまだありません。下の紙の欄に書き込めます。</p> : null}
       <p>印刷用ページから紙の当番表を開き、手で書き込むこともできます。</p>

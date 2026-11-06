@@ -94,7 +94,7 @@ admin.get("/archive/search", async (c) => {
       <label for="kind">行事の種類</label><select id="kind" name="kind"><option value="">すべて</option>{PROJECT_KINDS.map((value) => <option value={value} selected={projectKind === value}>{PROJECT_KIND_LABEL[value]}</option>)}</select>
       <label for="type">記録の種類</label><select id="type" name="type"><option value="">すべて</option>{ARCHIVE_RECORD_TYPES.map((value) => <option value={value} selected={recordType === value}>{labels[value]}</option>)}</select>
       <label for="counterpart">相手の名前</label><input id="counterpart" name="counterpart" type="text" value={counterpart} />
-      <p><button>探す</button></p>
+      <p class="action-bar page-action"><button>探す</button></p>
     </form>
     {query.trim().length === 1 ? <p class="notice">二文字以上入れてください。</p> : null}
     {query.trim().length >= 2 ? <h2>見つかった記録（最大30件）</h2> : null}
@@ -110,7 +110,7 @@ admin.get("/archive/search", async (c) => {
     <p>記録から分かることを尋ねます。元の箇所も一緒に表示します。</p>
     <form method="post" action={adminPath(ward, "/archive/ask")}>
       <label for="question">聞きたいこと</label><input id="question" name="question" type="text" maxlength={300} required />
-      <button type="submit">記録に聞く</button>
+      <button type="submit" class="secondary">記録に聞く</button>
     </form>
   </Layout>);
 });
@@ -122,7 +122,7 @@ admin.post("/archive/ask", async (c) => {
   if (question.length < 3) return c.redirect(adminPath(ward, "/archive/search"), 303);
   const fragments = await findFragments(c.env.DB, ward.wardId, question, 8);
   if (fragments.length === 0) return c.html(<Layout title="記録に聞く" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>記録に聞く</h1><p class="lead">過去の記録について聞いた結果です。元の箇所が示されているときは、そこも開いて内容を読んでください。</p><p>記録の中に答えは見つかりませんでした。</p><p><a href={adminPath(ward, "/archive/search")}>記録を探す</a></p>
+    <h1>記録に聞く</h1><p class="lead">過去の記録について聞いた結果です。元の箇所が示されているときは、そこも開いて内容を読んでください。</p><p>記録の中に答えは見つかりませんでした。</p><p class="link-line"><a href={adminPath(ward, "/archive/search")}>記録を探す</a></p>
   </Layout>);
   const allowed = fragments.map((fragment) => String(fragment.entry_id));
   const response = await createAnthropic(c.env).messages.create({
@@ -151,7 +151,7 @@ admin.post("/archive/ask", async (c) => {
     <h1>記録に聞く</h1><p class="lead">過去の記録について聞いた結果です。元の箇所が示されているときは、そこも開いて内容を読んでください。</p><p><strong>質問:</strong> {question}</p><section class="panel"><p style="white-space:pre-wrap">{answer}</p></section>
     <h2>元の箇所</h2>{citations.map((fragment) => <p><a href={adminPath(ward, fragment.source_id ? `/intake/originals/${fragment.source_id}` : projectRecordPath(fragment))}>{fragment.year}年{fragment.title}</a> — {fragment.locator}（{fragment.excerpt}）</p>)}
     {citations.length === 0 ? <p>根拠として示せる箇所は見つかりませんでした。</p> : null}
-    <p><a href={adminPath(ward, "/archive/search")}>記録を探す</a></p>
+    <p class="link-line"><a href={adminPath(ward, "/archive/search")}>記録を探す</a></p>
   </Layout>);
 });
 
@@ -227,7 +227,7 @@ admin.get("/archive/:projectId", async (c) => {
     {!documents.results.length ? <p>配ったものはありません。</p> : null}
 
     </section><aside><div class="counts record-counts"><div class="count"><b>{answers.length}<small>世帯</small></b><span>答えた</span></div><div class="count"><b>{answers.reduce((sum, answer) => sum + answer.peopleCount, 0)}<small>人</small></b><span>参加すると答えた</span></div></div>
-      <ul class="links"><li><a href="#report">報告を読む</a></li><li><a href="#answers">答えの一覧を読む</a></li><li><a href="#orig">元の資料を読む（{originals.results.length}件）</a></li></ul>
+      <ul class="links"><li class="link-line"><a href="#report">報告を読む</a></li><li class="link-line"><a href="#answers">答えの一覧を読む</a></li><li class="link-line"><a href="#orig">元の資料を読む（{originals.results.length}件）</a></li></ul>
       <details class="hint"><summary>ほかの記録を探す</summary><div><form method="get" action={adminPath(ward, "/archive/search")}><label for="q">探す言葉</label><input id="q" name="q" type="text" minlength={2} required /><button class="secondary">探す</button></form></div></details>
     </aside></div>
     <h2 id="report">報告</h2>{reports.results?.map((report) => <section class="panel"><h3>{report.scope === "public" ? "公開する部分" : "役員だけの部分"}</h3><p style="white-space:pre-wrap">{report.body || "まだ記入されていません"}</p></section>)}
@@ -239,13 +239,13 @@ admin.get("/archive/:projectId", async (c) => {
     {answers.map((answer) => <section class="panel">
       <h3>{answer.household || answer.helperName || "手伝いの申し出"}</h3><p>{answer.district || "班が分からない"} / 参加{countText(answer, answerLabels)}</p>
       {answer.helperName ? <p>手伝い: {answer.helperName} / {answer.helperTimes || "時間の記入なし"}</p> : null}
-      {answer.originalId ? <p><a href={adminPath(ward, `/intake/originals/${answer.originalId}`)}>回答票を読む</a></p> : null}
+      {answer.originalId ? <p class="link-line"><a href={adminPath(ward, `/intake/originals/${answer.originalId}`)}>回答票を読む</a></p> : null}
     </section>)}
     {!answers.length ? <p>答えはありません。</p> : null}
     {(["decisions", "sponsors"] as const).map((table) => <section>
       <h2>{TABLES[table].label}</h2><RecordedRows table={table} rows={(state?.tables[table] ?? []).filter((row) => row.scope === "current")} ward={ward} />
     </section>)}
-    <h2 id="orig">元の資料</h2>{originals.results?.map((o) => <p><a href={adminPath(ward, `/intake/originals/${o.original_id}`)}>{o.filename || "一行の文"}（{o.kind === "photo" ? "写真" : o.kind === "file" ? "ファイル" : "文"}）</a></p>)}
+    <h2 id="orig">元の資料</h2>{originals.results?.map((o) => <p class="link-line"><a href={adminPath(ward, `/intake/originals/${o.original_id}`)}>{o.filename || "一行の文"}（{o.kind === "photo" ? "写真" : o.kind === "file" ? "ファイル" : "文"}）</a></p>)}
     {originals.results?.length === 0 ? <p>元の資料はありません。</p> : null}
 
   </AdminPage>);

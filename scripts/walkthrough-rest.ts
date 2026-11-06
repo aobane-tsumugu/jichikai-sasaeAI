@@ -236,8 +236,11 @@ else {
         .find(link => !/\/archive\/(?:map|search)$/.test(link));
       if (!firstLink) throw new Error("閉じた記録を開けません");
       const recordPage = await get(unescapeHtml(firstLink));
-      const mapHtml = /<h2>段取り<\/h2>([\s\S]*?)<h2>配ったもの<\/h2>/.exec(recordPage.html)?.[1] ?? "";
-      const term = unescapeHtml(/<h3>([^<]{3,})<\/h3>/.exec(mapHtml)?.[1] ?? "").trim();
+      // 記録の段取りはrecord-splitの中のpanelに、仕事の名前と時期を並べている。
+      const mapHtml = /<div\b[^>]*class="record-split"[^>]*>\s*<section>\s*<h2\b[^>]*>段取り<\/h2>([\s\S]*?)(?=<h2\b)/.exec(recordPage.html)?.[1] ?? "";
+      const taskNames = [...mapHtml.matchAll(/<section\b[^>]*class="panel"[^>]*>\s*<h3\b[^>]*>([\s\S]*?)<\/h3>/g)]
+        .map((match) => unescapeHtml((match[1] ?? "").replace(/<[^>]*>/g, "")).trim());
+      const term = taskNames.find((name) => name.length >= 2) ?? "";
       if (!term) throw new Error("検索語を記録から選べません");
       const search = await get(admin + "/archive/search?q=" + encodeURIComponent(term));
       if (!search.response.ok || !search.html.includes("見つかった記録") || search.html.includes("見つかりませんでした")) throw new Error("全文検索で記録が見つかりません");

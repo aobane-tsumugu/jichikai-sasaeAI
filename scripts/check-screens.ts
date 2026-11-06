@@ -86,16 +86,25 @@ function scope(options: Options) {
 
 function readCredentials(path: string) {
   const contents = readFileSync(resolve(path), "utf8");
-  const name = /^(?:名前|氏名)\s*[:：]\s*(.+)$/m.exec(contents)?.[1]?.trim();
+  const loginId = /^(?:ID|ログインID)\s*[:：]\s*(.+)$/m.exec(contents)?.[1]?.trim();
+  const name = /^(?:名前|氏名)\s*[:：]\s*(.+)$/m.exec(contents)?.[1]?.trim() ?? loginId;
   const password = /^パスワード\s*[:：]\s*(.+)$/m.exec(contents)?.[1]?.trim();
-  if (!name || !password) throw new Error("資格情報は「名前:」「パスワード:」形式で指定してください。");
-  return { name, password };
+  if (!name || !password) throw new Error("資格情報は「名前:」（または「ID:」）と「パスワード:」形式で指定してください。");
+  return { name, password, loginId };
 }
 
 function reason(error: unknown): string {
   if (error instanceof Error && error.name === "TimeoutError") return "表示を待つ時間が上限に達しました";
   // 例外の本文にはURLや資格情報が入りうるため、そのまま出さない。
   return "画面を開けませんでした";
+}
+
+function errorHead(message: string, kind: "console.error" | "pageerror"): string {
+  // ブラウザーの定型の診断だけを残す。引用された本文、URL、名前、鍵、任意のログは写さない。
+  const resource = /^Failed to load resource: (?:net::ERR_[A-Z_]+|the server responded with a status of \d{3})/.exec(message)?.[0];
+  const csp = /^(?:Refused to (?:execute|apply|load|connect to|frame)|(?:Executing|Applying|Loading|Connecting to|Framing) (?:the )?(?:inline script|inline style|script|stylesheet))\b/.exec(message)?.[0];
+  const exception = /^(?:Uncaught )?(?:TypeError|ReferenceError|SyntaxError|RangeError|EvalError|URIError)\b/.exec(message)?.[0];
+  return (resource ?? (csp && /Content Security Policy|script-src|style-src/.test(message) ? `${csp} [対象を伏せました] (Content Security Policy)` : exception ? `${exception}: [本文を伏せました]` : `${kind}: [本文を伏せました]`)).slice(0, 100);
 }
 
 async function inspect(page: Page): Promise<Failure[]> {
@@ -200,7 +209,15 @@ async function check(options: Options): Promise<{ results: Result[]; project: st
       }
       const resource = site.relative(url);
       const original = resource !== null && /^\/admin\/(?:intake\/originals\/[^/]+|inbox\/[^/]+\/original)$/.test(resource);
-      if (request.method() !== "GET" || !(site.match(url) || original || (loggingIn && login))) {
+      // ページごとの自動アイコン取得をabortすると、道具自身の通信エラーがconsoleに残る。
+      if (request.method() === "GET" && url.origin === site.base.origin && url.pathname === "/favicon.ico") {
+        await route.fulfill({ status: 204 });
+        return;
+      }
+      const asset = url.origin === site.base.origin && (resource !== null || /^\/(?:assets|cdn-cgi)\//.test(url.pathname))
+        && /\.(?:js|css|woff2?|ttf|ico|png|jpe?g|gif|svg|webp)$/i.test(url.pathname)
+        && ["script", "stylesheet", "font", "image"].includes(request.resourceType());
+      if (request.method() !== "GET" || !(site.match(url) || original || asset || (loggingIn && login))) {
         await route.abort("blockedbyclient");
         return;
       }
@@ -208,10 +225,20 @@ async function check(options: Options): Promise<{ results: Result[]; project: st
     });
     const page = await context.newPage();
     await page.goto(new URL(site.loginPath, site.base).href, { waitUntil: "domcontentloaded", timeout: 30000 });
-    await page.locator('input[name="loginId"]').fill(credentials.name);
-    await page.locator('input[name="password"]').fill(credentials.password);
-    await page.getByRole("button", { name: "入る", exact: true }).click();
-    await page.waitForURL((url) => url.pathname !== site.loginPath, { timeout: 15000 });
+    if (credentials.loginId && await page.locator('input[name="loginId"]').count()) {
+      await page.locator('input[name="loginId"]').fill(credentials.loginId);
+      await page.locator('input[name="password"]').fill(credentials.password);
+      await page.getByRole("button", { name: "入る", exact: true }).click();
+      await page.waitForURL((url) => url.pathname !== site.loginPath, { timeout: 15000 });
+    } else {
+      // walkthrough.tsと同じ、名前で入る区の入口。APIRequestは同じCookieを使う。
+      loginPosted = true;
+      const response = await context.request.post(new URL(site.loginPath, site.base).href, {
+        form: { name: credentials.name, password: credentials.password }, headers: { origin: site.base.origin }, maxRedirects: 0,
+      });
+      if (response.status() !== 303) throw new Error("役員画面に入れませんでした");
+      await page.goto(new URL(`${site.wardPath}/admin/`, site.base).href, { waitUntil: "domcontentloaded", timeout: 30000 });
+    }
     if (!site.match(new URL(page.url()))) throw new Error("役員画面に入れませんでした");
     loggingIn = false;
 
@@ -257,11 +284,11 @@ async function check(options: Options): Promise<{ results: Result[]; project: st
         let view: Page | undefined;
         const failures: Failure[] = [];
         const httpErrors = new Set<string>();
-        let consoleErrors = 0;
+        const consoleErrors: string[] = [];
         try {
           view = await context.newPage();
-          view.on("console", (message) => { if (message.type() === "error") consoleErrors++; });
-          view.on("pageerror", () => { consoleErrors++; });
+          view.on("console", (message) => { if (message.type() === "error") consoleErrors.push(errorHead(message.text(), "console.error")); });
+          view.on("pageerror", (error) => { consoleErrors.push(errorHead(error.message, "pageerror")); });
           view.on("response", (response) => {
             if (response.status() >= 400) httpErrors.add(`HTTP ${response.status()}（${response.request().resourceType()}）`);
           });
@@ -279,7 +306,7 @@ async function check(options: Options): Promise<{ results: Result[]; project: st
           failures.push({ item: "表示できない", detail: reason(error) });
         } finally {
           for (const error of httpErrors) failures.push({ item: "HTTPの誤り", detail: error });
-          if (consoleErrors) failures.push({ item: "JavaScriptの誤り（console.errorなど）", detail: `${consoleErrors}件（本文は記録しません）` });
+          if (consoleErrors.length) failures.push({ item: "JavaScriptの誤り（console.errorなど）", detail: `${consoleErrors.length}件: ${[...new Set(consoleErrors)].slice(0, 8).join(" / ")}` });
           results.push({ path: url.pathname, width, failures });
           if (view) {
             try { await view.close(); }
@@ -310,7 +337,7 @@ function report(options: Options, results: Result[], project: string, capped: bo
     `- ${!paths.length ? "画面を確認できていません。下の実行結果を確認してください。" : capped ? "上限200画面に達しました。残りのリンク先は未確認です。" : "集めたリンク先を最後まで確認しました。"}`,
     "- ログインだけPOSTを一回使います。既存の認証処理による端末の記録を除き、GETの画面だけを開きます。招待を使う入口と更新用の入口へは進みません。",
     "- 文字の大きさは表示中の本文と入力欄を対象にし、印刷の中身（.sheet、.print、[data-print]）とSVGを除きます。本文に埋め込まれたリンクの高さは除きます。",
-    "- 本文、資格情報、console.errorの本文は保存しません。不合格だけを次に記録します。", "",
+    "- 本文と資格情報は保存しません。JavaScriptの誤りは、ブラウザーの定型の診断だけを残して対象や本文を伏せ、冒頭100文字以内を記録します。任意のログの本文は伏せます。不合格だけを次に記録します。", "",
     "| 画面のURL | 幅 | 落ちた項目 | 場所と内容 |", "|---|---:|---|---|",
     ...results.flatMap((row) => row.failures.map((failure) => `| ${cell(row.path)} | ${cell(row.width)} | ${cell(failure.item)} | ${cell(failure.detail)} |`)), "",
   ];
@@ -347,7 +374,7 @@ async function main() {
   console.log("指定したフォルダのreport.mdに結果を書きました。");
 }
 
-// 指定された三つのファイルだけで、主な流れの試験を一本持つ。外側から実行する。
+// 主な流れの試験。外側から実行する。
 async function selfTest() {
   const { test } = await import("node:test");
   const { createServer } = await import("node:http");
@@ -356,15 +383,26 @@ async function selfTest() {
   await test("架空の区で入る、画面を集める、両幅の不合格を残し、更新と別の区へ進まない", async () => {
     const temp = mkdtempSync(resolve(tmpdir(), "check-screens-"));
     const requests: string[] = [];
-    const html = (body: string) => `<!doctype html><html lang="ja"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;font-size:18px}a,button,input,summary{display:block;min-height:48px;font-size:18px}.small{font-size:12px}.wide{width:1400px}</style></head><body>${body}</body></html>`;
+    const html = (body: string) => `<!doctype html><html lang="ja"><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="/favicon.ico"><style>body{margin:0;font-size:18px}a,button,input,summary{display:block;min-height:48px;font-size:18px}.small{font-size:12px}.wide{width:1400px}</style><script nonce="fixture" src="/fixture/app.js"></script></head><body>${body}</body></html>`;
     const server = createServer((request, response) => {
       const path = new URL(request.url ?? "/", "http://localhost").pathname;
       requests.push(`${request.method} ${path}`);
       response.setHeader("Content-Type", "text/html; charset=utf-8");
-      if (path === "/fixture/admin/login") {
+      response.setHeader("Content-Security-Policy", "script-src 'nonce-fixture'; style-src 'unsafe-inline'");
+      if (path === "/fixture/app.js") {
+        response.setHeader("Content-Type", "text/javascript");
+        response.end("document.documentElement.dataset.fixture = 'loaded';");
+      } else if (path === "/fixture/admin/login") {
         if (request.method === "POST") {
-          response.writeHead(303, { Location: "/fixture/admin/", "Set-Cookie": "device=fictional; Path=/fixture/admin; HttpOnly" });
-          response.end();
+          let body = "";
+          request.on("data", (chunk: Buffer) => { body += chunk.toString("utf8"); });
+          request.on("end", () => {
+            const form = new URLSearchParams(body);
+            const valid = form.get("name") === "架空の役員" && form.get("password") === "fictional-only"
+              && request.headers.origin === `http://${request.headers.host}`;
+            response.writeHead(valid ? 303 : 403, valid ? { Location: "/fixture/admin/", "Set-Cookie": "device=fictional; Path=/fixture/admin; HttpOnly" } : {});
+            response.end();
+          });
         } else response.end(html('<form method="post"><input name="loginId"><input name="password" type="password"><button>入る</button></form>'));
       } else if (path.startsWith("/fixture/admin") && !request.headers.cookie?.includes("device=fictional")) {
         response.writeHead(403); response.end(html("役員用です"));
@@ -373,7 +411,7 @@ async function selfTest() {
       } else if (path === "/fixture/admin/projects/first") {
         response.end(html('<a href="/fixture/admin/projects/first/map">段取り</a><a href="/fixture/admin/projects/second/map">別の段取り</a><a href="/fixture/admin/inbox">届いたもの</a><a href="/fixture/admin/archive">記録</a><a href="/fixture/admin/logout">出る</a><a href="/fixture/admin/projects/first/delete">消す</a><a href="/other/admin/">別の区</a><a href="/fixture/space/first/join/secret">一人用の入口</a>'));
       } else if (path === "/fixture/admin/projects/first/map") {
-        response.end(html('<main class="wide"><p class="small">undefined null [object NaN</p><button style="min-height:20px;height:20px;font-size:12px">小さい操作</button><button>主な操作</button><div style="height:900px"></div><a href="/fixture/admin/settings">区の設定</a></main><script>console.error("secret must not appear");fetch("/fixture/admin/projects/first/title",{method:"POST"}).catch(()=>{});fetch("/fixture/admin/logout").catch(()=>{})</script>'));
+        response.end(html('<main class="wide"><p class="small">undefined null [object NaN</p><button style="min-height:20px;height:20px;font-size:12px">小さい操作</button><button>主な操作</button><div style="height:900px"></div><a href="/fixture/admin/settings">区の設定</a></main><script nonce="fixture">console.error("secret must not appear");console.error("Failed to load resource: net::ERR_FAILED https://invalid.example/fictional-only");fetch("/fixture/admin/projects/first/title",{method:"POST"}).catch(()=>{});fetch("/fixture/admin/logout").catch(()=>{})</script>'));
       } else if (path === "/fixture/admin/inbox") {
         response.writeHead(500); response.end(html("読めませんでした"));
       } else if (path === "/fixture/admin/archive") {
@@ -399,9 +437,13 @@ async function selfTest() {
         assert.ok(result.results.some((row) => row.path.endsWith("/settings") && row.width === width && !row.failures.length));
       }
       assert.equal(requests.filter((request) => request.startsWith("POST ")).length, 1);
+      assert.ok(requests.includes("GET /fixture/app.js"));
+      assert.ok(!requests.includes("GET /favicon.ico"));
       assert.ok(!requests.some((request) => /second|other|logout|delete|join|\/title/.test(request)));
       const markdown = readFileSync(resolve(temp, "report.md"), "utf8");
       assert.ok(markdown.includes("通った画面:"));
+      assert.ok(markdown.includes("Failed to load resource: net::ERR_FAILED"));
+      assert.ok(markdown.includes("console.error: [本文を伏せました]"));
       assert.ok(!markdown.includes("secret must not appear") && !markdown.includes("fictional-only"));
     } finally {
       await new Promise<void>((done, fail) => server.close((error) => error ? fail(error) : done()));

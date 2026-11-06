@@ -28,7 +28,7 @@ lifecyclePages.get("/wards/:slug/lifecycle", async (c) => {
   ]);
   const latest = snapshots[0];
   return c.html(<Page title={`${ward.name}の保管と消去`}>
-    <p><a href={`/ops/wards/${ward.slug}`}>{ward.name}の運用画面へ戻る</a></p>
+    <p class="link-line"><a href={`/ops/wards/${ward.slug}`}>{ward.name}の運用画面へ戻る</a></p>
     <h1>{ward.name}の保管と消去</h1><p class="lead">区の記録をほかへ引き渡す、毎日の控えを見る、区を止める、区の消去を、ここでします。</p>
     {c.req.query("state") === "stopped" ? <><Notice>区を止めました</Notice><p>役員の画面に入れなくなりました。区のページの読み取りは続いています。</p><section class="next"><strong>次は</strong><p>戻すときは、下の「区を再開する」を押してください。</p></section></> : c.req.query("state") === "active" ? <><Notice>区を再開しました</Notice><section class="next"><strong>次は</strong><p>役員の画面を使えます。区の方に再開を伝えてください。</p></section><p>間違えたときは、下の「区を止める」で止められます。</p></> : null}
     {c.req.query("queued") === "1" ? <><Notice>消去の処理を受け付けました</Notice><section class="next"><strong>次は</strong><p>順に進みます。進み具合は、下の「消去の進み具合」で見られます。</p><a class="button" href="#deletion-progress">消去の進み具合を見る</a></section><p>消去した区は戻せません。頼む前に書き出した記録は、手元に残してください。</p></> : null}

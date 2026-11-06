@@ -182,7 +182,7 @@ intakeAdmin.get("/intake/read", async (c) => {
       </section>;
     })}
     {groups.length === 0 ? <><p>まだ読み終わっていない資料は、送ったものから見られます。</p>
-      {projects.map((p) => <p><a href={adminPath(ward, `/projects/${p.projectId}/map`)}>{p.title}の段取りを見る</a></p>)}
+      {projects.map((p) => <p class="link-line"><a href={adminPath(ward, `/projects/${p.projectId}/map`)}>{p.title}の段取りを見る</a></p>)}
       <a class="button secondary" href={adminPath(ward, "/projects")}>資料がないので、種類を選んで始める</a></> : null}
     <p class="muted">読めなかったところは、あとで質問します。年が書かれていない資料は、参考として残します。</p>
     <a class="quiet" href={adminPath(ward, "/")}>最初の画面へ</a>
@@ -212,7 +212,7 @@ intakeAdmin.get("/intake/started/:projectId", async (c) => {
     <section class="next"><strong>次は</strong><p>{questions ? "分かるものから答えてください。あとでもかまいません。" : "案内の下書きを見て、直せます。"}</p>
       <a class="button" href={adminPath(ward, questions ? `/projects/${id}/questions` : `/projects/${id}/draft/announcement`)}>{questions ? "質問に答える" : "案内の下書きを見る"}</a></section>
     <p>仕事を押して直せます。</p><a class="button secondary" href={adminPath(ward, `/projects/${id}/map`)}>段取りを見る</a>
-    <p><a href={adminPath(ward, "/inbox")}>別の行事に入れる</a></p><a class="quiet" href={adminPath(ward, "/")}>最初の画面へ</a>
+    <p class="link-line"><a href={adminPath(ward, "/inbox")}>別の行事に入れる</a></p><a class="quiet" href={adminPath(ward, "/")}>最初の画面へ</a>
   </Layout>);
 });
 

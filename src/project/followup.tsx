@@ -240,7 +240,7 @@ followupAdmin.get("/requests/city", async (c) => {
     <a class="back" href={adminPath(ward, "/")}>最初の画面へ</a><h1>行政の依頼</h1><p class="lead">行政から届いた依頼と、締切です。押すと、答えの下書きや、出したことを残せます。</p>
     <div class="action-links"><a class="button secondary" href={adminPath(ward, `/intake?back=${encodeURIComponent(adminPath(ward, "/requests/city"))}`)}>通知を撮って送る</a></div>
     {[false, true].map((submitted) => <section><h2>{submitted ? "出したもの" : "まだ出していないもの"}</h2><ul class="rows">{rows.filter((p) => Boolean(p.submitted_on) === submitted).map((project) => <li><a class="row-link" href={adminPath(ward, `/requests/city/${encodeURIComponent(project.project_id)}`)}><b>{project.title}</b><span>{project.year}年　締切は{project.dueOn ? formatDateText(project.dueOn) : "まだ分かりません"}</span><span>{project.submitted_on ? `${formatJstDate(project.submitted_on)}に出しました` : "出したことの記録はありません"}</span></a></li>)}</ul>{rows.filter((p) => Boolean(p.submitted_on) === submitted).length === 0 ? <p>{submitted ? "出したものはまだありません。行政に出したら、依頼の画面から残せます。" : "まだ出していない依頼はありません。届いた通知は、上のボタンから撮って送れます。"}</p> : null}</section>)}
-    <p><a href={adminPath(ward, "/")}>役員画面へ</a></p>
+    <p class="link-line"><a href={adminPath(ward, "/")}>役員画面へ</a></p>
   </Layout>);
 });
 
@@ -266,7 +266,7 @@ followupAdmin.get("/requests/city/:projectId", async (c) => {
   </Layout>);
   const originals = await c.env.DB.prepare(`SELECT o.original_id, o.filename FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id WHERE o.ward_id = ? AND j.project_id = ? AND o.withdrawn_at IS NULL`).bind(ward.wardId, projectId).all<{ original_id: string; filename: string }>();
   return c.html(<Layout title={project.title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>{project.title}</h1><p class="lead">届いた通知を読み、締切や提出先、答えの下書きを残す画面です。まず通知の内容と締切を確認してください。</p><p><a href={adminPath(ward, "/requests/city")}>行政の依頼一覧</a></p>
+    <h1>{project.title}</h1><p class="lead">届いた通知を読み、締切や提出先、答えの下書きを残す画面です。まず通知の内容と締切を確認してください。</p><p class="link-line"><a href={adminPath(ward, "/requests/city")}>行政の依頼一覧</a></p>
     {originals.results.map((o) => <p><a class="quiet" href={adminPath(ward, `/intake/originals/${encodeURIComponent(o.original_id)}?back=${encodeURIComponent(back)}`)}>元の通知を見る: {o.filename || "撮った写真"}</a></p>)}
     {sourceText ? <details class="panel"><summary>通知から読んだ要点</summary><p>{sourceText}</p></details> : null}
     <form method="post" action={adminPath(ward, `/requests/city/${encodeURIComponent(projectId)}`)} class="panel">

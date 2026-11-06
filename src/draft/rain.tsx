@@ -39,7 +39,7 @@ export async function rainDraft(c: Context<AdminEnv>) {
       <div class="action-bar"><button>配る</button></div>
     </form> : <p>{state.project.closedAt ? "この行事は閉じました。" : "案内を配ったあとに、雨の変更を知らせられます。"}</p>}
     <p class="muted">配ると、区のページと公式LINEに出ます。LINEで送った知らせは取り消せません。</p>
-    {!template ? <p><a href={adminPath(ward, `/projects/${id}/draft/notice?edit=1`)}>知らせの下書きを書く</a></p> : null}
+    {!template ? <p class="link-line"><a href={adminPath(ward, `/projects/${id}/draft/notice?edit=1`)}>知らせの下書きを書く</a></p> : null}
   </Layout>);
 }
 

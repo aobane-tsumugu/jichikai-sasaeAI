@@ -263,7 +263,7 @@ admin.get("/publish/:projectId/preview/:documentId/:versionNo", async (c) => {
   if (!row) return c.notFound();
   return c.html(<AdminPage ward={ward} account={account} title={row.title} back={{ href: adminPath(ward, `/publish/${c.req.param("projectId")}`), label: "配る画面へ戻る" }}>
     <h1>{row.title}</h1><p class="lead">配る前の下書きを読む画面です。ここでは区のページには載りません。</p><ArticleBody body={row.body} />
-    <p><a href={adminPath(ward, `/print/${c.req.param("projectId")}/${c.req.param("documentId")}/${row.version_no}/preview`)}>印刷用ページで見る</a></p>
+    <p class="link-line"><a href={adminPath(ward, `/print/${c.req.param("projectId")}/${c.req.param("documentId")}/${row.version_no}/preview`)}>印刷用ページで見る</a></p>
     <p>配る前の見え方です。配る操作をするまで、区のページには載りません。</p>
     {row.scope === "public" ? <p>配る相手と紙の部数は、配る内容を見る画面で変えられます。</p> : <p>これは実行委員と班長に配る内容です。</p>}
   </AdminPage>);

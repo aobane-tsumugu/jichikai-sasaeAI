@@ -41,14 +41,14 @@ deletion.get("/", async (c) => {
     {projects.results.map((project, index) => <section class="panel">
       <p>{project.title}</p>
       <form method="post" action={adminPath(ward, `/settings/deletion/projects/${project.project_id}`)} onsubmit={`return confirm(${JSON.stringify(`「${project.title}」の元の資料、答え、配った案内などを消します。続けますか？`)})`}>
-        <button class="danger">この行事を消す</button> {index === 0 ? <Hint text="元の資料、答え、配った案内などを行事ごと消し、元には戻せません。" /> : null}
+        <button class="secondary danger">この行事を消す</button> {index === 0 ? <Hint text="元の資料、答え、配った案内などを行事ごと消し、元には戻せません。" /> : null}
       </form>
     </section>)}
     <h2>対象の記録</h2>
     {jobs.results.map((job, index) => <section class="panel">
       <p>{job.title ? `${job.title} / ` : ""}{job.filename || (job.kind === "text" ? "一行の文" : "名前のない記録")} / {shownAt(job.created_at)}</p>
       <form method="post" action={adminPath(ward, `/settings/deletion/${job.job_id}`)} onsubmit="return confirm('この記録の元の資料と読み取った内容を消します。続けますか？')">
-        <button class="danger">消去を進める</button> {index === 0 ? <Hint text="この記録の元の資料と読み取った内容、毎日の写しに残る分を消します。" /> : null}
+        <button class="secondary danger">消去を進める</button> {index === 0 ? <Hint text="この記録の元の資料と読み取った内容、毎日の写しに残る分を消します。" /> : null}
       </form>
     </section>)}
     {jobs.results.length === 0 ? <p>消去できる記録はありません。</p> : null}
@@ -58,11 +58,11 @@ deletion.get("/", async (c) => {
     {answers.results.map((answer, index) => <section class="panel">
       <p>{answer.title} / {answer.district} / {answer.household} / {answer.source === "phone" ? "電話" : answer.source === "line" ? "LINE" : "Web"} / {shownAt(answer.created_at)}</p>
       <form method="post" action={adminPath(ward, `/settings/deletion/answers/${answer.answer_id}`)} onsubmit="return confirm('この答えを消します。続けますか？')">
-        <button class="danger">この答えを消す</button> {index === 0 ? <Hint text="この答えを一覧と集計から消し、毎日の写しからも消します。" /> : null}
+        <button class="secondary danger">この答えを消す</button> {index === 0 ? <Hint text="この答えを一覧と集計から消し、毎日の写しからも消します。" /> : null}
       </form>
     </section>)}
     {answers.results.length === 0 ? <p>消去できる答えはありません。</p> : null}
-    <p><a href={adminPath(ward, "/settings")}>区の設定へ戻る</a></p>
+    <p class="link-line"><a href={adminPath(ward, "/settings")}>区の設定へ戻る</a></p>
   </AdminPage>);
 });
 

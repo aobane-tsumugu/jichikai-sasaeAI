@@ -146,8 +146,8 @@ opsRoutes.get("/", async (c) => {
   return c.html(
     <OpsPage title="区の一覧" loggedIn>
       <h1>区の一覧</h1><p class="lead">SasaeAIを提供している区です。区の名前を押すと、その区の画面が開きます。</p><a class="quiet" href="#open-ward">新しい区を開く</a>
-      <p><a href="/ops/costs">全体の費用を見る</a></p>
-      <p><a href="/ops/deletions">消去の状況</a></p>
+      <p class="link-line"><a href="/ops/costs">全体の費用を見る</a></p>
+      <p class="link-line"><a href="/ops/deletions">消去の状況</a></p>
       {wards.length === 0 ? (
         <p class="muted">まだ区がありません。</p>
       ) : (
@@ -242,7 +242,7 @@ async function wardOrNull(c: OpsContext, slug: string) {
 const WardNotFound = () => (
   <OpsPage title="見つかりません" loggedIn>
     <h1>その区は見つかりません</h1>
-    <p>
+    <p class="link-line">
       <a href="/ops/">区の一覧へ</a>
     </p>
   </OpsPage>
@@ -256,7 +256,7 @@ opsRoutes.get("/wards/:slug", async (c) => {
   const url = wardUrl(c.env, c.req.url, ward.slug);
   return c.html(
     <OpsPage title={ward.name} loggedIn>
-      <p>
+      <p class="link-line">
         <a href="/ops/">区の一覧</a>
       </p>
       <h1>{ward.name}</h1><p class="lead">この区の提供側の画面です。役員全員が入れなくなったときに、入る人を足したり、パスワードを作り直したりします。</p>
@@ -331,7 +331,7 @@ opsRoutes.post("/wards/:slug/accounts", async (c) => {
     return c.html(
       <OpsPage title="足せませんでした" loggedIn>
         <Notice error>{result.message}</Notice>
-        <p>
+        <p class="link-line">
           <a href={`/ops/wards/${ward.slug}`}>戻る</a>
         </p>
       </OpsPage>,
@@ -342,7 +342,7 @@ opsRoutes.post("/wards/:slug/accounts", async (c) => {
     <OpsPage title="入る人を足しました" loggedIn>
       <h1>入る人を足しました</h1>
       <Credentials loginId={result.loginId} name={result.name} password={result.password} /><section class="next"><strong>次は</strong><p>この人に、IDとパスワードを渡してください。渡し終えてから、この画面を閉じてください。</p></section><p>閉じたら、もう一度パスワードを作り直せます。</p>
-      <p>
+      <p class="link-line">
         <a href={`/ops/wards/${ward.slug}`}>区の画面へ戻る</a>
       </p>
     </OpsPage>,
@@ -358,7 +358,7 @@ opsRoutes.post("/wards/:slug/accounts/:accountId/reset", async (c) => {
     return c.html(
       <OpsPage title="パスワードを作り直せませんでした" loggedIn>
         <Notice error>{result.message}</Notice>
-        <p>
+        <p class="link-line">
           <a href={`/ops/wards/${ward.slug}`}>戻る</a>
         </p>
       </OpsPage>,
@@ -369,7 +369,7 @@ opsRoutes.post("/wards/:slug/accounts/:accountId/reset", async (c) => {
     <OpsPage title="パスワードを作り直しました" loggedIn>
       <h1>パスワードを作り直しました</h1>
       <Credentials loginId={result.loginId} name={result.name} password={result.password} /><section class="next"><strong>次は</strong><p>この人に、IDとパスワードを渡してください。渡し終えてから、この画面を閉じてください。</p></section><p>閉じたら、もう一度パスワードを作り直せます。</p>
-      <p>
+      <p class="link-line">
         <a href={`/ops/wards/${ward.slug}`}>区の画面へ戻る</a>
       </p>
     </OpsPage>,
@@ -449,7 +449,7 @@ opsRoutes.get("/costs", async (c) => {
   const months = [...new Set(summaries.flatMap((ward) => ward.months.map((row) => row.month)))].sort((a, b) => b.localeCompare(a));
   return c.html(
     <OpsPage title="費用" loggedIn>
-      <p><a href="/ops/">区の一覧</a></p>
+      <p class="link-line"><a href="/ops/">区の一覧</a></p>
       <h1>費用</h1>
       <p>読む費用はSonnet 5.5の公開単価による見積もりです。処理記録の金額も加算しています。</p>
       <CostCard months={summaries.flatMap((ward) => ward.months)} title="全体の合計" />
@@ -471,7 +471,7 @@ opsRoutes.get("/wards/:slug/costs", async (c) => {
   const metrics = await getWardMetrics(c.env.DB, ward);
   return c.html(
     <OpsPage title={`${ward.name}の費用`} loggedIn>
-      <p><a href={`/ops/wards/${ward.slug}`}>{ward.name} の画面</a></p>
+      <p class="link-line"><a href={`/ops/wards/${ward.slug}`}>{ward.name} の画面</a></p>
       <h1>{ward.name} の費用</h1>
       <p>読む費用はSonnet 5.5の公開単価による見積もりです。処理記録の金額も加算しています。</p>
       <CostCard months={metrics.months} title="全体の合計" />
@@ -494,7 +494,7 @@ opsRoutes.get("/wards/:slug/budget", async (c) => {
     .bind(ward.wardId).first<{ session_budget_cents: number }>();
   return c.html(
     <OpsPage title={`${ward.name}の予算`} loggedIn>
-      <p><a href={`/ops/wards/${ward.slug}`}>{ward.name} の画面</a></p>
+      <p class="link-line"><a href={`/ops/wards/${ward.slug}`}>{ward.name} の画面</a></p>
       <h1>{ward.name}の予算</h1><p class="lead">AIの費用の上限を決めます。上限は目安です。上限に達しても、役員の配る操作は止まりません。</p>
       <section class="panel">
         <h2>一回の処理</h2>
@@ -531,7 +531,7 @@ opsRoutes.post("/wards/:slug/budget", async (c) => {
     const rawSession = typeof form["sessionBudget"] === "string" ? form["sessionBudget"] : "";
     const sessionAmount = Number(rawSession);
     if (rawSession.trim() === "" || !Number.isFinite(sessionAmount) || sessionAmount < 0.01 || sessionAmount > 10_000) {
-      return c.html(<OpsPage title="予算を保存できません" loggedIn><h1>金額を確認してください</h1><p><a href={`/ops/wards/${ward.slug}/budget`}>戻る</a></p></OpsPage>, 400);
+      return c.html(<OpsPage title="予算を保存できません" loggedIn><h1>金額を確認してください</h1><p class="link-line"><a href={`/ops/wards/${ward.slug}/budget`}>戻る</a></p></OpsPage>, 400);
     }
     const sessionCents = Math.round(sessionAmount * 100);
     await c.env.DB.prepare(
@@ -543,7 +543,7 @@ opsRoutes.post("/wards/:slug/budget", async (c) => {
   const raw = typeof form["monthlyLimit"] === "string" ? form["monthlyLimit"] : "";
   const amount = Number(raw);
   if (raw.trim() === "" || !Number.isFinite(amount) || amount < 0 || amount > 10_000_000) {
-    return c.html(<OpsPage title="予算を保存できません" loggedIn><h1>金額を確認してください</h1><p><a href={`/ops/wards/${ward.slug}/budget`}>戻る</a></p></OpsPage>, 400);
+    return c.html(<OpsPage title="予算を保存できません" loggedIn><h1>金額を確認してください</h1><p class="link-line"><a href={`/ops/wards/${ward.slug}/budget`}>戻る</a></p></OpsPage>, 400);
   }
   const cents = Math.round(amount * 100);
   await c.env.DB.prepare(
@@ -568,7 +568,7 @@ opsRoutes.get("/wards/:slug/queue", async (c) => {
   const jobs = await listWardQueue(c.env.DB, ward.wardId);
   return c.html(
     <OpsPage title={`${ward.name}の読み取りの状況`} loggedIn>
-      <p><a href={`/ops/wards/${ward.slug}`}>{ward.name} の画面</a></p>
+      <p class="link-line"><a href={`/ops/wards/${ward.slug}`}>{ward.name} の画面</a></p>
       <h1>{ward.name}の読み取りの状況</h1><p class="lead">役員が送った資料を読んで、段取りを作る処理のうち、見てほしいものです。失敗したものは、もう一度動かせます。大きすぎる資料だけは、役員に分けて送り直してもらいます。</p>
       {jobs.length === 0 ? <p class="muted">対応が必要なものはありません。</p> : jobs.map((job) => (
         <section class="panel">

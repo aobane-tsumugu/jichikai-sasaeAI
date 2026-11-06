@@ -119,7 +119,7 @@ pub.get("/", async (c) => {
     {opportunities.length ? <section class="panel">
       <h2><a href={`/${c.var.ward.slug}/help`}>一回だけ手伝う</a></h2><p class="lead">自治会に加入していない人も、名前と手伝える時間帯だけで申し込めます。</p>
       <p>自治会に入っていなくても手伝えます。お名前と手伝える時間帯を教えてください。</p>
-      <p><a href={`/${c.var.ward.slug}/help`}>手伝いを申し込む</a></p>
+      <p class="link-line"><a href={`/${c.var.ward.slug}/help`}>手伝いを申し込む</a></p>
     </section> : null}
     <h2>これまでのお知らせと報告</h2>
     {unique.length === 0 ? <p>公開中のお知らせはありません。</p> : unique.map((item) => <section class="panel" key={item.document_id}>
@@ -150,7 +150,7 @@ pub.get("/work/:projectId", async (c) => {
   const notices = await c.env.DB.prepare("SELECT 1 AS found FROM publication_records WHERE ward_id = ? AND project_id = ? AND unpublished_at IS NULL LIMIT 1")
     .bind(c.var.ward.wardId, projectId).first<{ found: number }>();
   return c.html(<Layout title={`${activity.title}の活動`} siteName={c.var.ward.name}>
-    <p><a href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のページへ</a></p>
+    <p class="link-line"><a href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のページへ</a></p>
     <h1>{activity.title}で役員がしたこと</h1>
     <p class="lead">自治会の仕事を知っていただくために、役員が書きました。</p>
     {body.introduction ? <p style="white-space:pre-wrap">{body.introduction}</p> : null}
@@ -160,8 +160,8 @@ pub.get("/work/:projectId", async (c) => {
     <h2>加入すると担うこと</h2><p style="white-space:pre-wrap">{body.membershipBurden || "この項目の説明はありません。"}</p>
     <h2>加入すると得られること</h2><p style="white-space:pre-wrap">{body.membershipBenefit || "この項目の説明はありません。"}</p>
     <h2>関わり方は選べます</h2><p>読むだけでも、一回だけ手伝うだけでもかまいません。</p>
-    {opportunities.length ? <p><a href={`/${c.var.ward.slug}/help`}>手伝いを申し込む</a></p> : null}
-    {notices ? <p><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>この行事の案内を見る</a></p> : null}
+    {opportunities.length ? <p class="link-line"><a href={`/${c.var.ward.slug}/help`}>手伝いを申し込む</a></p> : null}
+    {notices ? <p class="link-line"><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>この行事の案内を見る</a></p> : null}
   </Layout>);
 });
 
@@ -169,12 +169,12 @@ pub.get("/help", async (c) => {
   const opportunities = await listHelpOpportunities(c.env.DB, c.var.ward.wardId);
   if (opportunities.length === 1) return c.redirect(`/${c.var.ward.slug}/help/${encodeURIComponent(opportunities[0]!.projectId)}`, 302);
   return c.html(<Layout title="一回だけ手伝う" siteName={c.var.ward.name}>
-    <p><a href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のページへ</a></p>
+    <p class="link-line"><a href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のページへ</a></p>
     <h1>一回だけ手伝う</h1>
     <p>自治会に入っていなくても申し込めます。手伝える行事を選んでください。</p>
     {opportunities.length ? opportunities.map((item) => <section class="panel">
       <h2>{item.title}</h2><p>{publishedItem(item.body, "date_time") ? formatDateText(publishedItem(item.body, "date_time")) : `案内を配った日: ${formatJstDate(item.publishedAt)}`}</p>
-      <p><a href={`/${c.var.ward.slug}/help/${encodeURIComponent(item.projectId)}`}>この行事に手伝いを申し込む</a></p>
+      <p class="link-line"><a href={`/${c.var.ward.slug}/help/${encodeURIComponent(item.projectId)}`}>この行事に手伝いを申し込む</a></p>
     </section>) : <p>現在、手伝いを募集中の行事はありません。</p>}
   </Layout>);
 });
@@ -225,7 +225,7 @@ pub.get("/p/:projectId", async (c) => {
       </article>;
     };
   return c.html(<Layout title={items[0]!.title} siteName={c.var.ward.name}>
-    <p><a href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のお知らせ</a></p>
+    <p class="link-line"><a href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のお知らせ</a></p>
     <h1>{items[0]!.title}のご案内</h1>
     {ordered.filter(({ latest }) => latest.kind === "notice").map(renderDocument)}
     {activeAnnouncement ? <>
@@ -235,7 +235,7 @@ pub.get("/p/:projectId", async (c) => {
     </> : null}
     {ordered.filter(({ latest }) => latest.kind !== "notice").map(renderDocument)}
     {context.documents.some((document) => document.kind === "recruitment") && !closed ? <section><h2>手伝える方へ</h2><p>自治会に入っていない方も手伝えます。</p><a href={`/${c.var.ward.slug}/help/${encodeURIComponent(projectId)}`}>手伝いを申し込む</a></section> : null}
-    {activity ? <p><a href={`/${c.var.ward.slug}/work/${encodeURIComponent(projectId)}`}>役員の仕事と活動を見る</a></p> : null}
+    {activity ? <p class="link-line"><a href={`/${c.var.ward.slug}/work/${encodeURIComponent(projectId)}`}>役員の仕事と活動を見る</a></p> : null}
     {details}
   </Layout>);
 });
