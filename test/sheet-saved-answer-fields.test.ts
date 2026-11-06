@@ -32,7 +32,7 @@ it("回答票で人が直した内容が、開き直した入力欄とそのま�
   const corrected = { household: "架空の直した世帯", district: "架空の二班", people_count: "0", helper_name: "", helper_times: "" };
   expect((await postForm(realApp, rowPath, corrected, cookie)).status).toBe(303);
   const before = await listAnswers(env.DB, ward.wardId, project.projectId);
-  const page = await get(realApp, path, cookie);
+  const page = await get(realApp, `${path}?view=list`, cookie);
   expect(page.status).toBe(200);
   const html = await page.text();
   const form = [...html.matchAll(/<form\b[^>]*action="([^"]*)"[^>]*>([\s\S]*?)<\/form>/g)]

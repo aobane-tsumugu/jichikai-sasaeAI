@@ -24,8 +24,8 @@ it("閉じる時に残した三つの記録を種から開いた地図の同じ�
     title: "来年の行事（架空）", year: "2027", eventDay: "2027-10-23",
   }, cookie);
   const location = seeded.headers.get("location");
-  expect(location).toMatch(/\/projects\/.+\/map$/);
-  const projectId = /\/projects\/([^/]+)\/map$/.exec(location!)?.[1];
+  expect(location).toMatch(/\?started=.+$/);
+  const projectId = new URL(location!, "http://localhost").searchParams.get("started");
   if (!projectId) throw new Error("引き継いだ段取りがありません");
   const seededTask = (await getProjectState(env.DB, ward.wardId, projectId))?.mapTasks.find((row) => row.taskKey === "venue");
   if (!seededTask) throw new Error("引き継いだ仕事がありません");

@@ -32,7 +32,7 @@ it("閉じた後は取り込み済みの回答票も変わらず、開き直す�
   expect(response.status).toBe(303);
   const location = response.headers.get("location")!;
   expect(new URL(location, "http://localhost").pathname).toBe(closePath);
-  expect(await (await get(realApp, location, cookie)).text()).toContain("回答を直す時は「開き直す」を押してください。");
+  expect(await (await get(realApp, location, cookie)).text()).toContain("答えを直すときは「もう一度開く」を押してください。");
   expect(await listAnswers(env.DB, ward.wardId, project.projectId))
     .toMatchObject([{ answerId, peopleCount: 2 }]);
 

@@ -109,7 +109,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     <h1>{pack.title}の下書きを直す</h1>
     <p class="lead">直して保存しても、まだ配られません。{scope === "public" ? "だれでも読める案内です。" : scope === "space" ? "実行委員と班長だけが読めます。" : "役員だけが読めます。"}</p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
-    {c.req.query("notice") === "saved" ? <section class="next"><strong>保存しました。まだ配っていません</strong><p>前の下書きにも戻せます。</p><a class="button" href={adminPath(ward, `/projects/${id}/draft/${kindRaw}/confirm`)}>配る画面へ</a><a class="quiet" href="#previous-drafts">前の下書きに戻す</a></section> : null}
+    {c.req.query("notice") === "saved" ? <section class="next"><strong>保存しました。まだ配っていません</strong><p>前の下書きにも戻せます。</p><a class="button" href={adminPath(ward, `/publish/${id}/confirm?kind=${kindRaw}`)}>配る画面へ</a><a class="quiet" href="#previous-drafts">前の下書きに戻す</a></section> : null}
     {c.req.query("notice") === "restored" ? <Notice>前の下書きに戻しました。今の下書きも残ります。</Notice> : null}
     {taskNotice ? <Notice><span data-ai-status={taskNotice.status}>{taskNotice.message}</span> 画面を閉じても処理は続きます。ここで書いて保存することもできます。</Notice> : null}
     {document?.stale ? <div class="notice warn"><strong>新しい資料が届きました</strong><p>このまま直して配れます。</p><a class="quiet" href="#redo">新しい資料を入れて作り直す</a></div> : null}
@@ -166,11 +166,6 @@ async function confirmDraft(c: import("hono").Context<AdminEnv>, kind: DocumentK
   fields.set("distribution", copies.map((row) => `${row.district} ${row.copies}`).join("\n"));
   return openPublish(c, `/publish/${id}/confirm`, fields);
 }
-admin.get("/projects/:projectId/draft/:kind/confirm", async (c) => {
-  const kind = c.req.param("kind");
-  if (!isKind(kind)) return c.notFound();
-  return confirmDraft(c, kind);
-});
 
 admin.post("/projects/:projectId/draft/:kind/restore/:versionNo", async (c) => {
   const { ward, account } = c.var; const id = c.req.param("projectId"); const kindRaw = c.req.param("kind");

@@ -122,6 +122,6 @@ describe("回答の入口と一覧", () => {
     ]);
     const adminPage = await get(realApp, `/${ward.slug}/admin/answers/${project.projectId}`, cookie);
     expect(adminPage.status).toBe(200);
-    expect(await adminPage.text()).toContain("未回答（班ごと）");
+    expect(await adminPage.text()).toContain("まだ答えていない世帯");
   });
 });

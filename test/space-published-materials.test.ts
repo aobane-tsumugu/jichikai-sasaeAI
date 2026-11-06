@@ -113,7 +113,7 @@ it("空間には配った文書を読みやすく出し、班長の回答票を�
     await waitOnExecutionContext(repeatedContext);
     expect(await getAnswerTotals(env.DB, ward.wardId, projectId)).toEqual({ people: 3, helperRequests: 1 });
     expect(await listAnswers(env.DB, ward.wardId, projectId)).toHaveLength(1);
-    expect(await (await get(realApp, `${admin}/answers/${projectId}`, cookie)).text()).toContain(FIRST_SLICE.firstHousehold);
+    expect(await (await get(realApp, `${admin}/answers/${projectId}?view=list`, cookie)).text()).toContain(FIRST_SLICE.firstHousehold);
   } finally {
     setPipelineDeps(null);
   }

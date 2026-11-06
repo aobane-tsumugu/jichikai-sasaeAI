@@ -42,7 +42,7 @@ it("資料も質問も仕事もない一年目に、案内を確認して配り�
   expect(firstHtml).toContain('class="compare-paper"');
   expect(firstHtml).toContain("切り取って班長か役員に渡します。");
   expect(firstHtml.split(FIRST_SLICE.publicAnnouncement)).toHaveLength(3);
-  const savedPage = await (await get(realApp, `${root}/projects/${id}/draft/announcement`, cookie)).text();
+  const savedPage = await (await get(realApp, `${root}/projects/${id}/draft/announcement?notice=saved`, cookie)).text();
   expect(savedPage).toContain(`/publish/${id}/confirm?kind=announcement`);
   await replaceRoster(env.DB, ward.wardId, [
     { district: FIRST_SLICE.district, household: FIRST_SLICE.firstHousehold },

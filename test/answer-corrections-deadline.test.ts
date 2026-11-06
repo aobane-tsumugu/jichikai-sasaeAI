@@ -47,7 +47,7 @@ it("案内の締切を受付に使い、回答を直して消し、手で延ば�
   const before = (await listAnswers(env.DB, ward.wardId, project.projectId))[0];
   if (!before) throw new Error("直す回答がありません。");
   const editPath = `${answersPath}/${before.answerId}/edit`;
-  const indexHtml = await (await get(realApp, answersPath, cookie)).text();
+  const indexHtml = await (await get(realApp, `${answersPath}?view=list`, cookie)).text();
   expect(indexHtml).toContain(`href="${editPath}"`);
   const editPage = await get(realApp, editPath, cookie);
   expect(editPage.status).toBe(200);

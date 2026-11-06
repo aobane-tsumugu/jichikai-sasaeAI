@@ -86,7 +86,7 @@ it("資料のない一年目から仕事・質問・下書き・別の雨の知�
   const beforeRain = await getEditableDocument(env.DB, ward.wardId, project.projectId, "announcement");
   expect((await postForm(realApp, `${root}/publish/${project.projectId}/send`, {
     documentId: value("documentId"), versionId: value("versionId"), versionNo: value("versionNo"),
-    distribution: value("distribution"), lineDelivery: "skip",
+    lineDelivery: "skip",
   }, cookie)).status).toBe(303);
   const afterMap = await (await get(realApp, `${path}/map?changed=${announcementTask.taskId}`, cookie)).text();
   expect(afterMap).toContain("いま済みにしました");

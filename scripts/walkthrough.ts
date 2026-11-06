@@ -70,7 +70,7 @@ async function req(path: string, init: RequestInit = {}) {
   }
   return res;
 }
-async function post(path: string, values: Record<string, string>) {
+async function post(path: string, values: Record<string, string> | URLSearchParams) {
   return req(path, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(values) });
 }
 async function get(path: string) {
@@ -84,18 +84,22 @@ function readForm(html: string, path: string, sectionTitle?: string) {
     const sectionStart = html.lastIndexOf("<section", form.index ?? 0);
     if (sectionTitle && !html.slice(sectionStart, form.index).includes(sectionTitle)) continue;
     const fields: Record<string, string> = {};
+    const values = new URLSearchParams();
     const body = form[2] ?? "";
     for (const input of body.matchAll(/<input\b([^>]*)>/gi)) {
       const a = input[1] ?? "";
       if (/type="(?:checkbox|radio)"/i.test(a) && !/\bchecked(?:\s|=|$)/i.test(a)) continue;
       const name = /\bname="([^"]*)"/i.exec(a)?.[1];
       const type = /\btype="([^"]*)"/i.exec(a)?.[1];
-      if (type === "radio" && !/\bchecked(?:\s|=|$)/i.test(a)) continue;
-      if (name && type !== "file" && type !== "submit") fields[name] = unescapeHtml(/\bvalue="([^"]*)"/i.exec(a)?.[1] ?? "");
+      if (name && type !== "file" && type !== "submit") {
+        const value = unescapeHtml(/\bvalue="([^"]*)"/i.exec(a)?.[1] ?? "");
+        fields[name] = value;
+        if (type !== "checkbox" && type !== "radio" || /\bchecked(?:\s|=|$)/i.test(a)) values.append(name, value);
+      }
     }
     for (const t of body.matchAll(/<textarea\b([^>]*)>([\s\S]*?)<\/textarea>/gi)) {
       const name = /\bname="([^"]*)"/i.exec(t[1] ?? "")?.[1];
-      if (name) fields[name] = unescapeHtml(t[2] ?? "");
+      if (name) { fields[name] = unescapeHtml(t[2] ?? ""); values.append(name, fields[name]); }
     }
     for (const s of body.matchAll(/<select\b([^>]*)>([\s\S]*?)<\/select>/gi)) {
       const name = /\bname="([^"]*)"/i.exec(s[1] ?? "")?.[1];
@@ -103,7 +107,7 @@ function readForm(html: string, path: string, sectionTitle?: string) {
       const selected = options.find(o => /\bselected(?:\s|=|>)/i.test(o[1] ?? "")) ?? options[0];
       if (name && selected) fields[name] = unescapeHtml(/\bvalue="([^"]*)"/i.exec(selected[1] ?? "")?.[1] ?? (selected[2] ?? ""));
     }
-    return { action, fields };
+    return { action, fields, values };
   }
   throw new Error("画面の入力欄がありません: " + path);
 }
@@ -344,23 +348,26 @@ async function runFull() {
     await new Promise(r => setTimeout(r, 3000));
     closePage = await get(closePath);
   }
-  if (!closePage.html.includes("報告: できました") || !closePage.html.includes("地図: できました")) throw new Error("未完了: 実施報告または地図のAI下書きが待ちの上限までにできませんでした");
-  const report = readForm(closePage.html, "/close/" + project + "/report/public");
-  report.fields.body = "架空の秋の収穫祭を実施しました。雨天会場に変更して開催しました。";
-  if ((await post(report.action, report.fields)).status !== 303) throw new Error("報告を保存できません");
-  const reportPublish = await get(admin + "/publish/" + project);
-  if ((await publish(project, reportPublish.html, "public", "実施報告")).status !== 303) throw new Error("実施報告を公開できません");
+  if (!closePage.html.includes("報告: できました") || !closePage.html.includes("段取り: できました")) throw new Error("未完了: 実施報告または段取りのAI下書きが待ちの上限までにできませんでした");
+  const close = readForm(closePage.html, "/close/" + project + "/finalize");
+  const staffReport = close.values.getAll("body")[1] ?? "";
+  close.values.delete("body");
+  close.values.append("body", "架空の秋の収穫祭を実施しました。雨天会場に変更して開催しました。");
+  close.values.append("body", staffReport);
+  if ((await post(close.action, close.values)).status !== 303) throw new Error("閉じる操作に失敗");
   if (!(await get(wardPath + "/p/" + project)).html.includes("実施しました")) throw new Error("公開ページに実施報告がありません");
-  if ((await post(admin + "/close/" + project + "/finalize", {})).status !== 303) throw new Error("閉じる操作に失敗");
   const archive = await get(admin + "/archive/" + project);
-  const seed = readForm(archive.html, "/archive/" + project + "/seed");
+  if (!archive.html.includes("これをもとに新しく始める")) throw new Error("記録から始める入口がありません");
+  const seedPage = await get(admin + "/archive/" + project + "?view=seed");
+  const seed = readForm(seedPage.html, "/archive/" + project + "/seed");
   seed.fields.title = "架空 秋の収穫祭 " + (new Date().getFullYear() + 1);
   seed.fields.year = String(new Date().getFullYear() + 1);
   seed.fields.eventDay = (new Date().getFullYear() + 1) + "-10-24";
   const next = await post(seed.action, seed.fields);
-  const nextId = /\/projects\/([^/]+)\/map$/.exec(next.headers.get("location") ?? "")?.[1];
-  if (next.status !== 303 || !nextId || !(await get(admin + "/projects/" + nextId + "/map")).response.ok) throw new Error("来年の種から開けません");
-  record("6", "通過", "報告を保存して閉じ、記録から来年のプロジェクトを開いた。", start);
+  const location = next.headers.get("location") ?? "";
+  const nextId = new URL(location, base).searchParams.get("started");
+  if (next.status !== 303 || !nextId || !(await get(location)).html.includes("去年の段取りを新しい日に置き直しました") || !(await get(admin + "/projects/" + nextId + "/map")).response.ok) throw new Error("記録から新しく始められません");
+  record("6", "通過", "報告と来年への一言を一緒に保存して閉じ、記録から新しく始めた。", start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";
     record("6", message.startsWith("未完了:") ? "未完了" : "停止", message.replace(/^未完了:\s*/, ""), start);

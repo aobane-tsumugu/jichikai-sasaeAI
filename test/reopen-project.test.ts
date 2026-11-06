@@ -14,7 +14,7 @@ it("閉じたプロジェクトを開き直し、残っている報告を直し�
   expect((await postForm(realApp, `${root}/report/public`, { body: "閉じる前の報告（架空）" }, cookie)).status).toBe(303);
   expect((await postForm(realApp, `${root}/finalize`, {}, cookie)).status).toBe(303);
   const closed = await get(realApp, root, cookie);
-  expect(await closed.text()).toContain("開き直す</button>");
+  expect(await closed.text()).toContain("もう一度開く</button>");
   expect((await postForm(realApp, `${root}/reopen`, {}, cookie)).status).toBe(303);
   const reopened = await get(realApp, root, cookie);
   const html = await reopened.text();

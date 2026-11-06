@@ -25,8 +25,8 @@ it("人が地図に足した仕事にも、来年の種で去年の三つの記�
   }, cookie);
   expect(seeded.status).toBe(303);
   const location = seeded.headers.get("location");
-  expect(location).toMatch(/\/projects\/.+\/map$/);
-  const projectId = /\/projects\/([^/]+)\/map$/.exec(location!)?.[1];
+  expect(location).toMatch(/\?started=.+$/);
+  const projectId = new URL(location!, "http://localhost").searchParams.get("started");
   if (!projectId) throw new Error("新しい段取りがありません");
   const seededTask = (await getProjectState(env.DB, ward.wardId, projectId))?.mapTasks.find((row) => row.name === task.name);
   if (!seededTask) throw new Error("引き継いだ仕事がありません");

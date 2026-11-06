@@ -21,7 +21,7 @@ it("別の班の同名世帯はそれぞれ回答を照合し、全員回答後�
     { district: "2班", households: ["架空の同名世帯"] },
   ]);
   expect((await postForm(realApp, path, { household: "架空の同名世帯", district: "2班", people_count: "3" })).status).toBe(200);
-  const page = await (await get(realApp, `/${ward.slug}/admin/answers/${project.projectId}`, cookie)).text();
+  const page = await (await get(realApp, `/${ward.slug}/admin/answers/${project.projectId}?view=unanswered`, cookie)).text();
   expect(page).not.toContain("名簿はまだありません。");
   expect(page.match(/未回答の世帯はありません。/g)).toHaveLength(2);
 });
