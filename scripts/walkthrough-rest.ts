@@ -16,6 +16,10 @@ if (!ward || !baseArg || !credsArg) {
   console.error("使い方: npm run walkthrough-rest -- --base <URL> --ward <区> --creds <役員の資格情報> [--ops-creds <運用の資格情報>]");
   process.exit(2);
 }
+if (ward === "demoku") {
+  console.error("クロード区では通し確認を実行しません。確認用の区を指定してください。");
+  process.exit(2);
+}
 
 const base = new URL(baseArg).toString().replace(/\/$/, "");
 const origin = new URL(base).origin;
@@ -308,21 +312,35 @@ if (projectId) {
   } catch (error) { fail(6, "言葉で下書きを直す", error, start); }
 } else skip(6, "言葉で下書きを直す", "行事を開けませんでした");
 
-// 7. 当番表の一行があれば編集して保存する。
+// 7. 確認用の行事に架空の当番資料を入れ、その一行を編集して読み返す。
 if (projectId) {
   const start = Date.now();
   try {
+    const filename = "架空の当番_" + stamp + ".txt";
+    const material = new FormData();
+    material.set("project_id", projectId);
+    material.append("part", new Blob([`${new Date().getFullYear()}年「${projectTitle}」の当番表。通し確認用の架空資料です。\n時間帯:10:00-11:00\n持ち場:受付\n担当:架空確認担当\nこの内容で今年の当番を決めました。`], { type: "text/plain" }), filename);
+    material.append("part_kind", "file");
+    const sent = await req(admin + "/intake", { method: "POST", headers: { accept: "application/json" }, body: material });
+    const receipt = await sent.json().catch(() => null) as { ok?: boolean; jobId?: string | null; duplicates?: number } | null;
+    if (!sent.ok || !receipt?.ok || !receipt.jobId && !receipt.duplicates) throw new Error("架空の当番資料を送れません");
+    if (receipt.jobId) {
+      const state = (html: string) => { const pos = html.indexOf(filename); return pos < 0 ? "" : html.slice(pos, pos + 900); };
+      await waitPage(admin + "/intake/received?project=" + encodeURIComponent(projectId),
+        html => state(html).includes("行事に入れました"),
+        html => /読めませんでした|読み取りが遅れています/.test(state(html)));
+    }
     const path = admin + "/projects/" + projectId + "/draft/duty_roster";
     const page = await get(path);
-    const rowAction = /action="([^"]*\/draft\/duty-row\/[^\"]+)"/.exec(page.html)?.[1];
-    if (!rowAction) skip(7, "当番表の編集", "当番表に編集できる行がありません");
-    else {
-      const form = readForm(page.html, "/draft/duty-row/");
-      form.fields.task = (form.fields.task ?? "") + "（確認）";
-      const saved = await post(form.action, form.fields);
-      if (saved.status !== 303) throw new Error("当番表の行を保存できません");
-      record(7, "当番表の編集", "通過", "既存の一行を編集して保存", saved.status, start);
-    }
+    const fixture = [...page.html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/gi)].find(form => form[0].includes("/draft/duty-row/") && form[0].includes("架空確認担当"))?.[0];
+    if (!page.response.ok || !fixture) throw new Error("架空資料の当番の行が見えません");
+    const form = readForm(fixture, "/draft/duty-row/");
+    form.fields.task = (form.fields.task ?? "") + "（確認）";
+    const saved = await post(form.action, form.fields);
+    if (saved.status !== 303) throw new Error("当番表の行を保存できません");
+    const after = await get(path);
+    if (!after.response.ok || readForm(after.html, form.action).fields.task !== form.fields.task) throw new Error("当番表の編集内容が保存されていません");
+    record(7, "当番表の編集", "通過", "架空資料の当番の一行を用意し、編集して保存後の内容を読み返した", saved.status, start);
   } catch (error) { fail(7, "当番表の編集", error, start); }
 } else skip(7, "当番表の編集", "行事を開けませんでした");
 
@@ -335,22 +353,32 @@ else {
     if (!page.response.ok) throw new Error("配布画面を開けません");
     const entry = readForm(page.html, "/publish/" + projectId + "/confirm");
     entry.fields.lineDelivery = "skip";
-    const preview = await post(entry.action, entry.fields);
+    entry.fields.recipientScope = "member_households";
+    let preview = await post(entry.action, entry.fields);
     if (!preview.ok) throw new Error("配る内容を開けません");
-    const previewHtml = await preview.text();
-    const household = /<input\b[^>]*name="household"[^>]*value="([^"]*)"/i.exec(previewHtml)?.[1];
-    if (!household) skip(8, "対象者への配布", "名簿に選べる世帯がありません");
-    else {
-      const form = readForm(previewHtml, "/publish/" + projectId + "/send");
-      form.action = entry.action;
-      form.fields.household = unescapeHtml(household);
-      form.fields.lineDelivery = "skip";
-      const confirm = await post(form.action, form.fields);
-      const html = await confirm.text();
-      const target = JSON.parse(form.fields.household) as [string, string];
-      if (!confirm.ok || !unescapeHtml(html).includes(target.join(" / ")) || !html.includes("今回は公式LINEに送りません")) throw new Error("選んだ世帯への紙の配布先を確認できません");
-      record(8, "対象者への配布", "通過", "一世帯を選び、紙の配布先と公式LINEに送らない選択を確認。配る操作は実行していない", confirm.status, start);
+    let previewHtml = await preview.text();
+    const firstHousehold = (html: string) => /<input\b[^>]*name="household"[^>]*value="([^"]*)"/i.exec(html)?.[1];
+    if (!firstHousehold(previewHtml)) {
+      const imported = await req(admin + "/answers/roster", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ rows_json: JSON.stringify([["代表者のお名前", "班"], ["架空確認世帯", "架空確認班"]]), household_column: 0, district_column: 1 }) });
+      const result = await imported.json().catch(() => null) as { ok?: boolean } | null;
+      if (!imported.ok || !result?.ok) throw new Error("架空の名簿を用意できません");
+      preview = await post(entry.action, entry.fields);
+      if (!preview.ok) throw new Error("名簿を入れたあとに配る内容を開けません");
+      previewHtml = await preview.text();
     }
+    const household = firstHousehold(previewHtml);
+    if (!household) throw new Error("名簿を用意しても選べる世帯がありません");
+    const form = readForm(previewHtml, "/publish/" + projectId + "/send");
+    form.action = entry.action;
+    form.fields.household = unescapeHtml(household);
+    form.fields.targetMode = "household";
+    form.fields.lineDelivery = "skip";
+    const confirm = await post(form.action, form.fields);
+    const html = await confirm.text();
+    const target = JSON.parse(form.fields.household) as [string, string];
+    if (!confirm.ok || !unescapeHtml(html).includes(target.join(" / ")) || !html.includes("今回は公式LINEに送りません")) throw new Error("選んだ世帯への紙の配布先を確認できません");
+    record(8, "対象者への配布", "通過", "名簿を用意して一世帯を選び、紙の配布先と公式LINEに送らない選択を確認。配る操作は実行していない", confirm.status, start);
   } catch (error) { fail(8, "対象者への配布", error, start); }
 }
 
