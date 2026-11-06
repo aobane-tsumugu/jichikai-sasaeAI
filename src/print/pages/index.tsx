@@ -13,8 +13,9 @@ import { createInvite, getSpace } from "../../space/api";
 import { TABLES, displayFieldValue, type TableKey } from "../../project/model";
 import type { RowView } from "../../project/types";
 import { readPublicationTables } from "../../space/publication-tables";
+import { PosterPage } from "./poster";
 
-const printKinds = ["announcement", "answer", "leader", "duty", "meeting", "sponsors"] as const;
+const printKinds = ["poster", "announcement", "answer", "leader", "duty", "meeting", "sponsors"] as const;
 type PrintKind = (typeof printKinds)[number];
 
 interface PrintData {
@@ -28,6 +29,7 @@ interface PrintData {
   version_no: number;
   body: string;
   kind: string;
+  scope: string;
 }
 
 const admin = new Hono<AdminEnv>();
@@ -113,7 +115,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   const versionNo = Number(c.req.param("versionNo"));
   if (!printKinds.includes(kind) || !Number.isInteger(versionNo)) return c.notFound();
   const row = await c.env.DB.prepare(`SELECT p.project_id, p.title, p.closed_at, d.document_id, d.title AS document_title,
-      v.version_id, v.version_no, v.body, d.kind, v.tables_snapshot
+      v.version_id, v.version_no, v.body, d.kind, v.scope, v.tables_snapshot
     FROM document_versions v JOIN projects p ON p.ward_id = v.ward_id AND p.project_id = v.project_id
     JOIN documents d ON d.ward_id = v.ward_id AND d.document_id = v.document_id
     LEFT JOIN publication_records r ON r.ward_id = v.ward_id AND r.version_id = v.version_id
@@ -122,8 +124,13 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
     ORDER BY r.published_at DESC LIMIT 1`).bind(ward.wardId, projectId, documentId, versionNo).first<PrintData>();
   if (!row) return c.notFound();
   if (kind === "meeting" || kind === "sponsors") return c.redirect(adminPath(ward, `/print/${projectId}/paper/${kind}`), 303);
-  const squads = await getSquads(c.env.DB, ward.wardId);
   const baseUrl = c.env.PUBLIC_BASE_URL || new URL(c.req.url).origin;
+  if (kind === "poster") {
+    if (row.scope !== "public") return c.notFound();
+    const wardUrl = `${baseUrl.replace(/\/+$/, "")}/${encodeURIComponent(ward.slug)}/`;
+    return c.html(<PosterPage title={row.document_title} body={row.body} wardUrl={wardUrl} />);
+  }
+  const squads = await getSquads(c.env.DB, ward.wardId);
   const leaderUrls = new Map<string, string>();
   if (kind === "leader") {
     if (row.closed_at) return c.html(<AdminPage ward={ward} account={c.var.account} title="班長への一枚"><h1>この行事の受付は終わりました</h1><p>班長の専用 QR は使えません。</p></AdminPage>);
@@ -211,12 +218,12 @@ async function PrintChooser({ c }: { c: import("hono").Context<AdminEnv> }) {
   if (!row) return c.notFound();
   return c.html(<AdminPage ward={ward} account={account} title="印刷用ページ" back={{ href: adminPath(ward, `/publish/${projectId}`), label: "配る画面へ戻る" }}>
     <h1>{row.title} 印刷用ページ</h1>
-    <ul>{(row.scope === "space" ? ["duty"] as const : printKinds).map((kind) => <li key={kind}><a href={adminPath(ward, `/print/${projectId}/${documentId}/${versionNo}/${kind}`)}>{kindLabel(kind)}</a></li>)}</ul>
+    <ul>{(row.scope === "space" ? ["duty"] as const : printKinds).map((kind) => <li key={kind}><a href={adminPath(ward, `/print/${projectId}/${documentId}/${versionNo}/${kind}`)}>{kindLabel(kind)}</a>{kind === "poster" ? <> <Hint text="配った案内の題、日時、場所と、区のページへの QR を大きく出します。印刷や画面の撮影で使えます。" /></> : null}</li>)}</ul>
   </AdminPage>);
 }
 
 function kindLabel(kind: PrintKind): string {
-  const labels: Record<PrintKind, string> = { announcement: "案内と回答票", answer: "回答票", leader: "班長への一枚", duty: "当番表と配置図", meeting: "役員会の記入欄", sponsors: "協賛先の一覧" };
+  const labels: Record<PrintKind, string> = { poster: "貼れる一枚", announcement: "案内と回答票", answer: "回答票", leader: "班長への一枚", duty: "当番表と配置図", meeting: "役員会の記入欄", sponsors: "協賛先の一覧" };
   return labels[kind];
 }
 

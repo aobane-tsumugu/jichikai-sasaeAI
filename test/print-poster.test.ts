@@ -1,0 +1,88 @@
+import { env } from "cloudflare:workers";
+import { expect, it } from "vitest";
+import { seedAdmin } from "../src/core/testing";
+import { applyChange, createProject } from "../src/project/api";
+import { saveDocument } from "../src/project/actions";
+import { get, postForm, realApp } from "./helpers";
+
+it("印刷の一覧から貼れる一枚を開き、未配布の変更を混ぜず配り直した日時・場所を使う", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const project = await createProject(env.DB, ward.wardId, {
+    kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId,
+  });
+  const root = `/${ward.slug}/admin`;
+  const save = async (dateTime: string, place: string) => {
+    expect(await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
+      kind: "announcement", title: "秋の収穫祭（架空）", scope: "public", basedOn: 0,
+      body: JSON.stringify({ text: "案内の長い本文は一枚に出さない", items: [
+        { key: "date_time", content: dateTime }, { key: "place", content: place },
+        { key: "belongings", content: "持ち物も一枚には出さない" },
+      ] }),
+    })).toBe(true);
+    const version = await env.DB.prepare(`SELECT document_id, version_id, version_no FROM document_versions
+      WHERE ward_id = ? AND project_id = ? ORDER BY version_no DESC LIMIT 1`)
+      .bind(ward.wardId, project.projectId).first<{ document_id: string; version_id: string; version_no: number }>();
+    if (!version) throw new Error("印刷する案がありません。");
+    return version;
+  };
+  const path = (version: { document_id: string; version_no: number }) =>
+    `${root}/print/${project.projectId}/${version.document_id}/${version.version_no}`;
+  const publish = async (version: { document_id: string; version_id: string; version_no: number }) => {
+    expect((await postForm(realApp, `${root}/publish/${project.projectId}/send`, {
+      documentId: version.document_id, versionId: version.version_id,
+      versionNo: String(version.version_no), lineDelivery: "skip",
+    }, cookie)).status).toBe(303);
+  };
+
+  const first = await save("2026年11月14日 10時〜12時", "架空の広場");
+  expect((await get(realApp, `${path(first)}/poster`, cookie)).status).toBe(404);
+  await publish(first);
+  const chooser = await (await get(realApp, path(first), cookie)).text();
+  expect(chooser).toContain(`href="${path(first)}/poster"`);
+  expect(chooser).toContain("貼れる一枚");
+  const original = await (await get(realApp, `${path(first)}/poster`, cookie)).text();
+  expect(original).toContain("秋の収穫祭（架空）");
+  expect(original).toContain("2026年11月14日 10時〜12時");
+  expect(original).toContain("架空の広場");
+  expect(original).toContain(`href="${env.PUBLIC_BASE_URL}/${ward.slug}/"`);
+  expect(original).toContain("区のページを開く QR");
+  expect(original).toContain("<svg");
+  expect(original).not.toContain("案内の長い本文は一枚に出さない");
+  expect(original).not.toContain("持ち物も一枚には出さない");
+
+  await applyChange(env.DB, ward.wardId, project.projectId, {
+    kind: "item", itemKey: "place", value: "まだ配っていない会場",
+    source: { kind: "person", accountId: account.accountId }, confidence: "high", packVersion: "poster-test@1",
+  });
+  const second = await save("2026年11月15日 13時〜15時", "架空の公民館");
+  expect((await get(realApp, `${path(second)}/poster`, cookie)).status).toBe(404);
+  expect(await (await get(realApp, `${path(first)}/poster`, cookie)).text()).toBe(original);
+  await publish(second);
+  const updated = await (await get(realApp, `${path(second)}/poster`, cookie)).text();
+  expect(updated).toContain("2026年11月15日 13時〜15時");
+  expect(updated).toContain("架空の公民館");
+  expect(updated).not.toContain("まだ配っていない会場");
+  expect(updated).not.toContain("架空の広場");
+  expect(await (await get(realApp, `${path(first)}/poster`, cookie)).text()).toBe(original);
+});
+
+it("空間向けに配った文書は貼れる一枚の対象にしない", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const project = await createProject(env.DB, ward.wardId, {
+    kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,
+  });
+  await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
+    kind: "duty_roster", title: "役員内の当番表", scope: "space", basedOn: 0,
+    body: JSON.stringify({ text: "外へ貼らない担当の名前", items: [] }),
+  });
+  const version = await env.DB.prepare(`SELECT document_id, version_id, version_no FROM document_versions
+    WHERE ward_id = ? AND project_id = ?`).bind(ward.wardId, project.projectId)
+    .first<{ document_id: string; version_id: string; version_no: number }>();
+  if (!version) throw new Error("空間に配る案がありません。");
+  expect((await postForm(realApp, `/${ward.slug}/admin/publish/${project.projectId}/space`, {
+    documentId: version.document_id, versionId: version.version_id, versionNo: String(version.version_no),
+  }, cookie)).status).toBe(303);
+  const path = `/${ward.slug}/admin/print/${project.projectId}/${version.document_id}/${version.version_no}`;
+  expect(await (await get(realApp, path, cookie)).text()).not.toContain("貼れる一枚");
+  expect((await get(realApp, `${path}/poster`, cookie)).status).toBe(404);
+});
