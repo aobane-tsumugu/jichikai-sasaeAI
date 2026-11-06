@@ -3,6 +3,7 @@ import { expect, it } from "vitest";
 import { FIRST_SLICE as fixture } from "../fixtures/first-slice";
 import { seedAdmin } from "../src/core/testing";
 import { replyLineText } from "../src/line/api";
+import { lineQuotaAllows } from "../src/line/clarifications";
 import { sendOfficerDigest } from "../src/line/digest";
 import { getSetting, setSetting } from "../src/settings/store";
 import { withEnv } from "./helpers";
@@ -70,4 +71,11 @@ it("朝の知らせは有料の上限まで200通を超えて送り、上限な�
     { day: "2026-11-08", recipients: 4, usage_before: 50000, sent_at: next.toISOString() },
   ]);
   expect(await getSetting(env.DB, ward.wardId, "line.delivery_alert.digest")).toBeNull();
+});
+
+it("質問の送信は、有料のプランの上限と上限なしのプランでも止まらない", () => {
+  expect(lineQuotaAllows({ type: "limited", value: 5000 }, { totalUsage: 300 }, 7)).toBe(true);
+  expect(lineQuotaAllows({ type: "limited", value: 200 }, { totalUsage: 198 }, 7)).toBe(false);
+  expect(lineQuotaAllows({ type: "none" }, { totalUsage: 100000 }, 7)).toBe(true);
+  expect(lineQuotaAllows({}, { totalUsage: 0 }, 7)).toBe(false);
 });

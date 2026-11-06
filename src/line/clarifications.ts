@@ -14,6 +14,12 @@ import { PHOTO_AFTER_MS, purgePhotoTexts } from "./photo-context";
 export const PHOTO_GROUP_GAP_MS = 5000;
 export const MAX_QUESTION_LENGTH = 800;
 export const MAX_MONTHLY_PUSH_RECIPIENTS = 50;
+
+/** none は LINE 側の上限なし。区ごとの月の上限は別に数える。 */
+export function lineQuotaAllows(quota: { type?: unknown; value?: unknown }, usage: { totalUsage?: unknown }, count: number): boolean {
+  if (quota.type === "none") return true;
+  return quota.type === "limited" && Number(quota.value) - Number(usage.totalUsage) >= count;
+}
 export const MAX_DAILY_QUESTIONS = 3;
 export const isQuestionTime = (now: Date) => {
   const hour = new Date(now.getTime() + 9 * 3600_000).getUTCHours();
@@ -474,6 +480,6 @@ async function pushRecipientCount(token: string, batch: Batch, fetcher: typeof f
       batch.source_type === "user" ? Promise.resolve({ count: 1 }) : get(`${batch.source_type}/${encodeURIComponent(batch.source_id)}/members/count`),
     ]);
     const count = Number(members.count);
-    return Number.isInteger(count) && count > 0 && quota.type === "limited" && Number(quota.value) - Number(usage.totalUsage) >= count ? count : 0;
+    return Number.isInteger(count) && count > 0 && lineQuotaAllows(quota, usage, count) ? count : 0;
   } catch { return 0; }
 }
