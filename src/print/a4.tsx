@@ -59,11 +59,6 @@ const DEFAULT_HINT =
   "「印刷する」を押すと、ブラウザの印刷の画面が開きます。用紙は A4、倍率は 100%、ヘッダーとフッターは外してください。プリンターが無い時は、送り先を「PDF に保存」にしてください。";
 
 /** 印刷用ページの外側。画面の上に印刷ボタンの帯を出す（紙には出ない）。 */
-/** 紙は一枚で何の話か分かる必要がある。題が「案内」だけの時は行事名を前に付ける。 */
-export function paperHeading(projectTitle: string, documentTitle: string): string {
-  return documentTitle.includes(projectTitle) ? documentTitle : `${projectTitle} ${documentTitle}`;
-}
-
 export const PrintDocument: FC<PropsWithChildren<{ title: string; hint?: Child }>> = ({ title, hint, children }) => (
   <html lang="ja">
     <head>

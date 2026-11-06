@@ -2,6 +2,8 @@ import { newId, nowIso } from "../core/ids";
 import { applyChange } from "./apply";
 import { DEFAULT_SCOPE, DOCUMENT_KIND_LABEL, TABLES, cleanRowData, isItemKey, isTableKey, rowMatchKey, type DocumentKind, type Scope, type ItemKey, type RowData } from "./model";
 import { hashOf, stableStringify } from "./util";
+import { getProjectState } from "./state";
+import { reconcileDocumentBody, type DocumentBody } from "./document-body";
 
 /** 当番表の行を役員が画面で直す。行の鍵を変えても同じ行を保ち、変更履歴と古い案の印を残す。 */
 export async function saveDutyRow(
@@ -205,6 +207,12 @@ export async function saveDocument(db: D1Database, wardId: string, projectId: st
   const project = await db.prepare("SELECT state_version, closed_at FROM projects WHERE ward_id = ? AND project_id = ?").bind(wardId, projectId).first<{ state_version: number; closed_at: string | null }>();
   if (!project || project.closed_at || !Number.isInteger(input.basedOn) || input.basedOn < 0 || input.basedOn > project.state_version) return false;
   const wasCurrent = project.state_version === input.basedOn;
+  const previous = await getEditableDocument(db, wardId, projectId, input.kind);
+  const state = previous ? null : await getProjectState(db, wardId, projectId);
+  const before: DocumentBody = previous ? JSON.parse(previous.body) as DocumentBody : {
+    text: "", items: (state?.items ?? []).map((item) => ({ key: item.key, content: item.current?.content ?? item.references[0]?.content ?? "" })),
+  };
+  const body = reconcileDocumentBody(before, { text: record.text, items });
   let doc = await db.prepare("SELECT document_id FROM documents WHERE ward_id = ? AND project_id = ? AND kind = ?").bind(wardId, projectId, input.kind).first<{ document_id: string }>();
   const now = nowIso();
   if (!doc) {
@@ -219,8 +227,9 @@ export async function saveDocument(db: D1Database, wardId: string, projectId: st
   const versionId = newId();
   const statements: D1PreparedStatement[] = [db.prepare(`INSERT INTO document_versions
     (version_id, ward_id, project_id, document_id, version_no, scope, body, title, based_on_state_version, origin, created_at, created_by_account_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'person', ?, ?)`).bind(versionId, wardId, projectId, doc.document_id, (latest?.n ?? 0) + 1, input.scope, JSON.stringify({ text: record.text, items }), input.title.trim(), wasCurrent ? currentProject?.state_version ?? input.basedOn : input.basedOn, now, accountId)];
-  for (const item of items) {
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'person', ?, ?)`).bind(versionId, wardId, projectId, doc.document_id, (latest?.n ?? 0) + 1, input.scope, JSON.stringify(body), input.title.trim(), wasCurrent ? currentProject?.state_version ?? input.basedOn : input.basedOn, now, accountId)];
+  for (const item of body.items) {
+    if (!item.content.trim() || before.items.find((entry) => entry.key === item.key)?.content === item.content) continue;
     const change = await applyChange(db, wardId, projectId, { kind: "item", itemKey: item.key, value: item.content,
       source: { kind: "person", accountId }, confidence: "high", packVersion: "person-edit@1", requestId: versionId });
     if (change.status === "rejected") return false;
@@ -228,6 +237,31 @@ export async function saveDocument(db: D1Database, wardId: string, projectId: st
   await db.batch(statements);
   if (wasCurrent) await db.prepare("UPDATE documents SET stale_since_version = NULL WHERE ward_id = ? AND project_id = ? AND document_id = ?").bind(wardId, projectId, doc.document_id).run();
   return true;
+}
+
+/** 配った操作に記録を付ける。既に今年の中身があれば変えず、記録の失敗で配布を止めない。 */
+export async function recordPublishedItems(db: D1Database, wardId: string, projectId: string, versionId: string, accountId: string): Promise<void> {
+  try {
+    const version = await db.prepare(`SELECT document_id, body FROM document_versions
+      WHERE ward_id = ? AND project_id = ? AND version_id = ? AND published_at IS NOT NULL`)
+      .bind(wardId, projectId, versionId).first<{ document_id: string; body: string }>();
+    if (!version) return;
+    const body = JSON.parse(version.body) as DocumentBody;
+    for (const item of body.items) {
+      if (!isItemKey(item.key) || !item.content.trim()) continue;
+      const current = await db.prepare(`SELECT 1 AS found FROM project_item_values
+        WHERE ward_id = ? AND project_id = ? AND item_key = ? AND scope = 'current' AND superseded_at IS NULL`)
+        .bind(wardId, projectId, item.key).first();
+      if (current) continue;
+      await applyChange(db, wardId, projectId, {
+        kind: "item", itemKey: item.key, value: item.content,
+        source: { kind: "person", accountId, ref: versionId, locator: "配る操作" },
+        confidence: "high", packVersion: "publish-items@1", requestId: versionId,
+      }, { publishedDocumentId: version.document_id });
+    }
+  } catch {
+    console.error("配った中身を今年の記録に残せませんでした");
+  }
 }
 
 export async function getLatestDocumentBody(db: D1Database, wardId: string, documentId: string): Promise<string | null> {

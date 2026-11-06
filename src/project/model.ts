@@ -46,7 +46,7 @@ export const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
  *   year は資料の中の日付や年度から読んだ年。読めなければ空（年不明）。qr は役員画面から印刷した紙（QR の付いた紙）から読んだ物。
  * - person: accountId に入力した役員のアカウント。
  * - web_answer: ref に答えの ID（束 5）。
- * - ai_proposal: year に参考にした年（必須）。ref に参考にした原本の ID（あれば）。
+ * - ai_proposal: year に参考にした年（当番の案だけは年不明も可）。ref に参考にした原本の ID（あれば）。
  */
 export interface Source {
   kind: SourceKind;

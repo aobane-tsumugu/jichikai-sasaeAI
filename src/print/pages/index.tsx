@@ -6,7 +6,8 @@ import type { Bundle } from "../../core/bundle";
 import { getSquads } from "../../settings/store";
 import { ArticleBody, articleParagraphs } from "../../publish";
 import type { AdminEnv } from "../../env";
-import { CutLine, FieldBox, PrintDocument, PrintQr, Sheet, paperHeading } from "../a4";
+import { CutLine, FieldBox, PrintDocument, PrintQr, Sheet } from "../a4";
+import { paperHeading } from "../../project/heading";
 import { makePaperCode, makeProjectPaperCode, printQrUrl, projectPaperQrUrl } from "../qr";
 import { getProjectState, getProjectSummary } from "../../project/api";
 import { createInvite, getSpace } from "../../space/api";
@@ -133,19 +134,19 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
     return c.html(<PosterPage title={paperHeading(row.title, row.document_title)} body={row.body} wardUrl={wardUrl} />);
   }
   const squads = await getSquads(c.env.DB, ward.wardId);
+  const paperSquads = squads.length ? squads : [""];
   const leaderUrls = new Map<string, string>();
   if (kind === "leader") {
     if (row.closed_at) return c.html(<AdminPage ward={ward} account={c.var.account} title="班長への一枚"><h1>この行事の受付は終わりました</h1><p>班長の専用 QR は使えません。</p></AdminPage>);
     const space = await getSpace(c.env.DB, ward.wardId, projectId);
-    if (c.req.method !== "POST" || !space || space.closed_at || !squads.length) {
+    if (c.req.method !== "POST" || !space || space.closed_at) {
       return c.html(<AdminPage ward={ward} account={c.var.account} title="班長への一枚">
         <h1>班長への一枚 <Hint text="班長が自分の班の答えを見たり、回答票を撮って送ったりできる専用の QR を印刷します。その班長にだけ渡してください。" /></h1>
         {!space || space.closed_at ? <p><a href={adminPath(ward, `/space/${projectId}`)}>空間を開いてから印刷する</a></p>
-          : !squads.length ? <p><a href={adminPath(ward, "/settings")}>区の設定で班の名前を入れる</a></p>
           : <form method="post"><button>班長の専用 QR を作って印刷する</button></form>}
       </AdminPage>);
     }
-    for (const squad of squads) {
+    for (const squad of paperSquads) {
       const token = await createInvite(c.env.DB, ward.wardId, projectId, "leader", squad, c.var.account.accountId, true);
       leaderUrls.set(squad, `${baseUrl.replace(/\/+$/, "")}/${encodeURIComponent(ward.slug)}/space/${encodeURIComponent(projectId)}/person/${token}`);
     }
@@ -166,7 +167,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   const published = (table: TableKey) => (tables ?? []).filter((entry) => entry.kind === table);
   const printTitle = `${row.title} ${kindLabel(kind)}`;
   return c.html(<PrintDocument title={printTitle}>
-    {kind === "announcement" && onOneSheet ? (squads.length ? squads : [""]).map((squad) => <Sheet key={squad} footer={<><span>{ward.name} {squad}</span><span>案内 {versionNo}</span></>}>
+    {kind === "announcement" && onOneSheet ? paperSquads.map((squad) => <Sheet key={squad} footer={<><span>{ward.name} {squad}</span><span>案内 {versionNo}</span></>}>
       <h1>{paperHeading(row.title, row.document_title)}</h1><ArticleBody body={row.body} /><CutLine />
       <h2>{row.title} 回答票 {squad}</h2>{answerSheet(squad, 24)}
       <p>QR を読むと案内のページが開き、Web でも回答できます。</p>
@@ -176,15 +177,15 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
         <div class="float-qr">{paperQr()}</div>
         <h1>{paperHeading(row.title, row.document_title)}</h1><ArticleBody body={row.body} />
       </Sheet>
-      {squads.map((squad) => <Sheet key={squad} footer={<><span>{ward.name} {squad}</span><span>回答票</span></>}>
+      {paperSquads.map((squad) => <Sheet key={squad} footer={<><span>{ward.name} {squad}</span><span>回答票</span></>}>
         <h1>{row.title} 回答票</h1><p>班: {squad}</p>{answerSheet(squad, 28)}
         <p>QR を読むと案内のページが開き、Web でも回答できます。</p>
       </Sheet>)}
     </> : null}
-    {kind === "answer" ? squads.map((squad) => <Sheet key={squad} footer={<>{ward.name} {squad} 回答票</>}>
+    {kind === "answer" ? paperSquads.map((squad) => <Sheet key={squad} footer={<>{ward.name} {squad} 回答票</>}>
       <h1>{row.title} 回答票</h1><p>班: {squad}</p>{answerSheet(squad, 35)}
     </Sheet>) : null}
-    {kind === "leader" ? squads.map((squad) => <Sheet key={squad} footer={<>{ward.name} {squad}</>}>
+    {kind === "leader" ? paperSquads.map((squad) => <Sheet key={squad} footer={<>{ward.name} {squad}</>}>
       <h1>班長へのお知らせ</h1><p>{row.title}</p><ArticleBody body={row.body} /><p>班: {squad}</p>
       <p>この案内を班の世帯へお渡しください。下の QR は班長だけが使います。ほかの人には渡さないでください。</p>
       <PrintQr text={leaderUrls.get(squad)!} sizeMm={32} /><p>QR から班の答えを見たり、回答票を撮って送ったりできます。</p>

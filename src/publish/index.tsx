@@ -11,6 +11,8 @@ import { answerDeadlineFromDraft, getDistrictCopies, getRoster, parseDistributio
 import { checkPublicDraft } from "./check";
 import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, isItemKey, type DocumentKind } from "../project/model";
 import { applyChange } from "../project/apply";
+import { recordPublishedItems } from "../project/actions";
+import { paperHeading } from "../project/heading";
 import { currentPublicationTables, publicationTablesDiffer, publicationTablesSql } from "../space/publication-tables";
 
 interface DraftRow {
@@ -278,6 +280,7 @@ admin.post("/publish/:projectId/space", async (c) => {
       ward.wardId, documentId, ward.wardId, documentId, ward.wardId, projectId);
   const result = await publish.run();
   if (result.meta.changes !== 1) return c.text("案の内容が変わったか、すでに配っています。配る画面で内容を確かめてください。", 409);
+  await recordPublishedItems(c.env.DB, ward.wardId, projectId, publishedVersionId, account.accountId);
   if (row.kind === "duty_roster") await markDistributedTask(c.env.DB, ward.wardId, projectId, account.accountId, "duty_roster", publishedVersionId);
   return c.redirect(adminPath(ward, `/publish/${projectId}?space=sent`), 303);
 });
@@ -429,6 +432,7 @@ admin.post("/publish/:projectId/send", async (c) => {
       <h1>配る内容を確かめてください</h1><p>案の内容が変わったか、すでに配っています。配る画面で内容を確かめてください。</p>
     </AdminPage>, 409);
   }
+  await recordPublishedItems(c.env.DB, ward.wardId, projectId, versionId, account.accountId);
   if (row.kind === "announcement") await markDistributedTask(c.env.DB, ward.wardId, projectId, account.accountId, "announcement", versionId);
   const publicUrl = `${(c.env.PUBLIC_BASE_URL || new URL(c.req.url).origin).replace(/\/+$/, "")}/${ward.slug}/p/${encodeURIComponent(projectId)}`;
   const sendLine = canSendLine(row.kind) && form.lineDelivery !== "skip";
@@ -443,7 +447,7 @@ admin.post("/publish/:projectId/send", async (c) => {
       else {
         const allowance = await getLineAllowance(token);
         lineRecipients = allowance.friends;
-        await sendLineTitleAndUrl(token, row.title, publicUrl);
+        await sendLineTitleAndUrl(token, paperHeading(project.title, row.title), publicUrl);
         lineStatus = "sent";
         lineSentAt = nowIso();
       }

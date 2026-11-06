@@ -106,8 +106,8 @@ interface Normalized {
   rowData?: RowData;
 }
 
-async function verifySource(db: Db, wardId: string, source: Source, options: ApplyOptions): Promise<string | null> {
-  const shape = checkSourceShape(source);
+async function verifySource(db: Db, wardId: string, source: Source, options: ApplyOptions, allowUnknownProposalYear = false): Promise<string | null> {
+  const shape = checkSourceShape(source, allowUnknownProposalYear);
   if (!shape.ok) return shape.reason;
   if ((source.kind === "original" || (source.kind === "ai_proposal" && source.ref)) && options.verifyOriginal) {
     if (!(await options.verifyOriginal(source.ref as string))) return "出どころの原本が見つかりません";
@@ -134,7 +134,7 @@ async function checkChange(
     return { ok: false, reason: "読み方の版が分かりません" };
   }
   if (!(CONFIDENCES as readonly string[]).includes(change.confidence)) return { ok: false, reason: "確かさが合いません" };
-  const sourceReason = await verifySource(db, wardId, change.source, options);
+  const sourceReason = await verifySource(db, wardId, change.source, options, change.kind === "row" && change.table === "duties");
   if (sourceReason) return { ok: false, reason: sourceReason };
   const source = normalizeSource(change.source);
 
@@ -301,12 +301,12 @@ async function existingFreshDocuments(ctx: Ctx, kinds: readonly DocumentKind[]):
   const marks = kinds.map(() => "?").join(",");
   const rows = await ctx.db
     .prepare(
-      `SELECT DISTINCT kind FROM documents
+      `SELECT DISTINCT kind, document_id FROM documents
        WHERE ward_id = ? AND project_id = ? AND stale_since_version IS NULL AND kind IN (${marks})`,
     )
     .bind(ctx.wardId, ctx.projectId, ...kinds)
-    .all<{ kind: DocumentKind }>();
-  return rows.results.map((r) => r.kind);
+    .all<{ kind: DocumentKind; document_id: string }>();
+  return rows.results.filter((r) => r.document_id !== ctx.options.publishedDocumentId).map((r) => r.kind);
 }
 
 // ---- 項目 ----
@@ -832,7 +832,8 @@ export async function applyChange(
     plan = { status: "dropped", reason: checked.reason, statements: [], questions: [], bump: false, staleKinds: [] };
   } else {
     normalized = checked.value;
-    const ref = normalized.source.ref ?? (normalized.source.kind === "person" ? `person:${change.requestId ?? newId()}` : normalized.source.kind);
+    const ref = normalized.source.ref ?? (normalized.source.kind === "person" ? `person:${change.requestId ?? newId()}`
+      : normalized.source.kind === "ai_proposal" && change.ticketId ? `ai_proposal:${change.ticketId}` : normalized.source.kind);
     dedupeKey = await dedupeKeyOf({ ref, packVersion: change.packVersion, hand: change.kind, target: normalized.target });
     const seen = await findByKey(db, wardId, projectId, dedupeKey);
     if (seen) {

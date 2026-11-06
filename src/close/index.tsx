@@ -99,7 +99,7 @@ admin.get("/close/:projectId", async (c) => {
   const generatedText = generatedReport;
   const report = (scope: "public" | "staff") => reports.results?.find((r) => r.scope === scope)?.body || (scope === "public" ? generatedText : "");
   const savedActivity = parseActivityBody(activityPage?.draft_body);
-  const activity = savedActivity ?? { introduction: generatedText, membershipBurden: "", membershipBenefit: "", tasks: tasks.results.map((task) => ({ taskId: task.task_id, name: task.name, period: task.period })) };
+  const activity = savedActivity ?? { introduction: generatedText, membershipBurden: "", membershipBenefit: "", tasks: tasks.results.filter((task) => task.progress === "done").map((task) => ({ taskId: task.task_id, name: task.name, period: task.period })) };
   const root = adminPath(ward, `/close/${id}`);
   return c.html(<Layout title={`報告と閉じる: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>{project.title} の報告と閉じる <Hint text={project.closedAt ? "閉じたプロジェクトの報告と地図を見る画面です。直したい時は「開き直す」を押してください。" : "実施後の報告と、来年に残す地図をまとめる画面です。下書きを起こすか、欄に直接書いてください。"} /></h1>
