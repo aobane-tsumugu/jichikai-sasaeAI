@@ -7,6 +7,7 @@ import { getEditableDocument } from "./actions";
 import { DOCUMENT_KINDS, ITEM_SCREEN_LABEL, isItemKey, type DocumentKind } from "./model";
 import type { DocumentBody } from "./document-body";
 import type { QuestionView } from "./types";
+import { answerMaterialExemption, EXEMPTION_TARGET, EXEMPTION_YES, EXEMPTION_NO, EXEMPTION_REASON_MAX, readMaterialExemption } from "../rota/material-exemptions";
 
 /** 保存済みの選択肢の値は保ち、資料の年を聞く言葉だけ揃える。 */
 export function questionOptionLabel(option: string): string {
@@ -33,6 +34,16 @@ export function questionShort(question: QuestionView): string {
 }
 
 export const questionPages = new Hono<AdminEnv>();
+questionPages.post("/projects/:projectId/questions/:questionId/exemption", async (c) => {
+  const form = await c.req.formData();
+  const id = c.req.param("projectId");
+  const action = String(form.get("action") ?? "");
+  const result = await answerMaterialExemption(c.env.DB, c.var.ward.wardId, id, c.req.param("questionId"),
+    c.var.account.accountId, action, String(form.get("reason") ?? ""));
+  const query = result === "failed" ? "error=exemption_answer_failed" : result === "draft_failed" ? "error=exemption_draft_failed"
+    : `notice=${action === EXEMPTION_YES ? "exempted" : action === EXEMPTION_NO ? "kept" : action}`;
+  return c.redirect(`${adminPath(c.var.ward, `/projects/${id}/questions`)}?${query}`, 303);
+});
 questionPages.get("/projects/:projectId/questions/:questionId/compare", async (c) => {
   const { ward } = c.var; const id = c.req.param("projectId");
   const state = await getProjectState(c.env.DB, ward.wardId, id);
@@ -65,25 +76,42 @@ questionPages.get("/projects/:projectId/questions", async (c) => {
   const state = await getProjectState(c.env.DB, ward.wardId, id);
   if (!state) return c.notFound();
   const questions = [...state.questions].sort((a, b) => Number(a.state === "later") - Number(b.state === "later"));
+  const stored = questions.some((question) => question.target?.startsWith(EXEMPTION_TARGET))
+    ? await c.env.DB.prepare(`SELECT question_id, detail FROM project_questions
+      WHERE ward_id = ? AND project_id = ? AND target LIKE 'rota_exemption:%' AND state IN ('open', 'later')`)
+      .bind(ward.wardId, id).all<{ question_id: string; detail: string | null }>() : null;
+  const exemptions = new Map(stored?.results.map((row) => [row.question_id, readMaterialExemption(row.detail)]));
+  const duty = state.project.kind === "duty";
+  const draftHref = adminPath(ward, `/projects/${id}/draft/${duty ? "duty_roster" : "announcement"}`);
+  const draftLabel = duty ? "当番表の下書きを見る" : "案内の下書きを見る";
   const answered = c.req.query("notice") === "answered";
   const next = <section class="next"><strong>{answered ? "答えを残しました" : "次は"}</strong>
     <p>{questions.length ? "残りの質問に答えられます。答えなくても配れます。" : "質問はありません。あとから下書きで直せます。"}</p>
-    <a class="button" href={questions[0] ? `#question-${questions[0].questionId}` : adminPath(ward, `/projects/${id}/draft/announcement`)}>{questions.length ? "残りの質問に答える" : "案内の下書きを見る"}</a>
+    <a class="button" href={questions[0] ? `#question-${questions[0].questionId}` : draftHref}>{questions.length ? "残りの質問に答える" : draftLabel}</a>
   </section>;
   return c.html(<Layout title="質問に答える" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {state.project.title}の段取りへ</a>
     <h1>分かるものだけ答えてください</h1><p class="lead">答えなくても配れます。</p>
-    <ErrorNotice code={c.req.query("error")} messages={{ answer_failed: "答えを入れられませんでした。もう一度お試しください。" }} />
+    <ErrorNotice code={c.req.query("error")} messages={{ answer_failed: "答えを入れられませんでした。もう一度お試しください。", exemption_answer_failed: "免除の答えを入れられませんでした。理由は200文字までです。すでに答えていないか、下の質問を確かめてください。", exemption_draft_failed: "免除は記録しました。当番表の下書きを開き、「今の名簿と免除を下書きに反映する」を押してください。" }} />
+    {c.req.query("notice") === "exempted" ? <Notice>今年の当番の免除を記録しました。役員が直した担当と配った内容はそのままです。下書きで担当を確かめられます。<p><a class="button secondary" href={adminPath(ward, "/rota/exemptions")}>免除の記録を見る・取り消す</a></p></Notice> : c.req.query("notice") === "kept" ? <Notice>当番から外さず、答えを残しました。</Notice> : null}
     {c.req.query("notice") === "unknown" ? <Notice>分からないとして残しました。あとから下書きで直せます。</Notice> : c.req.query("notice") === "later" ? <Notice>あとで答えられるように残しました。</Notice> : null}
     {!questions.length ? next : null}
     {state.project.closedAt ? <Notice>この行事は閉じました。もう一度開くと答えを入れられます。</Notice> : null}
-    {questions.map((question) => <section class="panel" id={`question-${question.questionId}`}>
+    {questions.map((question) => {
+      const exemption = exemptions.get(question.questionId);
+      return <section class="panel" id={`question-${question.questionId}`}>
       <h2>{questionTitle(question).heading}</h2>
       {questionTitle(question).body ? <p>{questionTitle(question).body}</p> : null}
       {question.source?.locator && question.source.locator !== "写真の確認" ? <p class="muted">{question.source.locator}</p> : null}
       {question.kind === "conflict" ? <p><a class="button secondary" href={adminPath(ward, `/projects/${id}/questions/${question.questionId}/compare`)}>二つを見比べる</a></p> : null}
-      {!state.project.closedAt ? <form method="post" action={adminPath(ward, `/projects/${id}/questions/${question.questionId}`)}>
-        {question.options?.length ? <div class="action-links">{question.options.map((option) => <button class="secondary" name="answer" value={option}>{questionOptionLabel(option)}</button>)}</div> : <>
+      {!state.project.closedAt ? <form method="post" action={adminPath(ward, `/projects/${id}/questions/${question.questionId}${exemption ? "/exemption" : ""}`)}>
+        {exemption ? <>
+          <p>資料に免除の記述があるようです。{exemption.district}の{exemption.household}さんについて、{exemption.year}年の当番から外すか選べます。選ばないときは今のままです。</p>
+          <label for={`reason-${question.questionId}`}>免除の理由（資料の文を直せます）</label>
+          <textarea id={`reason-${question.questionId}`} name="reason" maxlength={EXEMPTION_REASON_MAX} rows={3}>{exemption.reason}</textarea>
+          <p>理由は役員だけが読みます。外す期間はこの年の1月1日から12月31日までです。</p>
+          <div class="action-links"><button name="action" value={EXEMPTION_YES}>{EXEMPTION_YES}</button><button class="secondary" name="action" value={EXEMPTION_NO}>{EXEMPTION_NO}</button></div>
+        </> : question.options?.length ? <div class="action-links">{question.options.map((option) => <button class="secondary" name="answer" value={option}>{questionOptionLabel(option)}</button>)}</div> : <>
           <div class="field"><label for={`answer-${question.questionId}`}>{isItemKey(question.target) ? ITEM_SCREEN_LABEL[question.target] : question.text.includes("金額") ? "金額" : "答え"}</label><input id={`answer-${question.questionId}`} name="answer" maxlength={2000} inputmode={question.text.includes("金額") ? "numeric" : undefined} /></div>
           <div class="action-links"><button class="secondary" name="action" value="answer">{question.text.includes("金額") ? "この金額を入れる" : "答える"}</button></div>
         </>}
@@ -91,7 +119,8 @@ questionPages.get("/projects/:projectId/questions", async (c) => {
           <button class="quiet" name="action" value="unknown">分からない</button><button class="quiet" name="action" value="later">あとで</button>
         </div>
       </form> : null}
-    </section>)}
-    {questions.length ? <><p class="muted">答えは下書きに入ります。あとから直せます。</p>{answered ? next : <div class="action-bar"><a class="button" href={adminPath(ward, `/projects/${id}/draft/announcement`)}>案内の下書きを見る</a></div>}</> : null}
+    </section>;
+    })}
+    {questions.length ? <><p class="muted">{exemptions.size ? "免除は免除の記録から取り消せます。" : "答えは下書きに入ります。あとから直せます。"}</p>{answered ? next : <div class="action-bar"><a class="button" href={draftHref}>{draftLabel}</a></div>}</> : null}
   </Layout>);
 });

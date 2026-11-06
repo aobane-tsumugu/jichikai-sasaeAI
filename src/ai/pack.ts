@@ -2,7 +2,7 @@
 // 包みは system に入れる（L-202）。包みを直したら PACK_VERSION を上げる。版は差分の重複を弾く印と、読み直しの選別に使う。
 import type { JobTask } from "../intake/types";
 
-export const PACK_VERSION = "connect@15";
+export const PACK_VERSION = "connect@16";
 
 /** MCP の口の名前。agent の mcp_servers と mcp_toolset が同じ名前を指す。 */
 export const MCP_SERVER_NAME = "kiroku";
@@ -29,6 +29,7 @@ write_change の書き方（名前は下の英語の鍵をそのまま使う）:
   ledger（運営メモ）: what（何に）、counterpart（どこに）、direction（income か expense）、amount、date、receiptOriginalId、note、contact（連絡先と頼んだ人）、requestedOn（いつ頼んだか）、quantity（量）、estimate（見積りの額）、payment（払い方）、thanks（お礼の仕方）。写真に書かれた事実だけを運営メモの行に当てる。既存の行を使うときは memoKey と memoGroup をそのまま引き継ぐ。資料に無い行や額を埋めず、空欄を推測して補わず、記録が無いことを質問や催促にしない。
   submissions（提出した物）: what（必須）、to、submittedOn。
 - decision: data は {"what": "決めたこと", "decidedOn": "いつ"}。
+- 免除: 資料に「高齢のため免除」など当番の免除の記述があれば、対象の名前を含む資料の文をそのままdecisionのdata.whatへ一人ずつ写す。年が不明・去年の資料でも拾う。Workersが「○○さんを今年の当番から外しますか」という質問にするので、write_questionで重ねて聞かない。免除を今年の決定と扱わず、担当を消さない。理由はdutiesのnote、ほかの表、文書の本文やitems、公開や実行委員と班長向けの内容へ写さない。資料に無い理由や期間は補わない。
 - 今年の中身と違う中身が来た時は、item か row をそのまま書く。Workers が二つを並べて役員に聞く。「直しますか」という問いを自分で書かない。
 - map_task: target は get_project_state の地図にある仕事の鍵、data は {"progress": "started" か "done"}。
 - year: get_reading の original_years から、書く中身の出どころと同じ original_id の year だけを西暦で渡す。Word と Excel などの本文や表、originals の filename を読む時も、その original_id の原本に書かれた年だけを使う。一緒に送った別の原本の年は使わない。その原本に年が書かれていなければ year を書かない。曜日、内容、現在の日付から年を推測せず、プロジェクトの年に置き換えない。過去の年や年不明の資料の中身は参考に留める。

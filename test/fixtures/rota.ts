@@ -26,3 +26,11 @@ export const ROTA_REVIEW_FIXTURE = {
   committeeRole: "実行委員長",
   contact: "役員へ（架空）",
 } as const;
+
+// U54用の架空の資料。名前と理由は実在の資料に由来しない。
+export const MATERIAL_EXEMPTION_FIXTURE = {
+  filename: "当番の引き継ぎメモ（架空）.txt",
+  sentence: `${ROTA_REVIEW_FIXTURE.district} ${ROTA_REVIEW_FIXTURE.exempt}さんは高齢のため当番を免除。`,
+  editedReason: "高齢のため今年の当番を免除（架空の役員が直した理由）",
+  text: `これは試験用の架空の資料です。\n${ROTA_REVIEW_FIXTURE.district} ${ROTA_REVIEW_FIXTURE.exempt}さんは高齢のため当番を免除。`,
+} as const;
