@@ -46,7 +46,9 @@ const draftText = (form: Form) => [...form.values].filter(([key]) => key === "te
 export function checkKindsFacts(text: string, allowed: string[], required: string[]) {
   for (const fact of required) assert(compact(text).includes(compact(fact)), "送った決定や未決が下書きにありません（言い換えはPMの確認が必要です）");
   const known = new Set(allowed.flatMap(s => s.split(/[。\n]/)).map(compact));
-  for (const sentence of text.split(/[。\n]/).map(compact).filter(Boolean)) {
+  // 句点の無い短い行は見出しや項目として扱い、文だけを照合する。
+  const body = text.split("\n").filter((line) => !line.trim().startsWith("#") && (line.includes("。") || line.trim().length > 20)).join("\n");
+  for (const sentence of body.split(/[。\n]/).map(compact).filter(Boolean)) {
     const fact = sentence.replace(/^(?:[-・]|\d+[.)、])/, "").replace(/^(?:決めたこと|決定事項|前回の決定|未決|保留|議題|日時|場所)[:：]/, "");
     if (/^(?:議事録|議題の資料|議案の資料|決めたこと|前回の決定|決定事項|未決|保留|決まらなかったこと・残っている質問)$/.test(fact)) continue;
     assert(known.has(fact), "資料と照合できない文があります（送っていない決定や言い換えはPMの確認が必要です）");
