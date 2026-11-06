@@ -281,4 +281,26 @@ details.hint { font-size: 1rem; font-weight: 400; line-height: 1.8; letter-spaci
 table { table-layout: fixed; }
 th, td { overflow-wrap: anywhere; }
 @media (max-width: 35.99rem) { th, td { padding: var(--space-1); } }
+
+/* 答えと記録。小さな画面では一つずつ読める幅にする。 */
+main:has(> .answers-wide), main:has(> .record-split) { max-width: var(--width-wide); }
+.record-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.record-split > section, .record-split > aside { min-width: 0; }
+.record-split + h2, .record-split ~ h2 { scroll-margin-top: var(--space-4); }
+.print-only { display: none; }
+@media (min-width: 60rem) {
+  .record-split { display: grid; grid-template-columns: minmax(0, 1fr) 20rem; gap: var(--space-6); align-items: start; }
+}
+@media print {
+  body:has(.answer-unanswered-print) header,
+  body:has(.answer-unanswered-print) main > :not(.answer-unanswered-print) { display: none; }
+  body:has(.answer-unanswered-print) main { max-width: none; padding: 0; }
+  .answer-unanswered-print { color: #000; background: #fff; font-size: 14pt; line-height: 1.65; }
+  .answer-unanswered-print .print-only { display: block; }
+  .answer-unanswered-print section { break-inside: avoid; }
+}
+
+.admin-answer-counts fieldset > div { display: grid; grid-template-columns: minmax(0, 1fr) 5rem 1.2em; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
+.admin-answer-counts fieldset > div label { margin: 0; font-weight: 500; }
+.admin-answer-counts input { text-align: right; }
 `;

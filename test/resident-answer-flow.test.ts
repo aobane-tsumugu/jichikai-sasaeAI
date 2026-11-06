@@ -68,9 +68,9 @@ it("名簿のない初年度から人数を答え、班と古い答えを保ち�
     if (!legacy) throw new Error("古い形の答えがありません。");
     expect(await (await get(realApp, `${answersPath}/${legacy.answerId}/edit`, cookie)).text()).toContain('name="people_count"');
     expect(await getAnswerTotals(env.DB, ward.wardId, project.projectId)).toEqual({ people: 13, helperRequests: 0 });
-    const page = await (await get(realApp, answersPath, cookie)).text();
+    const page = await (await get(realApp, `${answersPath}?view=list`, cookie)).text();
     expect(page).toContain("班が分からない 3世帯");
-    expect(page).toContain("名簿はまだありません");
+    expect(await (await get(realApp, answersPath, cookie)).text()).toContain("名簿はまだありません");
     const zero = await postForm(realApp, answerPath, { household: FIRST_SLICE.secondHousehold, district: "", children_count: "", adults_count: "", seniors_count: "" });
     expect(zero.status).toBe(200);
     expect(await zero.text()).not.toContain("次は");

@@ -20,7 +20,7 @@ it("去年の地図で直した仕事の日付を、来年の行事の日から�
     title: "来年の架空の行事", year: "2027", eventDay: "2027-10-23",
   }, cookie);
   expect(seeded.status).toBe(303);
-  const targetId = /\/projects\/([^/]+)\/map$/.exec(seeded.headers.get("location") ?? "")?.[1];
+  const targetId = new URL(seeded.headers.get("location")!, "http://localhost").searchParams.get("started");
   expect(targetId).toBeDefined();
   const next = await getProjectState(env.DB, ward.wardId, targetId!);
   expect(next?.mapTasks.find((task) => task.taskKey === "venue"))

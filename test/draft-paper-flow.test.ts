@@ -205,7 +205,7 @@ it("資料から当番の案を行にし、役員が直して紙と空間へ配�
   const done = tasks.find((task) => task.progress === "done");
   const open = tasks.find((task) => task.progress === "open");
   if (!done || !open) throw new Error("済んだ仕事とこれからの仕事がありません");
-  const activityHtml = await (await get(realApp, `${root}/close/${id}`, cookie)).text();
+  const activityHtml = await (await get(realApp, `${root}/close/${id}?view=activity`, cookie)).text();
   const checkbox = (html: string, taskId: string) => {
     const tag = html.match(/<input\b[^>]*>/g)?.find((entry) => entry.includes('name="taskId"') && entry.includes(`value="${taskId}"`));
     if (!tag) throw new Error("活動紹介で選ぶ仕事がありません");
@@ -214,7 +214,7 @@ it("資料から当番の案を行にし、役員が直して紙と空間へ配�
   expect(checkbox(activityHtml, done.taskId)).toContain("checked");
   expect(checkbox(activityHtml, open.taskId)).not.toContain("checked");
   expect((await postForm(realApp, `${root}/close/${id}/activity`, { taskId: open.taskId, introduction: FIRST_SLICE.reportText, action: "save" }, cookie)).status).toBe(303);
-  const chosen = await (await get(realApp, `${root}/close/${id}`, cookie)).text();
+  const chosen = await (await get(realApp, `${root}/close/${id}?view=activity`, cookie)).text();
   expect(checkbox(chosen, open.taskId)).toContain("checked");
   expect(checkbox(chosen, done.taskId)).not.toContain("checked");
 });

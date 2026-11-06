@@ -221,7 +221,7 @@ describe("秋の収穫祭の最初の一片", () => {
     expect(answerList.map((answer) => answer.source).sort()).toEqual(["phone", "sheet", "web"]);
     expect(await getAnswerTotals(env.DB, ward.wardId, projectId as string)).toEqual({ people: 8, helperRequests: 2 });
     expect(await listUnansweredByDistrict(env.DB, ward.wardId, projectId as string)).toEqual([{ district: FIRST_SLICE.district, households: [FIRST_SLICE.secondHousehold] }]);
-    const answersPage = await get(realApp, `/${ward.slug}/admin/answers/${projectId}`, cookie);
+    const answersPage = await get(realApp, `/${ward.slug}/admin/answers/${projectId}?view=unanswered`, cookie);
     expect(await answersPage.text()).toContain(FIRST_SLICE.secondHousehold);
     expect((await get(realApp, publicUrl)).status).toBe(200);
 
@@ -345,7 +345,7 @@ describe("秋の収穫祭の最初の一片", () => {
     }, cookie);
     expect(seeded.status).toBe(303);
     const seedLocation = seeded.headers.get("location") ?? "";
-    const nextId = /\/projects\/([^/]+)\/map$/.exec(seedLocation)?.[1];
+    const nextId = new URL(seedLocation, "http://localhost").searchParams.get("started");
     expect(nextId).toBeTruthy();
     expect(nextId).not.toBe(projectId);
     expect((await getProjectState(env.DB, ward.wardId, nextId as string))?.project.projectId).toBe(nextId);

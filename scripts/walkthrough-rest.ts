@@ -69,7 +69,7 @@ async function req(path: string, init: RequestInit = {}, timeoutMs = 30_000) {
   }
   return response;
 }
-async function post(path: string, values: Record<string, string>, timeoutMs = 30_000) {
+async function post(path: string, values: Record<string, string> | URLSearchParams, timeoutMs = 30_000) {
   return req(path, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(values) }, timeoutMs);
 }
 async function get(path: string) {
@@ -84,16 +84,20 @@ function readForm(html: string, match: string, sectionTitle?: string) {
     const sectionStart = html.lastIndexOf("<section", form.index ?? 0);
     if (sectionTitle && !html.slice(sectionStart, form.index).includes(sectionTitle)) continue;
     const fields: Record<string, string> = {};
+    const values = new URLSearchParams();
     const body = form[2] ?? "";
     for (const input of body.matchAll(/<input\b([^>]*)>/gi)) {
       const attrs2 = input[1] ?? "";
       const name = /\bname="([^"]*)"/i.exec(attrs2)?.[1];
       const type = /\btype="([^"]*)"/i.exec(attrs2)?.[1];
-      if (name && type !== "file" && type !== "submit" && type !== "checkbox") fields[name] = unescapeHtml(/\bvalue="([^"]*)"/i.exec(attrs2)?.[1] ?? "");
+      if (name && type !== "file" && type !== "submit" && type !== "checkbox") {
+        const value = unescapeHtml(/\bvalue="([^"]*)"/i.exec(attrs2)?.[1] ?? "");
+        fields[name] = value; values.append(name, value);
+      }
     }
     for (const field of body.matchAll(/<textarea\b([^>]*)>([\s\S]*?)<\/textarea>/gi)) {
       const name = /\bname="([^"]*)"/i.exec(field[1] ?? "")?.[1];
-      if (name) fields[name] = unescapeHtml(field[2] ?? "");
+      if (name) { fields[name] = unescapeHtml(field[2] ?? ""); values.append(name, fields[name]); }
     }
     for (const field of body.matchAll(/<select\b([^>]*)>([\s\S]*?)<\/select>/gi)) {
       const name = /\bname="([^"]*)"/i.exec(field[1] ?? "")?.[1];
@@ -101,7 +105,7 @@ function readForm(html: string, match: string, sectionTitle?: string) {
       const selected = options.find(option => /\bselected(?:\s|=|>)/i.test(option[1] ?? "")) ?? options[0];
       if (name && selected) fields[name] = unescapeHtml(/\bvalue="([^"]*)"/i.exec(selected[1] ?? "")?.[1] ?? selected[2] ?? "");
     }
-    return { action, fields };
+    return { action, fields, values };
   }
   throw new Error("必要な入力欄を画面で確認できません");
 }
@@ -191,7 +195,7 @@ if (projectId && publicLive) {
     const sent = await req(admin + "/answers/" + projectId + "/sheet", { method: "POST", body: form });
     if (sent.status !== 303) throw new Error("回答票を送れません");
     const answerPath = admin + "/answers/" + projectId;
-    const page = await waitPage(answerPath, html => html.includes("/sheet/") && html.includes("/row/0"), html => html.includes("読めませんでした"));
+    const page = await waitPage(answerPath + "?view=list", html => html.includes("/sheet/") && html.includes("/row/0"), html => html.includes("読めませんでした"));
     const original = /\/answers\/[^/]+\/sheet\/([^/]+)\/row\/0/.exec(page.html)?.[1];
     if (!original) throw new Error("確認できる回答行がありません");
     sheetOriginal = original;
@@ -200,7 +204,8 @@ if (projectId && publicLive) {
     const confirmed = await post(rowForm.action, rowForm.fields);
     if (confirmed.status !== 303) throw new Error("回答行を確定できません");
     const totals = await get(answerPath);
-    if (!totals.html.includes("参加人数:") || !totals.html.includes("回答票")) throw new Error("確定した回答が一覧と集計に出ません");
+    const answerList = await get(answerPath + "?view=list");
+    if (!totals.html.includes("参加する") || !answerList.html.includes("直して入れ直す")) throw new Error("入れた答えが一覧と集計に出ません");
     record(2, "回答票", "通過", "fixtures の回答票を読み取り、確認画面から一行を確定して一覧・集計を確認", confirmed.status, start);
   } catch (error) { fail(2, "回答票", error, start); }
 } else skip(2, "回答票", "配布済みの案内がなく、回答票の対象がありません");
@@ -229,7 +234,7 @@ else {
         .find(link => !/\/archive\/(?:map|search)$/.test(link));
       if (!firstLink) throw new Error("閉じた記録を開けません");
       const recordPage = await get(unescapeHtml(firstLink));
-      const mapHtml = /<h2>地図<\/h2>([\s\S]*?)<h2>報告<\/h2>/.exec(recordPage.html)?.[1] ?? "";
+      const mapHtml = /<h2>段取り<\/h2>([\s\S]*?)<h2>配ったもの<\/h2>/.exec(recordPage.html)?.[1] ?? "";
       const term = unescapeHtml(/<h3>([^<]{3,})<\/h3>/.exec(mapHtml)?.[1] ?? "").trim();
       if (!term) throw new Error("検索語を記録から選べません");
       const search = await get(admin + "/archive/search?q=" + encodeURIComponent(term));
@@ -250,8 +255,8 @@ else {
   const start = Date.now();
   try {
     const path = admin + "/close/" + projectId;
-    const page = await get(path);
-    if (!page.response.ok) throw new Error("報告と閉じる画面を開けません");
+    const page = await get(path + "?view=activity");
+    if (!page.response.ok) throw new Error("役員の仕事を紹介する画面を開けません");
     const form = readForm(page.html, path + "/activity");
     form.fields.introduction = "会場の予約と案内を役員が受け持ちました（架空）。";
     form.fields.membershipBurden = "年に一度の当番があります（架空）。";
@@ -260,17 +265,18 @@ else {
     if (taskId) form.fields.taskId = unescapeHtml(taskId);
     form.fields.action = "save";
     const saved = await post(form.action, form.fields);
-    if (saved.status !== 303 || saved.headers.get("location") !== path + "?activity=saved") throw new Error("活動紹介の下書きを保存できません");
-    const close = readForm(page.html, path + "/finalize");
-    const closed = await post(close.action, close.fields);
+    if (saved.status !== 303 || saved.headers.get("location") !== path + "?view=activity&activity=saved") throw new Error("活動紹介の下書きを保存できません");
+    const closePage = await get(path);
+    const close = readForm(closePage.html, path + "/finalize");
+    const closed = await post(close.action, close.values);
     if (closed.status !== 303) throw new Error("確認用のプロジェクトを閉じられません");
     try {
-      const closedPage = await get(path);
+      const closedPage = await get(path + "?view=activity");
       const publish = readForm(closedPage.html, path + "/activity");
       publish.fields.action = "publish";
       if (taskId) publish.fields.taskId = unescapeHtml(taskId);
       const published = await post(publish.action, publish.fields);
-      if (published.status !== 303 || published.headers.get("location") !== path + "?activity=published") throw new Error("活動紹介を区のページに載せられません");
+      if (published.status !== 303 || published.headers.get("location") !== path + "?view=activity&activity=published") throw new Error("活動紹介を区のページに載せられません");
       const publicPage = await get(wardPath + "/work/" + projectId);
       if (!publicPage.response.ok || !publicPage.html.includes(form.fields.introduction) || !publicPage.html.includes(form.fields.membershipBurden) || !publicPage.html.includes(form.fields.membershipBenefit)) throw new Error("掲載した活動紹介を区のページで確認できません");
     } finally {

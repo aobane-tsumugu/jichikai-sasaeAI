@@ -25,8 +25,10 @@ it("人が地図に足した仕事にも、来年の種で去年の三つの記�
   }, cookie);
   expect(seeded.status).toBe(303);
   const location = seeded.headers.get("location");
-  expect(location).toMatch(/\/projects\/.+\/map$/);
-  const page = await get(realApp, location!, cookie);
+  expect(location).toMatch(/\?started=.+$/);
+  const nextId = new URL(location!, "http://localhost").searchParams.get("started");
+  expect(nextId).toBeTruthy();
+  const page = await get(realApp, `${root}/projects/${nextId}/map`, cookie);
   expect(page.status).toBe(200);
   const html = await page.text();
   expect(html).toContain("架空の会場の鍵を受け取る");

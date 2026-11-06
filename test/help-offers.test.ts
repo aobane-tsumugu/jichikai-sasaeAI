@@ -49,9 +49,9 @@ it("募集から班を選ばず申し込み、世帯と別に数えて当番の�
   });
   expect(await listAnswers(env.DB, ward.wardId, project.projectId)).toHaveLength(1);
   expect(await getAnswerTotals(env.DB, ward.wardId, project.projectId)).toEqual({ people: 2, helperRequests: 1 });
-  const answersPage = await (await get(realApp, `${base}/admin/answers/${project.projectId}`, cookie)).text();
-  expect(answersPage).toContain("世帯の回答: 1 件");
-  expect(answersPage).toContain("手伝いだけの申し込み: 1 件");
+  const answersPage = await (await get(realApp, `${base}/admin/answers/${project.projectId}?view=helpers`, cookie)).text();
+  expect(answersPage).toContain("世帯の答え");
+  expect(answersPage).toContain("手伝いだけ");
   expect(answersPage).toContain(FIRST_SLICE.sheetHelper);
   const helpers = await getDutyDraftHelpers(env.DB, ward.wardId, project.projectId);
   expect(helpers).toHaveLength(2);

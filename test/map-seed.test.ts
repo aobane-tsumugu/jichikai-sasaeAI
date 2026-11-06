@@ -24,8 +24,10 @@ it("閉じる時に残した三つの記録を種から開いた地図の同じ�
     title: "来年の行事（架空）", year: "2027", eventDay: "2027-10-23",
   }, cookie);
   const location = seeded.headers.get("location");
-  expect(location).toMatch(/\/projects\/.+\/map$/);
-  const page = await get(realApp, location!, cookie);
+  expect(location).toMatch(/\?started=.+$/);
+  const nextId = new URL(location!, "http://localhost").searchParams.get("started");
+  expect(nextId).toBeTruthy();
+  const page = await get(realApp, `${root}/projects/${nextId}/map`, cookie);
   expect(page.status).toBe(200);
   const html = await page.text();
   expect(html).toContain("去年の記録");
