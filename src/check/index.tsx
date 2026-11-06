@@ -21,9 +21,28 @@ export async function checkPublicDraft(db: D1Database, wardId: string, projectId
   for (const entry of roster) if (entry.household.length >= 2 && text.includes(entry.household)) found.push({ kind: "名簿の名前", value: entry.household });
 
   const state = await getProjectState(db, wardId, projectId);
-  const privateAmounts = state ? state.tables.sponsors.flatMap((r) => [r.data.amount, r.data.lastYearAmount]).filter((v): v is string | number => v !== undefined).map(String) : [];
-  const visibleAmounts = (text.match(/\d[\d,]*/g) ?? []).map((v) => Number(v.replace(/,/g, ""))).filter(Number.isFinite);
-  for (const amount of privateAmounts) if (Number.isFinite(Number(amount)) && visibleAmounts.includes(Number(amount))) found.push({ kind: "協賛の額", value: amount });
+  const normalizedText = text.normalize("NFKC");
+  const numbers = [...normalizedText.matchAll(/\d[\d,]*/g)];
+  for (const row of state?.tables.sponsors ?? []) {
+    const name = String(row.data.name ?? "").normalize("NFKC");
+    if (!name) continue;
+    for (const amount of [row.data.amount, row.data.lastYearAmount]) {
+      if (amount === undefined || !Number.isFinite(Number(amount))) continue;
+      // 同じ協賛先の名前と額が40文字以内に並ぶときだけ知らせる。日付や人数の数字だけでは止めない。
+      let nameAt = normalizedText.indexOf(name);
+      while (nameAt >= 0) {
+        const nearby = numbers.some((match) => {
+          if (Number(match[0].replace(/,/g, "")) !== Number(amount)) return false;
+          const start = Math.min(nameAt + name.length, match.index + match[0].length);
+          const end = Math.max(nameAt, match.index);
+          const between = normalizedText.slice(start, end);
+          return end >= start && between.length <= 40 && !/[。！？]|\n\s*\n/.test(between);
+        });
+        if (nearby) { found.push({ kind: "協賛の額", value: String(amount) }); break; }
+        nameAt = normalizedText.indexOf(name, nameAt + name.length);
+      }
+    }
+  }
 
   const privateRows = await db.prepare(`SELECT person_fields, data FROM project_rows WHERE ward_id = ? AND project_id = ?`).bind(wardId, projectId).all<PrivateRow>();
   const privateValues = privateRows.results.flatMap((row) => {
