@@ -24,6 +24,12 @@ export function paperDeadline(due: string | null): string {
   return due ? formatDateText(due) : "";
 }
 
+/** 締切が日付でなく文の時（「10/9まで（班長の紙で）」）は、文を分けて言い回しを崩さない。 */
+export function paperGive(due: string, whom: string): string[] {
+  if (!due) return [`${whom}に渡してください。`];
+  return due.includes("まで") ? [`締切: ${due}`, `${whom}に渡してください。`] : [`${due}までに、${whom}に渡してください。`];
+}
+
 /** 配った時に残した部数だけを出す。個人の名前は印刷の帯に出さない。 */
 export function paperCopies(raw: string | null): string {
   if (!raw) return "";

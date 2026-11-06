@@ -364,6 +364,8 @@ body { margin: 0; color: #000; font: 14pt/1.65 "Hiragino Sans", "Yu Gothic", "Me
 .sheet .leader-qr { display: flex; align-items: center; gap: 6mm; padding: 4mm; font-weight: 400; }
 .sheet .leader-qr .qr { flex: none; }
 .sheet .paper-facts th { width: 26mm; }
+.paper-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3mm; }
+.paper-count { display: flex; justify-content: space-between; align-items: flex-end; gap: 1mm; min-height: 13mm; font-size: 11pt; line-height: 1.3; }
 .meeting-field .field-box { flex: 1; }
 .sheet .field-box p { font-size: 12pt; font-weight: 400; }
 .toolbar > a { min-height: 48px; display: inline-flex; align-items: center; }

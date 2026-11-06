@@ -16,7 +16,7 @@ import { TABLES, displayFieldValue, type TableKey } from "../../project/model";
 import type { RowView } from "../../project/types";
 import { readPublicationTables } from "../../space/publication-tables";
 import { PosterPage } from "./poster";
-import { paperCopies, paperDate, paperDeadline, publishedItem } from "../content";
+import { paperCopies, paperDate, paperDeadline, paperGive, publishedItem } from "../content";
 
 const printKinds = ["poster", "announcement", "answer", "leader", "duty", "meeting", "sponsors"] as const;
 type PrintKind = (typeof printKinds)[number];
@@ -175,16 +175,16 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   const answerSheet = (squad: string, standalone = false) => <div class="answer-slip">
     <div class="slip"><div class="slip-fields">
       {standalone ? <h1>{row.title} 回答票{squad ? `　班: ${squad}` : ""}</h1> : <h2>{row.title} 回答票{squad ? `　班: ${squad}` : ""}</h2>}
-      <FieldBox label="代表者のお名前" heightMm={19} />
+      <FieldBox label="代表者のお名前" heightMm={15} />
       {!squad ? <FieldBox label="班（分からないときは空けてかまいません）" heightMm={10} /> : null}
-      <div class="field-box"><strong>参加する人数</strong><div style="display:flex;gap:3mm">
-        {labels.map((label) => <div style="flex:1;font-size:12pt;min-height:18mm">{label}<div style="text-align:right">人</div></div>)}
+      <div class="field-box"><strong>参加する人数</strong><div class="paper-counts">
+        {labels.map((label) => <div class="paper-count"><div>{label}</div><span>人</span></div>)}
       </div></div>
-      <div class="field-box" style="min-height:22mm"><span class="field-label">手伝える方のお名前と時間帯（書かなくてかまいません）</span>
+      <div class="field-box" style="min-height:18mm"><span class="field-label">手伝える方のお名前と時間帯（書かなくてかまいません）</span>
         {helperSlots ? <p>{helperSlots}</p> : null}
       </div>
     </div>{paperQr(squad)}</div>
-    <div class="give">{due ? <>{due}までに、</> : null}{squad ? `${squad}の` : ""}班長か役員に渡してください。</div>
+    <div class="give">{paperGive(due, `${squad ? `${squad}の` : ""}班長か役員`).map((line) => <div>{line}</div>)}</div>
     {contact ? <p>連絡先：{contact}</p> : null}
   </div>;
   // 返す案内や時間帯の分も見積もる。文字を縮めず、長ければ回答票を別の紙にする。
@@ -211,7 +211,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
       <h2>お願いしたいこと</h2>
       <ul>
         <li>案内の紙を、{squad ? `${squad}の` : "班の"}世帯に渡してください。</li>
-        <li>{due ? <>{due}までに、</> : null}回答票を集めてください。</li>
+        <li>{due && due.includes("まで") ? `締切は${due}です。回答票を集めてください。` : <>{due ? <>{due}までに、</> : null}回答票を集めてください。</>}</li>
         <li>集まった回答票を、下のQRコードを開いて、回答票を撮って送ってください。一枚の写真に何枚写っていてもかまいません。</li>
       </ul>
       <p>写真を送るのが難しいときは、回答票を役員に渡してください。</p>
@@ -290,7 +290,7 @@ function bodyLines(body: string): number {
 }
 
 function fitsAboveAnswer(body: string, answerText: string): boolean {
-  return bodyLines(body) + Math.ceil(answerText.length / 32) <= 16;
+  return bodyLines(body) + Math.ceil(answerText.length / 32) <= 18;
 }
 
 /** 表に出す列（どれかの行に値がある列）。 */
