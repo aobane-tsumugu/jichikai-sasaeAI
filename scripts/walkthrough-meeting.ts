@@ -260,8 +260,10 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
     }],
     ["6 電話の答えを入れて数える", async () => {
       const path = `${admin}/answers/${project}`;
-      const form = readForm(await get(path + "?view=hand"), path + "/phone");
-      form.values.set("household", "架空電話五郎"); form.values.set("district", "1班");
+      const handPage = await get(path + "?view=hand");
+      const form = readForm(handPage, path + "/phone");
+      const district = /name="district"[^>]*value="([^"]+)"/.exec(handPage)?.[1] ?? "";
+      form.values.set("household", "架空電話五郎"); form.values.set("district", district);
       form.values.set("meeting_status", "attend"); form.values.set("proxy_name", "");
       redirected(await post(form.action, form.values), "電話の答えを入れられません");
       counts(await get(path));
