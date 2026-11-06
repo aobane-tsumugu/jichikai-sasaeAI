@@ -16,6 +16,7 @@
     "open-ward": "node scripts/open-ward.ts",
     "walkthrough": "node scripts/walkthrough.ts",
     "walkthrough-rest": "node scripts/walkthrough-rest.ts",
+    "walkthrough-meeting": "node scripts/walkthrough-meeting.ts",
     "screens": "node scripts/screens.ts",
     "check-screens": "node scripts/check-screens.ts",
     "line-sim": "node scripts/line-sim.ts"
