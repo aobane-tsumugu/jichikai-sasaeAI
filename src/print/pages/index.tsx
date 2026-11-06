@@ -165,7 +165,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   if (kind === "poster") {
     if (row.scope !== "public") return c.notFound();
     const wardUrl = `${baseUrl.replace(/\/+$/, "")}/${encodeURIComponent(ward.slug)}/`;
-    return c.html(<PosterPage title={paperHeading(row.title, row.document_title)} body={row.body} wardUrl={wardUrl} due={due} contact={contact} distributed={distributed} back={back} copies={copies} />);
+    return c.html(<PosterPage generalMeeting={row.project_kind === "general_meeting"} title={paperHeading(row.title, row.document_title)} body={row.body} wardUrl={wardUrl} due={due} contact={contact} distributed={distributed} back={back} copies={copies} />);
   }
   const squads = await getSquads(c.env.DB, ward.wardId);
   const paperSquads = squads.length ? squads : [""];

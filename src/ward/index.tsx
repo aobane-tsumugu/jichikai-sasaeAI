@@ -246,7 +246,7 @@ pub.get("/p/:projectId", async (c) => {
     {ordered.filter(({ latest }) => latest.kind === "notice").map(renderDocument)}
     {activeAnnouncement ? <>
       {!newerNotice ? <EventDetails item={context.item} due={deadline} /> : deadline ? <p>答えの締切 {formatJstDate(deadline)}まで</p> : null}
-      {closed ? <ReceptionClosed closed={!!items[0]!.closed_at} due={deadline} /> : <><p><a class="button" href={`/${c.var.ward.slug}/answer/${encodeURIComponent(projectId)}${suffix}`}>出欠を答える</a></p><p>参加しないときも、答えてください。答えがないときは、欠席として数えます。紙の回答票を班長に渡しても答えられます。</p></>}
+      {closed ? <ReceptionClosed closed={!!items[0]!.closed_at} due={deadline} /> : <><p><a class="button" href={`/${c.var.ward.slug}/answer/${encodeURIComponent(projectId)}${suffix}`}>出欠を答える</a></p><p>{items[0]!.project_kind === "general_meeting" ? "出席、委任、欠席のどれかを答えてください。" : "参加しないときも、答えてください。答えがないときは、欠席として数えます。"}紙の回答票を班長に渡しても答えられます。</p></>}
     </> : null}
     {ordered.filter(({ latest }) => latest.kind !== "notice").map(renderDocument)}
     {context.documents.some((document) => document.kind === "recruitment") && !closed ? <section><h2>手伝える方へ</h2><p>自治会に入っていない方も手伝えます。</p><a href={`/${c.var.ward.slug}/help/${encodeURIComponent(projectId)}`}>手伝いを申し込む</a></section> : null}

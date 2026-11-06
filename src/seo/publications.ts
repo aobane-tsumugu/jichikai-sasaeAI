@@ -1,13 +1,16 @@
+import type { DocumentKind, ProjectKind } from "../project/model";
+
 /** 下書きの範囲や本文は見ず、配ったときに公開だった内容を読む。 */
 export interface PublicDocument {
   project_id: string;
   project_title: string;
-  kind: string;
+  project_kind: ProjectKind;
+  kind: DocumentKind;
   body: string;
 }
 
 export async function publicDocuments(db: D1Database, wardId: string, projectId?: string): Promise<PublicDocument[]> {
-  const result = await db.prepare(`SELECT p.project_id, p.title AS project_title, d.kind, v.body
+  const result = await db.prepare(`SELECT p.project_id, p.title AS project_title, p.kind AS project_kind, d.kind, v.body
     FROM publication_records r
     JOIN projects p ON p.ward_id = r.ward_id AND p.project_id = r.project_id
     JOIN documents d ON d.ward_id = r.ward_id AND d.project_id = r.project_id AND d.document_id = r.document_id
