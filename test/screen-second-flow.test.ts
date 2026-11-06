@@ -64,3 +64,9 @@ it("質問の一行は短くし、年を聞く質問は見本の見出しにす�
   expect(questionShort({ ...base, kind: "unreadable", target: null, text: "協賛先の金額が読めませんでした", options: null } as never)).toBe("協賛先の金額が読めませんでした");
   expect(questionShort({ ...base, kind: "unreadable", target: null, text: "1枚目は、今年のものでしょうか。", options: ["今年のもの", "去年か、それより前のもの"] } as never)).toBe("この資料は今年のものですか");
 });
+
+it("読めなかった質問の一行は最初の文までにする", async () => {
+  const { questionShort } = await import("../src/project/question-pages");
+  expect(questionShort({ kind: "unreadable", target: null, options: null, text: "1枚目の表: 黒く塗りつぶされており読めない。読めるように撮り直せますか。" } as never)).toBe("1枚目の表: 黒く塗りつぶされており読めない");
+  expect(questionShort({ kind: "unreadable", target: null, options: null, text: "あ".repeat(50) } as never)).toBe(`${"あ".repeat(40)}…`);
+});
