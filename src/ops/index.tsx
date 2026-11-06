@@ -12,10 +12,12 @@ import { checkOpsLogin, createOpsSession, OPS_COOKIE, OPS_SESSION_HOURS, opsConf
 import { getWardMetrics, listWardQueue, type MonthlyMetrics } from "./metrics";
 import { listWards, openWard } from "./wards";
 import { clearLoginFailures, delayLoginAfterFailures } from "../core/login-throttle";
+import { formatJstDate, formatJst } from "../core/time";
 import { lifecyclePages } from "./lifecycle-pages";
+import { readSpacePaper } from "../space/receive-paper";
 
 // 束 1: 運用の画面（提供側の ID とパスワード）。/ops に付く。
-// 区の一覧と開設、固定 URL と QR、A4 の案内、最初の役員のアカウントの足す・初期化（役員が入れなくなった時）。
+// 区の一覧と開設、固定 URL と QR、A4 の案内、最初の役員の入る人の足す・初期化（役員が入れなくなった時）。
 // 区の開設は scripts/open-ward.ts からも同じ入口（POST /ops/wards、Accept: application/json）で行う。
 
 export const opsRoutes = new Hono<AppEnv>();
@@ -29,7 +31,7 @@ function wantsJson(c: OpsContext): boolean {
 const OpsPage = (props: { title: string; loggedIn?: boolean; children?: unknown }) => (
   <Layout
     title={`${props.title}運用の画面`}
-    siteName="運用の画面（提供側）"
+    siteName="SasaeAI 運用の画面"
     noindex
     headerRight={
       props.loggedIn ? (
@@ -118,19 +120,19 @@ opsRoutes.post("/logout", (c) => {
 
 const OpenForm = (props: { error?: string; values?: { slug: string; name: string; firstAccountName: string; lineDestination?: string } }) => (
   <>
-    <h2>区を開く</h2>
+    <h2 id="open-ward">新しい区を開く</h2>
     {props.error ? <Notice error>{props.error}</Notice> : null}
     <form method="post" action="/ops/wards" class="panel">
       <label for="name">区の名前</label>
       <input id="name" name="name" type="text" required maxlength={60} value={props.values?.name ?? ""} />
-      <label for="slug">区のURL（小文字の英数字とハイフン。例aozora-ku）</label>
+      <label for="slug">区のページのアドレスに入れる名前（小文字の英数字とハイフン。例aozora-ku）</label>
       <input id="slug" name="slug" type="text" required maxlength={40} value={props.values?.slug ?? ""} />
       <label for="first">最初の役員の名前</label>
       <input id="first" name="firstAccountName" type="text" required maxlength={40} value={props.values?.firstAccountName ?? ""} />
       <details><summary>公式LINEを使う区だけ</summary>
-        <label for="line-destination">Webhookのdestination（公式LINEの送信先ID）</label>
+        <label for="line-destination">公式LINEの送信先ID（書かなくてかまいません）</label>
         <input id="line-destination" name="lineDestination" type="text" maxlength={100} value={props.values?.lineDestination ?? ""} />
-        <p>鍵の値は入力しません。開いたあとに表示する名前でWorkers secretsに設定してください。</p>
+        <p>鍵の値は入力しません。開いたあとに出る名前で、提供側の設定に入れてください。</p>
       </details>
       <p>
         <button type="submit">開く</button>
@@ -143,25 +145,14 @@ opsRoutes.get("/", async (c) => {
   const wards = await listWards(c.env.DB);
   return c.html(
     <OpsPage title="区の一覧" loggedIn>
-      <h1>区の一覧</h1>
+      <h1>区の一覧</h1><p class="lead">SasaeAIを提供している区です。区の名前を押すと、その区の画面が開きます。</p><a class="quiet" href="#open-ward">新しい区を開く</a>
       <p><a href="/ops/costs">全体の費用を見る</a></p>
       <p><a href="/ops/deletions">消去の状況</a></p>
       {wards.length === 0 ? (
         <p class="muted">まだ区がありません。</p>
       ) : (
         wards.map((w) => (
-          <section class="panel">
-            <h2><a href={`/ops/wards/${w.slug}`}>{w.name}</a></h2>
-            <p>区のページ: <a href={wardUrl(c.env, c.req.url, w.slug)}>{wardUrl(c.env, c.req.url, w.slug)}</a></p>
-            <p>役員のアカウント{w.accountCount} 件</p>
-            <nav class="action-links" aria-label={`${w.name}の画面`}>
-              <a class="button secondary" href={`/ops/wards/${w.slug}/sheet`}>A4の案内</a>
-              <a class="button secondary" href={`/ops/wards/${w.slug}/costs`}>費用</a>
-              <a class="button secondary" href={`/ops/wards/${w.slug}/budget`}>予算</a>
-              <a class="button secondary" href={`/ops/wards/${w.slug}/queue`}>処理状況</a>
-              <a class="button secondary" href={`/ops/wards/${w.slug}/lifecycle`}>保管と消去</a>
-            </nav>
-          </section>
+          <p><a class="row-link" href={`/ops/wards/${w.slug}`}><b>{w.name}</b><span>役員の入る人{w.accountCount}人</span><span>見てほしいもの{w.attentionCount}件</span><span>区のページ {wardUrl(c.env, c.req.url, w.slug)}</span></a></p>
         ))
       )}
       <OpenForm />
@@ -220,7 +211,7 @@ opsRoutes.post("/wards", async (c) => {
 
 const WardUrls = (props: { url: string; adminUrl: string; slug: string }) => (
   <>
-    <h2>固定URLとQR</h2>
+    <h2>区のページのアドレスとQRコード</h2>
     <p>
       区のページ: <a href={props.url}>{props.url}</a>
     </p>
@@ -242,7 +233,7 @@ const WardUrls = (props: { url: string; adminUrl: string; slug: string }) => (
 // ---- 区ごとの画面 ----
 
 async function wardOrNull(c: OpsContext, slug: string) {
-  const row = await c.env.DB.prepare("SELECT ward_id, slug, name FROM wards WHERE slug = ?")
+  const row = await c.env.DB.prepare("SELECT ward_id, slug, name FROM wards WHERE ward_id = (SELECT ward_id FROM wards WHERE slug = ?)")
     .bind(slug)
     .first<{ ward_id: string; slug: string; name: string }>();
   return row ? { wardId: row.ward_id, slug: row.slug, name: row.name } : null;
@@ -268,42 +259,33 @@ opsRoutes.get("/wards/:slug", async (c) => {
       <p>
         <a href="/ops/">区の一覧</a>
       </p>
-      <h1>{ward.name}</h1>
-      <WardUrls url={url} adminUrl={`${url}admin/`} slug={ward.slug} />
-      <nav class="action-links" aria-label="提供側の画面">
-        <a class="button secondary" href={`/ops/wards/${ward.slug}/costs`}>費用</a>
-        <a class="button secondary" href={`/ops/wards/${ward.slug}/budget`}>予算</a>
-        <a class="button secondary" href={`/ops/wards/${ward.slug}/queue`}>処理状況</a>
-        <a class="button secondary" href={`/ops/wards/${ward.slug}/lifecycle`}>保管と消去</a>
-      </nav>
-      {c.req.query("labels") === "saved" ? <Notice>保存しました。次に配る案内から、この言い方で出ます。</Notice> : null}
-      <form method="post" action={`/ops/wards/${ward.slug}/answer-labels`}><AnswerLabelFields labels={labels} /><button type="submit">人数の聞き方を保存する</button></form>
-      <h2>役員のアカウント</h2>
-      <p class="muted">役員全員が入れなくなったときのために、提供側からも足す・初期化ができます。</p>
-      <table>
+      <h1>{ward.name}</h1><p class="lead">この区の提供側の画面です。役員全員が入れなくなったときに、入る人を足したり、パスワードを作り直したりします。</p>
+      <h2>役員の入る人</h2>
+      <p class="muted">役員がだれも入れないと連絡が来たら、パスワードを作り直す前に、区の連絡先へこちらから電話して、本人か確かめてください。</p>
+      <p>パスワードを作り直すと、古いパスワードと、その人のスマホやパソコンの記憶は使えなくなります。前のパスワードには戻せません。</p>
+      <table class="stack">
         <thead>
           <tr>
             <th>ID</th>
             <th>表示名</th>
-            <th>席</th>
+            <th>役職</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           {accounts.map((a) => (
             <tr>
-              <td>{a.loginId}</td>
-              <td>{a.name}</td>
-              <td>{a.seatTitle ?? ""}</td>
-              <td>
+              <td data-label="ID">{a.loginId}</td>
+              <td data-label="表示名">{a.name}</td>
+              <td data-label="役職">{a.seatTitle ?? ""}</td>
+              <td data-label="操作">
                 <form
                   class="inline"
                   method="post"
                   action={`/ops/wards/${ward.slug}/accounts/${a.accountId}/reset`}
-                  onsubmit="return confirm('パスワードを作り直します。古いパスワードと、この人の端末の記憶は使えなくなります。')"
                 >
                   <button type="submit" class="secondary">
-                    初期化
+                    パスワードを作り直す
                   </button>
                 </form>
               </td>
@@ -312,12 +294,23 @@ opsRoutes.get("/wards/:slug", async (c) => {
         </tbody>
       </table>
       <form method="post" action={`/ops/wards/${ward.slug}/accounts`} class="panel">
-        <label for="newname">表示名</label>
+        <label for="newname">足す人の表示名</label>
         <input id="newname" name="name" type="text" required maxlength={40} />
         <p>
-          <button type="submit">足す</button>
+          <button type="submit">入る人を足す</button>
         </p>
       </form>
+      <h2>この区のほかの画面</h2>
+      <nav class="action-links" aria-label="提供側の画面">
+        <a class="row-link" href={`/ops/wards/${ward.slug}/costs`}><b>費用</b><span>月ごとに、AIに読んでもらった費用を見ます</span></a>
+        <a class="row-link" href={`/ops/wards/${ward.slug}/budget`}><b>予算</b><span>一回の処理の上限と、月の目安を決めます</span></a>
+        <a class="row-link" href={`/ops/wards/${ward.slug}/queue`}><b>読み取りの状況</b><span>失敗したものを、もう一度動かします</span></a>
+        <a class="row-link" href={`/ops/wards/${ward.slug}/lifecycle`}><b>保管と消去</b><span>毎日の控え、引き渡し、区を止める、区の消去</span></a>
+      </nav>
+      <WardUrls url={url} adminUrl={`${url}admin/`} slug={ward.slug} />
+      {c.req.query("labels") === "saved" ? <Notice>保存しました。次に配る案内から、この言い方で出ます。</Notice> : null}
+      <form method="post" action={`/ops/wards/${ward.slug}/answer-labels`}><p>区分の数は三つのままです。役員の画面の区の情報と同じものを直します。</p><AnswerLabelFields labels={labels} /><button class="secondary" type="submit">人数の聞き方を保存する</button></form>
+
     </OpsPage>,
   );
 });
@@ -346,9 +339,9 @@ opsRoutes.post("/wards/:slug/accounts", async (c) => {
     );
   }
   return c.html(
-    <OpsPage title="アカウントを足しました" loggedIn>
-      <h1>アカウントを足しました</h1>
-      <Credentials loginId={result.loginId} name={result.name} password={result.password} />
+    <OpsPage title="入る人を足しました" loggedIn>
+      <h1>入る人を足しました</h1>
+      <Credentials loginId={result.loginId} name={result.name} password={result.password} /><section class="next"><strong>次は</strong><p>この人に、IDとパスワードを渡してください。渡し終えてから、この画面を閉じてください。</p></section><p>閉じたら、もう一度パスワードを作り直せます。</p>
       <p>
         <a href={`/ops/wards/${ward.slug}`}>区の画面へ戻る</a>
       </p>
@@ -363,7 +356,7 @@ opsRoutes.post("/wards/:slug/accounts/:accountId/reset", async (c) => {
   const result = await resetPassword(c.env.DB, ward.wardId, c.req.param("accountId"));
   if (!result.ok) {
     return c.html(
-      <OpsPage title="初期化できませんでした" loggedIn>
+      <OpsPage title="パスワードを作り直せませんでした" loggedIn>
         <Notice error>{result.message}</Notice>
         <p>
           <a href={`/ops/wards/${ward.slug}`}>戻る</a>
@@ -375,7 +368,7 @@ opsRoutes.post("/wards/:slug/accounts/:accountId/reset", async (c) => {
   return c.html(
     <OpsPage title="パスワードを作り直しました" loggedIn>
       <h1>パスワードを作り直しました</h1>
-      <Credentials loginId={result.loginId} name={result.name} password={result.password} />
+      <Credentials loginId={result.loginId} name={result.name} password={result.password} /><section class="next"><strong>次は</strong><p>この人に、IDとパスワードを渡してください。渡し終えてから、この画面を閉じてください。</p></section><p>閉じたら、もう一度パスワードを作り直せます。</p>
       <p>
         <a href={`/ops/wards/${ward.slug}`}>区の画面へ戻る</a>
       </p>
@@ -399,7 +392,7 @@ opsRoutes.get("/wards/:slug/sheet", async (c) => {
   const url = wardUrl(c.env, c.req.url, ward.slug);
   return c.html(
     <PrintDocument title={`${ward.name}区のページの案内`}>
-      <Sheet footer={<span>{ward.name}</span>}>
+      <Sheet footer={<span>{ward.name} 印刷した日: {formatJstDate(new Date().toISOString())}</span>}>
         <h1>{ward.name} 区のページ</h1>
         <p>案内、お知らせ、手伝いの募集は、スマートフォンやパソコンから、登録なしでご覧になれます。</p>
         <p>下のQRをスマートフォンのカメラで読み取ると、区のページが開きます。</p>
@@ -408,13 +401,13 @@ opsRoutes.get("/wards/:slug/sheet", async (c) => {
         </p>
         <p style="text-align:center; font-size:16pt; overflow-wrap:anywhere">{url}</p>
         <CutLine label="ここから下は役員の控え" />
-        <p>役員画面（役員の名前とパスワードで入ります）: {`${url}admin/`}</p>
+        <p>役員の画面（IDとパスワードで入ります）: {`${url}admin/`}</p>
       </Sheet>
     </PrintDocument>,
   );
 });
 
-const usd = (cents: number) => `${(cents / 100).toLocaleString("ja-JP", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`;
+const usd = (cents: number) => `${(cents / 100).toLocaleString("ja-JP", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}ドル`;
 const minutes = (milliseconds: number) => `${(milliseconds / 60_000).toLocaleString("ja-JP", { maximumFractionDigits: 1 })}分`;
 
 function summarize(months: MonthlyMetrics[]) {
@@ -441,11 +434,11 @@ function CostCard(props: { months: MonthlyMetrics[]; title: string }) {
   return (
     <section class="panel">
       <h2>{props.title}</h2>
-      <p>入力{total.inputs.toLocaleString("ja-JP")} 件</p>
-      <p>読む{total.readRuns.toLocaleString("ja-JP")} 回・{total.readTokens.toLocaleString("ja-JP")} トークン、つなぐ{total.connectRuns.toLocaleString("ja-JP")} 回・{total.connectTokens.toLocaleString("ja-JP")} トークン</p>
+      <p>入力{total.inputs.toLocaleString("ja-JP")}件</p>
+      <p>読む{total.readRuns.toLocaleString("ja-JP")}回・{total.readTokens.toLocaleString("ja-JP")}（読み書きした量）、つなぐ{total.connectRuns.toLocaleString("ja-JP")}回・{total.connectTokens.toLocaleString("ja-JP")}（読み書きした量）</p>
       <p>費用: 読む見積もり{usd(total.readEstimateCents)}、処理記録の金額{usd(total.actualRunCostCents)}、合計{usd(totalCost)}</p>
       <p>入力一つあたり: {total.inputs ? usd(Math.round(totalCost / total.inputs)) : "—"}、平均{total.inputs ? minutes(total.durationMs / total.inputs) : "—"}</p>
-      <p>失敗{total.failed.toLocaleString("ja-JP")} 件、要対応{total.attention.toLocaleString("ja-JP")} 件</p>
+      <p>失敗{total.failed.toLocaleString("ja-JP")}件、要対応{total.attention.toLocaleString("ja-JP")}件</p>
     </section>
   );
 }
@@ -463,7 +456,7 @@ opsRoutes.get("/costs", async (c) => {
       <h2>区ごと</h2>
       {summaries.map((ward) => {
         const total = summarize(ward.months);
-        return <section class="panel"><h3><a href={`/ops/wards/${ward.slug}/costs`}>{ward.name}</a></h3><p>入力{total.inputs} 件、費用{usd(total.readEstimateCents + total.actualRunCostCents)}</p></section>;
+        return <section class="panel"><h3><a href={`/ops/wards/${ward.slug}/costs`}>{ward.name}</a></h3><p>入力{total.inputs}件、費用{usd(total.readEstimateCents + total.actualRunCostCents)}</p></section>;
       })}
       <h2>月ごとの全体</h2>
       {months.map((month) => <CostCard months={summaries.flatMap((ward) => ward.months.filter((row) => row.month === month))} title={month} />)}
@@ -502,15 +495,15 @@ opsRoutes.get("/wards/:slug/budget", async (c) => {
   return c.html(
     <OpsPage title={`${ward.name}の予算`} loggedIn>
       <p><a href={`/ops/wards/${ward.slug}`}>{ward.name} の画面</a></p>
-      <h1>{ward.name} の予算</h1>
+      <h1>{ward.name}の予算</h1><p class="lead">AIの費用の上限を決めます。上限は目安です。上限に達しても、役員の配る操作は止まりません。</p>
       <section class="panel">
         <h2>一回の処理</h2>
-        <p>現在の上限: {((sessionBudget?.session_budget_cents ?? SESSION_BUDGET_CENTS) / 100).toFixed(2)} USD</p>
+        <p>現在の上限: {((sessionBudget?.session_budget_cents ?? SESSION_BUDGET_CENTS) / 100).toFixed(2)}ドル</p>
         <form method="post" action={`/ops/wards/${ward.slug}/budget`}>
           <label for="sessionBudget">一回の処理の上限（USD）</label>
           <input id="sessionBudget" name="sessionBudget" type="number" min="0.01" max="10000" step="0.01" required value={((sessionBudget?.session_budget_cents ?? SESSION_BUDGET_CENTS) / 100).toFixed(2)} />
           <input type="hidden" name="saveSessionBudget" value="1" />
-          <p><button type="submit">一回の上限を保存</button></p>
+          <div class="action-bar"><button type="submit">一回の上限を保存</button></div>
         </form>
       </section>
       <section class="panel">
@@ -523,7 +516,7 @@ opsRoutes.get("/wards/:slug/budget", async (c) => {
         <form method="post" action={`/ops/wards/${ward.slug}/budget`}>
           <label for="monthlyLimit">月の目安上限（USD。0は上限なし）</label>
           <input id="monthlyLimit" name="monthlyLimit" type="number" min="0" step="0.01" required value={(metrics.monthlyLimitCents / 100).toFixed(2)} />
-          <p><button type="submit">保存</button></p>
+          <div class="action-bar"><button type="submit">月の目安を保存する</button></div>
         </form>
       </section>
     </OpsPage>,
@@ -537,7 +530,7 @@ opsRoutes.post("/wards/:slug/budget", async (c) => {
   if (form["saveSessionBudget"] === "1") {
     const rawSession = typeof form["sessionBudget"] === "string" ? form["sessionBudget"] : "";
     const sessionAmount = Number(rawSession);
-    if (!Number.isFinite(sessionAmount) || sessionAmount < 0.01 || sessionAmount > 10_000) {
+    if (rawSession.trim() === "" || !Number.isFinite(sessionAmount) || sessionAmount < 0.01 || sessionAmount > 10_000) {
       return c.html(<OpsPage title="予算を保存できません" loggedIn><h1>金額を確認してください</h1><p><a href={`/ops/wards/${ward.slug}/budget`}>戻る</a></p></OpsPage>, 400);
     }
     const sessionCents = Math.round(sessionAmount * 100);
@@ -545,11 +538,11 @@ opsRoutes.post("/wards/:slug/budget", async (c) => {
       `INSERT INTO ops_ward_limits (ward_id, monthly_limit_cents, session_budget_cents, updated_at) VALUES (?, 0, ?, ?)
        ON CONFLICT (ward_id) DO UPDATE SET session_budget_cents = excluded.session_budget_cents, updated_at = excluded.updated_at`,
     ).bind(ward.wardId, sessionCents, new Date().toISOString()).run();
-    return c.redirect(`/ops/wards/${ward.slug}/budget`, 303);
+    return budgetSaved(c, ward.slug);
   }
   const raw = typeof form["monthlyLimit"] === "string" ? form["monthlyLimit"] : "";
   const amount = Number(raw);
-  if (!Number.isFinite(amount) || amount < 0 || amount > 10_000_000) {
+  if (raw.trim() === "" || !Number.isFinite(amount) || amount < 0 || amount > 10_000_000) {
     return c.html(<OpsPage title="予算を保存できません" loggedIn><h1>金額を確認してください</h1><p><a href={`/ops/wards/${ward.slug}/budget`}>戻る</a></p></OpsPage>, 400);
   }
   const cents = Math.round(amount * 100);
@@ -557,12 +550,12 @@ opsRoutes.post("/wards/:slug/budget", async (c) => {
     `INSERT INTO ops_ward_limits (ward_id, monthly_limit_cents, updated_at) VALUES (?, ?, ?)
      ON CONFLICT (ward_id) DO UPDATE SET monthly_limit_cents = excluded.monthly_limit_cents, updated_at = excluded.updated_at`,
   ).bind(ward.wardId, cents, new Date().toISOString()).run();
-  return c.redirect(`/ops/wards/${ward.slug}/budget`, 303);
+  return budgetSaved(c, ward.slug);
 });
 
 const QUEUE_STATUS: Record<string, string> = {
-  received: "受け付けました", reading: "読んでいます", read: "つなぐのを待っています",
-  connecting: "つないでいます", attention: "要対応", failed: "失敗",
+  received: "受け付けました", reading: "読んでいます", read: "段取りを作るのを待っています",
+  connecting: "段取りを作っています", attention: "対応が必要", failed: "失敗",
 };
 const QUEUE_FAILURE: Record<string, string> = {
   unsupported: "対応していない形式", too_large: "大きすぎます", unreadable: "読めませんでした",
@@ -574,18 +567,18 @@ opsRoutes.get("/wards/:slug/queue", async (c) => {
   if (!ward) return c.html(<WardNotFound />, 404);
   const jobs = await listWardQueue(c.env.DB, ward.wardId);
   return c.html(
-    <OpsPage title={`${ward.name}の処理状況`} loggedIn>
+    <OpsPage title={`${ward.name}の読み取りの状況`} loggedIn>
       <p><a href={`/ops/wards/${ward.slug}`}>{ward.name} の画面</a></p>
-      <h1>{ward.name} の処理状況</h1>
+      <h1>{ward.name}の読み取りの状況</h1><p class="lead">役員が送った資料を読んで、段取りを作る処理のうち、見てほしいものです。失敗したものは、もう一度動かせます。大きすぎる資料だけは、役員に分けて送り直してもらいます。</p>
       {jobs.length === 0 ? <p class="muted">対応が必要なものはありません。</p> : jobs.map((job) => (
         <section class="panel">
           <h2>{QUEUE_STATUS[job.status]}</h2>
-          <p>受け付け: {new Date(job.createdAt).toLocaleString("ja-JP")}<br />種類: {job.task === "connect" ? "入力" : "下書き"}{job.failure ? <><br />理由: {QUEUE_FAILURE[job.failure] ?? "内容を確認してください"}</> : null}</p>
-          {job.status === "failed" || (job.status === "attention" && job.projectId) ? (
+          <p>資料: {job.filename || "名前のない資料"}<br />受け付け: {formatJst(job.createdAt)}<br />種類: {job.task === "connect" ? "資料から段取りを作る" : "下書きを書く"}{job.failure ? <><br />理由: {QUEUE_FAILURE[job.failure] ?? "内容を確認してください"}</> : null}</p>
+          {job.failure !== "too_large" && (job.status === "failed" || (job.status === "attention" && job.projectId)) ? (
             <form method="post" action={`/ops/wards/${ward.slug}/queue/${job.jobId}/retry`}>
               <button type="submit">もう一度動かす</button>
             </form>
-          ) : null}
+          ) : job.failure === "too_large" ? <p>もう一度動かしても、読めません。役員に、資料を分けて送り直してもらってください。</p> : null}
         </section>
       ))}
     </OpsPage>,
@@ -596,18 +589,27 @@ opsRoutes.post("/wards/:slug/queue/:jobId/retry", async (c) => {
   const ward = await wardOrNull(c, c.req.param("slug"));
   if (!ward) return c.html(<WardNotFound />, 404);
   const jobId = c.req.param("jobId");
-  const row = await c.env.DB.prepare("SELECT status, project_id FROM jobs WHERE ward_id = ? AND job_id = ?")
-    .bind(ward.wardId, jobId).first<{ status: string; project_id: string | null }>();
-  if (row?.status === "attention" && row.project_id) {
+  const filename = (await listWardQueue(c.env.DB, ward.wardId)).find((item) => item.jobId === jobId)?.filename;
+  const row = await c.env.DB.prepare("SELECT status, project_id, failure, via, read_kind FROM jobs WHERE ward_id = ? AND job_id = ?")
+    .bind(ward.wardId, jobId).first<{ status: string; project_id: string | null; failure: string; via: string; read_kind: string }>();
+  if (!row || row.failure === "too_large") return c.html(<OpsPage title="読み直せません" loggedIn><h1>読み直せません</h1><p>資料を分けて送り直してもらってください。</p><a class="quiet" href={`/ops/wards/${ward.slug}/queue`}>読み取りの状況へ戻る</a></OpsPage>, 400);
+  let retried = false;
+  if (row.status === "attention" && row.project_id) {
     const reset = await c.env.DB.prepare(
       `UPDATE jobs SET status = 'read', failure = '', stop_reason = '', finished_at = NULL, updated_at = ?
         WHERE ward_id = ? AND job_id = ? AND status = 'attention'`,
     ).bind(new Date().toISOString(), ward.wardId, jobId).run();
-    if ((reset.meta.changes ?? 0) > 0) c.executionCtx.waitUntil(dispatchProject(c.env, ward.wardId, row.project_id));
-  } else if (row?.status === "failed") {
-    await retryJob(c.env, { waitUntil: (promise) => c.executionCtx.waitUntil(promise) }, ward.wardId, jobId);
+    if ((reset.meta.changes ?? 0) > 0) { retried = true; c.executionCtx.waitUntil(dispatchProject(c.env, ward.wardId, row.project_id)); }
+  } else if (row.status === "failed" && row.via === "space" && row.read_kind === "general" && row.failure !== "connect") {
+    retried = await readSpacePaper(c.env, c.executionCtx, ward.wardId, jobId);
+  } else if (row.status === "failed") {
+    retried = await retryJob(c.env, { waitUntil: (promise) => c.executionCtx.waitUntil(promise) }, ward.wardId, jobId);
   }
-  return c.redirect(`/ops/wards/${ward.slug}/queue`, 303);
+  return c.html(<OpsPage title={retried ? "もう一度動かしました" : "動かし直す必要はありません"} loggedIn><h1>{retried ? "もう一度動かしました" : "動かし直す必要はありません"}</h1><Notice>{retried ? `${filename || "資料"}を、もう一度読み始めました` : "この資料は、すでに処理が進んでいます。"}</Notice><p>結果は、少しあとで、読み取りの状況に出ます。役員に何かを頼む必要はありません。</p><section class="next"><strong>次は</strong><p>しばらくしてから、読み取りの状況で結果を見てください。</p><a class="button" href={`/ops/wards/${ward.slug}/queue`}>読み取りの状況へ戻る</a></section><h2>間違えたときは</h2><p>間違えて動かしたときも、困ることはありません。もう一度読み直します。</p></OpsPage>);
 });
 
 opsRoutes.route("/", lifecyclePages);
+
+function budgetSaved(c: OpsContext, slug: string) {
+  return c.html(<OpsPage title="予算を保存しました" loggedIn><h1>予算を保存しました</h1><Notice>AIの費用の上限を変えました。役員の配る操作は止まりません。</Notice><section class="next"><strong>次は</strong><p>この区の画面で、ほかの状況も見られます。</p><a class="button" href={`/ops/wards/${slug}`}>区の画面へ戻る</a></section><h2>間違えたときは</h2><p>予算の画面で、金額を直して保存できます。</p><a class="quiet" href={`/ops/wards/${slug}/budget`}>予算を直す</a></OpsPage>);
+}

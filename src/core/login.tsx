@@ -3,7 +3,7 @@ import type { WardEnv } from "../env";
 import { adminPath, issueDevice, safeNext } from "./auth";
 import { cleanLoginId, cleanName, hashPassword, loginIdProblem, nameKey, safeEqual } from "./password";
 import { clearLoginFailures, delayLoginAfterFailures } from "./login-throttle";
-import { Layout, Notice } from "./ui";
+import { Layout, Notice, ProviderContact, WardStopped } from "./ui";
 
 // 役員画面のログイン。ID と長いパスワード。公開の入口なので、ID の有無は答えに出さない。
 
@@ -24,6 +24,7 @@ const LoginPage = (props: { wardName: string; action: string; next: string; erro
       </p>
     </form>
     <p class="muted">パスワードは、役員の誰かが作って渡した長い文字です。この端末は、入ると次から入力を省けます。</p>
+    <details class="fold"><summary>役員がだれも入れないとき</summary><div><ProviderContact /></div></details>
   </Layout>
 );
 
@@ -32,7 +33,7 @@ loginRoutes.get("/login", async (c) => {
   c.header("Cache-Control", "no-store");
   c.header("X-Robots-Tag", "noindex");
   const active = await c.env.DB.prepare("SELECT is_active FROM wards WHERE ward_id = ?").bind(ward.wardId).first<{ is_active: number }>();
-  if (!active || active.is_active !== 1) return c.html(<Layout title="役員画面は停止中" siteName={`${ward.name}役員の画面`} noindex><h1>役員画面は停止中です</h1><p>区のページは引き続きご覧いただけます。</p></Layout>, 503);
+  if (!active || active.is_active !== 1) return c.html(<WardStopped wardName={ward.name} homeHref={`/${encodeURIComponent(ward.slug)}/`} />, 503);
   return c.html(
     <LoginPage
       wardName={ward.name}
@@ -48,7 +49,7 @@ const DUMMY_SALT = "no-such-account";
 loginRoutes.post("/login", async (c) => {
   const ward = c.var.ward;
   const active = await c.env.DB.prepare("SELECT is_active FROM wards WHERE ward_id = ?").bind(ward.wardId).first<{ is_active: number }>();
-  if (!active || active.is_active !== 1) return c.html(<Layout title="役員画面は停止中" siteName={`${ward.name}役員の画面`} noindex><h1>役員画面は停止中です</h1><p>区のページは引き続きご覧いただけます。</p></Layout>, 503);
+  if (!active || active.is_active !== 1) return c.html(<WardStopped wardName={ward.name} homeHref={`/${encodeURIComponent(ward.slug)}/`} />, 503);
   const form = await c.req.parseBody();
   // 現行フォームは loginId。旧フォームが送る name も互換用に受け付ける。
   const hasLoginId = typeof form["loginId"] === "string";

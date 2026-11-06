@@ -144,6 +144,8 @@ const shots: Shot[] = [
   { stage: 2, name: "下書き", path: "project/draft", heading: "案内の下書きを直す" },
   { stage: 2, name: "配る", path: "project/publish", heading: "配る" },
   { stage: 2, name: "出す", path: "print", heading: "印刷用ページ", a4: true },
+  { stage: 2, name: "公式LINEの案内", path: `${wardPath}/line`, heading: "新しいお知らせを、LINEで受け取る" },
+  { stage: 2, name: "個人情報の扱い", path: `${wardPath}/privacy`, heading: "個人情報の扱い" },
   { stage: 2, name: "区のページ", path: "public/ward", heading: "お知らせ" },
   { stage: 2, name: "行事のページ", path: "public/project", heading: "" },
   { stage: 3, name: "答えを見る", path: "project/answers", heading: "答え" },

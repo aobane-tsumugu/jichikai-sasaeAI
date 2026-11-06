@@ -32,7 +32,7 @@ it("役員が実行委員と班長のページを開き、実行委員が合言�
   expect(page.status).toBe(200);
   const html = await page.text();
   expect(html).toContain("確認用の世帯（架空）");
-  expect(html).toContain("当番表と配置図");
+  expect(html).toContain("当番表");
 
   const closed = await postForm(realApp, `${admin}/space/${project.projectId}/close`, {}, cookie);
   expect(closed.status).toBe(303);

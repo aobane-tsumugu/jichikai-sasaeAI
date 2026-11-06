@@ -9,22 +9,25 @@ import { lineSecretNames } from "../line/api";
 export interface WardSummary extends WardInfo {
   createdAt: string;
   accountCount: number;
+  attentionCount: number;
 }
 
 export async function listWards(db: D1Database): Promise<WardSummary[]> {
   const rows = await db
     .prepare(
       `SELECT w.ward_id, w.slug, w.name, w.created_at,
-              (SELECT COUNT(*) FROM accounts a WHERE a.ward_id = w.ward_id AND a.removed_at IS NULL) AS account_count
-         FROM wards w ORDER BY w.created_at, w.slug`,
+              (SELECT COUNT(*) FROM accounts a WHERE a.ward_id = w.ward_id AND a.removed_at IS NULL) AS account_count,
+              (SELECT COUNT(*) FROM jobs j WHERE j.ward_id = w.ward_id AND j.status IN ('failed', 'attention') AND j.withdrawn_at IS NULL) AS attention_count
+         FROM wards w WHERE w.ward_id IS NOT NULL ORDER BY w.created_at, w.slug`,
     )
-    .all<{ ward_id: string; slug: string; name: string; created_at: string; account_count: number }>();
+    .all<{ ward_id: string; slug: string; name: string; created_at: string; account_count: number; attention_count: number }>();
   return rows.results.map((r) => ({
     wardId: r.ward_id,
     slug: r.slug,
     name: r.name,
     createdAt: r.created_at,
     accountCount: r.account_count,
+    attentionCount: r.attention_count,
   }));
 }
 

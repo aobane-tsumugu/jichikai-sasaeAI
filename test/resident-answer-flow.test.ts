@@ -125,7 +125,7 @@ it("名簿のない初年度から人数を答え、班と古い答えを保ち�
     expect((await postForm(realApp, `${answersPath}/deadline`, { due_on: "2027-09-30" }, cookie)).status).toBe(303);
     const closed = await (await get(realApp, noticePath)).text();
     expect(closed).toContain("答えの受付は終わりました");
-    expect(closed).not.toContain("参加する人数を答える");
+    expect(closed).not.toContain("出欠を答える");
   } finally {
     vi.useRealTimers();
   }

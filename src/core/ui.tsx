@@ -28,7 +28,7 @@ export const Layout: FC<
     <body ontouchstart="">
       <header class="site">
         <div>
-          <strong>{siteName ?? "運営支援"}{adminHomeHref ? " 役員の画面" : ""}</strong>
+          <strong>{siteName ?? "SasaeAI"}{adminHomeHref ? " 役員の画面" : ""}</strong>
           <span>{adminHomeHref ? <><a href={adminHomeHref}>最初の画面</a>{" "}</> : null}{headerRight}</span>
         </div>
       </header>
@@ -64,4 +64,17 @@ export const Hint: FC<{ text: string }> = ({ text }) => (
 /** URL の符号に対応する、この画面が持つ文だけを出す。 */
 export const ErrorNotice: FC<{ code?: string; messages: Readonly<Record<string, string>> }> = ({ code, messages }) => (
   code && Object.prototype.hasOwnProperty.call(messages, code) ? <Notice error>{messages[code]}</Notice> : null
+);
+
+/** 役員が入れないときの連絡先は、最初に渡した紙で案内する。 */
+export const ProviderContact: FC = () => <p>SasaeAIに連絡して、区の名前とお名前を伝えてください。連絡先は、最初にお渡しした紙に書いてあります。</p>;
+
+export const WardStopped: FC<{ wardName: string; homeHref: string }> = ({ wardName, homeHref }) => (
+  <Layout title="役員の画面は止まっています" siteName={`${wardName}役員の画面`} noindex>
+    <h1>役員の画面は止まっています</h1>
+    <Notice>今は、区の役員の画面を使えません</Notice>
+    <p>区のページと、配った案内は読めます。</p>
+    <section class="next"><strong>次は</strong><ProviderContact /></section>
+    <a class="quiet" href={homeHref}>区のページを見る</a>
+  </Layout>
 );

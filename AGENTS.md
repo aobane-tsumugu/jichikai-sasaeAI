@@ -32,3 +32,5 @@ curl -s -X POST -H "Authorization: Bearer $GH_TOKEN" -d '{"body":"[Codex] 着手
 - 公式 LINE の一斉送信をしません。GitHub を公開にしません。
 - クロード区（/demoku/）に対して `npm run walkthrough` と `walkthrough-rest` を走らせません。
 - 測っていない効果を書きません。
+
+画面の短いサービス名は「SasaeAI」です。提供側への問い合わせフォームは作りません。役員がだれも入れないときと区を止めているときは、最初の案内の紙の連絡先へ案内します。

@@ -7,7 +7,7 @@ import { opsRoutes } from "../ops";
 import { requireAdmin } from "./auth";
 import type { Bundle } from "./bundle";
 import { loginRoutes } from "./login";
-import { Layout } from "./ui";
+import { Layout, ProviderContact, WardStopped } from "./ui";
 import { resolveWard } from "./ward";
 
 /**
@@ -31,8 +31,8 @@ export function createApp(bundles: Bundle[]) {
 
   app.get("/", (c) =>
     c.html(
-      <Layout title="運営支援（仮称）">
-        <h1>運営支援（仮称）</h1>
+      <Layout title="SasaeAI">
+        <h1>SasaeAI</h1>
         <p>自治会の役員の準備を支える仕組みです。区のページのURL（案内や掲示のQRに書かれたもの）からお入りください。</p>
       </Layout>,
     ),
@@ -75,14 +75,14 @@ export function createApp(bundles: Bundle[]) {
   const ward = new Hono<WardEnv>();
   ward.use("*", resolveWard);
   ward.use("*", async (c, next) => {
-    if (["GET", "HEAD", "OPTIONS"].includes(c.req.method)) return next();
+    const reading = ["GET", "HEAD", "OPTIONS"].includes(c.req.method);
+    const officer = /^\/[^/]+\/admin(?:\/|$)/.test(c.req.path);
+    if (reading && !officer) return next();
     const state = await c.env.DB.prepare("SELECT is_active FROM wards WHERE ward_id = ?")
       .bind(c.var.ward.wardId).first<{ is_active: number }>();
     if (state?.is_active === 1) return next();
-    return c.html(<Layout title="区の運用は停止中" siteName={c.var.ward.name}>
-      <h1>区の運用は停止中です</h1>
-      <p>区のページの読み取りは続いています。書き込みは受け付けていません。</p>
-    </Layout>, 503);
+    c.header("Cache-Control", "private, no-store");
+    return c.html(<WardStopped wardName={c.var.ward.name} homeHref={`/${encodeURIComponent(c.var.ward.slug)}/`} />, 503);
   });
   ward.use("*", csrf());
   ward.route("/admin", loginRoutes);
@@ -111,7 +111,7 @@ export function createApp(bundles: Bundle[]) {
     return c.html(
       <Layout title="うまく動きませんでした">
         <h1>うまく動きませんでした</h1>
-        <p>時間をおいて、もう一度お試しください。続くときは、提供側にお知らせください。</p>
+        <p>時間をおいて、もう一度お試しください。</p><ProviderContact />
       </Layout>,
       500,
     );
