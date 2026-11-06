@@ -2,7 +2,7 @@
 // 包みは system に入れる（L-202）。包みを直したら PACK_VERSION を上げる。版は差分の重複を弾く印と、読み直しの選別に使う。
 import type { JobTask } from "../intake/types";
 
-export const PACK_VERSION = "connect@14";
+export const PACK_VERSION = "connect@15";
 
 /** MCP の口の名前。agent の mcp_servers と mcp_toolset が同じ名前を指す。 */
 export const MCP_SERVER_NAME = "kiroku";
@@ -22,6 +22,7 @@ write_change の書き方（名前は下の英語の鍵をそのまま使う）:
 - item: target は項目の鍵、data は {"value": "文字"}。鍵は date_time（日時）、place（場所）、rain_plan（雨天時）、content（中身）、belongings（持ち物）、
   helper_slots（手伝いの時間帯）、due（締切）、public_contact（公開用の連絡先）。
 - row: target は表の鍵、data は列。額は 6000 のような 0 以上の整数の円にする（「6,000円」と書かない）。
+  committee（実行委員名簿）: name（名前、必須）、role（役）、contact（連絡先）。実行委員の名簿に書かれた人と役、電話やメールをそのまま入れる。世帯の名簿や当番表とは分ける。過去の名簿は参考に留め、今年の委員とは決めない。連絡先が空でも補わず、質問にしない。この名簿は役員と実行委員・班長のためのもので、公開する下書きの本文やitemsに名前や個人の連絡先を入れない。
   sponsors（協賛先）: name（必須）、lastYearAmount、ask、reply（yes、no、pending のどれか）、amount、note。
   duties（当番）: slot（必須）、task、assignee、attendance（present か absent）、note。一行は時間帯と持ち場の組で、slot は時間帯だけ（例 9:00〜10:30）、task は持ち場だけを書く。同じ組に人が複数いる時は assignee に「、」で並べる。
   layout（配置）: spot（必須）、position、note。

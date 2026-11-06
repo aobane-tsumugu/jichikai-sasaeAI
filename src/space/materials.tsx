@@ -1,6 +1,6 @@
 import { TABLES, displayFieldValue, type RowData } from "../project/model";
 
-type SpaceTable = "sponsors" | "duties" | "layout";
+type SpaceTable = "sponsors" | "duties" | "layout" | "committee";
 
 /** 空間では協賛の額と打診の中身を出さず、決められた見出しと読める値だけを並べる。 */
 export function MaterialsTable({ table, items }: {

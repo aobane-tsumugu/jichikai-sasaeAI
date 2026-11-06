@@ -104,7 +104,7 @@ export function isItemKey(value: unknown): value is ItemKey {
 
 // ---- 表の行 ----
 
-export const TABLE_KEYS = ["sponsors", "duties", "layout", "ledger", "decisions", "submissions"] as const;
+export const TABLE_KEYS = ["sponsors", "duties", "layout", "ledger", "decisions", "submissions", "committee"] as const;
 export type TableKey = (typeof TABLE_KEYS)[number];
 
 type FieldType =
@@ -132,6 +132,17 @@ const AMOUNT: FieldType = { type: "amount" };
  * 列の名前は AI の出力の型にもなるので、直したら包みの版を上げる。
  */
 export const TABLES: Record<TableKey, TableDef> = {
+  committee: {
+    label: "実行委員名簿",
+    fields: {
+      name: { label: "名前", def: TEXT },
+      role: { label: "役", def: TEXT },
+      contact: { label: "連絡先", def: TEXT },
+    },
+    keyFields: ["name"],
+    optionalKeyFields: ["role"],
+    nameField: "name",
+  },
   sponsors: {
     label: "協賛先",
     fields: {
@@ -320,8 +331,8 @@ export const DEFAULT_SCOPE: Record<DocumentKind, Scope> = {
 export const DOCUMENT_DEPENDENCIES: Record<DocumentKind, { items: readonly ItemKey[]; tables: readonly TableKey[] }> = {
   announcement: { items: ["date_time", "place", "rain_plan", "content", "belongings", "public_contact"], tables: [] },
   recruitment: { items: ["date_time", "place", "helper_slots", "due", "content", "public_contact"], tables: [] },
-  duty_roster: { items: ["date_time", "place", "helper_slots", "rain_plan"], tables: ["duties", "layout"] },
-  procedure: { items: ["date_time", "place", "content", "belongings", "rain_plan", "helper_slots"], tables: ["duties", "layout", "decisions"] },
+  duty_roster: { items: ["date_time", "place", "helper_slots", "rain_plan"], tables: ["duties", "layout", "committee"] },
+  procedure: { items: ["date_time", "place", "content", "belongings", "rain_plan", "helper_slots"], tables: ["duties", "layout", "decisions", "committee"] },
   notice: { items: ["date_time", "place", "rain_plan", "content"], tables: [] },
   report: { items: ITEM_KEYS, tables: TABLE_KEYS },
 };

@@ -14,6 +14,7 @@ import { MAP_TEMPLATES } from "../map/template";
 import { daysRemaining, followupAdmin } from "./followup";
 import { questionPages } from "./question-pages";
 import { markMaterialThisYear, unknownYearContents } from "./material-year";
+import { committeePages } from "./committee";
 
 /** 変わった所の対象を、内部の鍵ではなく画面の言葉で示す。 */
 function changeTargetLabel(kind: string, target: string): string {
@@ -51,6 +52,7 @@ const admin = new Hono<AdminEnv>();
 setProjectApi(agentApi);
 admin.route("/", followupAdmin);
 admin.route("/", questionPages);
+admin.route("/", committeePages);
 
 admin.get("/projects", async (c) => {
   const { ward } = c.var;
@@ -164,6 +166,7 @@ admin.get("/projects/:projectId", async (c) => {
     <p>何を頼み、どこに、いくらかけたかを残す、来年のための参考の記録です。段取りの「運営メモ」から書いたり、元の資料を見たりできます。</p>
     <div class="action-links"><a class="button secondary" href={adminPath(ward, `/projects/${projectId}/ledger`)}>運営メモを開く</a></div>
 
+    <h2>実行委員名簿</h2><a class="quiet" href={adminPath(ward, `/projects/${projectId}/committee`)}>実行委員名簿を見て直す</a>
     <h2>文書</h2>
     <ul class="rows">{state.documents.map((d) => <li class="panel"><b>{DOCUMENT_KIND_LABEL[d.kind]}</b><p class="muted">{d.scope === "public" ? "だれでも読める" : SCOPE_LABEL[d.scope]}{d.stale ? "　新しい資料が入っています" : ""}</p></li>)}</ul>
     <a class="quiet" href={adminPath(ward, `/projects/${projectId}/draft`)}>下書きの一覧を開く</a>
