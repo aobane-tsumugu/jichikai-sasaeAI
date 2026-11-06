@@ -7,7 +7,7 @@ import { createProject } from "../src/project/api";
 import { withoutTitleLine } from "../src/project/heading";
 import { paperGive, paperHelperSlots } from "../src/print/content";
 import { articleParagraphs } from "../src/publish";
-import { get, realApp } from "./helpers";
+import { get, postForm, realApp } from "./helpers";
 
 const meeting = "総会の招集\n\n■ 話し合うことをご確認ください\n・清掃活動の回数\n・遊具の更新\nどちらも、まだ決めていません。\n\n■ 2026年12月6日までにお答えください\n出席、委任、欠席のどれかをお答えください。\n・回答票を、班長か役員に渡してください。\n・Webでは、この案内のQRか区のページから答えてください。\n\n■ 問い合わせはこちらへ\n（確認中）";
 const summary = "議案：清掃活動の回数、遊具の更新。いずれもまだ決めていません。出席、委任、欠席を、回答票（班長か役員に渡す）またはWeb（案内のQRか区のページ）で答える。";
@@ -66,3 +66,19 @@ it("AIの文に混ざった書式の記号を、読める形にする", () => {
   expect(paperHelperSlotsCheck()).toBe("設営 受付 模擬店 片付け");
 });
 const paperHelperSlotsCheck = () => paperHelperSlots("設営 受付 模擬店 片付け");
+
+it("総会の案内のページは本文の見出しを行事とそろえ、文書の連絡先を下に出す", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const project = await createProject(env.DB, ward.wardId, { kind: "general_meeting", title: "架空の総会", year: 2026, accountId: account.accountId });
+  await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, { kind: "announcement", title: "総会の招集", scope: "public", basedOn: 0, body: JSON.stringify({ text: "架空の総会を開きます。", items: [{ key: "date_time", content: "5月17日（日）午前10時から" }, { key: "public_contact", content: "架空の連絡先" }] }) });
+  const doc = await env.DB.prepare("SELECT d.document_id, v.version_id, v.version_no FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id WHERE d.ward_id = ? AND d.project_id = ?").bind(ward.wardId, project.projectId).first<{ document_id: string; version_id: string; version_no: number }>();
+  const root = `/${ward.slug}/admin`;
+  await postForm(realApp, `${root}/publish/${project.projectId}/send`, { documentId: doc!.document_id, versionId: doc!.version_id, versionNo: String(doc!.version_no), recipientScope: "member_households", lineDelivery: "skip" }, cookie);
+  const page = await (await get(realApp, `/${ward.slug}/p/${project.projectId}`)).text();
+  expect(page).toContain("<h2>くわしい案内</h2>");
+  expect(page).not.toContain("<h2>総会の招集</h2>");
+  expect(page).toContain("架空の連絡先");
+  expect(page).not.toContain("連絡先: 架空の連絡先");
+  const leader = await (await postForm(realApp, `${root}/print/${project.projectId}/${doc!.document_id}/${doc!.version_no}/leader`, {}, cookie)).text();
+  expect(leader === "" || !leader.includes("からに行います")).toBe(true);
+});

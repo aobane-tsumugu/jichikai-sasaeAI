@@ -63,8 +63,8 @@ function publicDocumentTitle(item: PublicProject): string {
   return item.project_kind === "event" ? item.document_title : documentTitle(item.project_kind, item.kind);
 }
 
-async function pageFooter(c: { env: { DB: D1Database }; var: { ward: { wardId: string; slug: string } } }) {
-  const contact = await getPublicContact(c.env.DB, c.var.ward.wardId);
+async function pageFooter(c: { env: { DB: D1Database }; var: { ward: { wardId: string; slug: string } } }, documentContact = "") {
+  const contact = documentContact || await getPublicContact(c.env.DB, c.var.ward.wardId);
   const lineUrl = await getOfficialLineUrl(c.env.DB, c.var.ward.wardId);
   return <>
     <h2>分からないときは</h2><ResidentContact contact={contact} />
@@ -215,8 +215,8 @@ pub.get("/p/:projectId", async (c) => {
     if (!entry) documents.set(item.document_id, { latest: item, earlier: [] });
     else if (!entry.latest.unpublished_at && !item.unpublished_at) entry.earlier.push(item);
   }
-  const details = await pageFooter(c);
   const context = await residentContext(c.env.DB, c.var.ward.wardId, projectId);
+  const details = await pageFooter(c, context.contact);
   const deadline = await getAnswerDeadline(c.env.DB, c.var.ward.wardId, projectId);
   const today = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date());
   const closed = !!items[0]!.closed_at || (deadline !== null && deadline < today);
@@ -236,9 +236,9 @@ pub.get("/p/:projectId", async (c) => {
         <p>{date(latest)} に載せた{event ? "案内" : title}は、区のページから下げました。</p>
       </article>;
       return <article class="panel" key={latest.document_id}>
-        <h2>{event && latest.kind === "announcement" ? changes ? `${date(latest)}に配った案内` : "くわしい案内" : title}</h2>
+        <h2>{latest.kind === "announcement" ? changes ? `${date(latest)}に配った案内` : "くわしい案内" : title}</h2>
         {latest.kind === "announcement" && changes ? <p>変わったところは、上のお知らせのとおりです。</p> : null}
-        <ArticleBody body={latest.body} title={{ project: latest.title, document: latest.document_title }} kind={latest.kind} hide={latest.kind === "announcement" && !changes ? ["date_time", "place", "rain_plan", "due"] : []} />
+        <ArticleBody body={latest.body} title={{ project: latest.title, document: latest.document_title }} kind={latest.kind} hide={latest.kind === "announcement" && !changes ? ["date_time", "place", "rain_plan", "due", "public_contact"] : []} />
         <p class="muted">{date(latest)}に載せました</p>
         {earlier.map((older) => <details>
           <summary>変更前の{event ? "案内" : publicDocumentTitle(older)}（{date(older)}に載せたもの）</summary>

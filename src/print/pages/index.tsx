@@ -219,7 +219,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
       </>}
     </div>{paperQr(squad)}</div>
     <div class="give">{paperGive(due, `${squad ? `${squad}の` : ""}班長か役員`).map((line) => <div>{line}</div>)}</div>
-    {contact ? <p>分からないときは　{contact}</p> : null}
+    {standalone && contact ? <p>分からないときは　{contact}</p> : null}
   </div>;
   // 返す案内や時間帯の分も見積もる。文字を縮めず、長ければ回答票を別の紙にする。
   const onOneSheet = withAnswer && fitsAboveAnswer(row.body, generalMeeting
@@ -249,11 +249,11 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
     {kind === "answer" ? paperSquads.map((squad) => <Sheet key={squad} footer={footer(squad)}>{answerSheet(squad, true)}</Sheet>) : null}
     {kind === "leader" ? paperSquads.map((squad) => <Sheet key={squad} footer={footer(squad)}>
       <h1>{squad ? `${squad}の` : ""}班長さんへ</h1>
-      <p>{row.title}のご案内をお願いします。{publishedItem(row.body, "date_time") ? <>{publishedItem(row.body, "date_time")}に行います。</> : null}</p>
+      <p>{row.title}のご案内をお願いします。{publishedItem(row.body, "date_time") ? <>{publishedItem(row.body, "date_time")}{publishedItem(row.body, "date_time")?.endsWith("から") ? "" : "に"}行います。</> : null}</p>
       <h2>お願いしたいこと</h2>
       <ul>
         <li>案内の紙を、{squad ? `${squad}の` : "班の"}世帯に渡してください。</li>
-        {due ? <li>答えの締切は{due}です。{!generalMeeting ? "答えがないときは、欠席として数えます。" : ""}</li> : null}
+        {due ? <li>{due.endsWith("まで") ? `答えの締切は${due}です。` : `${due}が答えの締切です。`}会ったときに伝えてもらえると助かります。集めて回らなくてかまいません。</li> : null}
         <li>預かった回答票は、下のQRコードを開いて、撮って送ってください。一枚の写真に何枚写っていてもかまいません。</li>
       </ul>
       <p>写真を送るのが難しいときは、回答票を役員に渡してください。</p>
