@@ -227,16 +227,16 @@ admin.get("/archive/:projectId", async (c) => {
     </div></details>)}
     {!documents.results.length ? <p>配ったものはありません。</p> : null}
 
-    </section><aside><div class="counts record-counts"><div class="count"><b>{answers.length}<small>世帯</small></b><span>答えた</span></div><div class="count"><b>{answers.reduce((sum, answer) => sum + answer.peopleCount, 0)}<small>人</small></b><span>参加した</span></div></div>
+    </section><aside><div class="counts record-counts"><div class="count"><b>{answers.length}<small>世帯</small></b><span>答えた</span></div><div class="count"><b>{answers.reduce((sum, answer) => sum + answer.peopleCount, 0)}<small>人</small></b><span>参加すると答えた</span></div></div>
       <ul class="links"><li><a href="#report">報告を読む</a></li><li><a href="#answers">答えの一覧を読む</a></li><li><a href="#orig">元の資料を読む（{originals.results.length}件）</a></li></ul>
       <details class="hint"><summary>ほかの記録を探す</summary><div><form method="get" action={adminPath(ward, "/archive/search")}><label for="q">探す言葉</label><input id="q" name="q" type="text" minlength={2} required /><button class="secondary">探す</button></form></div></details>
     </aside></div>
     <h2 id="report">報告</h2>{reports.results?.map((report) => <section class="panel"><h3>{report.scope === "public" ? "公開する部分" : "役員だけの部分"}</h3><p style="white-space:pre-wrap">{report.body || "まだ記入されていません"}</p></section>)}
     <h2 id="answers">答えの一覧</h2><p>紙、電話、スマホの答えを合わせた数です。</p>
-    <p>参加する人数{answers.reduce((sum, answer) => sum + answer.peopleCount, 0)}人 / 手伝いの申し出{answers.filter((answer) => answer.helperName).length}件</p>
+    <p>参加すると答えた人数{answers.reduce((sum, answer) => sum + answer.peopleCount, 0)}人 / 手伝いの申し出{answers.filter((answer) => answer.helperName).length}件</p>
     {answers.some((answer) => answer.childrenCount != null || answer.adultsCount != null || answer.seniorsCount != null) ? <p>参加する人の内訳: {answerLabels.map((label, index) => `${label}${answers.reduce((sum, answer) => sum + ([answer.childrenCount, answer.adultsCount, answer.seniorsCount][index] ?? 0), 0)}人`).join("、")}。内訳のない答えは合計だけに含めています。</p> : null}
     <p>手伝いだけの申し込み（閉じたとき）: {helpCount?.help_offer_count_on_close === null || !helpCount ? "人数の記録がありません" : `${helpCount.help_offer_count_on_close}人`}</p>
-    {[...totals].map(([district, total]) => <p>{district || "班が分からない"}: 参加{total.people} 人 / 手伝い{total.helpers} 件</p>)}
+    {[...totals].map(([district, total]) => <p>{district || "班が分からない"}: 参加すると答えた人数{total.people}人 / 手伝い{total.helpers}件</p>)}
     {answers.map((answer) => <section class="panel">
       <h3>{answer.household || answer.helperName || "手伝いの申し出"}</h3><p>{answer.district || "班が分からない"} / 参加{countText(answer, answerLabels)}</p>
       {answer.helperName ? <p>手伝い: {answer.helperName} / {answer.helperTimes || "時間の記入なし"}</p> : null}

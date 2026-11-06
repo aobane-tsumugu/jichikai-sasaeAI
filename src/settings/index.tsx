@@ -19,11 +19,15 @@ const admin = new Hono<AdminEnv>();
 
 admin.get("/", async (c) => {
   const { ward, account } = c.var;
-  const [projects, lineInbox, pending] = await Promise.all([
+  const [projects, lineInbox, pending, inquiries] = await Promise.all([
     listOpenProjects(c.env.DB, ward.wardId), listInboxItems(c.env.DB, ward.wardId),
     c.env.DB.prepare(`SELECT status, COUNT(*) AS count FROM jobs WHERE ward_id = ? AND project_id IS NULL
       AND via = 'admin' AND withdrawn_at IS NULL GROUP BY status`).bind(ward.wardId).all<{ status: string; count: number }>(),
+    c.env.DB.prepare("SELECT COUNT(*) AS count FROM inquiry_records WHERE ward_id = ? AND kind = 'inquiry' AND line_source_type IS NOT NULL")
+      .bind(ward.wardId).first<{ count: number }>(),
   ]);
+  const inquiryCount = inquiries?.count ?? 0;
+  const receivedCount = lineInbox.length + inquiryCount;
   const sent = pending.results.reduce((sum, row) => sum + row.count, 0);
   const read = pending.results.filter((row) => row.status === "read").reduce((sum, row) => sum + row.count, 0);
   const reading = pending.results.filter((row) => row.status === "received" || row.status === "reading").reduce((sum, row) => sum + row.count, 0);
@@ -70,8 +74,8 @@ admin.get("/", async (c) => {
         </a></li>;
       })}</ul>
       <div class="action-links"><a class="button secondary" href={adminPath(ward, "/projects")}>新しく始める</a></div>
-      <h2>届いたもの</h2><ul class="rows"><li><a class="row-link" href={adminPath(ward, "/inbox")}><b>公式LINEに届いた写真と文{lineInbox.length}件</b>
-        {lineInbox.length ? <span>{lineInbox.some((i) => i.disposition === "matched") ? "AIが行事に入れました。" : ""}{lineInbox.some((i) => i.disposition === "unmatched") ? `${lineInbox.filter((i) => i.disposition === "unmatched").length}件はどの行事か分かりませんでした` : ""}</span> : <span>まだ届いていません</span>}
+      <h2>届いたもの</h2><ul class="rows"><li><a class="row-link" href={adminPath(ward, "/inbox")}><b>公式LINEに届いた写真と文{receivedCount}件</b>
+        {receivedCount ? <span>{lineInbox.some((i) => i.disposition === "matched") ? "AIが行事に入れました。" : ""}{lineInbox.some((i) => i.disposition === "unmatched") ? `${lineInbox.filter((i) => i.disposition === "unmatched").length}件はどの行事か分かりませんでした` : ""}{inquiryCount ? `問い合わせが${inquiryCount}件届いています。` : ""}</span> : <span>まだ届いていません</span>}
       </a></li>{sent ? <li><a class="row-link" href={adminPath(ward, "/intake/read")}><b>送った資料{sent}件</b><span>読み終わったものを見る</span></a></li> : null}</ul>
       {places}
     </>}

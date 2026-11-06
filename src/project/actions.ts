@@ -4,6 +4,7 @@ import { DEFAULT_SCOPE, DOCUMENT_KIND_LABEL, TABLES, cleanRowData, isItemKey, is
 import { hashOf, stableStringify } from "./util";
 import { getProjectState } from "./state";
 import { reconcileDocumentBody, type DocumentBody } from "./document-body";
+import { addDays, MAP_TEMPLATES } from "../map/template";
 
 /** 当番表の行を役員が画面で直す。行の鍵を変えても同じ行を保ち、変更履歴と古い案の印を残す。 */
 export async function saveDutyRow(
@@ -175,6 +176,33 @@ export async function addMapTask(db: D1Database, wardId: string, projectId: stri
   return true;
 }
 
+/** 行事の日を直し、済んでいない仕事だけ時期を置き直す。文書には触れない。 */
+export async function setEventDay(db: D1Database, wardId: string, projectId: string, day: string, accountId: string): Promise<boolean> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(Date.parse(day)) || new Date(day).toISOString().slice(0, 10) !== day) return false;
+  const state = await getProjectState(db, wardId, projectId);
+  if (!state || state.project.closedAt) return false;
+  const oldDay = state.project.deadlines.event_day;
+  if (oldDay === day) return true;
+  const shift = oldDay ? Math.round((Date.parse(day) - Date.parse(oldDay)) / 86400000) : 0;
+  const template = MAP_TEMPLATES[state.project.kind] ?? [];
+  const statements = [db.prepare(`INSERT INTO project_deadlines (ward_id, project_id, kind, due_on, updated_at, updated_by_account_id)
+    VALUES (?, ?, 'event_day', ?, ?, ?)
+    ON CONFLICT (ward_id, project_id, kind) DO UPDATE SET due_on = excluded.due_on,
+      updated_at = excluded.updated_at, updated_by_account_id = excluded.updated_by_account_id`)
+    .bind(wardId, projectId, day, nowIso(), accountId)];
+  for (const task of state.mapTasks) {
+    if (task.progress === "done") continue;
+    const offsets = template.find((entry) => entry.key === task.taskKey);
+    const start = oldDay ? task.periodStart ? addDays(task.periodStart, shift) : null : offsets ? addDays(day, offsets.start) : task.periodStart;
+    const end = oldDay ? task.periodEnd ? addDays(task.periodEnd, shift) : null : offsets ? addDays(day, offsets.end) : task.periodEnd;
+    statements.push(db.prepare(`UPDATE project_map_tasks SET period_start = ?, period_end = ?
+      WHERE ward_id = ? AND project_id = ? AND task_id = ? AND progress <> 'done' AND removed_at IS NULL`)
+      .bind(start, end, wardId, projectId, task.taskId));
+  }
+  await db.batch(statements);
+  return true;
+}
+
 export async function removeMapTask(db: D1Database, wardId: string, projectId: string, taskId: string): Promise<boolean> {
   const r = await db.prepare("UPDATE project_map_tasks SET removed_at = ? WHERE ward_id = ? AND project_id = ? AND task_id = ? AND removed_at IS NULL")
     .bind(nowIso(), wardId, projectId, taskId).run();
@@ -214,7 +242,7 @@ export async function getEditableDocument(db: D1Database, wardId: string, projec
     body: row.body ?? JSON.stringify({ text: "", items: [] }), stateVersion: row.state_version, stale: row.stale_since_version !== null } : null;
 }
 
-export async function saveDocument(db: D1Database, wardId: string, projectId: string, accountId: string, input: { kind: DocumentKind; title: string; scope: Scope; body: string; basedOn: number }): Promise<boolean> {
+export async function saveDocument(db: D1Database, wardId: string, projectId: string, accountId: string, input: { kind: DocumentKind; title: string; scope: Scope; body: string; basedOn: number }, bodyChecks?: ItemKey[]): Promise<boolean> {
   if (!["announcement", "recruitment", "duty_roster", "procedure", "notice", "report"].includes(input.kind)) return false;
   if (!["public", "space", "staff"].includes(input.scope) || input.title.trim().length < 1 || input.title.length > 100 || input.body.length > 20000) return false;
   let parsed: unknown;
@@ -237,7 +265,7 @@ export async function saveDocument(db: D1Database, wardId: string, projectId: st
   const before: DocumentBody = previous ? JSON.parse(previous.body) as DocumentBody : {
     text: "", items: (state?.items ?? []).map((item) => ({ key: item.key, content: item.current?.content ?? item.references[0]?.content ?? "" })),
   };
-  const body = reconcileDocumentBody(before, { text: record.text, items });
+  const body = reconcileDocumentBody(before, { text: record.text, items }, bodyChecks);
   let doc = await db.prepare("SELECT document_id FROM documents WHERE ward_id = ? AND project_id = ? AND kind = ?").bind(wardId, projectId, input.kind).first<{ document_id: string }>();
   const now = nowIso();
   if (!doc) {

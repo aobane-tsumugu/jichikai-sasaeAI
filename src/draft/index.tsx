@@ -6,7 +6,8 @@ import type { AdminEnv } from "../env";
 import { startTask } from "../ai/api";
 import { getProjectState, getProjectSummary } from "../project/api";
 import { getEditableDocument, saveDocument } from "../project/actions";
-import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, ITEMS_BY_KIND, SCOPES, SCOPE_LABEL, type DocumentKind, type Scope } from "../project/model";
+import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, ITEMS_BY_KIND, SCOPES, SCOPE_LABEL, type DocumentKind, type Scope, type ItemKey } from "../project/model";
+import { documentBodyCheckMessage } from "../project/document-body";
 import { getDraftPack, listDraftPacks } from "./packs";
 import type { DraftBody } from "./packs/types";
 import { getDistrictCopies, getDutyDraftHelpers } from "../answers/api";
@@ -104,12 +105,14 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
   };
   const dateValue = body.items.find((item) => item.key === "date_time")?.content ?? "";
   const oldDates = [...new Set(state.items.find((item) => item.key === "date_time")?.references.flatMap((ref) => ref.content.match(/\d{1,2}月\d{1,2}日/g) ?? []) ?? [])].filter((date) => body.text.includes(date) && !dateValue.includes(date));
+  const bodyCheck = c.req.query("notice") === "saved" ? documentBodyCheckMessage(c.req.query("check_body")) : null;
   return c.html(<Layout title={`${pack.title}の下書きを直す`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, relatedTask ? `/projects/${id}/map/${relatedTask.taskId}` : `/projects/${id}/map`)}>← {relatedTask ? relatedTask.name : `${project.title}の段取り`}へ</a>
     <h1>{pack.title}の下書きを直す</h1>
     <p class="lead">直して保存しても、まだ配られません。{scope === "public" ? "だれでも読める案内です。" : scope === "space" ? "実行委員と班長だけが読めます。" : "役員だけが読めます。"}</p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     {c.req.query("notice") === "saved" ? <section class="next"><strong>保存しました。まだ配っていません</strong><p>前の下書きにも戻せます。</p><a class="button" href={adminPath(ward, `/publish/${id}/confirm?kind=${kindRaw}`)}>配る画面へ</a><a class="quiet" href="#previous-drafts">前の下書きに戻す</a></section> : null}
+    {bodyCheck ? <Notice>{bodyCheck}</Notice> : null}
     {c.req.query("notice") === "restored" ? <Notice>前の下書きに戻しました。今の下書きも残ります。</Notice> : null}
     {taskNotice ? <Notice><span data-ai-status={taskNotice.status}>{taskNotice.message}</span> 画面を閉じても処理は続きます。ここで書いて保存することもできます。</Notice> : null}
     {document?.stale ? <div class="notice warn"><strong>新しい資料が届きました</strong><p>このまま直して配れます。</p><a class="quiet" href="#redo">新しい資料を入れて作り直す</a></div> : null}
@@ -158,13 +161,14 @@ async function latestFields(c: import("hono").Context<AdminEnv>, kind: DocumentK
   if (!row) return null;
   return new URLSearchParams({ documentId: row.document_id, versionId: row.version_id, versionNo: String(row.version_no), scope: row.scope });
 }
-async function confirmDraft(c: import("hono").Context<AdminEnv>, kind: DocumentKind): Promise<Response> {
+async function confirmDraft(c: import("hono").Context<AdminEnv>, kind: DocumentKind, bodyChecks: ItemKey[]): Promise<Response> {
   const fields = await latestFields(c, kind); const id = c.req.param("projectId");
   if (!fields) return c.notFound();
-  if (fields.get("scope") !== "public") return c.redirect(adminPath(c.var.ward, `/publish/${id}`), 303);
+  const query = new URLSearchParams({ check_body: bodyChecks.join(",") });
+  if (fields.get("scope") !== "public") return c.redirect(adminPath(c.var.ward, `/publish/${id}?${query}`), 303);
   const copies = await getDistrictCopies(c.env.DB, c.var.ward.wardId);
   fields.set("distribution", copies.map((row) => `${row.district} ${row.copies}`).join("\n"));
-  return openPublish(c, `/publish/${id}/confirm`, fields);
+  return openPublish(c, `/publish/${id}/confirm?${query}`, fields);
 }
 
 admin.post("/projects/:projectId/draft/:kind/restore/:versionNo", async (c) => {
@@ -234,9 +238,11 @@ admin.post("/projects/:projectId/draft/:kind/save", async (c) => {
   if (!state) return c.notFound();
   const scopeRaw = String(form.get("scope")); if (!(SCOPES as readonly string[]).includes(scopeRaw) || (kindRaw === "duty_roster" && scopeRaw !== "space")) return c.notFound();
   const body: DraftBody = { text: String(form.get("text") ?? ""), items: ITEMS_BY_KIND[state.project.kind].map((key) => ({ key, content: String(form.get(`item_${key}`) ?? "").trim() })).filter((i) => i.content !== "") };
-  const ok = await saveDocument(c.env.DB, ward.wardId, id, account.accountId, { kind: kindRaw, title: String(form.get("title") ?? ""), scope: scopeRaw as Scope, body: JSON.stringify(body), basedOn: Number(form.get("based_on")) });
-  if (ok && form.get("after") === "confirm") return confirmDraft(c, kindRaw);
-  return c.redirect(`${adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}?${ok ? "notice=saved" : "error=save_failed"}`, 303);
+  const bodyChecks: ItemKey[] = [];
+  const ok = await saveDocument(c.env.DB, ward.wardId, id, account.accountId, { kind: kindRaw, title: String(form.get("title") ?? ""), scope: scopeRaw as Scope, body: JSON.stringify(body), basedOn: Number(form.get("based_on")) }, bodyChecks);
+  if (ok && form.get("after") === "confirm") return confirmDraft(c, kindRaw, bodyChecks);
+  const query = new URLSearchParams(ok ? { notice: "saved", check_body: bodyChecks.join(",") } : { error: "save_failed" });
+  return c.redirect(`${adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}?${query}`, 303);
 });
 
 admin.post("/projects/:projectId/draft/duty-row/:rowId", async (c) => {
