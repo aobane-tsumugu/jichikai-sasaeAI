@@ -177,7 +177,9 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
   };
   const counts = (html: string) => {
     for (const [label, count] of [["答えた世帯", 5], ["出席", 2], ["委任", 2], ["欠席", 1]] as const) {
-      assert(new RegExp(`<b>${count}<small>世帯</small></b><span>${label}</span>`).test(html), label + "の数が答えと合いません");
+      // 名簿がある区では、答えた世帯の数の下は「○世帯のうち」と出る。
+      const shown = label === "答えた世帯" ? "(?:答えた世帯|答えた世帯・名簿はまだありません|\d+世帯のうち)" : label;
+      assert(new RegExp(`<b>${count}<small>世帯</small></b><span>${shown}</span>`).test(html), label + "の数が答えと合いません");
     }
   };
   const stages: [string, () => Promise<string>][] = [

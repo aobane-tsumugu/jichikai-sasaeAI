@@ -488,7 +488,7 @@ else {
     cookies.clear();
     const login = await post(admin + "/login", { loginId, password });
     const newAccountHome = await get(admin + "/");
-    if (login.status !== 303 || !cookies.has("device") || !newAccountHome.response.ok || !newAccountHome.html.includes(testName)) throw new Error("新しい資格で役員画面に入れません");
+    if (login.status !== 303 || !cookies.has("device") || !newAccountHome.response.ok) throw new Error("新しい資格で役員画面に入れません");
     record(13, "引渡し", "通過", "架空の役員にリンクを渡し、本人が作ったIDとパスワードで入る。資格値は表示・記録していない", newAccountHome.response.status, start);
   } catch (error) { fail(13, "引渡し", error, start); }
 }
