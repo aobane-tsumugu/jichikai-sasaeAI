@@ -1,17 +1,23 @@
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { WardBucket } from "../core/storage";
-import { Hint, Layout } from "../core/ui";
+import { Layout, Notice } from "../core/ui";
 import type { AdminEnv, AppEnv } from "../env";
 import { getLineAllowance, lineAccessToken, sendLineTitleAndUrl } from "./api";
 import { markInboxItemUnrelated } from "./intake";
 import { acceptLineWebhook } from "./webhook";
 import { createProject } from "../project/api";
+import { PROJECT_KINDS, type ProjectKind } from "../project/model";
 import { assignProject, withdrawJob } from "../intake/api";
-import { listJobs, listOriginals } from "../intake/store";
+import { getJob, listJobs, listOriginals } from "../intake/store";
+import { pendingMaterialGroups } from "../intake/groups";
+import { adminPath } from "../core/auth";
+import { formatJst } from "../core/time";
+import { STATUS_LABEL } from "../intake/pages";
 
 interface InboxRow {
   item_id: string;
+  job_id: string | null;
   original_kind: "text" | "image";
   original_text: string | null;
   received_at: string;
@@ -24,7 +30,7 @@ interface InboxRow {
 
 export async function listInboxItems(db: D1Database, wardId: string): Promise<InboxRow[]> {
   const result = await db.prepare(`
-    SELECT item_id, original_kind, original_text, received_at, disposition, sender_display_name, sender_label,
+    SELECT item_id, job_id, original_kind, original_text, received_at, disposition, sender_display_name, sender_label,
       matched_project_name, match_reason
     FROM line_inbox_items
     WHERE ward_id = ?
@@ -33,85 +39,73 @@ export async function listInboxItems(db: D1Database, wardId: string): Promise<In
   return result.results;
 }
 
+function safeContext(c: { executionCtx: Pick<ExecutionContext, "waitUntil"> }): Pick<ExecutionContext, "waitUntil"> {
+  try { return c.executionCtx; } catch { return { waitUntil: () => undefined }; }
+}
+
 const admin = new Hono<AdminEnv>();
 
 admin.get("/inbox", async (c) => {
-  const { wardId, slug, name } = c.var.ward;
+  const { ward } = c.var;
   const db = c.env.DB;
-  const items = await listInboxItems(db, wardId);
-  const cityJobs = (await listJobs(db, wardId, { limit: 100 })).filter((job) => job.via === "admin" && job.withdrawn_at === null && (job.project_id === null || job.ai_matched_at !== null));
-  const projects = await db.prepare(`
-    SELECT project_id, title AS name FROM projects WHERE ward_id = ? AND closed_at IS NULL ORDER BY created_at DESC
-  `).bind(wardId).all<{ project_id: string; name: string }>();
-  const unrelated = await db.prepare(`
-    SELECT day, item_count FROM line_unrelated_daily_counts WHERE ward_id = ? ORDER BY day DESC LIMIT 30
-  `).bind(wardId).all<{ day: string; item_count: number }>();
-  return c.html(
-    <Layout title="受け箱" siteName={name} noindex adminHomeHref={`/${slug}/admin/`}>
-      <h1>受け箱 <Hint text="まだ当て先が決まっていない物を見ます。届いた文や写真を読み、必要なら当て先を選ぶか新しいプロジェクトを開いてください。" /></h1>
-      <p>公式 LINE に届いた文と写真です。仕分けをしなくてもかまいません。</p>
-      {items.length === 0 ? <p>入った物はありません。</p> : null}
-      <h2>市の通知など、プロジェクト未定の写真</h2>
-      <p><a class="button secondary" href={`/${slug}/admin/intake`}>通知を撮って送る</a></p>
-      {cityJobs.length === 0 ? <p>プロジェクト未定の写真はありません。</p> : null}
-      {await Promise.all(cityJobs.map(async (job) => {
-        const originals = await listOriginals(db, wardId, job.job_id);
-        return <section class="panel">
-          <strong>{job.first_filename || "撮った写真"}</strong>
-          <p>{new Date(job.created_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}</p>
-          <p>{job.ai_matched_at ? "AI が当てました" : job.status === "failed" ? "読めませんでした" : job.status === "done" ? "読み取り済み" : "読み取り中または確認中"}</p>
-          {job.ai_match_reason ? <p>{job.ai_match_reason}</p> : null}
-          {originals.map((original) => <p><a href={`/${slug}/admin/intake/originals/${encodeURIComponent(original.original_id)}`}>届いた物を開く: {original.filename || "写真"}</a></p>)}
-          <form method="post" action={`/${slug}/admin/inbox/city/${encodeURIComponent(job.job_id)}`}>
-            <label for={`city-project-${job.job_id}`}>当て先を選び直す</label>
-            <select id={`city-project-${job.job_id}`} name="projectId" required>
-              {projects.results.map((project) => <option value={project.project_id} selected={project.project_id === job.project_id}>{project.name}</option>)}
-            </select>
-            <button type="submit">このプロジェクトに付け替える</button>
-          </form>
-          <form method="post" action={`/${slug}/admin/inbox/city/${encodeURIComponent(job.job_id)}`}>
-            <label for={`city-title-${job.job_id}`}>新しいプロジェクトを開く</label>
-            <input id={`city-title-${job.job_id}`} name="projectName" type="text" maxlength={100} required />
-            <input type="hidden" name="kind" value="city_request" />
-            <input type="hidden" name="year" value={new Date().getFullYear()} />
-            <button class="secondary" name="operation" value="new-project">市の依頼として開く</button>
-          </form>
-        </section>;
+  const [items, jobs, projects, groups, inquiries] = await Promise.all([
+    listInboxItems(db, ward.wardId), listJobs(db, ward.wardId, { limit: 100 }),
+    db.prepare("SELECT project_id, title AS name FROM projects WHERE ward_id = ? AND closed_at IS NULL ORDER BY created_at DESC").bind(ward.wardId).all<{ project_id: string; name: string }>(),
+    pendingMaterialGroups(db, ward.wardId),
+    db.prepare("SELECT inquiry_id, subject, received_at, answer FROM inquiry_records WHERE ward_id = ? AND kind = 'inquiry' ORDER BY received_at DESC LIMIT 30").bind(ward.wardId).all<{ inquiry_id: string; subject: string; received_at: string; answer: string }>(),
+  ]);
+  const adminJobs = jobs.filter((j) => j.via === "admin" && !j.withdrawn_at);
+  const lineRows = await Promise.all(items.map(async (item) => ({ item, job: item.job_id ? await getJob(db, ward.wardId, item.job_id) : null })));
+  const picker = (action: string, id: string, current?: string | null) => <details class="fold"><summary>{current ? "別の行事に入れる" : "進めている行事に入れる"}</summary><div>
+    {projects.results.length ? <form method="post" action={action}><label for={id}>進めている行事</label><select id={id} name="projectId" required>
+      {projects.results.map((p) => <option value={p.project_id} selected={p.project_id === current}>{p.name}</option>)}
+    </select><button class="secondary" name="operation" value="assign">この行事に入れる</button></form> : <a href={adminPath(ward, "/projects")}>新しく始める</a>}
+  </div></details>;
+  return c.html(<Layout title="届いたもの" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <a class="back" href={adminPath(ward, "/")}>最初の画面へ</a>
+    {c.req.query("error") === "input" ? <Notice error>入れる行事を選び直してください。</Notice> : null}
+    <h1>届いたもの</h1><p class="lead">AIが読んで、行事に入れました。違うときだけ直してください。分けなくてもかまいません。</p>
+    {c.req.query("n") === "assigned" ? <><Notice>行事に入れました。</Notice><section class="next"><strong>次は</strong><p>段取りから続きを進められます。</p><a class="button" href={adminPath(ward, "/")}>最初の画面を見る</a></section><p>違うときは「別の行事に入れる」から直せます。</p></> : null}
+    {c.req.query("error") === "busy" ? <Notice error>資料を行事に入れているところです。少ししてから、もう一度開いてください。</Notice> : null}
+    <section class="panel"><h2>どの行事か分からないもの</h2>
+      {groups.map((group) => <article><p><b>{group.title || group.materials[0]?.original.filename || "届いた資料"}</b></p>
+        <p class="muted">{group.title ? `${group.title}の資料のようです。` : "何の資料か分からないものです。そのままでかまいません。"}{group.materials.length}件</p>
+        <form method="post" action={adminPath(ward, "/intake/start")}><input type="hidden" name="group" value={group.key} /><button>{group.kind === "city_request" ? "市からの依頼として始める" : group.title ? `${group.title}を始める` : "このまま進める"}</button></form>
+        {group.materials.map((m) => <p><a href={adminPath(ward, `/intake/originals/${m.original.original_id}`)}>元の資料を見る: {m.original.filename || "届いた文"}</a></p>)}
+        {[...new Set(group.materials.map((m) => m.jobId))].map((id) => {
+          const item = items.find((i) => i.job_id === id);
+          return picker(adminPath(ward, item ? `/inbox/${item.item_id}` : `/inbox/city/${id}`), `pick-${id}`);
+        })}
+      </article>)}
+      {adminJobs.filter((j) => !j.project_id && j.status !== "read").map((j) => <p><a href={adminPath(ward, "/intake/received")}>{j.first_filename || "撮った写真"}: {STATUS_LABEL[j.status]}</a></p>)}
+      {lineRows.filter(({ item }) => item.disposition === "unmatched" && !groups.some((g) => g.materials.some((m) => m.jobId === item.job_id))).map(({ item, job }) => <article>
+        <p><b>{item.original_text || "届いた写真"}</b></p><p class="muted">{job ? STATUS_LABEL[job.status] : "どの行事か分かりませんでした"}</p>
+        <a href={adminPath(ward, `/inbox/${item.item_id}/original`)}>元の資料を見る</a>
+        {picker(adminPath(ward, `/inbox/${item.item_id}`), `unmatched-${item.item_id}`)}
+      </article>)}
+      {groups.length === 0 && !jobs.some((j) => !j.project_id && !j.withdrawn_at) ? <p>ありません。</p> : null}
+      <a class="quiet" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a>
+    </section>
+    <h2>役員に届いた問い合わせ</h2>
+    {inquiries.results.length ? <ul class="rows">{inquiries.results.map((q) => <li><a class="row-link" href={adminPath(ward, "/inquiries")}><b>{q.subject}</b><span>{formatJst(q.received_at)}に届きました</span>{q.answer ? <span>{q.answer}</span> : null}</a></li>)}</ul> : <p class="muted">問い合わせはありません。</p>}
+    <h2>行事に入れたもの</h2><ul class="rows">
+      {await Promise.all(adminJobs.filter((j) => j.project_id).map(async (j) => {
+        const originals = await listOriginals(db, ward.wardId, j.job_id);
+        const project = projects.results.find((p) => p.project_id === j.project_id);
+        return <li class="panel"><b>{j.first_filename || "届いた文"}</b><p class="muted">{project?.name ?? "行事"}に入れました</p>
+          {originals.map((o) => <p><a href={adminPath(ward, `/intake/originals/${o.original_id}`)}>元の資料を見る: {o.filename || "届いた文"}</a></p>)}
+          {picker(adminPath(ward, `/inbox/city/${j.job_id}`), `pick-${j.job_id}`, j.project_id)}
+        </li>;
       }))}
-      {items.map((item, index) => (
-        <section class="panel" key={item.item_id}>
-          <p><strong>{item.disposition === "matched" ? "AI が当てました" : "プロジェクト未定"}</strong></p>
-          <p>{new Date(item.received_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}</p>
-          <p>投稿者: {item.sender_display_name || "名前を取得できませんでした"}（{item.sender_label || "LINE"}）</p>
-          <p><a href={`/${slug}/admin/inbox/${encodeURIComponent(item.item_id)}/original`}>{item.original_kind === "text" ? "届いた文を開く" : "届いた写真を開く"}</a></p>
-          {item.matched_project_name ? <p>当て先: {item.matched_project_name}</p> : null}
-          {item.match_reason ? <p>{item.match_reason}</p> : null}
-          <form method="post" action={`/${slug}/admin/inbox/${encodeURIComponent(item.item_id)}`}>
-            <label for={`project-${item.item_id}`}>当て先を選び直す</label>
-            <select id={`project-${item.item_id}`} name="projectId">
-              <option value="">選んでください</option>
-              {projects.results.map((project) => <option value={project.project_id}>{project.name}</option>)}
-            </select>
-            <button class="secondary" name="operation" value="assign">選んだプロジェクトに当てる</button>
-          </form>
-          <form method="post" action={`/${slug}/admin/inbox/${encodeURIComponent(item.item_id)}`}>
-            <label for={`new-project-${item.item_id}`}>新しいプロジェクトを開く</label>
-            <input id={`new-project-${item.item_id}`} name="projectName" type="text" maxLength={100} required />
-            <label for={`new-project-kind-${item.item_id}`}>種類</label>
-            <select id={`new-project-kind-${item.item_id}`} name="kind"><option value="event">行事</option><option value="general_meeting">総会</option><option value="city_request">市の依頼</option></select>
-            <label for={`new-project-year-${item.item_id}`}>年</label><input id={`new-project-year-${item.item_id}`} name="year" type="number" min="2000" max="2100" value={new Date().getFullYear()} required />
-            <button name="operation" value="new-project">新しいプロジェクトを開く</button> {index === 0 ? <Hint text="届いた物を入れた、新しいプロジェクトを開きます。" /> : null}
-          </form>
-          <form method="post" action={`/${slug}/admin/inbox/${encodeURIComponent(item.item_id)}`}>
-            <button class="danger" name="operation" value="unrelated">関係ない物として消す</button>
-          </form>
-        </section>
-      ))}
-      <h2>関係ない物として消した数</h2>
-      <ul>{unrelated.results.map((row) => <li>{row.day}: {row.item_count} 件</li>)}</ul>
-      <p><a href={`/${slug}/admin/`}>役員画面へ戻る</a></p>
-    </Layout>,
-  );
+      {lineRows.filter(({ item }) => item.disposition === "matched").map(({ item, job }) => <li class="panel"><b>{item.original_text || "届いた写真"}</b><p class="muted">{item.sender_display_name || "役員"}がLINEで送りました。{item.matched_project_name ? `${item.matched_project_name}に入れました` : job ? STATUS_LABEL[job.status] : "どの行事か分かりませんでした"}</p>
+        <p><a href={adminPath(ward, `/inbox/${item.item_id}/original`)}>元の資料を見る</a></p>
+        {picker(adminPath(ward, `/inbox/${item.item_id}`), `pick-${item.item_id}`, job?.project_id)}
+      </li>)}
+    </ul>
+    {adminJobs.every((j) => !j.project_id) && items.length === 0 ? <p>まだありません。</p> : null}
+    <p class="muted">関係のない雑談は、AIが外しています。</p>
+    <a class="quiet" href={adminPath(ward, "/")}>最初の画面へ</a>
+  </Layout>);
 });
 
 admin.post("/inbox/city/:jobId", async (c) => {
@@ -121,19 +115,20 @@ admin.post("/inbox/city/:jobId", async (c) => {
   const operation = String(form.get("operation") ?? "assign");
   const job = await c.env.DB.prepare("SELECT via, project_id, ai_matched_at, withdrawn_at FROM jobs WHERE ward_id = ? AND job_id = ?")
     .bind(ward.wardId, jobId).first<{ via: string; project_id: string | null; ai_matched_at: string | null; withdrawn_at: string | null }>();
-  if (!job || job.via !== "admin" || (job.project_id !== null && job.ai_matched_at === null) || job.withdrawn_at !== null) return c.notFound();
+  if (!job || job.via !== "admin" || job.withdrawn_at !== null) return c.notFound();
   let projectId = String(form.get("projectId") ?? "");
   if (operation === "new-project") {
     const title = String(form.get("projectName") ?? "").trim();
     const year = Number(form.get("year"));
-    if (!title || title.length > 100 || !Number.isInteger(year) || year < 2000 || year > 2100) return c.text("入力を確かめてください。", 400);
-    const created = await createProject(c.env.DB, ward.wardId, { kind: "city_request", title, year, accountId: account.accountId });
+    const kind = String(form.get("kind") ?? "city_request");
+    if (!title || title.length > 100 || !Number.isInteger(year) || year < 2000 || year > 2100 || !PROJECT_KINDS.some((value) => value === kind)) return c.redirect(`/${ward.slug}/admin/inbox?error=input`, 303);
+    const created = await createProject(c.env.DB, ward.wardId, { kind: kind as ProjectKind, title, year, accountId: account.accountId });
     projectId = created.projectId;
   }
   if (!projectId || !(await c.env.DB.prepare("SELECT 1 AS ok FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL")
     .bind(ward.wardId, projectId).first())) return c.text("開いているプロジェクトを選んでください。", 400);
-  await assignProject(c.env, c.executionCtx, ward.wardId, jobId, projectId);
-  return c.redirect(`/${ward.slug}/admin/projects/${encodeURIComponent(projectId)}/map`, 303);
+  if (!(await assignProject(c.env, safeContext(c), ward.wardId, jobId, projectId))) return c.redirect(`/${ward.slug}/admin/inbox?error=busy`, 303);
+  return c.redirect(`/${ward.slug}/admin/inbox?n=assigned`, 303);
 });
 
 admin.get("/inbox/:itemId/original", async (c) => {
@@ -159,7 +154,8 @@ admin.post("/inbox/:itemId", async (c) => {
   const operation = form.operation;
   const itemId = c.req.param("itemId");
   if (operation === "unrelated") {
-    if (!(await withdrawJob(c.env, wardId, itemId))) return c.text("すでに処理が進んでいるため、受け箱から外せません。", 409);
+    const item = await c.env.DB.prepare("SELECT job_id FROM line_inbox_items WHERE ward_id = ? AND item_id = ?").bind(wardId, itemId).first<{ job_id: string | null }>();
+    if (!item?.job_id || !(await withdrawJob(c.env, wardId, item.job_id))) return c.redirect(`/${c.var.ward.slug}/admin/inbox?error=busy`, 303);
     await markInboxItemUnrelated(c.env.DB, wardId, itemId);
   } else if (operation === "assign") {
     const projectId = typeof form.projectId === "string" ? form.projectId : "";
@@ -169,7 +165,7 @@ admin.post("/inbox/:itemId", async (c) => {
     if (project) {
       const item = await c.env.DB.prepare("SELECT job_id FROM line_inbox_items WHERE ward_id = ? AND item_id = ?")
         .bind(wardId, itemId).first<{ job_id: string | null }>();
-      if (item?.job_id) await assignProject(c.env, c.executionCtx, wardId, item.job_id, projectId);
+      if (!item?.job_id || !(await assignProject(c.env, safeContext(c), wardId, item.job_id, projectId))) return c.redirect(`/${c.var.ward.slug}/admin/inbox?error=busy`, 303);
       await c.env.DB.prepare(`
         UPDATE line_inbox_items SET disposition = 'matched', matched_project_id = ?,
           matched_project_name = ?, match_reason = NULL WHERE ward_id = ? AND item_id = ?
@@ -183,14 +179,14 @@ admin.post("/inbox/:itemId", async (c) => {
       const created = await createProject(c.env.DB, wardId, { kind: kind as "event" | "general_meeting" | "city_request", title: projectName, year, accountId: c.var.account.accountId });
       const item = await c.env.DB.prepare("SELECT job_id FROM line_inbox_items WHERE ward_id = ? AND item_id = ?")
         .bind(wardId, itemId).first<{ job_id: string | null }>();
-      if (item?.job_id) await assignProject(c.env, c.executionCtx, wardId, item.job_id, created.projectId);
+      if (item?.job_id) await assignProject(c.env, safeContext(c), wardId, item.job_id, created.projectId);
       await c.env.DB.prepare(`
         UPDATE line_inbox_items SET disposition = 'matched', matched_project_id = ?,
           matched_project_name = ?, match_reason = NULL WHERE ward_id = ? AND item_id = ?
       `).bind(created.projectId, projectName, wardId, itemId).run();
     }
   }
-  return c.redirect(`/${c.var.ward.slug}/admin/inbox`, 303);
+  return c.redirect(`/${c.var.ward.slug}/admin/inbox?n=assigned`, 303);
 });
 
 export const line: Bundle = {

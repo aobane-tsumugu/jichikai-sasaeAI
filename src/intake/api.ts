@@ -28,6 +28,11 @@ export async function receiveOriginal(
   if (outcome.jobId && !outcome.needsModelRead && input.projectId) {
     ctx.waitUntil(dispatchProject(env, input.wardId, input.projectId).catch(logDispatchError));
   }
+  if (outcome.jobId && !outcome.needsModelRead && !input.projectId && input.via === "admin") {
+    await env.DB.prepare("UPDATE jobs SET status = 'received', read_at = NULL WHERE ward_id = ? AND job_id = ? AND status = 'read' AND project_id IS NULL")
+      .bind(input.wardId, outcome.jobId).run();
+    kickRead(env, ctx, input.wardId, outcome.jobId, deps);
+  }
   return outcome;
 }
 
@@ -65,6 +70,8 @@ export async function assignProject(
   jobId: string,
   projectId: string | null,
 ): Promise<boolean> {
+  const current = await getJob(env.DB, wardId, jobId);
+  if (current && !current.withdrawn_at && current.project_id === projectId) return true;
   const changed = await setJobProject(env.DB, wardId, jobId, projectId);
   if (changed && projectId) ctx.waitUntil(dispatchProject(env, wardId, projectId).catch(logDispatchError));
   return changed;

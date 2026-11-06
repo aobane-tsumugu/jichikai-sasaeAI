@@ -192,7 +192,7 @@ export async function resetForRetry(
   return (res.meta.changes ?? 0) > 0 ? next : null;
 }
 
-/** プロジェクトを付ける・付け替える（公式 LINE の受け箱など）。終わった物と取り下げた物は動かさない。 */
+/** プロジェクトを付ける・付け替える。繋いでいる間と取り下げた物は動かさない。 */
 export async function setJobProject(
   db: D1Database,
   wardId: string,
@@ -201,8 +201,13 @@ export async function setJobProject(
 ): Promise<boolean> {
   const res = await db
     .prepare(
-      `UPDATE jobs SET project_id = ?, updated_at = ?
-        WHERE ward_id = ? AND job_id = ? AND status IN ('received', 'reading', 'read', 'failed')`,
+      `UPDATE jobs SET project_id = ?, updated_at = ?,
+          status = CASE WHEN status IN ('done', 'attention') THEN 'read' ELSE status END,
+          session_id = CASE WHEN status IN ('done', 'attention') THEN NULL ELSE session_id END,
+          ticket_hash = CASE WHEN status IN ('done', 'attention') THEN NULL ELSE ticket_hash END,
+          finished_at = CASE WHEN status IN ('done', 'attention') THEN NULL ELSE finished_at END,
+          connect_attempt = 0
+        WHERE ward_id = ? AND job_id = ? AND status IN ('received', 'reading', 'read', 'failed', 'done', 'attention')`,
     )
     .bind(projectId, nowIso(), wardId, jobId)
     .run();

@@ -385,7 +385,7 @@ describe("画面", () => {
     const res = await request(`/${ward.slug}/admin/intake`, { headers: { cookie } }, ctx);
     expect(res.status).toBe(200);
     const html = await res.text();
-    for (const word of ["撮る", "ファイルを選ぶ", "一行の文", "送る", "入った物"]) expect(html).toContain(word);
+    for (const word of ["カメラで紙を撮る", "ファイルを選ぶ", "電話や立ち話で決まったことを書く", "送る"]) expect(html).toContain(word);
     expect(html).toContain('capture="environment"');
     // 画面に出ない言葉（スクリプトの中の変数名は除く）
     const visible = html.replace(/<script[\s\S]*?<\/script>/g, "").replace(/<[^>]+>/g, " ");
@@ -405,7 +405,7 @@ describe("画面", () => {
     const body = (await res.json()) as { ok: boolean; message: string; jobId: string };
     expect(res.status).toBe(200);
     expect(body.ok).toBe(true);
-    expect(body.message).toContain("閉じても処理は続きます");
+    expect(body.message).toContain("画面を閉じてもかまいません");
     await settle();
     expect(await getJob(env.DB, ward.wardId, body.jobId)).toMatchObject({ status: "read", via: "admin" });
     const originals = await listOriginals(env.DB, ward.wardId, body.jobId);
@@ -431,7 +431,7 @@ describe("画面", () => {
         multipart([["project_id", ""], ["text", ""], ["part", new File([bytes], "IMG.jpg", { type: "image/jpeg" })], ["part_kind", "photo"], ["part_extracted", ""]], cookie),
         ctx,
       );
-    expect(((await (await send()).json()) as { message: string }).message).toContain("受けました");
+    expect(((await (await send()).json()) as { message: string }).message).toContain("受け取りました");
     const second = (await (await send()).json()) as { ok: boolean; message: string };
     expect(second).toMatchObject({ ok: true, message: "同じ物でした。" });
     await settle();
@@ -460,13 +460,13 @@ describe("画面", () => {
     const ok = await receiveOnly(mine.ward.wardId, [photo("見える.jpg")]);
     await receiveOnly(other.ward.wardId, [photo("見えない.jpg")]);
     await runRead(env, mine.ward.wardId, ok.jobId as string);
-    const res = await request(`/${mine.ward.slug}/admin/intake`, { headers: { cookie: mine.cookie } }, ctx);
+    const res = await request(`/${mine.ward.slug}/admin/intake/received`, { headers: { cookie: mine.cookie } }, ctx);
     const html = await res.text();
     expect(html).toContain("見える.jpg");
     expect(html).not.toContain("見えない.jpg");
     expect(html).toContain("読めませんでした");
     expect(html).toContain("もう一度読む");
-    expect(html).toContain("取り下げる");
+    expect(html).toContain("送るのを取り消す");
   });
 
   it("取り下げの画面の操作", async () => {

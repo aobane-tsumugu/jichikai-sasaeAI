@@ -108,10 +108,10 @@ function readForm(html: string, path: string, sectionTitle?: string) {
 async function waitFor(name: string, project: string): Promise<boolean> {
   const until = Date.now() + 600_000;
   while (Date.now() < until) {
-    const { html } = await get(admin + "/intake?project=" + encodeURIComponent(project));
+    const { html } = await get(admin + "/intake/received?project=" + encodeURIComponent(project));
     const pos = html.indexOf(name);
     const state = pos < 0 ? html : html.slice(pos, pos + 900);
-    if (state.includes("反映しました")) return true;
+    if (state.includes("行事に入れました")) return true;
     if (state.includes("読めませんでした") || state.includes("読み取りが遅れています")) throw new Error(name + " の読み取り・反映が止まりました");
     await new Promise(r => setTimeout(r, 3000));
   }

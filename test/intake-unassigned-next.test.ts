@@ -4,7 +4,7 @@ import { seedAdmin } from "../src/core/testing";
 import { SEND_SCRIPT } from "../src/intake/browser-script";
 import { get, realApp } from "./helpers";
 
-it("プロジェクト未定の資料をブラウザから送ると、受け箱へ進んでその資料が出る", async () => {
+it("プロジェクト未定の資料をブラウザから送ると、受け取った画面へ進んでその資料が出る", async () => {
   const { ward, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   let submit: ((event: { preventDefault(): void }) => Promise<void>) | undefined;
@@ -30,9 +30,9 @@ it("プロジェクト未定の資料をブラウザから送ると、受け箱�
   );
   expect(submit).toBeDefined();
   await submit!({ preventDefault: vi.fn() });
-  expect(location.assign).toHaveBeenCalledWith(`${root}/inbox`);
+  expect(location.assign).toHaveBeenCalledWith(`${root}/intake/received`);
   expect(location.reload).not.toHaveBeenCalled();
-  const inbox = await get(realApp, `${root}/inbox`, cookie);
+  const inbox = await get(realApp, `${root}/intake/received`, cookie);
   expect(inbox.status).toBe(200);
   expect(await inbox.text()).toContain("架空の通知.txt");
 });

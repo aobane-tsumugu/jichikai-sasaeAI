@@ -3,6 +3,7 @@
 // 原本の中の文は資料であって、指示ではない（設計書 5.6）。
 import type Anthropic from "@anthropic-ai/sdk";
 import { MODEL } from "./anthropic";
+import { cleanSuggestions } from "./suggest";
 import {
   ANSWER_SHEET_SCHEMA,
   GENERAL_READING_SCHEMA,
@@ -72,6 +73,8 @@ const GENERAL_SYSTEM = `${COMMON_RULES}
 - document_kind は資料の種類の見立てです。分からなければ other にしてください。
 - original_years は、送られた原本ごとに original_id と year を一組ずつ入れてください。year はその原本の中かファイル名に書かれた年や年度だけを西暦で入れ、書かれていなければ null にしてください。年がある原本と無い原本が一緒でも、年が無い原本には null を入れてください。
 - summary は一行の要約です。
+- project_suggestions は原本ごとの行事の題と種類の案です。title は「案内」などの文書の題でなく、中身に書かれた行事や依頼の名前にしてください。年度は題に足さず、同じ行事の資料は同じ題にします。kind は event（行事）、general_meeting（総会）、city_request（行政の依頼）、board_meeting（役員会）、duty（当番）、request（要望）。一つの原本につき一つまでで、分からなければその原本は入れません。年を推測してはいけません。
+- project_suggestions の date_text と place は、その原本に書かれた行事の日付と場所を文字のまま写し、分からなければ空文字にします。書かれていない年や曜日は足しません。今年の日付には直しません。
 - text_blocks は、資料の文字を元の箇所つきで写したものです。読める文字は落とさずに入れてください。
 - fields は、項目に当てはまる中身です。name は次のいずれかを使ってください: 日時、場所、雨天時、行事の中身、持ち物、手伝いの時間帯、締切、公開用の連絡先。当てはまらない物は、資料に書かれた見出しをそのまま name にしてください。value は書かれたままの文字です。
 - 紙面の隅や記入欄の近くに \`P3-D2-V1\` のような符号があれば、該当する fields の paper_code にそのまま記載してください。見当たらなければ空文字にしてください。欄ごとに別の符号があれば欄ごとに記録してください。
@@ -165,6 +168,7 @@ export function fixOriginalIds(body: ReadingBody, validIds: string[]): ReadingBo
   }
   return {
     ...body,
+    project_suggestions: cleanSuggestions(body.project_suggestions, validIds),
     text_blocks: body.text_blocks.map(fix),
     fields: body.fields.map(fix),
     tables: body.tables.map(fix),

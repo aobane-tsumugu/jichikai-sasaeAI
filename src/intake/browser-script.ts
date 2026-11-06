@@ -250,6 +250,15 @@ export const SEND_SCRIPT = String.raw`(function (root) {
   var statusEl = document.getElementById('send-status');
   var button = document.getElementById('send-button');
 
+  [['cam', 'cam-count'], ['files', 'files-count']].forEach(function (pair) {
+    var input = document.getElementById(pair[0]);
+    var count = document.getElementById(pair[1]);
+    if (!input || !count || typeof input.addEventListener !== 'function') return;
+    input.addEventListener('change', function () {
+      count.textContent = input.files && input.files.length ? input.files.length + '件を選びました' : '';
+    });
+  });
+
   function say(message, isError) {
     statusEl.textContent = message;
     statusEl.className = isError ? 'notice error' : 'notice';

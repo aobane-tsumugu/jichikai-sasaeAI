@@ -11,6 +11,7 @@ import { createAnthropic, MODEL } from "../ai/anthropic";
 import { dispatchProject } from "../ai/session";
 import { matchProject, MATCH_NEW, MATCH_MULTIPLE, MATCH_UNRELATED } from "../ai/match";
 import { projectApi } from "../ai/project-binding";
+import { suggestProjects, SUGGEST_PACK_VERSION } from "../ai/suggest";
 import { fixOriginalIds, ReadError, readOriginals, type ReadableOriginal } from "../ai/read";
 import { lookupPaperCode } from "../print/qr";
 import { addAnswer } from "../answers/api";
@@ -100,10 +101,34 @@ async function performRead(
     const originals = (await listOriginals(env.DB, wardId, jobId)).filter(
       (o) => o.r2_path && (o.media_type.startsWith("image/") || o.media_type === "application/pdf"),
     );
+    const client = (deps?.createClient ?? ((e: Env) => createAnthropic(e, { maxRetries: 1 })))(env);
+    let direct = (await getReadings(env.DB, wardId, jobId)).find((row) => row.source === "direct");
+    let directUsage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0 };
+    if (!job.project_id && direct && "fields" in direct.body && direct.body.project_suggestions === undefined) {
+      try {
+        const directOriginals = (await listOriginals(env.DB, wardId, jobId)).filter((o) => !o.media_type.startsWith("image/") && o.media_type !== "application/pdf");
+        const suggested = await suggestProjects(client, direct.body, directOriginals);
+        direct = { ...direct, body: { ...direct.body, project_suggestions: suggested.suggestions },
+          pack_version: `${direct.pack_version}/${SUGGEST_PACK_VERSION}`, model: suggested.model };
+        directUsage = { ...suggested.usage, cache_read_input_tokens: suggested.usage.cache_read_input_tokens ?? 0 };
+        await env.DB.prepare(`UPDATE readings SET body = ?, pack_version = ?, model = ? WHERE ward_id = ? AND job_id = ? AND source = 'direct'
+          AND EXISTS (SELECT 1 FROM jobs WHERE ward_id = ? AND job_id = ? AND status = 'reading' AND attempt = ?)`)
+          .bind(JSON.stringify(direct.body), direct.pack_version, direct.model, wardId, jobId, wardId, jobId, attempt).run();
+      } catch (error) {
+        if (originals.length === 0) throw error;
+        // 写真の読みは続ける。文字の原本も残り、見立てが無くても始められる。
+        console.error("文字の資料のまとめに失敗しました", describe(error));
+      }
+    }
     if (originals.length === 0) {
-      await endRun(env.DB, run, wardId, { ok: false, error: "読む原本がありません" });
-      await failJob(env.DB, wardId, jobId, "unsupported");
-      return "failed";
+      if (!direct) throw new ReadError("読む原本がありません", "unsupported", false);
+      const placed = await finishRead(env.DB, { wardId, jobId, attempt, source: "direct", packVersion: direct.pack_version,
+        model: direct.model, body: direct.body });
+      await endRun(env.DB, run, wardId, { ok: true, usage: directUsage });
+      const latest = placed ? await getJob(env.DB, wardId, jobId) : null;
+      if (latest?.project_id) await dispatchProject(env, wardId, latest.project_id).catch((error) => console.error("繋げるの起動に失敗しました", describe(error)));
+      else if (placed) await matchUnassignedAdminJob(env, wardId, jobId, client).catch((error) => console.error("受け箱の当てに失敗しました", describe(error)));
+      return placed ? "read" : "skipped";
     }
     const bucket = new WardBucket(env.ORIGINALS, wardId);
     const readable: ReadableOriginal[] = [];
@@ -124,7 +149,6 @@ async function performRead(
       });
     }
 
-    const client = (deps?.createClient ?? ((e: Env) => createAnthropic(e, { maxRetries: 1 })))(env);
     const result = await (deps?.readImpl ?? readOriginals)(client, { kind: job.read_kind, originals: readable });
     const placed = await finishRead(env.DB, {
       wardId,
@@ -135,7 +159,7 @@ async function performRead(
       model: result.model,
       body: fixOriginalIds(result.body, readable.map((original) => original.originalId)),
     });
-    await endRun(env.DB, run, wardId, { ok: true, usage: result.usage, error: placed ? "" : "置く前に取り下げられました" });
+    await endRun(env.DB, run, wardId, { ok: true, usage: { input_tokens: result.usage.input_tokens + directUsage.input_tokens, output_tokens: result.usage.output_tokens + directUsage.output_tokens, cache_read_input_tokens: result.usage.cache_read_input_tokens + directUsage.cache_read_input_tokens }, error: placed ? "" : "置く前に取り下げられました" });
     // 読み終わった。プロジェクトが決まっていれば、繋げる順番に入る（同じプロジェクトでは一つずつ）
     // 読みの間に当て先が付いた場合も、最新の入った物から当て先を拾う。
     let latest = placed ? await getJob(env.DB, wardId, jobId) : null;
@@ -204,6 +228,9 @@ async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, 
     detail: `${project.kind} ${project.year ?? ""}`.trim(),
   }));
   const readings = await getReadings(env.DB, wardId, jobId);
+  // 複数の行事の資料を一つの行事へまとめて入れない。
+  const suggested = new Set(readings.flatMap((row) => "fields" in row.body ? (row.body.project_suggestions ?? []).map((s) => `${s.kind}:${s.title}`) : []));
+  if (suggested.size > 1) return;
   const paperCodes = readings.flatMap((reading) => {
     const body = reading.body;
     if ("rows" in body) return body.rows.map((row) => row.paper_code ?? "").filter(Boolean);
@@ -227,7 +254,7 @@ async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, 
     if (routes.every(Boolean) || routes.some(Boolean)) return;
   }
   const summary = readings.map((reading) => "summary" in reading.body ? reading.body.summary : "").filter(Boolean).join("\n").slice(0, 2000);
-  if (!summary) return;
+  if (!summary || candidates.length === 0) return;
   const result = await matchProject(client, { candidates, summary });
   const selected = candidates.find((candidate) => candidate.id === result.choice);
   if (selected) {
