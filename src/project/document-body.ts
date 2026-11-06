@@ -22,6 +22,10 @@ export function reconcileDocumentBody(previous: DocumentBody, next: DocumentBody
     if (item.content !== old.content && !replacements.has(old.content)) replacements.set(old.content, item.content);
     return true;
   });
+  // 同じ文字が別の項目にもあるとき、直す先が違えば本文全体では置き換えない。
+  const shared = new Set([...replacements.keys()].filter((content) => previous.items.some((old) =>
+    old.content === content && (items.find((item) => item.key === old.key)?.content ?? old.content) !== replacements.get(content))));
+  for (const content of shared) replacements.delete(content);
   if (replacements.size) {
     // 元の本文から一度で置き換え、入れた中身を別の項目の旧値として扱わない。
     const pattern = [...replacements.keys()].sort((a, b) => b.length - a.length)
@@ -31,13 +35,15 @@ export function reconcileDocumentBody(previous: DocumentBody, next: DocumentBody
   for (const item of items) {
     const old = previous.items.find((entry) => entry.key === item.key);
     if (!item.content.trim() || item.content === old?.content) continue;
-    // 見出しに続く確認中の欄だけを埋める。本文の別の確認中の箇所には触れない。
+    // 共通の文字は項目の見出しがある箇所だけを直す。確認中の欄も同じ形で埋める。
     const aliases: Partial<Record<ItemKey, string[]>> = {
       rain_plan: ["雨天時"], content: ["内容"], public_contact: ["問い合わせ先"],
     };
     const labels = [ITEM_LABEL[item.key], ...(aliases[item.key] ?? [])]
       .map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
-    const placeholder = new RegExp(`^([ \\t　]*(?:■[ \\t　]*)?(?:${labels})[ \\t　]*(?:[:：][ \\t　]*)?(?:\\r?\\n[ \\t　]*)?)（確認中）([ \\t　]*\\r?$)`, "gm");
+    const previousValues = ["（確認中）", ...(old && shared.has(old.content) ? [old.content] : [])]
+      .map((content) => content.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+    const placeholder = new RegExp(`^([ \\t　]*(?:■[ \\t　]*)?(?:${labels})[ \\t　]*(?:[:：][ \\t　]*)?(?:\\r?\\n[ \\t　]*)?)(?:${previousValues})([ \\t　]*\\r?$)`, "gm");
     let filled = false;
     text = text.replace(placeholder, (_match, heading: string, ending: string) => {
       filled = true;
