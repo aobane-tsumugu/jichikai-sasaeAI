@@ -50,7 +50,7 @@ async function listPublic(db: D1Database, wardId: string, projectId?: string, in
     JOIN projects p ON p.ward_id = r.ward_id AND p.project_id = r.project_id
     JOIN documents d ON d.ward_id = r.ward_id AND d.document_id = r.document_id
     JOIN document_versions v ON v.ward_id = r.ward_id AND v.version_id = r.version_id
-    WHERE r.ward_id = ?${includeLowered ? "" : " AND r.unpublished_at IS NULL AND NOT EXISTS (SELECT 1 FROM publication_records newer WHERE newer.ward_id = r.ward_id AND newer.document_id = r.document_id AND newer.version_no > r.version_no)"}${projectId ? " AND r.project_id = ?" : ""}
+    WHERE r.ward_id = ? AND v.scope = 'public'${includeLowered ? "" : " AND r.unpublished_at IS NULL AND NOT EXISTS (SELECT 1 FROM publication_records newer WHERE newer.ward_id = r.ward_id AND newer.document_id = r.document_id AND newer.version_no > r.version_no)"}${projectId ? " AND r.project_id = ?" : ""}
     ORDER BY r.published_at DESC, v.version_no DESC`;
   const statement = db.prepare(sql);
   const result = projectId ? await statement.bind(wardId, projectId).all<PublicProject>() : await statement.bind(wardId).all<PublicProject>();
