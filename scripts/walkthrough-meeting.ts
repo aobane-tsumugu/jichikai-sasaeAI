@@ -234,8 +234,11 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
       assert(page.includes(path), "公開のページに答える入口がありません");
       const answers = [["架空出席一郎", "attend", ""], ["架空委任二郎", "proxy", "架空代理花子"], ["架空委任三郎", "proxy", ""], ["架空欠席四郎", "absent", ""]];
       for (const [household, status, proxy] of answers) {
-        const form = readForm(await get(path, true), path);
-        form.values.set("household", household!); form.values.set("district", "1班");
+        const answerPage = await get(path, true);
+        const form = readForm(answerPage, path);
+        // 班の名前は区ごとに違うので、答える画面の選びから取る。
+        const district = /name="district"[^>]*value="([^"]+)"/.exec(answerPage)?.[1] ?? "";
+        form.values.set("household", household!); form.values.set("district", district);
         form.values.set("meeting_status", status!); form.values.set("proxy_name", proxy!);
         const res = await post(form.action, form.values, true);
         assert(res.ok, "Webの答えを受け付けられません");
