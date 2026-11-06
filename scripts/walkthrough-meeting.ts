@@ -76,8 +76,8 @@ export function checkMeetingMinutes(text: string, source: ReturnType<typeof meet
   assert(/遊具[^。\n]*(?:続け|継続|保留)/.test(text), "議事録で話し合いを続ける議案を確認できません");
   const sourceSentences = source.minutes.split(/[。\n]/).map(compact);
   const knownFacts = new Set([...sourceSentences, compact(source.date + "10時"), "架空の集会室"]);
-  // 見出しの行は事実ではないので照合しない。
-  const body = text.split("\n").filter((line) => !line.trim().startsWith("#")).join("\n");
+  // 見出しの行は事実ではないので照合しない。句点の無い短い行も見出しとして扱う。
+  const body = text.split("\n").filter((line) => !line.trim().startsWith("#") && (line.includes("。") || line.trim().length > 20)).join("\n");
   for (const sentence of body.split(/[。\n]/).map(compact).filter(Boolean)) {
     const fact = sentence.replace(/^(?:[-・]|\d+[.)、])/, "").replace(/^(?:日時|場所|開催日時|開催場所|議案|審議の内容|決まったこと|決定事項)[:：]/, "");
     if (/^(?:議事録|日時|場所|開催日時|開催場所|議案|審議の内容|決まったこと|決定事項)[:：]?$/.test(fact)) continue;
