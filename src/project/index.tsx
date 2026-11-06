@@ -8,17 +8,18 @@ import { getReadings, listOriginals, listJobs } from "../intake/store";
 import { materialChangeText } from "../map/material-change";
 import { createProject, getProjectState, getProjectSummary, listProjects, ProjectInputError } from "./api";
 import { answerQuestion, renameProject, ROW_REMOVED } from "./actions";
-import { PROJECT_KINDS, PROJECT_KIND_LABEL, TABLE_KEYS, type TableKey, isItemKey, DEADLINE_LABEL, ITEM_SCREEN_LABEL, TABLES, countWord, displayFieldValue, DOCUMENT_KIND_LABEL, SCOPE_LABEL, type RowData } from "./model";
+import { PROJECT_KINDS, PROJECT_KIND_LABEL, TABLE_KEYS, type TableKey, isItemKey, DEADLINE_LABEL, ITEM_SCREEN_LABEL, TABLES, countWord, rowDisplayName, displayFieldValue, DOCUMENT_KIND_LABEL, SCOPE_LABEL, type RowData } from "./model";
 import { setProjectApi } from "../ai/project-binding";
 import { agentApi } from "./agent-api";
 import { MAP_TEMPLATES } from "../map/template";
 import { daysRemaining, followupAdmin } from "./followup";
 import { questionPages, questionShort } from "./question-pages";
+import type { ProjectState } from "./types";
 import { markMaterialThisYear, unknownYearContents } from "./material-year";
 import { committeePages } from "./committee";
 
 /** 変わった所の対象を、内部の鍵ではなく画面の言葉で示す。 */
-function changeTargetLabel(kind: string, target: string): string {
+function changeTargetLabel(kind: string, target: string, state: ProjectState): string {
   if (isItemKey(target)) return ITEM_SCREEN_LABEL[target];
   if (kind === "map_task") {
     const task = Object.values(MAP_TEMPLATES).flat().find((entry) => entry.key === target);
@@ -33,7 +34,8 @@ function changeTargetLabel(kind: string, target: string): string {
       for (const field of fields) if (field.def.type === "enum" && field.def.values.includes(part)) return field.def.labels[part] ?? part;
       return /^\d{4}-\d{2}-\d{2}$/.test(part) ? shortDate(part) : part;
     });
-    return `${TABLES[table as TableKey].label}　${words.join(" ")}`;
+    const row = state.tables[table as TableKey].find((entry) => entry.matchKey === target.slice(at + 1));
+    return `${TABLES[table as TableKey].label}　${row ? rowDisplayName(table as TableKey, row.data) : words.join(" ")}`;
   }
   return target.replaceAll("|", " ");
 }
@@ -86,7 +88,7 @@ admin.get("/projects/today", async (c) => {
     }
     const state = await getProjectState(c.env.DB, ward.wardId, project.projectId);
     if (!state) continue;
-    for (const task of state.mapTasks.filter((t) => t.progress !== "done" && t.periodEnd)) {
+    for (const task of state.mapTasks.filter((t) => t.progress !== "done" && t.periodEnd && t.taskKey !== "day")) {
       entries.push({ date: task.periodEnd, until: true, projectId: project.projectId, project: project.title, label: task.name, detail: "", href: `/projects/${project.projectId}/map/${task.taskId}` });
     }
     for (const question of state.questions.filter((q) => q.state === "open" || q.state === "later")) {
@@ -121,7 +123,7 @@ admin.post("/projects", async (c) => {
 
 admin.get("/projects/:projectId", async (c) => {
   const { ward } = c.var; const projectId = c.req.param("projectId");
-  const [project, state, jobs, changes] = await Promise.all([getProjectSummary(c.env.DB, ward.wardId, projectId), getProjectState(c.env.DB, ward.wardId, projectId), listJobs(c.env.DB, ward.wardId, { projectId, limit: 40 }), c.env.DB.prepare("SELECT kind, target, status, reason, source_locator FROM project_changes WHERE ward_id = ? AND project_id = ? ORDER BY created_at DESC LIMIT 30").bind(ward.wardId, projectId).all<{ kind: string; target: string; status: string; reason: string | null; source_locator: string | null }>()]);
+  const [project, state, jobs, changes] = await Promise.all([getProjectSummary(c.env.DB, ward.wardId, projectId), getProjectState(c.env.DB, ward.wardId, projectId), listJobs(c.env.DB, ward.wardId, { projectId, limit: 40 }), c.env.DB.prepare("SELECT kind, target, status, reason, source_locator, source_kind FROM project_changes WHERE ward_id = ? AND project_id = ? ORDER BY created_at DESC LIMIT 30").bind(ward.wardId, projectId).all<{ kind: string; target: string; status: string; reason: string | null; source_locator: string | null; source_kind: string | null }>()]);
   if (!project || !state) return c.notFound();
   const unknown = unknownYearContents(state);
   const unknownOriginalIds = new Set([...unknown.items, ...unknown.rows].map((value) => value.source.ref));
@@ -156,7 +158,7 @@ admin.get("/projects/:projectId", async (c) => {
     {jobs.length === 0 ? <p>まだ資料は入っていません。</p> : null}
     <a class="quiet" href={adminPath(ward, `/projects/${projectId}/map`)}>段取りで、変わった仕事を見る</a>
     <h2>資料から変わったところ</h2>
-    <ul class="rows">{changes.results.map((change) => <li class="panel"><b>{changeTargetLabel(change.kind, change.target)}</b><p>{change.status === "applied" ? change.reason === ROW_REMOVED ? "外しました" : "今年の内容に入れました" : change.status === "same" ? "同じでした" : change.status === "conflict" ? "食い違いとして並びました" : change.status === "kept" ? "今の内容を残しました" : change.status === "held" ? "確認待ちです" : change.status === "dropped" ? `取り込めませんでした${change.reason ? `: ${change.reason}` : ""}` : "記録しました"}{change.source_locator ? `（${change.source_locator}）` : ""}</p></li>)}</ul>
+    <ul class="rows">{changes.results.map((change) => <li class="panel"><b>{changeTargetLabel(change.kind, change.target, state)}</b><p>{change.status === "applied" ? change.reason === ROW_REMOVED ? "外しました" : change.kind === "map_task" ? "済みにしました" : "今年の内容に入れました" : change.status === "same" ? "同じでした" : change.status === "conflict" ? "食い違いとして並びました" : change.status === "kept" ? "今の内容を残しました" : change.status === "held" ? "確認待ちです" : change.status === "dropped" ? `取り込めませんでした${change.reason ? `: ${change.reason}` : ""}` : "記録しました"}{change.source_locator && change.source_kind === "original" ? `（${change.source_locator}）` : ""}</p></li>)}</ul>
     {changes.results.length === 0 ? <p>まだ変わったところはありません。</p> : null}
     <h2>今年の内容</h2>
     <p class="lead">今年の内容がない項目には、去年までの資料を参考として並べます。</p>

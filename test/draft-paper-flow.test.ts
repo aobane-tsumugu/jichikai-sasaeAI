@@ -170,7 +170,7 @@ it("資料から当番の下書きを行にし、役員が直して紙と実行�
   try {
     const announcement = await latest("announcement");
     expect((await postForm(realApp, `${root}/publish/${id}/send`, { ...fields(announcement), lineDelivery: "send" }, cookie, bindings)).status).toBe(303);
-    expect(messages).toEqual([`${title} 案内\nhttps://example.test/${ward.slug}/p/${id}`]);
+    expect(messages).toEqual([`${title}のご案内\nhttps://example.test/${ward.slug}/p/${id}`]);
     expect(paperHeading(title, `${title}案内`)).toBe(`${title}案内`);
     const recordedDate = (await state()).items.find((item) => item.key === "date_time")?.current;
     expect(recordedDate).toMatchObject({ content: date, source: { kind: "person" } });

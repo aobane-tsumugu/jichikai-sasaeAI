@@ -18,7 +18,7 @@ import { applyChange } from "../project/apply";
 import { recordPublishedItems } from "../project/actions";
 import { collectsAttendance, paperHeading, withoutTitleLine } from "../project/heading";
 import { draftTaskKeys } from "../map/template";
-import { documentBodyCheckMessage, PENDING, withoutPending, writtenInText } from "../project/document-body";
+import { documentBodyCheckMessage, PENDING, plainText, withoutPending, writtenInText } from "../project/document-body";
 import { MaterialsTable } from "../space/materials";
 import { currentPublicationTables, publicationTablesDiffer, publicationTablesSql } from "../space/publication-tables";
 
@@ -468,7 +468,7 @@ export function articleParagraphs(body: string, title?: { project: string; docum
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return collectText(parsed);
   const { text, items } = parsed as { text?: unknown; items?: unknown };
   if (typeof text !== "string" || !Array.isArray(items)) return collectText(parsed);
-  const pending = withoutPending(text);
+  const pending = withoutPending(plainText(text));
   const readable = title ? withoutTitleLine(pending, title.project, title.document) : pending;
   const paragraphs = readable.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
   // 知らせは本文が正。変更前の場所を項目から足し戻すと、新旧が並ぶ。

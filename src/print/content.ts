@@ -34,7 +34,8 @@ export function paperHelperSlots(raw: string): string {
     const last = new RegExp(`^(.+?)[\\s]+${role}$`).exec(value);
     const task = first?.[1] ?? last?.[2];
     const time = first?.[2] ?? last?.[1];
-    return task && time ? `${time}（${task === "準備と設営" ? "設営" : task}）` : value;
+    // 時刻の形がある時だけ、持ち場を後ろに添える。
+    return task && time && /[0-9０-９時]/.test(time) ? `${time}（${task === "準備と設営" ? "設営" : task}）` : value;
   }).filter(Boolean).join("、");
 }
 

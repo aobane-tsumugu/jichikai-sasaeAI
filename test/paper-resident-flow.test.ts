@@ -47,7 +47,7 @@ it("資料も班もない一年目に案内を配り、紙だけで返す相手�
     };
     const first = await publish(FIRST_SLICE.draftText);
     const initial = await read(`${first}/announcement`);
-    expect(initial).toContain(`<h1>${FIRST_SLICE.nextYearTitle} 案内</h1>`);
+    expect(initial).toContain(`<h1>${FIRST_SLICE.nextYearTitle}のご案内</h1>`);
     expect(initial.match(/class="sheet"/g)).toHaveLength(1);
     expect(initial).toContain("ここで切り取る");
     for (const path of ["announcement", "answer"]) {
@@ -96,7 +96,7 @@ it("資料も班もない一年目に案内を配り、紙だけで返す相手�
     expect(poster).toContain(FIRST_SLICE.firstOfficer);
     expect(poster).toContain("2026年9月10日に配りました");
     const pack = getDraftPack("announcement");
-    expect(pack.version).toBe("draft-announcement@9");
+    expect(pack.version).toBe("draft-announcement@10");
     expect(pack.instruction).toContain("班長か役員に渡してください");
     expect(pack.instruction).toContain("ない時間帯、締切、連絡先を作らないでください");
   } finally {

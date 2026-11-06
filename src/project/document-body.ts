@@ -3,6 +3,12 @@ import { ITEM_LABEL, isItemKey, type ItemKey } from "./model";
 /** 下書きで、分からない項目に入れておく印。配る紙とページには出さない。 */
 export const PENDING = "（確認中）";
 
+/** AI の文に混ざった書式の記号を、紙とページで読める形にする。 */
+export function plainText(text: string): string {
+  return text.replace(/\r\n/g, "\n").split("\n").map((line) => line
+    .replace(/^\s*#{1,6}\s+/, "■ ").replace(/^\s*[-*]\s+/, "・").replace(/\*\*([^*]+)\*\*/g, "$1")).join("\n");
+}
+
 /** 配る本文から、まだ決まっていない所を外す。見出しと印だけの段は見出しごと、文の中なら文ごと外す。 */
 export function withoutPending(text: string): string {
   const lines = text.replace(/\r\n/g, "\n").split("\n");

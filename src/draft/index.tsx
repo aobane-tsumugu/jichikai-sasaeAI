@@ -99,7 +99,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     status: task.status,
     message: taskLabel[task.status] ?? "AIの様子が分かりません。ここで書いて保存できます",
   } : null;
-  const versions = document ? await c.env.DB.prepare("SELECT version_no, body, created_at, origin FROM document_versions WHERE ward_id = ? AND project_id = ? AND document_id = ? ORDER BY version_no DESC LIMIT 8").bind(ward.wardId, id, document.documentId).all<{ version_no: number; body: string; created_at: string; origin: string }>() : { results: [] };
+  const versions = document ? await c.env.DB.prepare("SELECT version_no, body, created_at, origin, published_at FROM document_versions WHERE ward_id = ? AND project_id = ? AND document_id = ? ORDER BY version_no DESC LIMIT 8").bind(ward.wardId, id, document.documentId).all<{ version_no: number; body: string; created_at: string; origin: string; published_at: string | null }>() : { results: [] };
   if (!body.text && !minutes) body.text = body.items.find((item) => item.key === "content")?.content ?? "";
   const originals = await c.env.DB.prepare(`SELECT o.original_id, o.filename FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
     WHERE o.ward_id = ? AND j.project_id = ? AND o.withdrawn_at IS NULL`).bind(ward.wardId, id).all<{ original_id: string; filename: string }>();
@@ -117,7 +117,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     const conflict = state.questions.find((question) => question.kind === "conflict" && question.target === key && (question.state === "open" || question.state === "later"));
     return <div class="field"><label for={`item-${key}`}>{labels[key] ?? ITEM_LABEL[key]}</label>
       {key === "helper_slots" ? <textarea id={`item-${key}`} name={`item_${key}`} rows={3} maxlength={2000}>{value}</textarea> : <input id={`item-${key}`} name={`item_${key}`} value={value} maxlength={2000} />}
-      {original ? <p class="help-text">{original.filename || "送った資料"}{source?.locator ? `（${source.locator}）` : ""}から入れました。{previous ? `去年は${previous.content}でした。` : ""}</p> : draftItem?.source ? <p class="help-text">{draftItem.source}から入れました。今年も同じか見てください。</p> : previous ? <p class="help-text">去年は{previous.content}でした。</p> : null}
+      {original ? <p class="help-text">{original.filename || "送った資料"}{source?.locator ? `（${source.locator}）` : ""}から入れました。{previous ? `去年は${previous.content}でした。` : ""}</p> : draftItem?.source ? <p class="help-text">{draftItem.source}から入れました。{draftItem.source.startsWith("今年") ? "" : "今年も同じか見てください。"}</p> : previous ? <p class="help-text">去年は{previous.content}でした。</p> : null}
       {original ? <a class="quiet" href={adminPath(ward, `/intake/originals/${original.original_id}`)}>元の資料を見る</a> : null}
       {conflict ? <p><a class="quiet" href={adminPath(ward, `/projects/${id}/questions/${conflict.questionId}/compare?from=draft`)}>資料によって違います。見比べる</a></p> : null}
       {key === "public_contact" ? <p class="help-text">だれでも読める案内に出ます。</p> : null}
@@ -137,7 +137,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     {c.req.query("notice") === "saved" ? <section class="next"><strong>保存しました。まだ配っていません</strong><p>前の下書きにも戻せます。</p>{scope !== "staff" ? <a class="button secondary" href={adminPath(ward, `/publish/${id}/confirm?kind=${kindRaw}`)}>配る画面へ</a> : null}<a class="quiet" href="#previous-drafts">前の下書きに戻す</a></section> : null}
     {bodyCheck ? <Notice>{bodyCheck}</Notice> : null}
     {c.req.query("notice") === "restored" ? <section class="next"><strong>前の下書きに戻しました</strong><p>今の下書きも残ります。直して保存できます。</p></section> : null}
-    {taskNotice ? <Notice><span data-ai-status={taskNotice.status}>{taskNotice.message}</span>{taskNotice.status === "done" ? "" : " 画面を閉じても続きます。ここで書いて保存することもできます。"}</Notice> : null}
+    {taskNotice && !(taskNotice.status === "done" && (project.closedAt || versions.results[0]?.published_at)) ? <Notice><span data-ai-status={taskNotice.status}>{taskNotice.message}</span>{taskNotice.status === "done" ? "" : " 画面を閉じても続きます。ここで書いて保存することもできます。"}</Notice> : null}
     {document?.stale ? <div class="notice warn"><strong>新しい資料が届きました</strong><p>このまま直して配れます。</p><a class="quiet" href="#redo">新しい資料を入れて作り直す</a></div> : null}
     {project.closedAt ? <Notice>この行事は閉じました。もう一度開くと下書きを直せます。</Notice> : null}
     <MeetingMaterialsView ward={ward} materials={meetingMaterials} />

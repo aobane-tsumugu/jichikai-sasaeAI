@@ -213,8 +213,8 @@ admin.get("/archive/:projectId", async (c) => {
     total.helpers += answer.helperName ? 1 : 0;
     totals.set(answer.district, total);
   }
-  return c.html(<AdminPage ward={ward} account={c.var.account} title={`${project.year}年${project.title}の記録`} back={{ href: adminPath(ward, "/archive"), label: "← 記録の一覧へ" }}>
-    <h1>{project.year}年{project.title}の記録</h1><p class="lead">去年の動きを読めます。ここから新しい年の準備を始められます。</p>
+  return c.html(<AdminPage ward={ward} account={c.var.account} title={`${project.year}年 ${project.title}の記録`} back={{ href: adminPath(ward, "/archive"), label: "← 記録の一覧へ" }}>
+    <h1>{project.year}年 {project.title}の記録</h1><p class="lead">去年の動きを読めます。ここから新しい年の準備を始められます。</p>
     <div class="action-links"><a class="button" href={`${root}?view=seed`}>これをもとに新しく始める</a></div>
     <div class="record-split"><section>
     <h2>段取り</h2>{map.results?.map((task) => <section class="panel"><h3>{task.name}</h3><p>{formatDateText(task.period)} / {MAP_PROGRESS_LABEL[task.progress as MapProgress] ?? "これから"}</p>

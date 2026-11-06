@@ -5,7 +5,7 @@ import { PENDING, withoutPending, writtenInText } from "../src/project/document-
 import { saveDocument } from "../src/project/actions";
 import { createProject } from "../src/project/api";
 import { withoutTitleLine } from "../src/project/heading";
-import { paperGive } from "../src/print/content";
+import { paperGive, paperHelperSlots } from "../src/print/content";
 import { articleParagraphs } from "../src/publish";
 import { get, realApp } from "./helpers";
 
@@ -60,3 +60,9 @@ it("中身の無くなった見出しを残さず、日付は読める形で出�
   expect(articleParagraphs(JSON.stringify({ text: "架空の文です。", items: [{ key: "due", content: "2026-10-09" }] })).join("")).toContain("10月9日");
   expect(articleParagraphs(JSON.stringify({ text: "架空の文です。", items: [{ key: "place", content: "公民館前の広場" }] }), undefined, "announcement", ["place"])).toEqual(["架空の文です。"]);
 });
+
+it("AIの文に混ざった書式の記号を、読める形にする", () => {
+  expect(articleParagraphs(JSON.stringify({ text: "## いつ\n- 午前\n- 午後\n\n**大事**です。", items: [] }))).toEqual(["■ いつ\n・午前\n・午後", "大事です。"]);
+  expect(paperHelperSlotsCheck()).toBe("設営 受付 模擬店 片付け");
+});
+const paperHelperSlotsCheck = () => paperHelperSlots("設営 受付 模擬店 片付け");

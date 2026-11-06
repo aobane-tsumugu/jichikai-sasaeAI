@@ -1,5 +1,5 @@
 import { formatDateText } from "../../core/time";
-import { withoutPending, writtenInText } from "../../project/document-body";
+import { plainText, withoutPending, writtenInText } from "../../project/document-body";
 import { collectsAttendance, withoutTitleLine } from "../../project/heading";
 import { labelsFromBody } from "../../answers/counts";
 import { getAnswerLabels } from "../../settings/answer-labels";
@@ -166,13 +166,13 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   const baseUrl = c.env.PUBLIC_BASE_URL || new URL(c.req.url).origin;
   const back = adminPath(ward, `/print/${projectId}/${documentId}/${versionNo}`);
   const due = paperDeadline(await getAnswerDeadline(c.env.DB, ward.wardId, projectId) || publishedItem(row.body, "due"));
-  const contact = (await getPublicContact(c.env.DB, ward.wardId)).trim();
+  const contact = (publishedItem(row.body, "public_contact") || await getPublicContact(c.env.DB, ward.wardId)).trim();
   const distributed = paperDate(row.published_at);
   const copies = paperCopies(row.distribution);
   if (kind === "poster") {
     if (row.scope !== "public") return c.notFound();
     const wardUrl = `${baseUrl.replace(/\/+$/, "")}/${encodeURIComponent(ward.slug)}/`;
-    return c.html(<PosterPage withAnswer={withAnswer} generalMeeting={row.project_kind === "general_meeting"} title={paperHeading(row.title, row.document_title)} body={row.body} wardUrl={wardUrl} due={due} contact={contact} distributed={distributed} back={back} copies={copies} />);
+    return c.html(<PosterPage wardName={ward.name} withAnswer={withAnswer} generalMeeting={row.project_kind === "general_meeting"} title={paperHeading(row.title, row.document_title)} body={row.body} wardUrl={wardUrl} due={due} contact={contact} distributed={distributed} back={back} copies={copies} />);
   }
   const squads = await getSquads(c.env.DB, ward.wardId);
   const paperSquads = squads.length ? squads : [""];
@@ -276,7 +276,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
         {published("layout").length ? <RowsTable table="layout" rows={published("layout")} paperCode={paperCode} /> : null}
         {published("committee").length ? <RowsTable table="committee" rows={published("committee")} paperCode={paperCode} /> : null}
       </>}
-      <div class="field-box" style="min-height:30mm">変わったこと、メモ　<span>（当日書いて、紙の番号と一緒に撮って送れます）</span></div>
+      <div class="field-box" style="min-height:30mm;font-weight:400">変わったこと、メモ　<span>（当日書いて、紙の番号と一緒に撮って送れます）</span></div>
       {contact ? <p>分からないときは　{contact}</p> : null}
     </Sheet> : null}
   </PrintDocument>);
@@ -321,7 +321,7 @@ export function PaperBody({ body, project, title, kind, itemTable = true }: { bo
   let value: unknown;
   try { value = JSON.parse(body); } catch { return <ArticleBody body={body} />; }
   if (!value || typeof value !== "object" || !("text" in value) || typeof value.text !== "string") return <ArticleBody body={body} />;
-  const pending = withoutPending(value.text);
+  const pending = withoutPending(plainText(value.text));
   const text = project !== undefined && title !== undefined ? withoutTitleLine(pending, project, title) : pending;
   const names: Record<string, string> = { date_time: "いつ", place: "どこで", rain_plan: "雨のとき", content: "内容", belongings: "持ち物", helper_slots: "手伝い", due: "答えの締切", public_contact: "連絡先" };
   // 知らせは本文が正。本文があれば、項目の表を足さない。

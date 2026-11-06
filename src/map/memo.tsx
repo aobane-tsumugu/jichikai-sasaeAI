@@ -90,7 +90,7 @@ memoAdmin.get("/ledger", async (c) => {
   const projects = await listProjects(c.env.DB, ward.wardId, { includeClosed: true });
   return c.html(<Layout title="運営メモ" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a><h1>運営メモ</h1><p class="lead">行事の段取りから、費用や来年のためのメモを開けます。</p>
-    {projects.length ? <ul class="rows">{projects.map((project) => <li><a class="row-link" href={adminPath(ward, `/projects/${project.projectId}/map`)}><b>{project.title}の段取り</b></a></li>)}</ul> : <p>行事はまだありません。最初の画面から始められます。</p>}
+    {projects.length ? <ul class="rows">{projects.map((project) => <li><a class="row-link" href={adminPath(ward, `/projects/${project.projectId}/ledger`)}><b>{project.title}の運営メモ</b></a></li>)}</ul> : <p>行事はまだありません。最初の画面から始められます。</p>}
   </Layout>);
 });
 
@@ -218,9 +218,10 @@ memoAdmin.get("/projects/:projectId/ledger", async (c) => {
   const unknownSponsors = sponsors.filter((row) => typeof row.data.amount !== "number").map((row) => row.name);
   const renderRows = (entries: MemoRow[]) => <ul class="rows">{entries.map((row) => <li><a class="row-link" href={adminPath(ward, rowPath(id, row.key))}>
     <b>{row.name}{row.data.counterpart && row.data.what ? `　${row.data.counterpart}` : ""}</b>
-    <span>{typeof row.data.amount === "number" ? yen(row.data.amount) : row.data.counterpart || row.data.note ? "額の情報なし" : "情報なし"}{row.data.date ? `　${formatDateText(String(row.data.date))}` : ""}</span>
+    <span>{typeof row.data.amount === "number" ? yen(row.data.amount) : row.sponsor || row.data.counterpart || row.data.note ? "額の情報なし" : "情報なし"}{row.data.date ? `　${formatDateText(String(row.data.date))}` : ""}</span>
     {row.data.note ? <span>メモ: {row.data.note}</span> : row.hint ? <span>{row.hint}</span> : null}
-    {row.reference ? <span>{row.reference.refYear ? `${row.reference.refYear}年` : "過去"}の額: {typeof row.reference.data.amount === "number" ? yen(row.reference.data.amount) : "情報なし"}{row.reference.data.note ? `　メモ: ${shortNote(String(row.reference.data.note))}` : ""}</span> : null}
+    {row.reference && typeof row.reference.data.amount === "number" ? <span>{row.reference.refYear ? `${row.reference.refYear}年` : "過去"}の額: {yen(row.reference.data.amount)}</span> : null}
+    {row.reference?.data.note ? <span>{row.reference.refYear ? `${row.reference.refYear}年` : "過去"}のメモ: {shortNote(String(row.reference.data.note))}</span> : null}
   </a></li>)}</ul>;
   return c.html(<Layout title="運営メモ" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {state.project.title}の段取りへ</a><h1>{state.project.title}の運営メモ</h1>

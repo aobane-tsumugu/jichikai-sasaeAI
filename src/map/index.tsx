@@ -64,7 +64,7 @@ admin.get("/projects/:projectId/map", async (c) => {
         {tasks.length ? <div class="map" style={`--today: ${calendar.position(today)}`}>
           {calendar.dated ? <div class="map-months"><span style={`grid-template-columns:${calendar.months.map((month) => `${month.days}fr`).join(" ")}`}>{calendar.months.map((month) => <i>{month.label}</i>)}</span></div> : null}
           <ol class="map-list">{tasks.map((task) => {
-            const current = task.progress !== "done" && (!task.periodStart || task.periodStart <= today) && (!task.periodEnd || task.periodEnd >= today);
+            const current = task.progress !== "done" && !!(task.periodStart || task.periodEnd) && (!task.periodStart || task.periodStart <= today) && (!task.periodEnd || task.periodEnd >= today);
             const just = task.taskId === c.req.query("changed") && task.progress === "done";
             const owner = seats.results.find((seat) => seat.seat_id === task.seatId)?.title;
             return <li><a class={`map-row${task.progress === "done" ? " done" : current ? " now" : ""}${just ? " just" : ""}`} href={adminPath(ward, taskUrl(task))}>
@@ -75,7 +75,7 @@ admin.get("/projects/:projectId/map", async (c) => {
           {calendar.dated && today >= calendar.first && today <= calendar.last ? <div class="map-today"><span>今日</span></div> : null}
         </div> : <p>仕事はまだありません。下の「仕事を足す、外した仕事を戻す」から足せます。</p>}
       </section><aside>
-        <ul class="rows"><li><a class="row-link" href={adminPath(ward, `/projects/${id}/questions`)}><b>{questions.length ? `質問が${countWord(questions.length)}あります` : "質問はありません"}</b><span>答えなくても配れます。</span></a></li></ul>
+        <ul class="rows"><li><a class="row-link" href={adminPath(ward, `/projects/${id}/questions`)}><b>{questions.length ? `質問が${countWord(questions.length)}あります` : "質問はありません"}</b><span>{tasks.some((task) => task.taskKey === "announcement" && task.progress === "done") ? "答えなくても進められます。" : "答えなくても配れます。"}</span></a></li></ul>
         <h2>最近届いた資料</h2>
         {materials.results.length ? <ul class="rows">{materials.results.slice(0, 3).map((material) => <li><a class="row-link" href={adminPath(ward, `/intake/originals/${material.original_id}`)}><b>{material.filename || "書いたこと"}</b><span>{materialChangeText(state, material.original_id) || (material.status === "done" ? "読み終わりました。届いた資料で内容を見られます" : material.status === "failed" ? "読めませんでした。届いた資料から読み直せます" : "読み取りを進めています")}</span></a></li>)}</ul> : <p>資料はまだ届いていません。</p>}
         {!project.closedAt ? <details class="fold"><summary>仕事を足す、外した仕事を戻す</summary><div>
