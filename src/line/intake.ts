@@ -5,6 +5,7 @@ import { assignProject as assignIntakeProject, receiveOriginal as receiveIntakeO
 import type { Waitable } from "../intake/types";
 import type { Env } from "../env";
 import { addAnswer, getRoster } from "../answers/api";
+import { meetingAnswerFromLine } from "../answers/meeting";
 import { quickCheckPhotos } from "../intake/photo-check";
 import { receive, type ReceiveInput } from "../intake/receive";
 import { runRead } from "../intake/pipeline";
@@ -46,8 +47,19 @@ export interface LineIntakePorts {
 
 async function saveLineAnswer(db: D1Database, wardId: string, projectId: string, original: LineOriginal, jobId: string): Promise<void> {
   const text = original.text ?? "";
+  const project = await db.prepare("SELECT kind FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL")
+    .bind(wardId, projectId).first<{ kind: string }>();
+  if (!project) return;
+  const meeting = project.kind === "general_meeting";
+  const meetingAnswer = meeting ? meetingAnswerFromLine(text) : null;
+  if (meeting && !meetingAnswer) return;
+  const statedName = (meeting
+    ? /^\s*([^、。\n]{1,120}?)(?:です(?=[\s、。\n]|$)|家(?=[はがも\s、。:：\n]|$))/
+    : /^\s*([^\s、。\n]{1,40}?)(?:です(?=[\s、。\n]|$)|家(?=[はがも\s、。:：\n]|$))/).exec(text)?.[1]?.trim();
   const roster = await getRoster(db, wardId);
-  const matches = roster.filter((entry) => text.includes(entry.household)).sort((a, b) => b.household.length - a.household.length);
+  // 総会で名乗っているときは、委任する相手を答えた世帯として拾わない。
+  const identityText = meeting && statedName ? statedName : text;
+  const matches = roster.filter((entry) => identityText.includes(entry.household)).sort((a, b) => b.household.length - a.household.length);
   let candidates = matches.filter((entry) => entry.household.length === matches[0]?.household.length);
   const namedDistricts = candidates.filter((entry) => text.includes(entry.district)).sort((a, b) => b.district.length - a.district.length);
   if (namedDistricts.length) candidates = namedDistricts.filter((entry) => entry.district.length === namedDistricts[0]!.district.length);
@@ -61,15 +73,21 @@ async function saveLineAnswer(db: D1Database, wardId: string, projectId: string,
   const seniors = /(?:高齢(?:の方|者)?|シニア)\s*(\d+)\s*人/.exec(countText);
   const total = /(?:来場(?:は|が)?\s*)?(\d+)\s*人/.exec(countText);
   const peopleCount = notAttending ? 0 : adults || children || seniors ? Number(adults?.[1] ?? 0) + Number(children?.[1] ?? 0) + Number(seniors?.[1] ?? 0) : Number(total?.[1]);
-  if (!Number.isInteger(peopleCount) || peopleCount < 0) return;
+  if (!meeting && (!Number.isInteger(peopleCount) || peopleCount < 0)) return;
   const sourceOriginal = await db.prepare("SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ? AND withdrawn_at IS NULL ORDER BY position LIMIT 1")
     .bind(wardId, jobId).first<{ original_id: string }>();
   const helperPhrase = /([^。\n]{1,40}?)(?:なら|は)(?:手伝え|手伝い|手伝)/.exec(text)?.[1]?.trim() ?? "";
-  const statedName = /^\s*([^\s、。\n]{1,40}?)(?:です(?=[\s、。\n]|$)|家(?=[はがも\s、。:：\n]|$))/.exec(text)?.[1];
   // 「大人1人です」のように、人数だけを述べた文を名前として扱わない。
-  const nameIsCount = statedName !== undefined && [adults, children, seniors, total]
-    .some((count) => count?.[0] === statedName.normalize("NFKC"));
+  const nameIsCount = statedName !== undefined && ([adults, children, seniors, total]
+    .some((count) => count?.[0] === statedName.normalize("NFKC")) || (meeting && /^(?:出席|欠席|委任)$/.test(statedName)));
   const name = household?.household ?? (statedName && !nameIsCount ? statedName : matches[0]?.household ?? "名前の分からない答え");
+  if (meetingAnswer) {
+    await addAnswer(db, wardId, {
+      projectId, household: name, district: household?.district ?? "", peopleCount: 0,
+      ...meetingAnswer, source: "line", ...(sourceOriginal ? { originalId: sourceOriginal.original_id } : {}),
+    });
+    return;
+  }
   await addAnswer(db, wardId, {
     projectId,
     household: name,
