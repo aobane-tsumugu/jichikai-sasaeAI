@@ -1,6 +1,7 @@
 import { CRON } from "../core/cron";
 import { WardBucket } from "../core/storage";
 import type { Env } from "../env";
+import { CONTACT_WARD } from "../contact/store";
 
 /** 区の記録の扱い。文字列は一覧から外す理由。並びは外部キーの親から子。 */
 export interface WardTablePolicy {
@@ -94,6 +95,17 @@ export async function writeDailyWardSnapshots(env: Env, now = new Date()): Promi
     });
     saved += 1;
   }
+  // 提供側の受付は実在する区に属さないため、区の一覧とは別に写す。
+  const tables: Record<string, unknown[]> = {};
+  for (const table of ["provider_contacts", "provider_contact_messages", "provider_contact_throttle"]) {
+    const rows = await env.DB.prepare(`SELECT * FROM ${table} WHERE ward_id = ?`).bind(CONTACT_WARD).all<Record<string, unknown>>();
+    tables[table] = rows.results;
+  }
+  await new WardBucket(env.ORIGINALS, CONTACT_WARD).put(`snapshots/daily/${day}.json`,
+    JSON.stringify({ format: 1, wardId: CONTACT_WARD, capturedAt: now.toISOString(), tables }), {
+      httpMetadata: { contentType: "application/json; charset=utf-8" },
+    });
+  saved += 1;
   return saved;
 }
 

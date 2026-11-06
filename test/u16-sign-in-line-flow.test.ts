@@ -72,11 +72,21 @@ it("リンクを出し直してもLINE・メール・端末を保ち、メール
     expect(requests).toHaveLength(0);
     expect((await postForm(realApp, `${root}/sign-in/line/remove`, {}, cookie)).status).toBe(404);
 
-    expect((await postForm(realApp, "/contact", { ...contactFixture, kind: "access", reach: "" }, undefined, runtime)).status).toBe(400);
-    const noMail = await postForm(realApp, "/contact", { ...contactFixture, kind: "access" }, undefined, opsEnv);
+    const contactInput = async (bindings: typeof env) => {
+      const page = await get(realApp, "/contact", undefined, bindings);
+      expect(page.status).toBe(200);
+      const submissionId = /name="submission_id" value="([^"]+)"/.exec(await page.text())?.[1];
+      expect(submissionId).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      if (!submissionId) throw new Error("問い合わせの送信番号がありません");
+      return { ...contactFixture, kind: "access", submission_id: submissionId };
+    };
+    const missingReach = await postForm(realApp, "/contact", { ...await contactInput(runtime), reach: "" }, undefined, runtime);
+    expect(missingReach.status).toBe(400);
+    expect(await missingReach.text()).toContain("「メールアドレス」に今使えるメールアドレスを200文字までで入れてください。");
+    const noMail = await postForm(realApp, "/contact", await contactInput(opsEnv), undefined, opsEnv);
     expect(noMail.status).toBe(201);
     expect(await noMail.text()).toContain("この画面を閉じないでください");
-    const contact = await postForm(realApp, "/contact", { ...contactFixture, kind: "access" }, undefined, runtime);
+    const contact = await postForm(realApp, "/contact", await contactInput(runtime), undefined, runtime);
     expect(contact.status).toBe(201);
     expect(mail).toHaveLength(1);
     const threadPath = new URL(mail[0]!.text.trim().split("\n").at(-1)!).pathname;

@@ -44,7 +44,7 @@ export function parsePaperCode(value: string): PaperCode | null {
   return { project, document, version };
 }
 
-/** 区内の作成順から短い符号を作る。全問い合わせは ward_id で絞る。 */
+/** 保存した番号から紙の指す先を引く。消した行事や文書の番号は使い直さない。 */
 export async function lookupPaperCode(
   db: D1Database,
   wardId: string,
@@ -52,15 +52,13 @@ export async function lookupPaperCode(
 ): Promise<{ projectId: string; documentId: string; version: number } | null> {
   const code = parsePaperCode(value);
   if (!code) return null;
-  const projects = await db.prepare("SELECT project_id FROM projects WHERE ward_id = ? ORDER BY created_at, project_id")
-    .bind(wardId).all<{ project_id: string }>();
-  const project = projects.results[code.project - 1];
+  const project = await db.prepare("SELECT project_id FROM projects WHERE ward_id = ? AND paper_no = ?")
+    .bind(wardId, code.project).first<{ project_id: string }>();
   if (!project) return null;
   // D0 は文書を配る前の記入用紙。文書を作らず、プロジェクトだけへ戻す。
   if (code.document === 0) return code.version === 1 ? { projectId: project.project_id, documentId: "_project", version: 1 } : null;
-  const documents = await db.prepare("SELECT document_id FROM documents WHERE ward_id = ? AND project_id = ? ORDER BY created_at, document_id")
-    .bind(wardId, project.project_id).all<{ document_id: string }>();
-  const document = documents.results[code.document - 1];
+  const document = await db.prepare("SELECT document_id FROM documents WHERE ward_id = ? AND project_id = ? AND paper_no = ?")
+    .bind(wardId, project.project_id, code.document).first<{ document_id: string }>();
   if (!document) return null;
   const published = await db.prepare(`SELECT 1 AS found FROM publication_records
     WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_no = ? LIMIT 1`)
@@ -96,23 +94,20 @@ export async function makePaperCode(
   documentId: string,
   version: number,
 ): Promise<string | null> {
-  const projects = await db.prepare("SELECT project_id FROM projects WHERE ward_id = ? ORDER BY created_at, project_id")
-    .bind(wardId).all<{ project_id: string }>();
-  const projectIndex = projects.results.findIndex((row) => row.project_id === projectId);
-  if (projectIndex < 0) return null;
-  const documents = await db.prepare("SELECT document_id FROM documents WHERE ward_id = ? AND project_id = ? ORDER BY created_at, document_id")
-    .bind(wardId, projectId).all<{ document_id: string }>();
-  const documentIndex = documents.results.findIndex((row) => row.document_id === documentId);
-  if (documentIndex < 0) return null;
-  return formatPaperCode({ project: projectIndex + 1, document: documentIndex + 1, version });
+  const project = await db.prepare("SELECT paper_no FROM projects WHERE ward_id = ? AND project_id = ?")
+    .bind(wardId, projectId).first<{ paper_no: number }>();
+  if (!project) return null;
+  const document = await db.prepare("SELECT paper_no FROM documents WHERE ward_id = ? AND project_id = ? AND document_id = ?")
+    .bind(wardId, projectId, documentId).first<{ paper_no: number }>();
+  if (!document) return null;
+  return formatPaperCode({ project: project.paper_no, document: document.paper_no, version });
 }
 
 /** 配る前の紙。D0 は記入用紙のために予約し、既存の読み取り経路でプロジェクトへ当てる。 */
 export async function makeProjectPaperCode(db: D1Database, wardId: string, projectId: string): Promise<string | null> {
-  const projects = await db.prepare("SELECT project_id FROM projects WHERE ward_id = ? ORDER BY created_at, project_id")
-    .bind(wardId).all<{ project_id: string }>();
-  const index = projects.results.findIndex((row) => row.project_id === projectId);
-  return index < 0 ? null : formatPaperCode({ project: index + 1, document: 0, version: 1 });
+  const project = await db.prepare("SELECT paper_no FROM projects WHERE ward_id = ? AND project_id = ?")
+    .bind(wardId, projectId).first<{ paper_no: number }>();
+  return project ? formatPaperCode({ project: project.paper_no, document: 0, version: 1 }) : null;
 }
 
 /** 記入用紙の QR は役員の紙の入口へ戻す。公開の案内や班長の鍵は含めない。 */

@@ -13,7 +13,20 @@ it("登録なしで問い合わせ、書き足しと写真、提供側の確認�
   const sentMail: Array<{ to: string; subject: string; text: string }> = [];
   const binding: ContactBindings = { CONTACT_MAIL: { async send(message) { sentMail.push(message); } } };
   const bindings = Object.create(opsEnv, { CONTACT_MAIL: { value: binding.CONTACT_MAIL } }) as typeof opsEnv;
-  const started = await postForm(realApp, "/contact", { ...sample, kind: "access" }, undefined, bindings);
+  const submission = async () => {
+    const html = await (await get(realApp, "/contact", undefined, bindings)).text();
+    const id = /name="submission_id" value="([^"]+)"/.exec(html)?.[1];
+    expect(id).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    return id!;
+  };
+  const submissionId = await submission();
+  const input = { ...sample, kind: "access", submission_id: submissionId };
+  const invalid = await postForm(realApp, "/contact", { ...input, name: "   ", kind: "broken" }, undefined, bindings);
+  expect(invalid.status).toBe(400);
+  const invalidHtml = await invalid.text();
+  for (const text of [sample.wardName, sample.reach, sample.body, submissionId, "「お名前」に60文字まででお名前を入れてください。", 'value="   "']) expect(invalidHtml).toContain(text);
+  expect(invalidHtml).toMatch(/<input[^>]*name="kind"[^>]*value="broken"[^>]*checked/);
+  const started = await postForm(realApp, "/contact", input, undefined, bindings);
   expect(started.status).toBe(201);
   expect(started.headers.get("cache-control")).toContain("no-store");
   const sentHtml = await started.text();
@@ -26,6 +39,15 @@ it("登録なしで問い合わせ、書き足しと写真、提供側の確認�
     .bind(CONTACT_WARD, sample.reach).first<{ contact_id: string; receipt: string; token_hash: string }>();
   expect(record?.receipt).toMatch(/^\d{12}$/);
   expect(record?.token_hash).not.toBe(path!.split("/").pop());
+  // 再読込を繰り返しても連続送信の制限に進まず、受付、本文、メールは一つのまま。
+  for (let i = 0; i < 6; i++) {
+    const repeated = await postForm(realApp, "/contact", input, undefined, bindings);
+    expect(repeated.status).toBe(200);
+    expect(await repeated.text()).toContain(`href="${path}"`);
+  }
+  expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM provider_contacts WHERE ward_id = ? AND reach = ?").bind(CONTACT_WARD, sample.reach).first("n")).toBe(1);
+  expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM provider_contact_messages WHERE ward_id = ? AND contact_id = ?").bind(CONTACT_WARD, record!.contact_id).first("n")).toBe(1);
+  expect(sentMail).toHaveLength(1);
   expect((await get(realApp, `/contact/${record!.receipt}`, undefined, bindings)).status).toBe(404);
   expect((await get(realApp, `/contact/${"A".repeat(43)}`, undefined, bindings)).status).toBe(404);
   expect((await get(realApp, `/ops/contacts/${record!.contact_id}`, undefined, bindings)).status).toBe(303);
@@ -86,7 +108,7 @@ it("登録なしで問い合わせ、書き足しと写真、提供側の確認�
 
   expect((await postForm(realApp, "/contact", { ...sample, kind: "usage", reach: "" }, undefined, bindings)).status).toBe(400);
   const usageReach = `usage-${crypto.randomUUID()}@example.invalid`;
-  const usage = await postForm(realApp, "/contact", { ...sample, kind: "usage", reach: usageReach }, undefined, bindings);
+  const usage = await postForm(realApp, "/contact", { ...sample, kind: "usage", reach: usageReach, submission_id: await submission() }, undefined, bindings);
   expect(usage.status).toBe(201);
   const usageHtml = await usage.text();
   const anonymousPath = /class="button contact-thread-link" href="([^"]+)"/.exec(usageHtml)![1]!;
@@ -101,7 +123,7 @@ it("登録なしで問い合わせ、書き足しと写真、提供側の確認�
   expect((await postForm(realApp, `${otherOps}/close`, {}, cookie, bindings)).status).toBe(200);
 
   const nextReach = `next-${crypto.randomUUID()}@example.invalid`;
-  const next = await postForm(realApp, "/contact", { ...sample, kind: "access", reach: nextReach }, undefined, bindings);
+  const next = await postForm(realApp, "/contact", { ...sample, kind: "access", reach: nextReach, submission_id: await submission() }, undefined, bindings);
   expect(next.status).toBe(201);
   const nextRecord = await env.DB.prepare("SELECT contact_id FROM provider_contacts WHERE ward_id = ? AND reach = ? AND closed_at IS NULL")
     .bind(CONTACT_WARD, nextReach).first<{ contact_id: string }>();
