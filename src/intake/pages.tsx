@@ -144,19 +144,21 @@ intakeAdmin.get("/intake/read", async (c) => {
   const projects = await projectDirectory().listOpen(c.env.DB, ward.wardId);
   return c.html(<Layout title="読み終わったもの" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/intake/received")}>送ったものへ</a>
-    <h1>読み終わりました</h1><p class="lead">行事ごとに分けました。違っていても、あとで直せます。</p>
+    <h1>読み終わりました</h1><p class="lead">{groups.length > 1 ? "行事ごとに分けました。違っていても、あとで直せます。" : "資料をまとめました。違っていても、あとで直せます。"}</p>
     <ErrorNotice code={c.req.query("error")} messages={{ day: "今年の行事の日を入れ直してください。分からないときは空欄で進められます。" }} />
     {groups.map((group, index) => {
       const ids = new Set(group.materials.map((m) => m.original.original_id));
       const fields = group.materials.flatMap((m) => m.readings.flatMap((r) => "fields" in r.body ? r.body.fields.filter((f) => ids.has(f.original_id)) : []));
       const suggestions = group.materials.flatMap((m) => m.readings.flatMap((r) => "fields" in r.body ? (r.body.project_suggestions ?? []).filter((s) => ids.has(s.original_id)) : []));
-      const date = fields.find((f) => f.name === "日時")?.value || suggestions.find((s) => s.date_text)?.date_text;
-      const place = fields.find((f) => f.name === "場所")?.value || suggestions.find((s) => s.place)?.place;
+      // 年の違う資料が混ざると日付も場所も一つに決まらない。決まらない時は出さない。
+      const oneValue = (values: (string | undefined)[]) => { const distinct = [...new Set(values.filter(Boolean))]; return distinct.length === 1 ? distinct[0] : undefined; };
+      const date = oneValue([...fields.filter((f) => f.name === "日時").map((f) => f.value), ...suggestions.map((s) => s.date_text)]);
+      const place = oneValue([...fields.filter((f) => f.name === "場所").map((f) => f.value), ...suggestions.map((s) => s.place)]);
       return <section class="panel"><h2>{group.title ? `${group.title}の資料のようです` : "何の資料か分からないもの"}</h2>
         <dl class="facts"><dt>資料</dt><dd>{group.materials.length}件</dd>{date ? <><dt>資料の日付</dt><dd>{formatDateText(date)}</dd></> : null}{place ? <><dt>場所</dt><dd>{place}</dd></> : null}</dl>
         <form method="post" action={adminPath(ward, "/intake/start")}><input type="hidden" name="group" value={group.key} />
           <div class="field"><label for={`day-${index}`}>今年の行事の日（分かれば）</label><input id={`day-${index}`} name="eventDay" type="date" /><p class="help-text">段取りの日付に使います。あとでも直せます。</p></div>
-          <div class="action-links"><button>{group.title ? `${group.title}を始める` : "このまま進める"}</button></div>
+          <div class="action-links"><button class={index === 0 ? undefined : "secondary"}>{group.title ? `${group.title}を始める` : "このまま進める"}</button></div>
         </form>
         {!group.title ? <p class="muted">そのままでかまいません。</p> : null}
       </section>;

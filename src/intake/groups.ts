@@ -17,23 +17,48 @@ export interface MaterialGroup {
   materials: { jobId: string; original: OriginalRow; readings: ReadingRow[] }[];
 }
 
+/** 当番や役員会の資料は、行事の資料の一部として送られる。行事と同じ題なら一つにまとめる。 */
+const EVENT_KINDS: readonly ProjectSuggestion["kind"][] = ["event", "duty", "board_meeting"];
+const kindFamily = (kind: ProjectSuggestion["kind"]) => EVENT_KINDS.includes(kind) ? "event" : kind;
+const titleKey = (title: string) => normalizeKey(title).replace(/(令和\d+|20\d{2})年度?/g, "");
+
+/** 読み手ごとに題の長さが揺れる（収穫祭と秋の収穫祭）。片方がもう片方を含めば同じ行事と見る。 */
+function sameEvent(a: string, b: string): boolean {
+  const left = titleKey(a), right = titleKey(b);
+  return left.length >= 2 && right.length >= 2 && (left.includes(right) || right.includes(left));
+}
+
+/** 役員に分類を求めない。読めた題の分だけ分け、題の無い資料は一緒に送った一番大きなまとまりに入れる。 */
 export async function pendingMaterialGroups(db: D1Database, wardId: string): Promise<MaterialGroup[]> {
   const jobs = await db.prepare(`SELECT job_id FROM jobs WHERE ward_id = ? AND project_id IS NULL
     AND withdrawn_at IS NULL AND status = 'read' AND via IN ('admin', 'line_direct', 'line_group') ORDER BY created_at, job_id`)
     .bind(wardId).all<{ job_id: string }>();
-  const groups = new Map<string, MaterialGroup>();
+  const groups: MaterialGroup[] = [];
   for (const job of jobs.results) {
     const [originals, readings] = await Promise.all([listOriginals(db, wardId, job.job_id), getReadings(db, wardId, job.job_id)]);
     const suggestions = cleanSuggestions(readings.flatMap((row) => "fields" in row.body ? row.body.project_suggestions ?? [] : []), originals.map((o) => o.original_id));
+    const unknown: MaterialGroup["materials"] = [];
+    const inThisSend = new Set<MaterialGroup>();
     for (const original of originals.filter((o) => !o.withdrawn_at)) {
+      const material = { jobId: job.job_id, original, readings };
       const suggestion = suggestions.find((s) => s.original_id === original.original_id);
-      const key = suggestion ? `${suggestion.kind}:${normalizeKey(suggestion.title)}` : `unknown:${job.job_id}`;
-      const group = groups.get(key) ?? { key, title: suggestion?.title ?? "", kind: suggestion?.kind ?? "event", materials: [] };
-      group.materials.push({ jobId: job.job_id, original, readings });
-      groups.set(key, group);
+      if (!suggestion) { unknown.push(material); continue; }
+      let group = groups.find((g) => g.title && kindFamily(g.kind) === kindFamily(suggestion.kind) && sameEvent(g.title, suggestion.title));
+      if (!group) {
+        group = { key: `${kindFamily(suggestion.kind)}:${normalizeKey(suggestion.title)}`, title: suggestion.title, kind: suggestion.kind, materials: [] };
+        groups.push(group);
+      } else {
+        if (suggestion.title.length > group.title.length) group.title = suggestion.title;
+        if (suggestion.kind === "event") group.kind = "event";
+      }
+      group.materials.push(material);
+      inThisSend.add(group);
     }
+    const biggest = [...inThisSend].sort((a, b) => b.materials.length - a.materials.length)[0];
+    if (biggest) biggest.materials.push(...unknown);
+    else if (unknown.length) groups.push({ key: `unknown:${job.job_id}`, title: "", kind: "event", materials: unknown });
   }
-  return [...groups.values()];
+  return groups.sort((a, b) => Number(!a.title) - Number(!b.title) || b.materials.length - a.materials.length);
 }
 
 function subset(body: Reading, ids: Set<string>): Reading {

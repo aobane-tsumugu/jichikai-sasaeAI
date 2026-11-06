@@ -98,3 +98,33 @@ it("新任の役員が題は案内・年不明の実際のフォームから送�
     setClientFactory(null);
   }
 });
+
+it("読み手ごとに題が揺れ、当番や役員会の資料が混ざっても、一度に送った資料は一つのまとまりになる", async () => {
+  const { ward, account } = await seedAdmin(env.DB);
+  const jobId = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await env.DB.prepare(`INSERT INTO jobs (job_id, ward_id, via, read_kind, sender_label, account_id, status, created_at, updated_at, read_at)
+    VALUES (?, ?, 'admin', 'general', '架空', ?, 'read', ?, ?, ?)`).bind(jobId, ward.wardId, account.accountId, now, now, now).run();
+  const ids = Array.from({ length: 5 }, (_, index) => `original-${index}`);
+  for (const [index, id] of ids.entries()) {
+    await env.DB.prepare(`INSERT INTO originals (original_id, ward_id, job_id, position, filename, kind, media_type, content_hash, byte_size, received_at)
+      VALUES (?, ?, ?, ?, ?, 'text', 'text/plain', ?, 1, ?)`).bind(id, ward.wardId, jobId, index, `資料${index}.txt`, `hash-${index}`, now).run();
+  }
+  const body = (suggestions: { original_id: string; title: string; kind: string }[]) => JSON.stringify({
+    document_kind: "other", summary: "", original_years: [], text_blocks: [], fields: [], tables: [], decisions: [], unreadable: [],
+    project_suggestions: suggestions.map((s) => ({ ...s, date_text: "", place: "" })),
+  });
+  await env.DB.prepare(`INSERT INTO readings (reading_id, ward_id, job_id, source, pack_version, model, body, created_at)
+    VALUES (?, ?, ?, 'direct', 'fixture@1', 'fixture', ?, ?), (?, ?, ?, 'model', 'fixture@1', 'fixture', ?, ?)`).bind(
+    crypto.randomUUID(), ward.wardId, jobId, body([
+      { original_id: ids[0]!, title: "収穫祭", kind: "event" }, { original_id: ids[1]!, title: "収穫祭", kind: "duty" },
+    ]), now,
+    crypto.randomUUID(), ward.wardId, jobId, body([
+      { original_id: ids[2]!, title: "秋の収穫祭", kind: "event" }, { original_id: ids[3]!, title: "2025年度 秋の収穫祭", kind: "board_meeting" },
+    ]), now,
+  ).run();
+  const groups = await pendingMaterialGroups(env.DB, ward.wardId);
+  expect(groups).toHaveLength(1);
+  expect(groups[0]).toMatchObject({ kind: "event" });
+  expect(groups[0]!.materials).toHaveLength(5);
+});
