@@ -82,7 +82,7 @@ it("資料も質問も仕事もない一年目に、案内を確認して配り�
   expect(leader).toContain(`${FIRST_SLICE.district}の班長さんへ`);
   expect(leader).toContain("答えはまだありません。");
   expect(leader).toContain("回答票を撮って送る");
-  expect(leader).not.toContain("協賛先と打診");
+  expect(leader).not.toContain("協賛先");
   expect(leader).not.toContain("書き込んだ紙を撮って送る");
   const received = await (await get(realApp, `${spacePath}?sent=answer`, leaderCookie)).text();
   expect(received).toContain("残りがなければ、これで終わりです。");

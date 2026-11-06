@@ -117,6 +117,7 @@ export async function getWardMetrics(db: D1Database, ward: { wardId: string; slu
 
 export interface QueueJob {
   jobId: string;
+  filename: string;
   createdAt: string;
   status: "received" | "reading" | "read" | "connecting" | "attention" | "failed";
   failure: string;
@@ -127,11 +128,13 @@ export interface QueueJob {
 
 export async function listWardQueue(db: D1Database, wardId: string): Promise<QueueJob[]> {
   const rows = await db.prepare(
-    `SELECT job_id, created_at, status, failure, project_id, via, task
-       FROM jobs WHERE ward_id = ? AND status IN ('received', 'reading', 'read', 'connecting', 'attention', 'failed')
+    `SELECT j.job_id, j.created_at, j.status, j.failure, j.project_id, j.via, j.task,
+       (SELECT o.filename FROM originals o WHERE o.ward_id = j.ward_id AND o.job_id = j.job_id AND o.withdrawn_at IS NULL ORDER BY o.position LIMIT 1) AS filename
+       FROM jobs j WHERE j.ward_id = ? AND status IN ('received', 'reading', 'read', 'connecting', 'attention', 'failed')
        ORDER BY CASE status WHEN 'attention' THEN 0 WHEN 'failed' THEN 1 ELSE 2 END, created_at DESC`,
   ).bind(wardId).all<{
     job_id: string;
+    filename: string | null;
     created_at: string;
     status: QueueJob["status"];
     failure: string;
@@ -141,6 +144,7 @@ export async function listWardQueue(db: D1Database, wardId: string): Promise<Que
   }>();
   return rows.results.map((row) => ({
     jobId: row.job_id,
+    filename: row.filename ?? "",
     createdAt: row.created_at,
     status: row.status,
     failure: row.failure,

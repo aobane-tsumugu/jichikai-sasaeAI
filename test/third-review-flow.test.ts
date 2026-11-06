@@ -161,7 +161,7 @@ it("空の下書きを項目から整え、行事の日を直し、名簿なし�
   const publicHtml = await read(`/${ward.slug}/p/${id}`);
   expect(publicHtml).not.toContain("<dt>どこで</dt>");
   expect(publicHtml).not.toContain("<dt>いつ</dt>");
-  expect(publicHtml).toContain("参加する人数を答える");
+  expect(publicHtml).toContain("出欠を答える");
   expect(publicHtml).toContain("答えの締切");
   expect(publicHtml.indexOf(fixture.rainAnnouncement)).toBeLessThan(publicHtml.indexOf(renderedText));
   expect(publicHtml).toContain(renderedText);

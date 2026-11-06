@@ -7,7 +7,7 @@ describe("Workersの入口", () => {
     const res = await get(realApp, "/");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
-    expect(await res.text()).toContain("運営支援");
+    expect(await res.text()).toContain("SasaeAI");
   });
 
   it("動作の確認はD1まで見る", async () => {

@@ -1,6 +1,6 @@
 import { getSquads } from "../settings/store";
 import { getAnswerDeadline } from "../answers/api";
-import { ReceptionClosed, ResidentContact, EventDetails, residentContext } from "../answers/resident";
+import { ReceptionClosed, ResidentContact, EventDetails, residentContext, publishedItem } from "../answers/resident";
 import { formatDateText, formatJstDate } from "../core/time";
 import { Hono } from "hono";
 import { Layout } from "../core/ui";
@@ -10,6 +10,7 @@ import { getOfficialLineUrl, getPublicContact, getSetting } from "../settings/st
 import { ArticleBody } from "../publish";
 import { listHelpOpportunities } from "../answers/help";
 import { paperHeading } from "../project/heading";
+import { PUBLIC_PRIVACY_NOTICE } from "../settings/keys";
 
 interface PublicProject {
   project_id: string;
@@ -56,18 +57,48 @@ async function listPublic(db: D1Database, wardId: string, projectId?: string, in
 
 async function pageFooter(c: { env: { DB: D1Database }; var: { ward: { wardId: string; slug: string } } }) {
   const contact = await getPublicContact(c.env.DB, c.var.ward.wardId);
-  const [purpose, lineUrl] = await Promise.all([
-    getSetting(c.env.DB, c.var.ward.wardId, "privacy_notice"),
-    getOfficialLineUrl(c.env.DB, c.var.ward.wardId),
-  ]);
+  const lineUrl = await getOfficialLineUrl(c.env.DB, c.var.ward.wardId);
   return <>
     <h2>分からないときは</h2><ResidentContact contact={contact} />
-    {lineUrl ? <><h2>新しいお知らせを受け取る</h2><p>区の公式LINEを友だちに追加すると、新しいお知らせがスマホに届きます。名前の登録はいりません。追加しなくても、このページと紙で読めます。</p><p><a href={lineUrl}>LINEで受け取る</a></p></> : null}
-    <details class="hint"><summary>答えた内容の扱いについて</summary><p>{purpose ?? "答えは行事の準備と運営のために使います。消してほしいときは、上の連絡先へお知らせください。"}</p></details>
+    {lineUrl ? <a class="quiet" href={`/${c.var.ward.slug}/line`}>新しいお知らせを、LINEで受け取る</a> : null}
+    <p><a class="quiet" href={`/${c.var.ward.slug}/privacy`}>個人情報の扱い</a></p>
   </>;
 }
 
 const pub = new Hono<WardEnv>();
+
+pub.get("/line", async (c) => {
+  const lineUrl = await getOfficialLineUrl(c.env.DB, c.var.ward.wardId);
+  const contact = await getPublicContact(c.env.DB, c.var.ward.wardId);
+  return c.html(<Layout title="公式LINEで受け取る" siteName={c.var.ward.name}>
+    <a class="back" href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のお知らせへ</a>
+    <h1>新しいお知らせを、LINEで受け取る</h1>
+    <p class="lead">区の公式LINEを友だちに追加すると、新しい案内や変更が、スマホのLINEに届きます。追加は、してもしなくてもかまいません。</p>
+    {lineUrl ? <><a class="button" href={lineUrl}>LINEで友だちに追加する</a><p>LINEが開きます。</p></> : <p>この区の公式LINEは、まだ用意されていません。</p>}
+    <h2>追加しなくても読めます</h2><p>案内は、このページと、紙の回覧、掲示でも読めます。LINEを使わない方は、追加しなくてかまいません。</p>
+    <h2>届くもの</h2><p>案内の題と、このページへのリンクが届きます。くわしい内容は、リンクを開いて、このページで読みます。</p>
+    <h2>名前や世帯の登録はいりません</h2><p>友だちに追加すれば、受け取れます。名前、世帯、班を伝える必要はありません。LINEの中で、質問したり答えたりする必要もありません。</p>
+    <h2>届かなくしたいとき</h2><p>LINEで、区の公式アカウントをブロックすると、届かなくなります。もう一度追加すれば、また届きます。</p>
+    <h2>分からないときは</h2><ResidentContact contact={contact} /><a class="quiet" href={`/${c.var.ward.slug}/privacy`}>個人情報の扱い</a>
+  </Layout>);
+});
+
+pub.get("/privacy", async (c) => {
+  const contact = await getPublicContact(c.env.DB, c.var.ward.wardId);
+  const purpose = await getSetting(c.env.DB, c.var.ward.wardId, "privacy_notice");
+  return c.html(<Layout title="個人情報の扱い" siteName={c.var.ward.name}>
+    <a class="back" href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のお知らせへ</a>
+    <h1>個人情報の扱い</h1><p class="lead">答えや送られた資料を、何に使い、どう預かるかです。</p>
+    <h2>何に使うか</h2><p>答えや送られた資料は、自治会の行事や連絡、答えの受付のために使います。</p>
+    <h2>だれが預かるか</h2><p>この区のページの仕組みを自治会に提供している事業者が、自治会から頼まれて、答えや資料を預かります。個人情報を守る決まりが守られているかは、この事業者が確かめます。</p>
+    <h2>文章の読み取り</h2><p>紙や写真の文章の読み取りは、AI事業者のAnthropicに委託します。</p>
+    <p>Anthropic社に送った内容は、通常、受け取ったときか文章を作ったときから30日以内に消されます。利用ポリシーへの対応、法令、契約の条件により、もっと長く残る場合があります。</p>
+    <h2>消してほしいとき</h2><p>消してほしいときや、個人情報について聞きたいときは、下の連絡先へお知らせください。</p><p>役員が対象を確かめて、元の資料、読み取った内容、それらを探すための一覧を、いっしょに消します。</p>
+    <h2>この仕組みをやめるとき</h2><p>自治会がこの仕組みの利用をやめるときは、元の資料、配ったもの、記録を、自治会にお渡しします。そのあと、預かっているものと、Anthropic社での処理を消します。読み取りの設定を止めて、保管場所も消します。</p>
+    {purpose && purpose !== PUBLIC_PRIVACY_NOTICE ? <><h2>この区からのお知らせ</h2><p class="preserve-lines">{purpose}</p></> : null}
+    <h2>連絡先</h2><ResidentContact contact={contact} />
+  </Layout>);
+});
 
 pub.get("/", async (c) => {
   const [items, activities, opportunities] = await Promise.all([
@@ -142,7 +173,7 @@ pub.get("/help", async (c) => {
     <h1>一回だけ手伝う</h1>
     <p>自治会に入っていなくても申し込めます。手伝える行事を選んでください。</p>
     {opportunities.length ? opportunities.map((item) => <section class="panel">
-      <h2>{item.title}</h2>
+      <h2>{item.title}</h2><p>{publishedItem(item.body, "date_time") ? formatDateText(publishedItem(item.body, "date_time")) : `案内を配った日: ${formatJstDate(item.publishedAt)}`}</p>
       <p><a href={`/${c.var.ward.slug}/help/${encodeURIComponent(item.projectId)}`}>この行事に手伝いを申し込む</a></p>
     </section>) : <p>現在、手伝いを募集中の行事はありません。</p>}
   </Layout>);
@@ -200,7 +231,7 @@ pub.get("/p/:projectId", async (c) => {
     {activeAnnouncement ? <>
       {!newerNotice ? <EventDetails item={context.item} /> : null}
       {deadline ? <p>答えの締切{formatJstDate(deadline)}まで</p> : null}
-      {closed ? <ReceptionClosed closed={!!items[0]!.closed_at} due={deadline} /> : <><p><a class="button" href={`/${c.var.ward.slug}/answer/${encodeURIComponent(projectId)}${suffix}`}>参加する人数を答える</a></p><p>参加しないときは、答えなくてかまいません。紙の回答票を班長に渡しても答えられます。</p></>}
+      {closed ? <ReceptionClosed closed={!!items[0]!.closed_at} due={deadline} /> : <><p><a class="button" href={`/${c.var.ward.slug}/answer/${encodeURIComponent(projectId)}${suffix}`}>出欠を答える</a></p><p>参加しないときも、答えてください。答えがないときは、欠席として数えます。紙の回答票を班長に渡しても答えられます。</p></>}
     </> : null}
     {ordered.filter(({ latest }) => latest.kind !== "notice").map(renderDocument)}
     {context.documents.some((document) => document.kind === "recruitment") && !closed ? <section><h2>手伝える方へ</h2><p>自治会に入っていない方も手伝えます。</p><a href={`/${c.var.ward.slug}/help/${encodeURIComponent(projectId)}`}>手伝いを申し込む</a></section> : null}

@@ -284,6 +284,7 @@ summary { min-height: var(--tap); cursor: pointer; }
 details.hint { font-size: 1rem; font-weight: 400; line-height: 1.8; letter-spacing: .02em; }
 .qrbox { width: 12rem; max-width: 100%; margin: var(--space-2) 0; }
 .qrbox svg { display: block; width: 100%; height: auto; }
+.space-photo { display: block; max-width: 100%; height: auto; margin: var(--space-4) 0; }
 button.quiet { width: auto; min-width: 0; padding: var(--space-1) 0; border: 0; background: transparent; color: var(--accent); text-decoration: underline; text-align: left; }
 .rows > .panel { margin: 0; }
 main:has(> .rows.two) { max-width: var(--width-wide); }
