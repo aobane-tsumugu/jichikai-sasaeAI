@@ -12,6 +12,7 @@
 //
 // 書き込みは db.batch（一つの取引）で行う。プロジェクトの中の差分は Workers が一つずつ送る前提（設計書 5.12）。
 import { newId, nowIso } from "../core/ids";
+import { materialExemptionQuestions } from "../rota/material-exemptions";
 import {
   CONFIDENCES,
   DOCUMENT_DEPENDENCIES,
@@ -43,6 +44,7 @@ import { dedupeKeyOf, hashOf, quote, sameText, stableStringify } from "./util";
 type Db = D1Database;
 
 interface ProjectRow {
+  kind: string;
   year: number;
   closed_at: string | null;
   state_version: number;
@@ -503,6 +505,13 @@ async function planRow(ctx: Ctx, n: Normalized, change: RowChange): Promise<Plan
   const table = change.table;
   const def = TABLES[table];
   const data = n.rowData as RowData;
+  const exemptionText = String(data.what ?? "");
+  // 資料の免除は運営上の判断を聞く。理由を共用の記録へ流さない。
+  if (table === "decisions" && n.source.kind !== "person" && /免除/.test(exemptionText) &&
+    (/当番/.test(exemptionText) || (ctx.project.kind === "duty" && !/会費|参加費|負担金/.test(exemptionText)))) {
+    return { status: "held", statements: [], bump: false, staleKinds: [],
+      questions: await materialExemptionQuestions(ctx.db, ctx.wardId, ctx.projectId, ctx.project.year, exemptionText, n.source) };
+  }
   const matchKey = rowMatchKey(table, data);
   const placement = placeSource(n.source, ctx.project.year);
   const refYear = placement.scope === "reference" ? placement.refYear : null;
