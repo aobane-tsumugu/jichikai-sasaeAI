@@ -125,7 +125,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
       <div class="field"><label for="text">{kindRaw === "announcement" ? "案内の文" : kindRaw === "duty_roster" ? "当番表の説明" : kindRaw === "recruitment" ? "募集の文" : `${pack.title}の文`}</label><textarea id="text" name="text" rows={10} maxlength={20000}>{body.text}</textarea>{oldDates.map((date) => <p class="warn-text">文の中に前の日付「{date}」が残っています。このままでも配れます。</p>)}</div>
       <input type="hidden" name="item_content" value={body.items.find((item) => item.key === "content")?.content ?? ""} />
       {ITEMS_BY_KIND[project.kind].filter((key) => !["date_time", "place", "rain_plan", "content"].includes(key)).map(field)}
-      <p><a class="quiet" href={adminPath(ward, `/print/${id}`)}>紙の見え方を見る</a></p>
+      <p><button class="secondary" name="after" value="paper">保存して紙の見え方を見る</button></p>
       {kindRaw === "duty_roster" ? <><input type="hidden" name="scope" value="space" /><p>当番表は実行委員と班長にだけ見えます。</p></> : <details class="fold"><summary>だれに見せるかを変える</summary><div class="choice">{SCOPES.map((value) => <label><input type="radio" name="scope" value={value} checked={value === scope} /> {value === "public" ? "だれでも読める" : value === "space" ? "実行委員と班長だけ" : "役員だけ"}</label>)}</div></details>}
     </form>
     {kindRaw === "duty_roster" ? <section>
@@ -243,6 +243,10 @@ admin.post("/projects/:projectId/draft/:kind/save", async (c) => {
   const body: DraftBody = { text: String(form.get("text") ?? ""), items: ITEMS_BY_KIND[state.project.kind].map((key) => ({ key, content: String(form.get(`item_${key}`) ?? "").trim() })).filter((i) => i.content !== "") };
   const bodyChecks: ItemKey[] = [];
   const ok = await saveDocument(c.env.DB, ward.wardId, id, account.accountId, { kind: kindRaw, title: String(form.get("title") ?? ""), scope: scopeRaw as Scope, body: JSON.stringify(body), basedOn: Number(form.get("based_on")) }, bodyChecks);
+  if (ok && form.get("after") === "paper") {
+    const saved = await latestFields(c, kindRaw);
+    if (saved) return c.redirect(adminPath(ward, `/print/${id}/${saved.get("documentId")}/${saved.get("versionNo")}/preview`), 303);
+  }
   if (ok && form.get("after") === "confirm") return confirmDraft(c, kindRaw, bodyChecks);
   const query = new URLSearchParams(ok ? { notice: "saved", check_body: bodyChecks.join(",") } : { error: "save_failed" });
   return c.redirect(`${adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}?${query}`, 303);

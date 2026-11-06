@@ -22,7 +22,9 @@ export async function sendLineQuestion(token: string, input: {
   return value.sentMessages?.[0]?.id ?? null;
 }
 
-export class LineSendRejected extends Error {}
+export class LineSendRejected extends Error {
+  constructor(message: string, public readonly status = 0) { super(message); }
+}
 
 /** 役員が書いた返事を、問い合わせが届いた場所へ届ける。 */
 export async function pushInquiryAnswer(token: string, userId: string, text: string, retryKey: string, request: typeof fetch = fetch): Promise<void> {
@@ -30,7 +32,22 @@ export async function pushInquiryAnswer(token: string, userId: string, text: str
     method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "X-Line-Retry-Key": retryKey },
     body: JSON.stringify({ to: userId, messages: [{ type: "text", text }] }),
   });
-  if (!response.ok) throw new LineSendRejected(`LINE API request failed (${response.status})`);
+  if (response.status === 409 && response.headers.has("x-line-accepted-request-id")) return;
+  if (!response.ok) throw new LineSendRejected(`LINE API request failed (${response.status})`, response.status);
+}
+
+/** 取り置かず、送る直前の通数と送り先の人数を確かめる。 */
+export async function inquiryPushAllowance(token: string, targets: Array<{ type: string; id: string }>, request: typeof fetch = fetch) {
+  const [quota, consumption, counts] = await Promise.all([
+    lineGet<{ type: string; value?: number }>("/v2/bot/message/quota", token, request),
+    lineGet<{ totalUsage: number }>("/v2/bot/message/quota/consumption", token, request),
+    Promise.all(targets.map(async (target) => target.type === "user" ? 1 :
+      (await lineGet<{ count: number }>(`/v2/bot/${target.type}/${encodeURIComponent(target.id)}/members/count`, token, request)).count)),
+  ]);
+  if (!Number.isSafeInteger(consumption.totalUsage) || consumption.totalUsage < 0 || counts.some((count) => !Number.isSafeInteger(count) || count < 1)) return null;
+  if (quota.type !== "none" && (quota.type !== "limited" || !Number.isSafeInteger(quota.value) || quota.value! < 0)) return null;
+  const recipients = counts.reduce((sum, count) => sum + count, 0);
+  return { recipients, enough: quota.type === "none" || consumption.totalUsage + recipients <= quota.value! };
 }
 
 export async function replyLineText(token: string, replyToken: string, text: string, request: typeof fetch = fetch): Promise<void> {

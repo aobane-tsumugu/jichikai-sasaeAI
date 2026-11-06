@@ -154,7 +154,7 @@ it("写真を引用して一問ずつ聞き、撮り直しと分からないで�
     await webhook({ type: "message", webhookEventId: "fictional-no-user", replyToken: "fictional-no-user-reply", source: { type: "group", groupId }, message: { type: "text", id: "fictional-no-user", text: `公式へ、${fixture.previousMaterial}を教えてください。` } });
     const noUser = await env.DB.prepare("SELECT inquiry_id FROM inquiry_records WHERE ward_id = ? AND line_event_id = 'fictional-no-user'").bind(ward.wardId).first<{ inquiry_id: string }>();
     if (!noUser) throw new Error("本人の分からない問い合わせがありません");
-    expect(await (await get(realApp, `${root}/inquiries/${noUser.inquiry_id}`, cookie, runtime)).text()).toContain("電話か直接");
+    expect(await (await get(realApp, `${root}/inquiries/${noUser.inquiry_id}`, cookie, runtime)).text()).toContain("電話や直接");
     expect((await postForm(realApp, `${root}/inquiries/${noUser.inquiry_id}`, { answer: fixture.publicDayText, operation: "send" }, cookie, runtime)).status).toBe(400);
     rejected = true;
     expect((await postForm(realApp, replyPath, { answer: fixture.reportText, operation: "send" }, cookie, runtime)).status).toBe(502);

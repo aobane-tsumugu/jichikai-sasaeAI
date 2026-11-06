@@ -1,4 +1,6 @@
 import { labelsFromBody } from "../../answers/counts";
+import { getAnswerLabels } from "../../settings/answer-labels";
+import { DraftPaper } from "./draft";
 import { Hono } from "hono";
 import { AdminPage } from "../../core/admin-ui";
 import { adminPath } from "../../core/auth";
@@ -44,10 +46,22 @@ admin.get("/print/:projectId", async (c) => {
   const id = c.req.param("projectId");
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
   if (!project) return c.notFound();
+  const papers = await c.env.DB.prepare(`SELECT d.document_id, d.kind, d.title, MAX(v.version_no) AS latest,
+    MAX(CASE WHEN v.published_at IS NOT NULL THEN v.version_no END) AS published
+    FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
+    WHERE d.ward_id = ? AND d.project_id = ? GROUP BY d.document_id ORDER BY d.created_at`).bind(ward.wardId, id)
+    .all<{ document_id: string; kind: string; title: string; latest: number; published: number | null }>();
   return c.html(<AdminPage ward={ward} account={account} title="紙を印刷する" back={{ href: adminPath(ward, `/projects/${id}/map`), label: "段取りへ戻る" }}>
     <h1>紙を印刷する</h1>
-    <p class="lead">案内を配る前から使えます。電話や役員会で決まったことを紙に書き、番号といっしょに撮って送ってください。</p>
+    <p class="lead">行事で使う紙を、ここから印刷できます。配る紙と、書き込んで撮って送る紙があります。</p>
     <p>{project.title}</p>
+    <h2>配る紙</h2><ul class="rows">{papers.results.map((paper) => {
+      const base = `/print/${id}/${paper.document_id}/${paper.published ?? paper.latest}`;
+      return <li><a class="row-link" href={adminPath(ward, `${base}${paper.published === null ? "/preview" : paper.kind === "duty_roster" ? "/duty" : "/announcement"}`)}><b>{paper.kind === "announcement" ? "案内と回答票" : paper.title}</b><span>{paper.published === null ? "下書きです。まだ配っていません。" : "配ったときの紙です。"}</span></a>
+        {paper.kind === "announcement" ? <><a class="quiet" href={adminPath(ward, `${base}${paper.published === null ? "/preview?paper=answer" : "/answer"}`)}>回答票だけ</a>
+          {paper.published !== null ? <div class="action-links"><a class="quiet" href={adminPath(ward, `${base}/poster`)}>掲示</a><a class="quiet" href={adminPath(ward, `${base}/leader`)}>班長への一枚</a></div> : null}</> : null}</li>;
+    })}</ul>{!papers.results.length ? <p>下書きを保存すると、ここから紙を開けます。</p> : null}
+    <h2>書き込んで撮って送る紙</h2><p>電話や役員会で決まったことを、紙に書いて撮って送れます。案内を配る前から使えます。</p>
     <ul class="rows">{(["meeting", "sponsors"] as const).map((kind) => <li><a class="row-link" href={adminPath(ward, `/print/${id}/paper/${kind}`)}><b>{kindLabel(kind)}</b></a></li>)}</ul>
     <p class="link-line"><a href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>書いた紙を撮って送る</a></p>
     <p class="link-line"><a href={adminPath(ward, `/publish/${id}`)}>配った案内や回答票を印刷する</a></p>
@@ -104,17 +118,16 @@ admin.get("/print/:projectId/paper/:kind", async (c) => {
 
 admin.get("/print/:projectId/:documentId/:versionNo/preview", async (c) => {
   const { ward } = c.var;
-  const row = await c.env.DB.prepare(`SELECT COALESCE(v.title, d.title) AS title, p.title AS project_title, v.body, v.version_no FROM documents d
+  const row = await c.env.DB.prepare(`SELECT COALESCE(v.title, d.title) AS title, d.kind, p.title AS project_title, v.body, v.version_no FROM documents d
     JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
     JOIN projects p ON p.ward_id = d.ward_id AND p.project_id = d.project_id
     WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_no = ?`)
     .bind(ward.wardId, c.req.param("projectId"), c.req.param("documentId"), Number(c.req.param("versionNo")))
-    .first<{ title: string; project_title: string; body: string; version_no: number }>();
+    .first<{ title: string; kind: string; project_title: string; body: string; version_no: number }>();
   if (!row) return c.notFound();
-  const heading = paperHeading(row.project_title, row.title);
-  return c.html(<PrintDocument title={`${heading}印刷の見え方`} back={adminPath(ward, `/publish/${c.req.param("projectId")}`)}>
-    <Sheet footer={<><span>{ward.name}</span><span>確認用</span></>}><h1>{heading}</h1><PaperBody body={row.body} /></Sheet>
-  </PrintDocument>);
+  return c.html(<DraftPaper title={row.title} projectTitle={row.project_title} body={row.body} kind={row.kind}
+    back={adminPath(ward, `/projects/${c.req.param("projectId")}/draft/${row.kind}`)} wardName={ward.name}
+    squads={await getSquads(c.env.DB, ward.wardId)} labels={await getAnswerLabels(c.env.DB, ward.wardId)} answerOnly={c.req.query("paper") === "answer"} />);
 });
 
 const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
@@ -274,7 +287,7 @@ function kindLabel(kind: PrintKind): string {
 export const printPages: Bundle = { admin };
 
 /** 紙では項目を表で読み、本文に既に書いた内容は重ねない。 */
-function PaperBody({ body }: { body: string }) {
+export function PaperBody({ body }: { body: string }) {
   let value: unknown;
   try { value = JSON.parse(body); } catch { return <ArticleBody body={body} />; }
   if (!value || typeof value !== "object" || !("text" in value) || typeof value.text !== "string") return <ArticleBody body={body} />;
@@ -296,7 +309,7 @@ function bodyLines(body: string): number {
   return lines + paragraphs.length * 0.4;
 }
 
-function fitsAboveAnswer(body: string, answerText: string): boolean {
+export function fitsAboveAnswer(body: string, answerText: string): boolean {
   return bodyLines(body) + Math.ceil(answerText.length / 32) <= 18;
 }
 

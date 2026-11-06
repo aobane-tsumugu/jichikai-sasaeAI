@@ -30,6 +30,7 @@ interface Batch {
   expected_count: number | null; created_at: string; last_received_at: string;
   reply_token: string | null; reply_at: string | null; quick_replied: number;
   prepared_at: string | null; message_text: string | null; sent_at: string | null;
+  screen_answered_at: string | null;
 }
 
 export async function registerLinePhoto(db: D1Database, wardId: string, input: {
@@ -91,8 +92,14 @@ export async function attachClarificationQuestions(db: D1Database, wardId: strin
     if (question.status === "added" || question.status === "same") {
       await db.prepare("UPDATE line_clarifications SET question_id = ? WHERE ward_id = ? AND clarification_id = ?")
         .bind(question.questionId, wardId, row.clarification_id).run();
-      if (row.answer) await db.prepare("UPDATE project_questions SET state = ?, answer = ?, answered_at = ? WHERE ward_id = ? AND question_id = ? AND state = 'open'")
-        .bind(row.answered_unknown ? "open" : "answered", row.answer, new Date().toISOString(), wardId, question.questionId).run();
+      if (row.answer) {
+        const answers = await db.prepare("SELECT DISTINCT answer_text FROM line_clarification_answers WHERE ward_id = ? AND clarification_id = ?")
+          .bind(wardId, row.clarification_id).all<{ answer_text: string }>();
+        if (answers.results.length > 1) await db.prepare("UPDATE project_questions SET kind = 'conflict', state = 'open', answer = ?, detail = ? WHERE ward_id = ? AND question_id = ?")
+          .bind(row.answer, JSON.stringify({ options: answers.results.map((answer) => answer.answer_text) }), wardId, question.questionId).run();
+        else await db.prepare("UPDATE project_questions SET state = ?, answer = ?, answered_at = ? WHERE ward_id = ? AND question_id = ? AND state = 'open'")
+          .bind(row.answered_unknown ? "open" : "answered", row.answer, new Date().toISOString(), wardId, question.questionId).run();
+      }
     }
   }
 }
@@ -128,7 +135,7 @@ async function prepareQuestions(env: Env, wardId: string, batch: Batch, now: Dat
         for (const year of reading.body.original_years) {
           const dated = reading.body.text_blocks.filter((b) => b.original_id === year.original_id).some((b) => /(?:20\d{2}年|令和\s*\d+年|平成\s*\d+年)/.test(b.text));
           if (year.year === null && !dated && originals.results.some((original) => original.original_id === year.original_id)) pending.push({
-            originalId: year.original_id, topic: "year", text: "この写真は、今年のものですか。去年のものですか。", options: ["今年のもの", "去年のもの", "分からない"],
+            originalId: year.original_id, topic: "year", text: "この写真は、今年のものですか。去年か、それより前のものですか。", options: ["今年のもの", "去年か、それより前のもの", "分からない"],
           });
         }
       }
@@ -205,7 +212,8 @@ export async function replyQuickPhotoChecks(env: Env, wardId: string, deps: Ques
 }
 
 /** 次は答えのReplyでだけ聞く。答えがない物への催促は置かない。 */
-async function deliverNextQuestion(env: Env, wardId: string, batch: Batch, replyToken: string | null, deps: QuestionDeliveryDeps): Promise<void> {
+async function deliverNextQuestion(env: Env, wardId: string, batch: Batch, replyToken: string | null, deps: QuestionDeliveryDeps, fromLineAnswer = false): Promise<void> {
+  if (batch.screen_answered_at && !fromLineAnswer) return;
   const now = deps.now ?? new Date();
   if (!isQuestionTime(now)) return;
   const questions = await listClarifications(env.DB, wardId, batch.batch_id);
@@ -275,7 +283,7 @@ export async function replyAfterClarification(env: Env, wardId: string, batchId:
     .bind(replyToken, now.toISOString(), wardId, batchId).run();
   const questions = await listClarifications(env.DB, wardId, batchId);
   if (questions.some((q) => !q.answer)) {
-    await deliverNextQuestion(env, wardId, batch, replyToken, deps);
+    await deliverNextQuestion(env, wardId, batch, replyToken, deps, true);
     return;
   }
   if (!batch.prepared_at || !batch.message_text || !questions.length) return;
@@ -368,11 +376,10 @@ export async function saveClarificationAnswers(db: D1Database, wardId: string, e
     ]);
     const received = await db.prepare("SELECT DISTINCT answer_text FROM line_clarification_answers WHERE ward_id = ? AND clarification_id = ?")
       .bind(wardId, question.id).all<{ answer_text: string }>();
-    if (received.results.length > 1 && question.project_id) await addQuestion(db, wardId, question.project_id, {
-      kind: "conflict", text: `送った資料について、違う答えが届いています。${question.text}`.slice(0, 500),
-      target: "送った資料の確認",
-      source: { kind: "original", ref: question.original_id, locator: "公式LINEで届いた答え" }, packVersion: "line-clarification-answer@1",
-    });
+    if (received.results.length > 1 && question.question_id) await db.prepare(`UPDATE project_questions SET kind = 'conflict', state = 'open', detail = ?,
+      text = ? WHERE ward_id = ? AND question_id = ? AND answered_by_account_id IS NULL`)
+      .bind(JSON.stringify({ options: received.results.map((row) => row.answer_text), lineClarificationId: question.id }),
+        `送った資料について、違う答えが届いています。${question.text}`.slice(0, 500), wardId, question.question_id).run();
   }
 }
 

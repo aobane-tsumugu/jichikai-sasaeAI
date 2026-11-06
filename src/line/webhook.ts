@@ -161,7 +161,7 @@ export async function acceptLineWebhook(
           VALUES (?, ?, ?)`).bind(wardId, event.source.groupId, now.toISOString()).run();
         if ((inserted.meta.changes ?? 0) === 0) continue;
         try {
-          await replyLineText(accessToken, event.replyToken, "このグループに貼られたものは全部記録に残ります。", fetcher);
+          await replyLineText(accessToken, event.replyToken, "自治会の公式LINEです。このグループに貼られた写真と文は、全部、自治会の記録に残ります。問い合わせるときは、文の頭に「公式へ」と書いてください。", fetcher);
           await db.prepare("UPDATE line_group_notices SET notice_sent_at = ? WHERE ward_id = ? AND group_id = ? AND notice_sent_at IS NULL")
             .bind(now.toISOString(), wardId, event.source.groupId).run();
         } catch (error) {
@@ -192,7 +192,7 @@ export async function acceptLineWebhook(
           ? await getLineMemberDisplayName(accessToken, event.source, fetcher)
           : null,
         ...(event.message.type === "text" ? { text: event.message.text ?? "" } : {}),
-        officialAddressed: event.source.type === "user" || event.message.mention?.mentionees?.some((mention) => mention.isSelf === true) || /^公式(?:へ|さん|[\s:：、])/.test(event.message.text ?? ""),
+        officialAddressed: event.source.type === "user" || event.message.mention?.mentionees?.some((mention) => mention.isSelf === true) || /^公式へ/.test(event.message.text ?? ""),
       };
       if (event.message.type === "image") {
         const content = await getImageContent(event.message.id, accessToken, fetcher);

@@ -8,10 +8,12 @@ import { CRON } from "../core/cron";
 import { sendOfficerDigest } from "./digest";
 import { listClarifications, processPhotoBatches } from "./clarifications";
 import type { AdminEnv, AppEnv } from "../env";
-import { getLineAllowance, lineAccessToken, sendLineTitleAndUrl } from "./api";
+import { getLineAllowance, lineAccessToken, officerGroupId, sendLineTitleAndUrl } from "./api";
 import { markInboxItemUnrelated } from "./intake";
 import { acceptLineWebhook } from "./webhook";
 import { createProject } from "../project/api";
+import { answerQuestion } from "../project/actions";
+import { questionOptionLabel } from "../project/question-pages";
 import { PROJECT_KINDS, type ProjectKind } from "../project/model";
 import { assignProject, withdrawJob } from "../intake/api";
 import { getJob, listJobs, listOriginals } from "../intake/store";
@@ -92,7 +94,7 @@ admin.get("/inbox", async (c) => {
       <a class="quiet" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a>
     </section>
     <h2>役員に届いた問い合わせ</h2>
-    <p>{inquiryNotice(await getDigestSettings(c.env.DB, ward.wardId))}</p>
+    <p>{inquiryNotice(await getDigestSettings(c.env.DB, ward.wardId), Boolean(officerGroupId(c.env, ward.wardId)))}</p>
     {inquiries.results.length ? <ul class="rows">{inquiries.results.map((q) => <li><a class="row-link" href={adminPath(ward, "/inquiries")}><b>{q.subject}</b><span>{formatJst(q.received_at)}に届きました</span>
       {q.line_source_type ? <span>送った人: {q.line_sender_label || "名前は分かりません"}（{q.line_source_type === "user" ? "公式への一対一" : "LINEグループ"}）</span> : null}
       {q.line_replied_at ? <span>AIは答えていません。送った人には「役員に伝えて、内容を確認します。」と返しました。</span> : null}
@@ -120,7 +122,11 @@ admin.get("/inbox", async (c) => {
 
 admin.get("/inbox/questions", async (c) => {
   const { ward } = c.var;
-  const questions = await listClarifications(c.env.DB, ward.wardId);
+  const questions = await Promise.all((await listClarifications(c.env.DB, ward.wardId)).map(async (question) => {
+    const answers = await c.env.DB.prepare("SELECT DISTINCT answer_text FROM line_clarification_answers WHERE ward_id = ? AND clarification_id = ?")
+      .bind(ward.wardId, question.id).all<{ answer_text: string }>();
+    return { ...question, choices: answers.results.map((row) => row.answer_text) };
+  }));
   return c.html(<Layout title="質問" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/inbox")}>届いたものへ</a>
     <h1>送った資料についての質問</h1><p class="lead">読めないところなどを残しています。分かるものだけ答えられます。答えがなくても仕事は進められます。</p>
@@ -128,10 +134,37 @@ admin.get("/inbox/questions", async (c) => {
       <p class="link-line"><a href={adminPath(ward, `/intake/originals/${question.original_id}`)}>元の資料を見る</a></p>
       <p>{question.sent_at ? "写真が届いた場所で聞きました。答えがなくても、そのままでかまいません。" : "まだ公式LINEでは聞いていません。"}</p>
       {question.answer ? <p class="preserve-lines">届いた答え: {question.answer}</p> : null}
+      {question.choices.length > 1 && !question.choices.includes(question.answer ?? "") ? <details class="fold"><summary>二つを見比べる</summary><div><p>使う方を選んでください。選ばなければ、今の中身のままです。</p>
+        <form method="post" action={adminPath(ward, `/inbox/questions/${question.id}`)}><fieldset><legend>使う内容</legend>{question.choices.map((answer) => <label><input type="radio" name="answer" value={answer} required />{answer}</label>)}</fieldset><button>この答えを残す</button></form>
+      </div></details> : null}
+      {!question.answer ? <form method="post" action={adminPath(ward, `/inbox/questions/${question.id}`)}>
+        {question.options.length > 1 ? <div class="action-links">{question.options.map((option) => <button class="secondary" name="answer" value={option}>{questionOptionLabel(option)}</button>)}</div>
+          : <><label for={`answer-${question.id}`}>答え</label><input id={`answer-${question.id}`} name="answer" maxlength={2000} /><button>答えを残す</button></>}
+        <button class="quiet" name="answer" value="分からない">分からない</button>
+      </form> : null}
       {question.project_id ? <p class="link-line"><a href={adminPath(ward, `/projects/${question.project_id}/questions`)}>行事の質問を見る</a></p> : <p>どの行事か分からないものは、届いたものから入れ直せます。</p>}
     </section>)}
     {!questions.length ? <p>質問はありません。</p> : null}
   </Layout>);
+});
+
+admin.post("/inbox/questions/:clarificationId", async (c) => {
+  const { ward, account } = c.var;
+  const question = (await listClarifications(c.env.DB, ward.wardId)).find((question) => question.id === c.req.param("clarificationId"));
+  if (!question) return c.notFound();
+  const choices = await c.env.DB.prepare("SELECT DISTINCT answer_text FROM line_clarification_answers WHERE ward_id = ? AND clarification_id = ?")
+    .bind(ward.wardId, question.id).all<{ answer_text: string }>();
+  if (question.answer && (choices.results.length <= 1 || choices.results.some((row) => row.answer_text === question.answer))) return c.notFound();
+  const value = String((await c.req.formData()).get("answer") ?? "").trim();
+  const back = { href: adminPath(ward, "/inbox/questions"), label: "質問に戻る" };
+  if (!value || value.length > 2000) return adminResult(c, "答えを入れてください。", 400, back, "分かるところを2000文字までで書いてください。");
+  if (question.project_id && question.question_id) {
+    if (!await answerQuestion(c.env.DB, ward.wardId, question.project_id, question.question_id, value === "分からない" ? "unknown" : "answer", value, account.accountId)) return adminResult(c, "答えを残せませんでした。", 409, back, "質問が閉じられていないか確かめてください。");
+  } else await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE line_clarifications SET answer = ?, answered_unknown = ? WHERE ward_id = ? AND clarification_id = ? AND (answer IS NULL OR answer = ?)").bind(value, value === "分からない" ? 1 : 0, ward.wardId, question.id, question.answer),
+    c.env.DB.prepare("UPDATE line_photo_batches SET screen_answered_at = ?, answer_reply_token = NULL, answer_reply_at = NULL WHERE ward_id = ? AND batch_id = ?").bind(new Date().toISOString(), ward.wardId, question.batch_id),
+  ]);
+  return adminResult(c, "答えを残しました。", 200, back, "ほかの質問を見られます。この答えについて、LINEには書きません。");
 });
 
 admin.post("/inbox/city/:jobId", async (c) => {

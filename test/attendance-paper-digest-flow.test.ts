@@ -176,7 +176,7 @@ it("初年度の出欠を紙とWebとLINEで受け、締切後は未回答を欠
     expect(pushes).toHaveLength(1);
     expect(pushes[0]).toContain(`C${ward.wardId}`);
     expect(pushes[0]).toContain("届いた問い合わせは1件です");
-    expect(pushes[0]).toContain(`${ward.slug}/admin/inbox`);
+    expect(pushes[0]).toContain(`${ward.slug}/admin/inquiries`);
     expect(pushes[0]).not.toContain(fixture.previousMaterial);
     await sendOfficerDigest(bindings, ward.wardId, ward.slug, at, fakeFetch);
     await sendOfficerDigest(bindings, other.ward.wardId, other.ward.slug, at, fakeFetch);

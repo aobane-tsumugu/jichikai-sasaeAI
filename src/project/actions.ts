@@ -80,9 +80,27 @@ export async function renameProject(db: D1Database, wardId: string, projectId: s
 }
 
 export async function answerQuestion(db: D1Database, wardId: string, projectId: string, questionId: string, action: "answer" | "unknown" | "later", answer: string, accountId: string): Promise<boolean> {
+  const project = await db.prepare("SELECT closed_at FROM projects WHERE ward_id = ? AND project_id = ?").bind(wardId, projectId).first<{ closed_at: string | null }>();
+  if (!project || project.closed_at) return false;
   const state = action === "answer" ? "answered" : action;
   const value = answer.trim().slice(0, 2000);
   if (action === "answer" && !value) return false;
+  const linked = await db.prepare(`SELECT c.clarification_id, c.batch_id FROM line_clarifications c JOIN jobs j ON j.ward_id = c.ward_id AND j.job_id = c.job_id
+    WHERE c.ward_id = ? AND j.project_id = ? AND c.question_id = ? AND j.withdrawn_at IS NULL`).bind(wardId, projectId, questionId)
+    .first<{ clarification_id: string; batch_id: string }>();
+  if (linked) {
+    const result = await db.prepare(`UPDATE project_questions SET state = ?, answer = ?, answered_at = ?, answered_by_account_id = ?
+      WHERE ward_id = ? AND project_id = ? AND question_id = ? AND state IN ('open', 'later')`)
+      .bind(state, action === "answer" ? value : null, nowIso(), accountId, wardId, projectId, questionId).run();
+    if (!result.meta.changes) return false;
+    if (action !== "later") await db.batch([
+      db.prepare("UPDATE line_clarifications SET answer = ?, answered_unknown = ? WHERE ward_id = ? AND clarification_id = ?")
+        .bind(action === "unknown" ? "分からない" : value, action === "unknown" ? 1 : 0, wardId, linked.clarification_id),
+      db.prepare("UPDATE line_photo_batches SET screen_answered_at = ?, answer_reply_token = NULL, answer_reply_at = NULL WHERE ward_id = ? AND batch_id = ?")
+        .bind(nowIso(), wardId, linked.batch_id),
+    ]);
+    return true;
+  }
   if (action === "answer") {
     const question = await db.prepare("SELECT kind, text, target, detail FROM project_questions WHERE ward_id = ? AND project_id = ? AND question_id = ? AND state IN ('open', 'later')")
       .bind(wardId, projectId, questionId).first<{ kind: string; text: string; target: string | null; detail: string | null }>();

@@ -1,4 +1,5 @@
 import { getAnswerLabels } from "../settings/answer-labels";
+import { deliveryAlert } from "../line/delivery-alert";
 import { Hono } from "hono";
 import { adminResult, AdminPage } from "../core/admin-ui";
 import { adminPath } from "../core/auth";
@@ -155,7 +156,7 @@ admin.get("/publish/:projectId", async (c) => {
       <h1>{lowered ? "区のページから下げました" : rain ? "雨の変更を配りました" : `${DOCUMENT_KIND_LABEL[kind as DocumentKind]}を配りました`}</h1>
       {lowered ? <Notice>下げました。配った記録は残ります。LINEの知らせは取り消せません。</Notice> :
         <div class={failed ? "notice warn" : "notice done"} role="status"><strong>{failed ? "公式LINEには送れませんでした" : "区のページに載せました"}</strong>
-          <p>{failed ? "区のページには載っています。紙も配れます。LINEは送らないままでもかまいません。" : record.line_status === "sent" ? `公式LINE${record.line_recipients === null ? "に" : `の友だち${record.line_recipients}人に`}送りました。` : record.line_status === "pending" ? "公式LINEの送信結果はまだ分かりません。" : "今回は公式LINEに送りませんでした。"}{task ? `段取りの「${task.name}」を済みにしました。` : ""}</p>
+          <p>{failed ? `${record.line_error || "公式LINEに送れませんでした。"}区のページには載っています。紙も配れます。LINEは送らないままでもかまいません。` : record.line_status === "sent" ? `公式LINE${record.line_recipients === null ? "に" : `の友だち${record.line_recipients}人に`}送りました。` : record.line_status === "pending" ? "公式LINEの送信結果はまだ分かりません。" : "今回は公式LINEに送りませんでした。"}{task ? `段取りの「${task.name}」を済みにしました。` : ""}</p>
         </div>}
       <section class="next"><strong>次は</strong>{lowered ? <><p>内容を直して、配り直せます。</p><a class="button" href={editHref}>直して配り直す</a></> : rain ? <p>班長に電話して伝えてください。掲示も張り替えてください。ここは画面では済みません。</p> : <><p>案内と班長への一枚を印刷して、班長に渡してください。</p><a class="button" href={printHref}>案内を印刷する</a><a class="quiet" href={`${printHref}/leader`}>班長への一枚を印刷する</a></>}</section>
       {!rain && !lowered ? <DistributionFacts raw={record.distribution} /> : null}
@@ -253,21 +254,9 @@ admin.post("/publish/:projectId/space", async (c) => {
   return c.redirect(adminPath(ward, `/publish/${projectId}?space=sent`), 303);
 });
 
-admin.get("/publish/:projectId/preview/:documentId/:versionNo", async (c) => {
-  const { ward, account } = c.var;
-  const row = await c.env.DB.prepare(`SELECT COALESCE(v.title, d.title) AS title, d.scope, v.body, v.version_no FROM documents d
-    JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
-    WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_no = ?`)
-    .bind(ward.wardId, c.req.param("projectId"), c.req.param("documentId"), Number(c.req.param("versionNo")))
-    .first<{ title: string; scope: string; body: string; version_no: number }>();
-  if (!row) return c.notFound();
-  return c.html(<AdminPage ward={ward} account={account} title={row.title} back={{ href: adminPath(ward, `/publish/${c.req.param("projectId")}`), label: "配る画面へ戻る" }}>
-    <h1>{row.title}</h1><p class="lead">配る前の下書きを読む画面です。ここでは区のページには載りません。</p><ArticleBody body={row.body} />
-    <p class="link-line"><a href={adminPath(ward, `/print/${c.req.param("projectId")}/${c.req.param("documentId")}/${row.version_no}/preview`)}>印刷用ページで見る</a></p>
-    <p>配る前の見え方です。配る操作をするまで、区のページには載りません。</p>
-    {row.scope === "public" ? <p>配る相手と紙の部数は、配る内容を見る画面で変えられます。</p> : <p>これは実行委員と班長に配る内容です。</p>}
-  </AdminPage>);
-});
+// 前の入口も、下書きの紙へ案内する。
+admin.get("/publish/:projectId/preview/:documentId/:versionNo", (c) => c.redirect(adminPath(c.var.ward,
+  `/print/${c.req.param("projectId")}/${c.req.param("documentId")}/${c.req.param("versionNo")}/preview`), 303));
 
 async function confirmPublication(c: Context<AdminEnv>) {
   const { ward, account } = c.var;
@@ -419,9 +408,14 @@ admin.post("/publish/:projectId/send", async (c) => {
       else {
         const allowance = await getLineAllowance(token);
         lineRecipients = allowance.friends;
-        await sendLineTitleAndUrl(token, paperHeading(project.title, row.title), publicUrl);
-        lineStatus = "sent";
-        lineSentAt = nowIso();
+        if (allowance.friends === null || (allowance.remaining !== null && allowance.remaining < allowance.friends)) {
+          lineStatus = "failed";
+          lineError = allowance.friends === null ? "送り先の人数を確かめられないため、公式LINEには送っていません。" : "今月、公式LINEで送れる通数が足りないため、送っていません。";
+        } else {
+          await sendLineTitleAndUrl(token, paperHeading(project.title, row.title), publicUrl);
+          lineStatus = "sent";
+          lineSentAt = nowIso();
+        }
       }
     } catch {
       lineStatus = "failed";
@@ -430,6 +424,7 @@ admin.post("/publish/:projectId/send", async (c) => {
   }
   await c.env.DB.prepare(`UPDATE publication_records SET line_status = ?, line_recipients = ?, line_sent_at = ?, line_error = ?
     WHERE ward_id = ? AND publication_id = ?`).bind(lineStatus, lineRecipients, lineSentAt, lineError, ward.wardId, publicationId).run();
+  if (sendLine) await deliveryAlert(c.env.DB, ward.wardId, "publish", lineError);
   return c.redirect(adminPath(ward, `/publish/${projectId}?done=${publicationId}`), 303);
 });
 
