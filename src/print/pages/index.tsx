@@ -2,7 +2,7 @@ import { labelsFromBody } from "../../answers/counts";
 import { getAnswerLabels } from "../../settings/answer-labels";
 import { DraftPaper } from "./draft";
 import { MeetingSlipFields } from "./meeting";
-import { meetingNote } from "../../answers/meeting";
+import { meetingNote, meetingNoteFromBody } from "../../answers/meeting";
 import { Hono } from "hono";
 import { AdminPage } from "../../core/admin-ui";
 import { adminPath } from "../../core/auth";
@@ -122,12 +122,12 @@ admin.get("/print/:projectId/paper/:kind", async (c) => {
 
 admin.get("/print/:projectId/:documentId/:versionNo/preview", async (c) => {
   const { ward } = c.var;
-  const row = await c.env.DB.prepare(`SELECT COALESCE(v.title, d.title) AS title, d.kind, p.kind AS project_kind, p.title AS project_title, v.body, v.version_no, v.scope FROM documents d
+  const row = await c.env.DB.prepare(`SELECT COALESCE(v.title, d.title) AS title, d.kind, p.kind AS project_kind, p.title AS project_title, v.body, v.version_no, v.scope, v.published_at FROM documents d
     JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
     JOIN projects p ON p.ward_id = d.ward_id AND p.project_id = d.project_id
     WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_no = ?`)
     .bind(ward.wardId, c.req.param("projectId"), c.req.param("documentId"), Number(c.req.param("versionNo")))
-    .first<{ title: string; kind: string; project_kind: string; project_title: string; body: string; version_no: number; scope: string }>();
+    .first<{ title: string; kind: string; project_kind: string; project_title: string; body: string; version_no: number; scope: string; published_at: string | null }>();
   if (!row) return c.notFound();
   const tables = row.scope === "space" && ["duty_roster", "procedure"].includes(row.kind)
     ? await currentPublicationTables(c.env.DB, ward.wardId, c.req.param("projectId")) : undefined;
@@ -135,7 +135,7 @@ admin.get("/print/:projectId/:documentId/:versionNo/preview", async (c) => {
     tables={tables}
     back={adminPath(ward, `/projects/${c.req.param("projectId")}/draft/${row.kind}`)} wardName={ward.name}
     squads={await getSquads(c.env.DB, ward.wardId)} labels={await getAnswerLabels(c.env.DB, ward.wardId)} answerOnly={c.req.query("paper") === "answer"}
-    generalMeeting={row.project_kind === "general_meeting"} meetingNote={row.project_kind === "general_meeting" ? await meetingNote(c.env.DB, ward.wardId) : ""} />);
+    generalMeeting={row.project_kind === "general_meeting"} meetingNote={row.project_kind === "general_meeting" ? row.published_at ? meetingNoteFromBody(row.body) : await meetingNote(c.env.DB, ward.wardId) : ""} />);
 });
 
 const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
@@ -198,7 +198,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   const labels = labelsFromBody(row.body);
   const helperSlots = paperHelperSlots(publishedItem(row.body, "helper_slots") || "");
   const generalMeeting = row.project_kind === "general_meeting";
-  const note = generalMeeting ? await meetingNote(c.env.DB, ward.wardId) : "";
+  const note = generalMeeting ? meetingNoteFromBody(row.body) : "";
   const answerSheet = (squad: string, standalone = false) => <div class={standalone ? "answer-slip standalone" : "answer-slip"}>
     {generalMeeting && standalone ? <CutLine /> : null}
     <div class="slip"><div class="slip-fields">
