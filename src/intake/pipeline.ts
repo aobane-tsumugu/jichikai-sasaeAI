@@ -16,6 +16,7 @@ import { suggestProjects, SUGGEST_PACK_VERSION } from "../ai/suggest";
 import { fixOriginalIds, ReadError, readOriginals, type ReadableOriginal } from "../ai/read";
 import { lookupPaperCode } from "../print/qr";
 import { addAnswer } from "../answers/api";
+import { meetingAnswerFromSheet } from "../answers/meeting";
 import {
   claimRead,
   closeAbandonedRuns,
@@ -154,7 +155,9 @@ async function performRead(
     }
 
     const answerLabels = job.read_kind === "answer_sheet" ? await getAnswerLabels(env.DB, wardId) : undefined;
-    const result = await (deps?.readImpl ?? readOriginals)(client, { kind: job.read_kind, originals: readable, answerLabels });
+    const answerProject = job.read_kind === "answer_sheet" && job.project_id
+      ? await env.DB.prepare("SELECT kind FROM projects WHERE ward_id = ? AND project_id = ?").bind(wardId, job.project_id).first<{ kind: string }>() : null;
+    const result = await (deps?.readImpl ?? readOriginals)(client, { kind: job.read_kind, originals: readable, answerLabels, generalMeeting: answerProject?.kind === "general_meeting" });
     const placed = await finishRead(env.DB, {
       wardId,
       jobId,
@@ -232,10 +235,18 @@ async function saveAnswerSheetRows(
   const readings = await getReadings(db, wardId, jobId);
   const reading = readings.find((row) => "rows" in row.body)?.body;
   if (!reading || !("rows" in reading)) return;
+  const project = await db.prepare("SELECT kind FROM projects WHERE ward_id = ? AND project_id = ?").bind(wardId, projectId).first<{ kind: string }>();
   await Promise.all(reading.rows.map(async (row, index) => {
     const household = row.household_name.trim();
     const district = row.ward_group.trim();
     if (!household) return;
+      if (project?.kind === "general_meeting") {
+        const answer = meetingAnswerFromSheet(row);
+        if (!answer || reading.unreadable.some((entry) => entry.original_id === row.original_id && entry.locator === row.locator)) return;
+        await addAnswer(db, wardId, { projectId, household, district, peopleCount: 0, ...answer,
+          source: "sheet", originalId: row.original_id, sheetRowIndex: index, accountId });
+        return;
+      }
     // 空欄と分かる人数は読み取りで0になる。不明な人数を補って一部だけ数えない。
     // 古い読み取りに高齢の方の欄自体が無い場合（undefined）は、従来どおり扱う。
     // 三つとも空で参加しないの印も無い行は、答えが無いのと同じ。0人の不参加にしない。

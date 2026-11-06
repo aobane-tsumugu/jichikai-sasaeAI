@@ -1,6 +1,8 @@
 import { labelsFromBody } from "../../answers/counts";
 import { getAnswerLabels } from "../../settings/answer-labels";
 import { DraftPaper } from "./draft";
+import { MeetingSlipFields } from "./meeting";
+import { meetingNote } from "../../answers/meeting";
 import { Hono } from "hono";
 import { AdminPage } from "../../core/admin-ui";
 import { adminPath } from "../../core/auth";
@@ -24,6 +26,7 @@ const printKinds = ["poster", "announcement", "answer", "leader", "duty", "meeti
 type PrintKind = (typeof printKinds)[number];
 
 interface PrintData {
+  project_kind: string;
   published_at: string | null;
   distribution: string | null;
   tables_snapshot: string | null;
@@ -119,16 +122,17 @@ admin.get("/print/:projectId/paper/:kind", async (c) => {
 
 admin.get("/print/:projectId/:documentId/:versionNo/preview", async (c) => {
   const { ward } = c.var;
-  const row = await c.env.DB.prepare(`SELECT COALESCE(v.title, d.title) AS title, d.kind, p.title AS project_title, v.body, v.version_no FROM documents d
+  const row = await c.env.DB.prepare(`SELECT COALESCE(v.title, d.title) AS title, d.kind, p.kind AS project_kind, p.title AS project_title, v.body, v.version_no FROM documents d
     JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
     JOIN projects p ON p.ward_id = d.ward_id AND p.project_id = d.project_id
     WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_no = ?`)
     .bind(ward.wardId, c.req.param("projectId"), c.req.param("documentId"), Number(c.req.param("versionNo")))
-    .first<{ title: string; kind: string; project_title: string; body: string; version_no: number }>();
+    .first<{ title: string; kind: string; project_kind: string; project_title: string; body: string; version_no: number }>();
   if (!row) return c.notFound();
   return c.html(<DraftPaper title={row.title} projectTitle={row.project_title} body={row.body} kind={row.kind}
     back={adminPath(ward, `/projects/${c.req.param("projectId")}/draft/${row.kind}`)} wardName={ward.name}
-    squads={await getSquads(c.env.DB, ward.wardId)} labels={await getAnswerLabels(c.env.DB, ward.wardId)} answerOnly={c.req.query("paper") === "answer"} />);
+    squads={await getSquads(c.env.DB, ward.wardId)} labels={await getAnswerLabels(c.env.DB, ward.wardId)} answerOnly={c.req.query("paper") === "answer"}
+    generalMeeting={row.project_kind === "general_meeting"} meetingNote={row.project_kind === "general_meeting" ? await meetingNote(c.env.DB, ward.wardId) : ""} />);
 });
 
 const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
@@ -139,7 +143,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   const kind = (c.req.method === "POST" ? "leader" : c.req.param("kind")) as PrintKind;
   const versionNo = Number(c.req.param("versionNo"));
   if (!printKinds.includes(kind) || !Number.isInteger(versionNo)) return c.notFound();
-  const row = await c.env.DB.prepare(`SELECT p.project_id, p.title, p.closed_at, d.document_id, COALESCE(v.title, d.title) AS document_title,
+  const row = await c.env.DB.prepare(`SELECT p.project_id, p.title, p.kind AS project_kind, p.closed_at, d.document_id, COALESCE(v.title, d.title) AS document_title,
       v.version_id, v.version_no, v.body, d.kind, v.scope, v.tables_snapshot,
       COALESCE(r.published_at, v.published_at) AS published_at, r.distribution
     FROM document_versions v JOIN projects p ON p.ward_id = v.ward_id AND p.project_id = v.project_id
@@ -190,11 +194,14 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
     <span>スマホでも答えられます。カメラを向けて、出てきた文字を押してください。</span></div>;
   const labels = labelsFromBody(row.body);
   const helperSlots = paperHelperSlots(publishedItem(row.body, "helper_slots") || "");
+  const generalMeeting = row.project_kind === "general_meeting";
+  const note = generalMeeting ? await meetingNote(c.env.DB, ward.wardId) : "";
   const answerSheet = (squad: string, standalone = false) => <div class={standalone ? "answer-slip standalone" : "answer-slip"}>
+    {generalMeeting && standalone ? <CutLine /> : null}
     <div class="slip"><div class="slip-fields">
-      {standalone ? <h1>{row.title} 回答票{squad ? `　班: ${squad}` : ""}</h1> : <h2>{row.title} 回答票{squad ? `　班: ${squad}` : ""}</h2>}
+      {standalone ? <h1>{row.title} 回答票{generalMeeting ? "・委任状" : ""}{squad ? `　班: ${squad}` : ""}</h1> : <h2>{row.title} 回答票{generalMeeting ? "・委任状" : ""}{squad ? `　班: ${squad}` : ""}</h2>}
       {standalone ? <p>{[publishedItem(row.body, "date_time"), publishedItem(row.body, "place"), publishedItem(row.body, "rain_plan")].filter(Boolean).join("。")}</p> : null}
-      <p>参加しないときも、答えてください。答えがないときは、欠席として数えます。</p>
+      {generalMeeting ? <MeetingSlipFields note={note} squad={squad} /> : <><p>参加しないときも、答えてください。答えがないときは、欠席として数えます。</p>
       <FieldBox label="代表者のお名前" heightMm={standalone ? 30 : 19} />
       {!squad ? <FieldBox label="班（分からないときは空けてかまいません）" heightMm={10} /> : null}
       <div class="field-box"><p>□ 参加する　　□ 参加しない</p><strong>参加する人数</strong><div class="paper-counts">
@@ -203,12 +210,15 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
       <div class="field-box" style={standalone ? "min-height:55mm" : "min-height:22mm"}><span class="field-label">手伝える方のお名前と時間帯（書かなくてかまいません）</span>
         {helperSlots ? <p>{helperSlots}</p> : null}
       </div>
+      </>}
     </div>{paperQr(squad)}</div>
     <div class="give">{paperGive(due, `${squad ? `${squad}の` : ""}班長か役員`).map((line) => <div>{line}</div>)}</div>
     {contact ? <p>連絡先：{contact}</p> : null}
   </div>;
   // 返す案内や時間帯の分も見積もる。文字を縮めず、長ければ回答票を別の紙にする。
-  const onOneSheet = withAnswer && fitsAboveAnswer(row.body, labels.join("") + helperSlots + due + contact + "参加しないときも、答えてください。答えがないときは、欠席として数えます。□参加する□参加しない。いない欄は、空けたままでかまいません");
+  const onOneSheet = withAnswer && fitsAboveAnswer(row.body, generalMeeting
+    ? note + due + contact + "□出席□委任□欠席。委任する相手のお名前。世帯の代表のお名前。委任を選んだときは、この回答票を委任状として受け付けます。委任する相手を書かなかったときは、空欄のまま受け付けます。"
+    : labels.join("") + helperSlots + due + contact + "参加しないときも、答えてください。答えがないときは、欠席として数えます。□参加する□参加しない。いない欄は、空けたままでかまいません");
   const tables = readPublicationTables(row.tables_snapshot);
   const published = (table: TableKey) => (tables ?? []).filter((entry) => entry.kind === table);
   const footer = (squad = "") => <><span>{ward.name}{squad ? ` ${squad}` : ""}</span><span>{distributed}　紙の番号{paperCode}</span></>;
@@ -234,7 +244,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
       <h2>お願いしたいこと</h2>
       <ul>
         <li>案内の紙を、{squad ? `${squad}の` : "班の"}世帯に渡してください。</li>
-        {due ? <li>答えの締切は{due}です。答えがないときは、欠席として数えます。</li> : null}
+        {due ? <li>答えの締切は{due}です。{!generalMeeting ? "答えがないときは、欠席として数えます。" : ""}</li> : null}
         <li>預かった回答票は、下のQRコードを開いて、撮って送ってください。一枚の写真に何枚写っていてもかまいません。</li>
       </ul>
       <p>写真を送るのが難しいときは、回答票を役員に渡してください。</p>
