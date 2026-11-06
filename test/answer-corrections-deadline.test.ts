@@ -14,7 +14,7 @@ it("案内の締切を受付に使い、答えを直して消し、手で延ば�
   vi.setSystemTime(new Date("2026-10-10T03:00:00Z"));
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: FIRST_SLICE.draftTitle, year: FIRST_SLICE.eventYear, accountId: account.accountId,
+    kind: "event", title: "架空の秋の収穫祭", year: FIRST_SLICE.eventYear, accountId: account.accountId,
   });
   await replaceRoster(env.DB, ward.wardId, [
     { household: FIRST_SLICE.firstHousehold, district: FIRST_SLICE.district },
@@ -25,7 +25,7 @@ it("案内の締切を受付に使い、答えを直して消し、手で延ば�
   const publishPath = `/${ward.slug}/admin/publish/${project.projectId}`;
   const publish = async (due: string) => {
     expect(await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
-      kind: "announcement", title: FIRST_SLICE.draftTitle, scope: "public", basedOn: 0,
+      kind: "announcement", title: "案内", scope: "public", basedOn: 0,
       body: JSON.stringify({ text: FIRST_SLICE.draftText, items: [{ key: "due", content: due }] }),
     })).toBe(true);
     const version = await env.DB.prepare(`SELECT v.document_id, v.version_id, v.version_no
@@ -42,7 +42,7 @@ it("案内の締切を受付に使い、答えを直して消し、手で延ば�
   await publish("決まり次第お知らせします");
   expect(await getAnswerDeadline(env.DB, ward.wardId, project.projectId)).toBeNull();
   const input = { household: FIRST_SLICE.phoneHousehold, district: `${FIRST_SLICE.district}（打ち間違い）`,
-    people_count: "3", helper_name: FIRST_SLICE.phoneHelper, helper_times: FIRST_SLICE.helperTime };
+    children_count: "1", adults_count: "2", seniors_count: "0", helper_name: FIRST_SLICE.phoneHelper, helper_times: FIRST_SLICE.helperTime };
   expect((await postForm(realApp, `${answersPath}/phone`, input, cookie)).status).toBe(303);
   const before = (await listAnswers(env.DB, ward.wardId, project.projectId))[0];
   if (!before) throw new Error("直す答えがありません。");
@@ -57,7 +57,7 @@ it("案内の締切を受付に使い、答えを直して消し、手で延ば�
   expect(editHtml).toContain(`action="${answersPath}/${before.answerId}/delete"`);
   expect((await postForm(realApp, editPath, {
     household: FIRST_SLICE.firstHousehold, district: FIRST_SLICE.district,
-    people_count: "2", helper_name: FIRST_SLICE.sheetHelper, helper_times: FIRST_SLICE.helperTime,
+    children_count: "0", adults_count: "2", seniors_count: "0", helper_name: FIRST_SLICE.sheetHelper, helper_times: FIRST_SLICE.helperTime,
   }, cookie)).status).toBe(303);
   expect(await listAnswers(env.DB, ward.wardId, project.projectId)).toEqual([
     expect.objectContaining({ answerId: before.answerId, household: FIRST_SLICE.firstHousehold,

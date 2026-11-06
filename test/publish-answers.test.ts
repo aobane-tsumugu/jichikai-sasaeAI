@@ -6,20 +6,25 @@ import { saveDocument } from "../src/project/actions";
 import { replaceRoster, getRoster, listAnswers, listUnansweredByDistrict, getAnswerTotals } from "../src/answers/api";
 import { checkPublicDraft } from "../src/check";
 import { SETTING_KEYS } from "../src/settings/keys";
-import { setSetting } from "../src/settings/store";
+import { getPublicContact, getSquads, setSetting } from "../src/settings/store";
 import { get, postForm, realApp } from "./helpers";
 
 describe("配る画面と区のページ", () => {
-  it("混入の検査結果を確認画面に出し、公開用の連絡先が空でも配れる", async () => {
+  it("班・名簿・公開用の連絡先が空の一年目でも、確認結果を読んで配れる", async () => {
     const { ward, account, cookie } = await seedAdmin(env.DB);
     const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
+    expect(await getSquads(env.DB, ward.wardId)).toEqual([]);
+    expect(await getRoster(env.DB, ward.wardId)).toEqual([]);
+    expect(await getPublicContact(env.DB, ward.wardId)).toBe("");
     await applyChange(env.DB, ward.wardId, project.projectId, {
       kind: "row", table: "sponsors", data: { name: "協賛先A（架空）", amount: 6500 },
       source: { kind: "person", accountId: account.accountId }, confidence: "high", packVersion: "publish-test@1",
     });
-    const body = JSON.stringify({ text: "当日は6500円の協賛があります", items: [] });
+    const body = JSON.stringify({ text: "当日は6500円の協賛があります", items: [
+      { key: "date_time", content: "2026年11月14日10時" }, { key: "place", content: "架空の公民館" },
+    ] });
     await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
-      kind: "announcement", title: "架空の案内", scope: "public", body, basedOn: project.stateVersion + 1,
+      kind: "announcement", title: "案内", scope: "public", body, basedOn: project.stateVersion + 1,
     });
     const version = await env.DB.prepare(`SELECT d.document_id, v.version_id, v.version_no, p.state_version
       FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
@@ -31,8 +36,7 @@ describe("配る画面と区のページ", () => {
       documentId: version!.document_id,
       versionId: version!.version_id,
       versionNo: String(version!.version_no),
-      recipientScope: "member_households",
-      distribution: "",
+      recipientScope: "all_households", allCopies: "1", lineDelivery: "skip", distribution: "",
     }, cookie);
     expect(response.status).toBe(200);
     expect(await response.text()).toContain("協賛の金額と同じ数字があります");
@@ -41,8 +45,7 @@ describe("配る画面と区のページ", () => {
       versionId: version!.version_id,
       versionNo: String(version!.version_no),
       stateVersion: String(version!.state_version),
-      recipientScope: "member_households",
-      distribution: "",
+      recipientScope: "all_households", allCopies: "1", lineDelivery: "skip", distribution: "",
     }, cookie);
     expect(sent.status).toBe(303);
   });
@@ -51,9 +54,9 @@ describe("配る画面と区のページ", () => {
     const { ward, account } = await seedAdmin(env.DB);
     const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
     await setSetting(env.DB, ward.wardId, SETTING_KEYS.publicContact, "fixture@example.test", account.accountId);
-    const body = JSON.stringify({ text: "連絡先fixture@example.test", items: [] });
+    const body = JSON.stringify({ text: "連絡先fixture@example.test", items: [{ key: "public_contact", content: "fixture@example.test" }] });
     await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
-      kind: "announcement", title: "架空の案内", scope: "public", body, basedOn: project.stateVersion,
+      kind: "announcement", title: "案内", scope: "public", body, basedOn: project.stateVersion,
     });
     expect(await checkPublicDraft(env.DB, ward.wardId, project.projectId, "announcement", body)).toEqual([]);
   });
@@ -112,14 +115,29 @@ describe("答えの入口と一覧", () => {
       { household: "一世帯（架空）", district: "一班" },
       { household: "二世帯（架空）", district: "一班" },
     ], { household: 0, district: 1 });
+    expect(await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
+      kind: "announcement", title: "案内", scope: "public", basedOn: project.stateVersion,
+      body: JSON.stringify({ text: "架空の秋の収穫祭に参加する人数を答えてください。", items: [
+        { key: "date_time", content: "2026年11月14日10時" }, { key: "place", content: "架空の公民館" },
+      ] }),
+    })).toBe(true);
+    const version = await env.DB.prepare(`SELECT v.document_id, v.version_id, v.version_no, p.state_version
+      FROM document_versions v JOIN projects p ON p.ward_id = v.ward_id AND p.project_id = v.project_id
+      WHERE v.ward_id = ? AND v.project_id = ? ORDER BY v.version_no DESC LIMIT 1`)
+      .bind(ward.wardId, project.projectId).first<{ document_id: string; version_id: string; version_no: number; state_version: number }>();
+    expect(version).not.toBeNull();
+    expect((await postForm(realApp, `/${ward.slug}/admin/publish/${project.projectId}/send`, {
+      documentId: version!.document_id, versionId: version!.version_id, versionNo: String(version!.version_no),
+      stateVersion: String(version!.state_version), lineDelivery: "skip",
+    }, cookie)).status).toBe(303);
     const publicPage = await get(realApp, `/${ward.slug}/answer/${project.projectId}`);
     expect(publicPage.status).toBe(200);
     const web = await postForm(realApp, `/${ward.slug}/answer/${project.projectId}`, {
-      household: "一世帯（架空）", district: "一班", people_count: "3", helper_name: "", helper_times: "",
+      household: "一世帯（架空）", district: "一班", children_count: "1", adults_count: "2", seniors_count: "0", helper_name: "", helper_times: "",
     });
     expect(web.status).toBe(200);
     const phone = await postForm(realApp, `/${ward.slug}/admin/answers/${project.projectId}/phone`, {
-      household: "電話世帯（架空）", district: "一班", people_count: "2", helper_name: "手伝い希望者（架空）", helper_times: "受付",
+      household: "電話世帯（架空）", district: "一班", children_count: "0", adults_count: "2", seniors_count: "0", helper_name: "手伝い希望者（架空）", helper_times: "受付",
     }, cookie);
     expect(phone.status).toBe(303);
     const answers = await listAnswers(env.DB, ward.wardId, project.projectId);
