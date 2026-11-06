@@ -47,12 +47,17 @@ export function helpTimeChoices(body: string): string[] {
   return [...new Set(choices)];
 }
 
-export async function addHelpOffer(db: D1Database, wardId: string, projectId: string, name: string, times: string): Promise<boolean> {
-  const same = await db.prepare(`SELECT 1 FROM project_help_offers WHERE ward_id = ? AND project_id = ? AND name = ? AND times = ? LIMIT 1`)
-    .bind(wardId, projectId, name, times).first();
-  if (same) return true;
-  const result = await db.prepare(`INSERT INTO project_help_offers (offer_id, ward_id, project_id, name, times, created_at)
-    SELECT ?, ?, p.project_id, ?, ?, ? FROM projects p
+export async function addHelpOffer(db: D1Database, wardId: string, projectId: string, name: string, times: string, submissionId?: string): Promise<HelpOffer | null> {
+  const existing = () => submissionId
+    ? db.prepare(`SELECT offer_id AS offerId, name, times FROM project_help_offers WHERE ward_id = ? AND project_id = ? AND submission_id = ?`)
+      .bind(wardId, projectId, submissionId).first<HelpOffer>()
+    : db.prepare(`SELECT offer_id AS offerId, name, times FROM project_help_offers WHERE ward_id = ? AND project_id = ? AND name = ? AND times = ? LIMIT 1`)
+      .bind(wardId, projectId, name, times).first<HelpOffer>();
+  const same = await existing();
+  if (same) return same;
+  const offerId = newId();
+  const result = await db.prepare(`INSERT INTO project_help_offers (offer_id, ward_id, project_id, name, times, created_at, submission_id)
+    SELECT ?, ?, p.project_id, ?, ?, ?, ? FROM projects p
     WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL
       AND NOT EXISTS (SELECT 1 FROM project_deadlines deadline WHERE deadline.ward_id = p.ward_id
         AND deadline.project_id = p.project_id AND deadline.kind = 'answer_due' AND deadline.due_on < ?)
@@ -62,9 +67,11 @@ export async function addHelpOffer(db: D1Database, wardId: string, projectId: st
         WHERE d.ward_id = p.ward_id AND d.project_id = p.project_id AND d.kind = 'recruitment'
           AND v.scope = 'public' AND r.unpublished_at IS NULL
           AND NOT EXISTS (SELECT 1 FROM publication_records newer WHERE newer.ward_id = r.ward_id
-            AND newer.document_id = r.document_id AND newer.version_no > r.version_no))`)
-    .bind(newId(), wardId, name, times, nowIso(), wardId, projectId, todayInJapan()).run();
-  return (result.meta.changes ?? 0) > 0;
+            AND newer.document_id = r.document_id AND newer.version_no > r.version_no))
+    ON CONFLICT (ward_id, project_id, submission_id) WHERE submission_id IS NOT NULL DO NOTHING`)
+    .bind(offerId, wardId, name, times, nowIso(), submissionId || null, wardId, projectId, todayInJapan()).run();
+  if ((result.meta.changes ?? 0) > 0) return { offerId, name, times };
+  return submissionId ? existing() : null;
 }
 
 export async function listHelpOffers(db: D1Database, wardId: string, projectId: string): Promise<HelpOffer[]> {
