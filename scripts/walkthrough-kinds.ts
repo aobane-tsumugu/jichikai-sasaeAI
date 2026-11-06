@@ -198,7 +198,10 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
     ["1 役員会を二回開く", async () => {
       redirected(await post(admin + "/login", { name: options.name, password: options.password }), "役員画面に入れません");
       assert(cookies.officer.has("device"), "役員画面に入るための応答がありません");
-      const first = await open("board1", "board_meeting", source.year, "役員会1回目（架空）", `${source.year}-01-10`);
+      // 区に前の試行の会議が残っていても、今回の会議が一番新しくなるように今日の日付を使う。
+      const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+      const tomorrow = new Date(Date.now() + 33 * 3600_000).toISOString().slice(0, 10);
+      const first = await open("board1", "board_meeting", source.year, "役員会1回目（架空）", today);
       await upload(first, "役員会の議題", source.agenda);
       await upload(first, "役員会の記録", source.minutes);
       const minutes = await draft(first, "report");
@@ -207,7 +210,7 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
       const closing = readForm(await get(`${admin}/close/${first}`), `/close/${first}/finalize`);
       checkClosingDecisions(closing.values.get("decisions") ?? "", source.decision);
       await close(first, minutes.form.values.get("text") ?? "", source.decision);
-      const second = await open("board2", "board_meeting", source.year, "役員会2回目（架空）", `${source.year}-02-10`);
+      const second = await open("board2", "board_meeting", source.year, "役員会2回目（架空）", tomorrow);
       const agenda = await draft(second, "procedure");
       assert(visible(agenda.html).includes("前回の役員会"), "議題の下書きに前回の役員会の資料がありません");
       checkKindsFacts(draftText(agenda.form), [source.minutes, source.agenda, source.decision, source.pending], [source.decision, source.pending]);
