@@ -79,6 +79,7 @@ const GENERAL_SYSTEM = `${COMMON_RULES}
 - project_suggestions の date_text と place は、その原本に書かれた行事の日付と場所を文字のまま写し、分からなければ空文字にします。書かれていない年や曜日は足しません。今年の日付には直しません。
 - text_blocks は、資料の文字を元の箇所つきで写したものです。読める文字は落とさずに入れてください。
 - fields は、項目に当てはまる中身です。name は次のいずれかを使ってください: 日時、場所、雨天時、行事の中身、持ち物、手伝いの時間帯、締切、公開用の連絡先。当てはまらない物は、資料に書かれた見出しをそのまま name にしてください。value は書かれたままの文字です。
+- 「持ち物」は参加する住民が持ってくる物だけです。運営側が用意する食材、道具、備品は持ち物に入れず、「運営の準備物」など資料の見出しでfieldsに残し、text_blocksにも書かれたまま残してください。仕事や進め方の資料として使います。
 - 紙面の隅や記入欄の近くに \`P3-D2-V1\` のような符号があれば、該当する fields の paper_code にそのまま記載してください。見当たらなければ空文字にしてください。欄ごとに別の符号があれば欄ごとに記録してください。
 - tables は、表になっている物（協賛先の一覧、当番表、収支、実行委員の名簿、世帯の名簿など）です。name は表の名前、columns は列の見出し、rows は 1 行ずつ cells に書かれたまま入れてください。
 - decisions は「決めたこと」（会場を押さえた、雨天は屋内にする、など）が書かれていれば、その文です。
@@ -112,6 +113,9 @@ export function schemaFor(kind: ReadKind) {
 }
 
 export function packVersionFor(kind: ReadKind): string {
+  // 一般と復元の持ち物の指示を更新。回答票の指示は保つ。
+  if (kind === "general") return "read-general@5";
+  if (kind === "restore") return "read-restore@5";
   return READ_PACK_VERSION[kind];
 }
 

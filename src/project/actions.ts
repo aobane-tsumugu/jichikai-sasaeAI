@@ -1,10 +1,11 @@
 import { newId, nowIso } from "../core/ids";
 import { applyChange } from "./apply";
-import { DEFAULT_SCOPE, DOCUMENT_KIND_LABEL, TABLES, cleanRowData, isItemKey, isTableKey, rowMatchKey, type DocumentKind, type Scope, type ItemKey, type RowData } from "./model";
+import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, ITEM_SCREEN_LABEL, TABLES, cleanRowData, isItemKey, isTableKey, rowMatchKey, type DocumentKind, type ProjectKind, type Scope, type ItemKey, type RowData } from "./model";
 import { hashOf, stableStringify } from "./util";
 import { getProjectState } from "./state";
 import { reconcileDocumentBody, type DocumentBody } from "./document-body";
 import { addDays, MAP_TEMPLATES } from "../map/template";
+import { getDraftPack } from "../draft/packs";
 
 type MaterialTable = "duties" | "committee";
 const materialPack = (table: MaterialTable) => (table === "duties" ? "duty-roster-edit@1" : "committee-edit@1");
@@ -166,6 +167,7 @@ export async function answerQuestion(db: D1Database, wardId: string, projectId: 
     const question = await db.prepare("SELECT kind, text, target, detail FROM project_questions WHERE ward_id = ? AND project_id = ? AND question_id = ? AND state IN ('open', 'later')")
       .bind(wardId, projectId, questionId).first<{ kind: string; text: string; target: string | null; detail: string | null }>();
     let applied = false;
+    let draftKind: DocumentKind = "announcement";
     if (question?.kind === "decide" && question.target && isItemKey(question.target)) {
       const result = await applyChange(db, wardId, projectId, { kind: "item", itemKey: question.target, value,
         source: { kind: "person", accountId }, confidence: "high", packVersion: "person-answer@1", requestId: questionId });
@@ -173,8 +175,9 @@ export async function answerQuestion(db: D1Database, wardId: string, projectId: 
       applied = true;
     }
     if (question?.kind === "conflict" && question.detail) {
-      let detail: { itemKey?: string; options?: string[]; table?: string; rowId?: string; field?: string; values?: Array<string | number>; candidateRowIds?: string[]; changeId?: string };
+      let detail: { itemKey?: string; documentKind?: DocumentKind; options?: string[]; table?: string; rowId?: string; field?: string; values?: Array<string | number>; candidateRowIds?: string[]; changeId?: string };
       try { detail = JSON.parse(question.detail) as typeof detail; } catch { return false; }
+      if (detail.documentKind && DOCUMENT_KINDS.includes(detail.documentKind)) draftKind = detail.documentKind;
       const options = detail.options ?? [];
       const index = options.indexOf(value);
       if (index < 0) return false;
@@ -219,10 +222,10 @@ export async function answerQuestion(db: D1Database, wardId: string, projectId: 
         source: { kind: "person", accountId }, confidence: "high", packVersion: "person-answer@1", requestId: questionId });
       if (result.status === "rejected") return false;
     }
-    // 質問の答えは、すでにある案内の下書きにも入れる。配った内容は残し、新しい下書きとして保存する。
+    // 質問の答えは、対象の下書きにも入れる。配った内容は残し、新しい下書きとして保存する。
     if (applied && isItemKey(question?.target)) {
       const [current, draft] = await Promise.all([
-        getProjectState(db, wardId, projectId), getEditableDocument(db, wardId, projectId, "announcement"),
+        getProjectState(db, wardId, projectId), getEditableDocument(db, wardId, projectId, draftKind),
       ]);
       const itemKey = question.target;
       const content = current?.items.find((item) => item.key === itemKey)?.current?.content;
@@ -232,7 +235,7 @@ export async function answerQuestion(db: D1Database, wardId: string, projectId: 
           items: [...before.items.filter((item) => item.key !== itemKey), { key: itemKey, content }],
         });
         if (stableStringify(before) !== stableStringify(next) && !(await saveDocument(db, wardId, projectId, accountId, {
-          kind: "announcement", title: draft.title, scope: draft.scope, body: JSON.stringify(next), basedOn: current.project.stateVersion,
+          kind: draftKind, title: draft.title, scope: draft.scope, body: JSON.stringify(next), basedOn: current.project.stateVersion,
         }))) return false;
       }
     }
@@ -401,6 +404,20 @@ export async function getLatestDocumentBody(db: D1Database, wardId: string, docu
   return row?.body ?? null;
 }
 
+/** 本文の見出しに続く中身を読む。見出しがなければ、記録にある別の中身が本文にある場合だけ拾う。 */
+function draftTextValue(text: string, key: ItemKey, content: string, candidates: string[]): string | null {
+  const aliases: Partial<Record<ItemKey, string[]>> = { date_time: ["日とき"], place: ["会場"], rain_plan: ["雨天時", "雨の場合"], public_contact: ["問い合わせ先", "お問い合わせ先"] };
+  const labels = [...new Set([ITEM_LABEL[key], ITEM_SCREEN_LABEL[key], ...(aliases[key] ?? [])])]
+    .map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  const heading = new RegExp(`^[ \\t　]*(?:#{1,6}[ \\t]+|■[ \\t　]*)?(?:\\*\\*)?(?:${labels})(?:\\*\\*)?[ \\t　]*(?:[:：][ \\t　]*([^\\r\\n]+)|\\r?\\n[ \\t　]*([^\\r\\n]+))$`, "m");
+  const match = heading.exec(text);
+  const written = (match?.[1] ?? match?.[2])?.trim();
+  const normalize = (value: string) => value.normalize("NFKC").replace(/\s/g, "");
+  if (written) return normalize(written).includes(normalize(content)) ? null : written;
+  if (normalize(text).includes(normalize(content))) return null;
+  return candidates.find((value) => value.length >= 2 && value !== content && text.includes(value)) ?? null;
+}
+
 export async function saveAIDraft(db: D1Database, wardId: string, projectId: string, kind: DocumentKind, packVersion: string, raw: unknown): Promise<boolean> {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return false;
   const data = raw as { text?: unknown; items?: unknown; scope?: unknown; title?: unknown; based_on_state_version?: unknown };
@@ -412,10 +429,26 @@ export async function saveAIDraft(db: D1Database, wardId: string, projectId: str
     if (typeof item.key !== "string" || !isItemKey(item.key) || typeof item.content !== "string" || item.content.length > 2000) return false;
     items.push({ key: item.key, content: item.content, ...(typeof item.source === "string" ? { source: item.source.slice(0, 500) } : {}) });
   }
-  const scope: Scope = data.scope === "public" || data.scope === "space" || data.scope === "staff" ? data.scope : DEFAULT_SCOPE[kind];
   const title = typeof data.title === "string" && data.title.trim() ? data.title.trim().slice(0, 100) : DOCUMENT_KIND_LABEL[kind];
-  const project = await db.prepare("SELECT state_version, closed_at FROM projects WHERE ward_id = ? AND project_id = ?").bind(wardId, projectId).first<{ state_version: number; closed_at: string | null }>();
+  const project = await db.prepare("SELECT kind, state_version, closed_at FROM projects WHERE ward_id = ? AND project_id = ?").bind(wardId, projectId).first<{ kind: ProjectKind; state_version: number; closed_at: string | null }>();
   if (!project || project.closed_at) return false;
+  const pack = getDraftPack(kind, project.kind);
+  const scope: Scope = data.scope === "public" || data.scope === "space" || data.scope === "staff" ? data.scope : pack.scope;
+  const state = await getProjectState(db, wardId, projectId);
+  const conflicts: { itemKey: ItemKey; bodyValue: string; itemValue: string }[] = [];
+  for (const item of items) {
+    if (!item.content.trim() || item.content === "（確認中）") continue;
+    const recorded = state?.items.find((entry) => entry.key === item.key);
+    const candidates = [recorded?.current?.content, ...(recorded?.references.map((value) => value.content) ?? [])]
+      .filter((value): value is string => !!value);
+    const bodyValue = draftTextValue(data.text, item.key, item.content, candidates);
+    if (!bodyValue) continue;
+    if (bodyValue.length > 2000) return false;
+    conflicts.push({ itemKey: item.key, bodyValue, itemValue: item.content });
+    // 本文と異なる項目をそのまま保存しない。もう一方は質問に残し、人が選ぶまで今年の記録は変えない。
+    item.content = bodyValue;
+    delete item.source;
+  }
   const basedOn = typeof data.based_on_state_version === "number" && Number.isInteger(data.based_on_state_version) && data.based_on_state_version >= 0 && data.based_on_state_version <= project.state_version
     ? data.based_on_state_version
     : project.state_version;
@@ -433,9 +466,20 @@ export async function saveAIDraft(db: D1Database, wardId: string, projectId: str
     .bind(project.state_version, wardId, projectId, document.document_id).run();
   const latest = await db.prepare("SELECT COALESCE(MAX(version_no), 0) AS n FROM document_versions WHERE ward_id = ? AND project_id = ? AND document_id = ?")
     .bind(wardId, projectId, document.document_id).first<{ n: number }>();
-  await db.prepare(`INSERT INTO document_versions (version_id, ward_id, project_id, document_id, version_no, scope, body, title,
+  const versionId = newId();
+  const statements: D1PreparedStatement[] = [db.prepare(`INSERT INTO document_versions (version_id, ward_id, project_id, document_id, version_no, scope, body, title,
     based_on_state_version, origin, pack_version, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ai', ?, ?)`)
-    .bind(newId(), wardId, projectId, document.document_id, (latest?.n ?? 0) + 1, scope, JSON.stringify({ text: data.text, items }), title, basedOn, packVersion, nowIso()).run();
+    .bind(versionId, wardId, projectId, document.document_id, (latest?.n ?? 0) + 1, scope, JSON.stringify({ text: data.text, items }), title, basedOn, packVersion, nowIso())];
+  for (const conflict of conflicts) {
+    statements.push(db.prepare(`INSERT INTO project_questions
+      (question_id, ward_id, project_id, kind, text, target, detail, state, source_kind, pack_version, dedupe_key, created_at)
+      VALUES (?, ?, ?, 'conflict', ?, ?, ?, 'open', 'ai_proposal', ?, ?, ?)
+      ON CONFLICT (ward_id, project_id, dedupe_key) DO NOTHING`)
+      .bind(newId(), wardId, projectId, `「${ITEM_SCREEN_LABEL[conflict.itemKey]}」が下書きの本文と項目で違います。使う方を選んでください。`, conflict.itemKey,
+        JSON.stringify({ itemKey: conflict.itemKey, documentKind: kind, options: [conflict.bodyValue, conflict.itemValue] }), packVersion,
+        await hashOf({ versionId, packVersion, ...conflict }), nowIso()));
+  }
+  await db.batch(statements);
   return true;
 }

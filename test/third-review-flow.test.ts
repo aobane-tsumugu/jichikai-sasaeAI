@@ -113,10 +113,11 @@ it("空の下書きを項目から整え、行事の日を直し、名簿なし�
   expect((await state()).mapTasks).toEqual(beforeShift.mapTasks);
   expect((await getEditableDocument(env.DB, ward.wardId, id, "announcement"))?.body).toBe(publishedDocument.body);
 
-  // 表記が違い、本文を自動で直せない場合も保存を止めない。
+  // 役員が手で書き、本文を自動で直せない場合も保存を止めない。
   const differentText = `${fixture.draftText}\n日時：10/24（土）`;
-  expect(await saveAIDraft(env.DB, ward.wardId, id, "announcement", getDraftPack("announcement").version, {
-    text: differentText, title: "案内", items: [{ key: "date_time", content: date }],
+  expect(await saveDocument(env.DB, ward.wardId, id, account.accountId, {
+    kind: "announcement", title: "案内", scope: "public", basedOn: (await state()).project.stateVersion,
+    body: JSON.stringify({ text: differentText, items: [{ key: "date_time", content: date }] }),
   })).toBe(true);
   const changeDate = async (value: string, after = "") => postForm(realApp, `${draftPath}/save`, {
     title: "案内", scope: "public", based_on: String((await state()).project.stateVersion), text: differentText,

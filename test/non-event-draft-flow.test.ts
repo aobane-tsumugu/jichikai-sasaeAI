@@ -179,6 +179,6 @@ it("総会、役員会、当番、市の依頼、要望の仕事から資料と�
       expect(web).toContain(fixture.reportText);
     }
   }
-  expect(getDraftPack("announcement").version).toBe("draft-announcement@7");
+  expect(getDraftPack("announcement").version).toBe("draft-announcement@8");
   expect(getDraftPack("announcement").instruction).toContain("住民向けの行事案内");
 });

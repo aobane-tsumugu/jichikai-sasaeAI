@@ -3,7 +3,9 @@ import { adminPath } from "../core/auth";
 import { ErrorNotice, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { getProjectState } from "./api";
-import { ITEM_SCREEN_LABEL, isItemKey } from "./model";
+import { getEditableDocument } from "./actions";
+import { DOCUMENT_KINDS, ITEM_SCREEN_LABEL, isItemKey, type DocumentKind } from "./model";
+import type { DocumentBody } from "./document-body";
 import type { QuestionView } from "./types";
 
 /** 保存済みの選択肢の値は保ち、資料の年を聞く言葉だけ揃える。 */
@@ -18,7 +20,7 @@ function questionTitle(question: QuestionView): { heading: string; body: string 
   if (question.options?.some((option) => questionOptionLabel(option) === "今年のもの")) return { heading: "この資料は今年のものですか", body: question.text };
   if (question.kind === "unreadable") return { heading: "読めなかったところがあります", body: question.text };
   if (question.kind === "conflict" && isItemKey(question.target)) return {
-    heading: `「${ITEM_SCREEN_LABEL[question.target]}」が資料によって違います`,
+    heading: `「${ITEM_SCREEN_LABEL[question.target]}」が${question.text.includes("下書きの本文と項目") ? "下書きの本文と項目で" : "資料によって"}違います`,
     body: question.text.replace(/^「[^」]*」が食い違っています。/, "").replace("年の書いていない", "年の書かれていない"),
   };
   return { heading: question.text, body: "" };
@@ -36,13 +38,22 @@ questionPages.get("/projects/:projectId/questions/:questionId/compare", async (c
   const state = await getProjectState(c.env.DB, ward.wardId, id);
   const question = state?.questions.find((question) => question.questionId === c.req.param("questionId") && question.kind === "conflict");
   if (!state || !question) return c.notFound();
+  const stored = await c.env.DB.prepare("SELECT detail FROM project_questions WHERE ward_id = ? AND project_id = ? AND question_id = ?")
+    .bind(ward.wardId, id, question.questionId).first<{ detail: string | null }>();
+  let draftKind: DocumentKind = "announcement";
+  try {
+    const detail = JSON.parse(stored?.detail ?? "{}") as { documentKind?: DocumentKind };
+    if (detail.documentKind && DOCUMENT_KINDS.includes(detail.documentKind)) draftKind = detail.documentKind;
+  } catch { /* 古い質問は案内へ戻る。 */ }
   const fromDraft = c.req.query("from") === "draft";
-  const back = adminPath(ward, fromDraft ? `/projects/${id}/draft/announcement` : `/projects/${id}/questions`);
-  const currentValue = question.target && isItemKey(question.target) ? state.items.find((item) => item.key === question.target)?.current?.content : "";
+  const back = adminPath(ward, fromDraft ? `/projects/${id}/draft/${draftKind}` : `/projects/${id}/questions`);
+  const draft = await getEditableDocument(c.env.DB, ward.wardId, id, draftKind);
+  const body = draft ? JSON.parse(draft.body) as DocumentBody : null;
+  const currentValue = question.target && isItemKey(question.target) ? body?.items.find((item) => item.key === question.target)?.content ?? state.items.find((item) => item.key === question.target)?.current?.content : "";
   return c.html(<Layout title="二つを見比べる" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={back}>← {fromDraft ? "下書きへ" : "質問へ"}</a><h1>{questionTitle(question).heading}</h1><p class="lead">使う方を選んでください。選ばないときは、{currentValue ? `今の下書きの${currentValue}` : "今の内容"}のままです。</p>
     {state.project.closedAt ? <Notice>この行事は閉じました。もう一度開くと答えを入れられます。</Notice> : <form method="post" action={adminPath(ward, `/projects/${id}/questions/${question.questionId}`)}>
-      {fromDraft ? <input type="hidden" name="from" value="draft" /> : null}
+      {fromDraft && draftKind === "announcement" ? <input type="hidden" name="from" value="draft" /> : null}
       <fieldset><legend>使う内容</legend>{question.options?.length ? question.options.map((option) => <label><input type="radio" name="answer" value={option} required />{questionOptionLabel(option)}</label>) : <><p class="preserve-lines">{question.answer}</p><label for="answer">確かめた内容</label><input id="answer" name="answer" required maxlength={2000} /></>}</fieldset>
       {question.source?.kind === "original" && question.source.ref ? <p><a class="quiet" href={adminPath(ward, `/intake/originals/${encodeURIComponent(question.source.ref)}`)}>元の資料を見る</a></p> : null}
       <button name="action" value="answer">{question.target && isItemKey(question.target) ? "この内容を下書きに入れる" : "この答えを残す"}</button>
@@ -64,7 +75,7 @@ questionPages.get("/projects/:projectId/questions", async (c) => {
     <h1>分かるものだけ答えてください</h1><p class="lead">答えなくても配れます。</p>
     <ErrorNotice code={c.req.query("error")} messages={{ answer_failed: "答えを入れられませんでした。もう一度お試しください。" }} />
     {c.req.query("notice") === "unknown" ? <Notice>分からないとして残しました。あとから下書きで直せます。</Notice> : c.req.query("notice") === "later" ? <Notice>あとで答えられるように残しました。</Notice> : null}
-    {!questions.length || answered ? next : null}
+    {!questions.length ? next : null}
     {state.project.closedAt ? <Notice>この行事は閉じました。もう一度開くと答えを入れられます。</Notice> : null}
     {questions.map((question) => <section class="panel" id={`question-${question.questionId}`}>
       <h2>{questionTitle(question).heading}</h2>
@@ -81,6 +92,6 @@ questionPages.get("/projects/:projectId/questions", async (c) => {
         </div>
       </form> : null}
     </section>)}
-    {questions.length ? <><p class="muted">答えは下書きに入ります。あとから直せます。</p>{answered ? null : <div class="action-bar"><a class="button" href={adminPath(ward, `/projects/${id}/draft/announcement`)}>案内の下書きを見る</a></div>}</> : null}
+    {questions.length ? <><p class="muted">答えは下書きに入ります。あとから直せます。</p>{answered ? next : <div class="action-bar"><a class="button" href={adminPath(ward, `/projects/${id}/draft/announcement`)}>案内の下書きを見る</a></div>}</> : null}
   </Layout>);
 });

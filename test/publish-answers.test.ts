@@ -20,7 +20,7 @@ describe("配る画面と区のページ", () => {
       kind: "row", table: "sponsors", data: { name: "協賛先A（架空）", amount: 6500 },
       source: { kind: "person", accountId: account.accountId }, confidence: "high", packVersion: "publish-test@1",
     });
-    const body = JSON.stringify({ text: "当日は6500円の協賛があります", items: [
+    const body = JSON.stringify({ text: "協賛先A（架空）から6500円の協賛があります", items: [
       { key: "date_time", content: "2026年11月14日10時" }, { key: "place", content: "架空の公民館" },
     ] });
     await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {

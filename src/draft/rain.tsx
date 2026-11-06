@@ -22,7 +22,7 @@ export async function rainDraft(c: Context<AdminEnv>) {
   const values = (key: string) => { const item = state.items.find((item) => item.key === key); return item?.current?.content ?? item?.references[0]?.content ?? ""; };
   // 標準の雨の文面があればそれを使う。複数ある時だけ選べるようにする。
   const template = templates.find((item) => item.id === "rain") ?? templates[0];
-  const place = values("place"); const dateTime = values("date_time");
+  const place = values("rain_plan"); const dateTime = values("date_time");
   const canSend = !state.project.closedAt && state.documents.some((document) => document.kind === "announcement" && document.publishedVersionNo !== null);
   return c.html(<Layout title="雨の変更を知らせる" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {state.project.title}の段取りへ</a>
