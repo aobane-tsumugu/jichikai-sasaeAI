@@ -20,7 +20,7 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
   c.header("Cache-Control", "no-store");
   return c.html(
     <AdminPage ward={ward} account={account} title="区の情報" back={{ href: adminPath(ward, "/settings"), label: "区の設定" }}>
-      <h1>区の情報</h1><p class="lead">区のページで使う連絡先、公式LINEの友だち追加の入口、班の名前を設定します。どれも書かなくてかまいません。</p>
+      <h1>区の情報</h1><p class="lead">案内と区のページに出る内容です。ふだんは直さなくてかまいません。</p>
       {extra.notice ? <Notice>{extra.notice}</Notice> : null}
       {extra.error ? <Notice error>{extra.error}</Notice> : null}
       <form method="post" action={adminPath(ward, "/settings/info")}>
@@ -32,11 +32,11 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
         <textarea id="contact" name="contact" rows={4} maxlength={LIMITS.publicContact}>
           {contact}
         </textarea>
-        <label for="official-line-url">公式LINEの友だち追加のURL（書かなくてかまいません） </label><p class="help-text">公式LINEの管理画面で確認できる、友だち追加のURLを貼ってください。区のページに入口が出ます。空にして保存すると入口を外せます。</p>
+        <label for="official-line-url">公式LINEの友だち追加の入口（書かなくてかまいません） </label><p class="help-text">公式LINEの管理画面で確認できる、友だち追加のURLを貼ってください。区のページに入口が出ます。空にして保存すると入口を外せます。</p>
         <input id="official-line-url" name="official_line_url" type="url" value={lineUrl} />
         <p class="muted">友だち追加は、しなくてもかまいません。住民に名前や世帯の登録を求めません。</p>
         <label for="squads">班の名前（一行に一つ）</label>
-        <p class="muted">回答票に印字され、答えの入口で選ぶ一覧になります。名簿を入れると、そこから入ります。</p>
+        <p class="muted">回答票に印字され、答える画面の選択肢になります。名簿を入れると、そこから入ります。</p>
         <textarea id="squads" name="squads" rows={8}>
           {squads}
         </textarea>

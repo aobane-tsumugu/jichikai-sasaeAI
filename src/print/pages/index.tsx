@@ -92,10 +92,12 @@ admin.get("/print/:projectId/paper/:kind", async (c) => {
   return c.html(<PrintDocument title={`${state.project.title}協賛先の一覧`} back={adminPath(ward, `/print/${id}`)}>
     <Sheet footer={<>{ward.name} 協賛先の一覧{code}</>}>
       <h1>{state.project.title} 協賛先の一覧</h1>
-      <p>電話しながら返事と額を書き、紙の番号と一緒に撮って送ってください。紙の番号: {code}</p>
+      <p>電話しながら、返事と額を書いてください。書いたら、紙の番号と一緒に撮って、役員の画面から送ってください。去年の額は、今年の返事ではありません。</p>
+      <p>紙の番号: {code}</p>
       <PrintQr text={url} sizeMm={26} />
       <RowsTable table="sponsors" rows={rows} paperCode={code} />
       {Array.from({ length: 3 }, (_, index) => <FieldBox key={index} label={`協賛先・返事・額・メモ　${code ?? ""}`} heightMm={22} />)}
+      <p>返事は、出す、出さない、待ちのどれかを書きます。一番下の空いた行には、一覧にない協賛先を書けます。</p>
     </Sheet>
   </PrintDocument>);
 });
@@ -226,14 +228,17 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
       <p>班長のページの「答えた世帯」に名前が出た回答票は、名前が読めないようにして捨ててかまいません。捨てにくいときや念のため残したいときは、ついでのときに役員に渡してください。</p>
       {contact ? <><h2>なくしたとき、分からないときは</h2><p>{contact}</p></> : null}
     </Sheet>) : null}
-    {kind === "duty" ? <Sheet footer={<>{ward.name} 当番表と配置図{paperCode}</>}>
+    {kind === "duty" ? <Sheet footer={<><span>{ward.name} 当番表と配置図</span><span>{distributed}　紙の番号{paperCode}</span></>}>
       <h1>{row.title} 当番表と配置図</h1>
+      <p>{[publishedItem(row.body, "date_time"), publishedItem(row.body, "place"), publishedItem(row.body, "rain_plan")].filter(Boolean).join("。")}</p>
       <p>紙の番号: {paperCode}</p><PrintQr text={named()} sizeMm={32} />
       {tables === null ? <p>配ったときの表の記録がありません。表を確かめて配り直してください。</p> : <>
         <RowsTable table="duties" rows={published("duties")} paperCode={paperCode} />
         <RowsTable table="layout" rows={published("layout")} paperCode={paperCode} />
       </>}
-      {Array.from({ length: 3 }, (_, index) => <FieldBox key={index} label={"時間帯・持ち場・担当、配置・場所・メモ　" + (paperCode ?? "")} heightMm={22} />)}
+      {Array.from({ length: 3 }, (_, index) => <FieldBox key={index} label={"変わったこと、メモ　" + (paperCode ?? "")} heightMm={22} />)}
+      <p>当日書いて、紙の番号と一緒に撮って送れます。</p>
+      {contact ? <p>分からないときは　{contact}</p> : null}
     </Sheet> : null}
   </PrintDocument>);
 };
@@ -302,12 +307,12 @@ function shownFields(table: TableKey, rows: Pick<RowView, "data">[]) {
 
 /** 今年の中身の表を紙に並べる。空なら何も出さない。 */
 function RowsTable({ table, rows, paperCode }: { table: TableKey; rows: Pick<RowView, "data">[]; paperCode?: string | null }) {
-  if (!rows.length && table !== "sponsors") return null;
+  if (!rows.length && table !== "sponsors") return <><h2>{TABLES[table].label}</h2><p>{TABLES[table].label}はまだありません。</p></>;
   const fields = table === "sponsors" ? Object.entries(TABLES.sponsors.fields) : shownFields(table, rows);
   return <>
     <h2>{TABLES[table].label}</h2>
     <table><thead>{paperCode ? <tr><th colspan={fields.length}>紙の番号: {paperCode}</th></tr> : null}<tr>{fields.map(([, field]) => <th>{field.label}</th>)}</tr></thead>
-      <tbody>{rows.map((entry) => <tr style={table === "sponsors" ? "height:18mm" : undefined}>{fields.map(([key]) => <td>{displayFieldValue(table, key, entry.data[key])}</td>)}</tr>)}</tbody></table>
+      <tbody>{rows.map((entry) => <tr style={table === "sponsors" ? "height:18mm" : undefined}>{fields.map(([key]) => <td>{table === "sponsors" && key === "reply" ? ({ yes: "出す", no: "出さない", pending: "待ち" }[String(entry.data[key])] ?? displayFieldValue(table, key, entry.data[key])) : displayFieldValue(table, key, entry.data[key])}</td>)}</tr>)}</tbody></table>
   </>;
 }
 

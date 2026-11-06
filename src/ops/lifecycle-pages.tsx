@@ -34,8 +34,8 @@ lifecyclePages.get("/wards/:slug/lifecycle", async (c) => {
     {c.req.query("queued") === "1" ? <><Notice>消去の処理を受け付けました</Notice><section class="next"><strong>次は</strong><p>順に進みます。進み具合は、下の「消去の進み具合」で見られます。</p><a class="button" href="#deletion-progress">消去の進み具合を見る</a></section><p>消去した区は戻せません。頼む前に書き出した記録は、手元に残してください。</p></> : null}
     <h2>毎日の控え</h2>
     {latest ? <section class="panel">
-      <p>最新: {snapshotLabel(latest.key)} / {latest.capturedAt ? formatJst(latest.capturedAt) : "日時を読めません"}</p>
-      <p>{latest.valid ? `${latest.tableCount}種類、${latest.rowCount}件を読み取れました。` : `確認できません: ${latest.problem}`}</p>
+      <p>いちばん新しい控え　{latest.capturedAt ? formatJst(latest.capturedAt) : snapshotLabel(latest.key)}</p>
+      <p>{latest.valid ? `${latest.tableCount}種類の表、${latest.rowCount}件を読み取れました。` : `確認できません: ${latest.problem}`}</p>
     </section> : <p>毎日の控えはまだありません。</p>}
     <p>戻すときは、控えを別の保管先に読み込み、件数と、この区の控えかどうかを確かめてから、切り替えます。この画面の検査は、書き方と、この区の控えかどうか、表の並びを確かめます。実際の戻しは、この画面ではしません。</p>
     <h2>控えの一覧</h2>
@@ -46,23 +46,23 @@ lifecyclePages.get("/wards/:slug/lifecycle", async (c) => {
     <p>区の記録、元の資料、これまでに配ったもの、保管場所の中身を、一つのファイルに書き出します。中身は読める形の文字で書かれます。保存する場所を選んで、保存してください。</p>
     <p><a class="button secondary" href={`/ops/wards/${ward.slug}/export`}>区の記録を書き出す</a></p>
     <h2>区を止める</h2>
-    <p>{ward.is_active === 1 ? "役員の画面に入れなくなり、操作も止まります。区のページの読み取りは続きます。いつでも再開できます。" : "停止中です。区のページの読み取りは続いています。"}</p>
+    <p>{ward.is_active === 1 ? "役員の画面に入れなくなり、操作も止まります。区のページの読み取りは続きます。いつでも再開できます。" : "いま止まっています。役員の画面には入れず、操作もできません。区のページの読み取りは続いています。"}</p>
     <form method="post" action={`/ops/wards/${ward.slug}/state`}>
       <input type="hidden" name="active" value={ward.is_active === 1 ? "0" : "1"} />
       <button class="secondary">{ward.is_active === 1 ? "区を止める" : "区を再開する"}</button>
     </form>
     <h2>区を削除する</h2>
-    <p>先に記録を書き出してください。区の記録と保管物、AI側の処理を消し、AI事業者側の設定を使えない状態にして、保管庫を削除します。処理済みの印だけを残します。</p>
+    <p>先に、上の「区の記録を書き出す」を済ませてください。区の記録と保管しているもの、AIの処理を消去し、AIの提供元に預けた設定を使えない状態にして、保管場所を削除します。処理が済んだ印だけが残ります。</p>
     <p>削除は、元に戻せません。</p><form method="post" action={`/ops/wards/${ward.slug}/delete`}>
-      <label><input type="checkbox" name="confirm" value="yes" required /> 書き出しを確認し、この区の削除を依頼します</label>
+      <label><input type="checkbox" name="confirm" value="yes" required /> 書き出しを確かめ、この区の削除を頼みます</label>
       <p><button class="danger">区を削除する</button></p>
     </form>
     <h2 id="deletion-progress">消去の進み具合</h2>
-    {queue.map((item) => <section class="panel"><p>{item.target_type === "ward" ? "区の削除" : "消す求め"} / {item.state === "complete" ? "完了" : item.state === "error" ? "要対応" : "処理中"}</p>
+    {queue.map((item) => <section class="panel"><p>{item.target_type === "ward" ? "区の削除" : "消す希望"} / {item.state === "complete" ? "完了" : item.state === "error" ? "要対応" : "処理中"}</p>
       <p>受付: {item.requested_at}{item.completed_at ? ` / 完了: ${item.completed_at}` : ""}</p>{item.last_error ? <p class="notice error">{item.last_error}</p> : null}</section>)}
-    {queue.length === 0 ? <p>処理はありません。</p> : null}
-    <h2>消去済みの印</h2>
-    {marks.length ? <ul>{marks.map((mark) => <li>{mark.scope === "ward" ? "区" : "記録"} / {mark.deleted_at}</li>)}</ul> : <p>完了した消去はありません。</p>}
+    {queue.length === 0 ? <p>いま、進めている消去はありません。</p> : null}
+    <h2>消去が済んだ記録</h2>
+    {marks.length ? <ul>{marks.map((mark) => <li>{mark.scope === "ward" ? "区" : "記録"} / {mark.deleted_at}</li>)}</ul> : <p>この区で、済んだ消去はありません。</p>}
   </Page>);
 });
 
@@ -117,7 +117,7 @@ lifecyclePages.get("/deletions", async (c) => {
     {rows.results.map((row) => <section class="panel"><p>{row.target_type === "ward" ? "区の削除" : "記録の消去"} / {row.state === "complete" ? "完了" : row.state === "error" ? "要対応" : "処理中"}</p>
       <p>受付: {row.requested_at}{row.completed_at ? ` / 完了: ${row.completed_at}` : ""}</p>{row.last_error ? <p class="notice error">{row.last_error}</p> : null}</section>)}
     {rows.results.length === 0 ? <p>処理はありません。</p> : null}
-    <h2>消去済みの印</h2>
+    <h2>消去が済んだ記録</h2>
     {marks.results.map((mark) => <p>{mark.scope === "ward" ? "区" : "記録"} / {mark.deleted_at}</p>)}
   </Page>);
 });

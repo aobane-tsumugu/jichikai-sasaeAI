@@ -26,7 +26,7 @@ it("画面を開いたあとに処理が進んで取り下げられなかった�
   expect(new URL(location, "http://localhost").searchParams.has("error")).toBe(true);
   const page = await (await get(realApp, location, cookie)).text();
   expect(page).toContain("取り下げられませんでした。");
-  expect(page).toContain("消す求め");
+  expect(page).toContain("消す希望");
   expect(page).not.toContain("取り下げました。");
   expect((await get(realApp, `${root}/originals/${received.received[0]!.originalId}`, cookie)).status).toBe(200);
 });

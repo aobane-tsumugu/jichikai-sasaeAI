@@ -45,7 +45,7 @@ export async function addQuestion(
       input.options.length > MAX_OPTIONS ||
       input.options.some((o) => typeof o !== "string" || o.trim() === "" || o.length > MAX_TEXT))
   ) {
-    return { status: "rejected", reason: "bad_input", detail: "選べる物の形が合いません" };
+    return { status: "rejected", reason: "bad_input", detail: "選べるものの形が合いません" };
   }
   if (input.target !== undefined && (typeof input.target !== "string" || input.target.length > 200)) {
     return { status: "rejected", reason: "bad_input", detail: "質問の対象が合いません" };

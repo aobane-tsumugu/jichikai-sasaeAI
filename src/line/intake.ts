@@ -114,7 +114,7 @@ export function createLineIntakePorts(
         senderLabel: original.senderId,
         parts: [{
           kind: original.kind === "text" ? "text" : "photo",
-          filename: original.kind === "text" ? "LINE の文.txt" : "LINEの写真",
+          filename: original.kind === "text" ? "LINEの文.txt" : "LINEの写真",
           mediaType: original.kind === "text" ? "text/plain; charset=utf-8" : original.contentType ?? "application/octet-stream",
           bytes,
         }],

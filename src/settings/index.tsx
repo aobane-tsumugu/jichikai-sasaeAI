@@ -99,7 +99,7 @@ admin.get("/settings", (c) => {
         <li>
           <a href={adminPath(ward, "/settings/info")}>区の情報</a>（公開用の連絡先、班の名前）
         </li>
-        <li><a href={adminPath(ward, "/settings/deletion")}>消す求め</a>（住民から届いた希望の処理）</li>
+        <li><a href={adminPath(ward, "/settings/deletion")}>消す希望</a>（住民から届いた希望の処理）</li>
         <li>
           <a href={adminPath(ward, "/settings/templates")}>決まった知らせの文</a>（雨の変更の知らせなど）
         </li>

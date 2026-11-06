@@ -55,7 +55,7 @@ const PeoplePage = (props: { c: Context<AdminEnv>; view: View; notice?: string; 
   // 下の層から来た誤りの文も、この画面の言葉にそろえる。
   const words = (value: string) => value.replaceAll("アカウント", "役員").replaceAll("席", "役職").replaceAll("締め出", "入れないように");
   return <AdminPage ward={ward} account={me} title="役員の一覧" back={{ href: adminPath(ward, "/settings"), label: "区の設定へ" }}>
-    <h1>役員の一覧</h1><p class="lead">役員が入るためのIDとパスワードを、ここで足したり作り直したりします。役職があるかないかで、できることは変わりません。</p>
+    <h1>役員の一覧</h1><p class="lead">役員を足したり、入れなくなった人のパスワードを作り直したりします。役職があるかないかで、できることは変わりません。</p>
     {props.notice ? <><Notice>{words(props.notice)}</Notice><section class="next"><strong>次は</strong><p>ほかに直すものがなければ、最初の画面へ戻ってください。</p><a class="button" href={adminPath(ward, "/")}>最初の画面へ</a></section><p>間違えたときは、この画面でもう一度直せます。外した役員や役職は、下の欄から足せます。</p></> : null}
     {props.error ? <Notice error>{words(props.error)}入力した内容を確かめて、もう一度操作してください。</Notice> : null}
     <div class="action-links"><a class="button" href="#add">役員を足す</a></div>

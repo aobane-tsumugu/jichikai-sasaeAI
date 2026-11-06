@@ -325,7 +325,7 @@ async function confirmPublication(c: Context<AdminEnv>) {
       {draft.stale_since_version !== null ? <Notice>新しいものが入っています。ここに表示した内容で配れます。直すときは下書きに戻ってください。</Notice> : null}
       {warnings.map((warning) => <PublicWarning finding={warning} />)}
       <div class="compare"><section class="compare-paper"><b>紙{copies ? `（${recipientScope === "all_households" ? "全戸" : "加入世帯"}に${copies}部）` : ""}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} />{draft.kind === "announcement" ? <p class="answer-slip-preview"><b>回答票</b>　切り取って班長か役員に渡します。代表者のお名前、人数、手伝いの欄があります。</p> : null}</div></section>
-        <section><b>{publicScope ? "区のページ" : "実行委員と班長のページ"}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} />{draft.kind === "announcement" ? <p class="muted">この下に「参加する人数を答える」のボタンが出ます。</p> : null}</div></section></div>
+        <section><b>{publicScope ? "区のページ" : "実行委員と班長のページ"}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} />{draft.kind === "announcement" ? <p class="muted">この下に「出欠を答える」のボタンが出ます。</p> : null}</div></section></div>
       <p class="compare-link"><a class="quiet" href={printHref}>紙の見え方を見る</a></p><p class="muted">{publicScope ? "配ったあとも、区のページからは下げられます。" : "実行委員と班長に配ります。区のページには載りません。"}</p>
       <div class="action-bar"><button type="submit">配る</button><a class="button secondary" href={editHref}>下書きに戻る</a></div>
     </form></div>
@@ -498,7 +498,7 @@ function PublicWarning({ finding }: { finding: string }) {
     "名簿の名前": { title: "名簿の名前と同じ文字があります", text: `「${value}」が本文にあります。だれでも読める案内に出てよければ、このまま配れます。` },
     "協賛の額": { title: "協賛の金額と同じ数字があります", text: `「${value}」が本文にあります。だれでも読める案内に出てよければ、このまま配れます。` },
     "個人の連絡先": { title: "個人の連絡先と思われる文字があります", text: `「${value}」が本文にあります。だれでも読める案内に出てよければ、このまま配れます。` },
-    "まだ決まっていない所": { title: "まだ決めていないところがあります", text: `「${value}」が本文にあります。このまま配れます。直すときは下書きに戻ってください。` },
+    "まだ決まっていないところ": { title: "まだ決めていないところがあります", text: `「${value}」が本文にあります。このまま配れます。直すときは下書きに戻ってください。` },
   };
   const message = messages[kind] ?? { title: "本文を読み取れないところがあります", text: "下に出ている内容を読んで、このまま配れます。直すときは下書きに戻ってください。" };
   return <div class="notice warn"><strong>{message.title}</strong><p>{message.text}</p></div>;

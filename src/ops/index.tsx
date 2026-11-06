@@ -259,7 +259,7 @@ opsRoutes.get("/wards/:slug", async (c) => {
       <p class="link-line">
         <a href="/ops/">区の一覧</a>
       </p>
-      <h1>{ward.name}</h1><p class="lead">この区の提供側の画面です。役員全員が入れなくなったときに、入る人を足したり、パスワードを作り直したりします。</p>
+      <h1>{ward.name}</h1><p class="lead">この区の提供側の画面です。役員全員が入れなくなったときに、本人を確かめてから、入る人を足したり、パスワードを作り直したりします。</p>
       <h2>役員の入る人</h2>
       <p class="muted">役員がだれも入れないと連絡が来たら、パスワードを作り直す前に、区の連絡先へこちらから電話して、本人か確かめてください。</p>
       <p>パスワードを作り直すと、古いパスワードと、その人のスマホやパソコンの記憶は使えなくなります。前のパスワードには戻せません。</p>
@@ -434,11 +434,14 @@ function CostCard(props: { months: MonthlyMetrics[]; title: string }) {
   return (
     <section class="panel">
       <h2>{props.title}</h2>
-      <p>入力{total.inputs.toLocaleString("ja-JP")}件</p>
-      <p>読む{total.readRuns.toLocaleString("ja-JP")}回・{total.readTokens.toLocaleString("ja-JP")}（読み書きした量）、つなぐ{total.connectRuns.toLocaleString("ja-JP")}回・{total.connectTokens.toLocaleString("ja-JP")}（読み書きした量）</p>
-      <p>費用: 読む見積もり{usd(total.readEstimateCents)}、処理記録の金額{usd(total.actualRunCostCents)}、合計{usd(totalCost)}</p>
-      <p>入力一つあたり: {total.inputs ? usd(Math.round(totalCost / total.inputs)) : "—"}、平均{total.inputs ? minutes(total.durationMs / total.inputs) : "—"}</p>
-      <p>失敗{total.failed.toLocaleString("ja-JP")}件、要対応{total.attention.toLocaleString("ja-JP")}件</p>
+      <p>送られた資料{total.inputs.toLocaleString("ja-JP")}件</p>
+      <p>失敗か、対応が必要{(total.failed + total.attention).toLocaleString("ja-JP")}件</p>
+      <dl class="facts"><dt>費用の合計</dt><dd>{usd(totalCost)}</dd><dt>読む見積もり</dt><dd>{usd(total.readEstimateCents)}</dd><dt>利用の記録の金額</dt><dd>{usd(total.actualRunCostCents)}</dd>
+        <dt>資料を読む</dt><dd>{total.readRuns.toLocaleString("ja-JP")}回、読み書きした量{total.readTokens.toLocaleString("ja-JP")}</dd>
+        <dt>段取りを作る</dt><dd>{total.connectRuns.toLocaleString("ja-JP")}回、読み書きした量{total.connectTokens.toLocaleString("ja-JP")}</dd>
+        <dt>一件あたり</dt><dd>{total.inputs ? usd(Math.round(totalCost / total.inputs)) : "—"}、平均{total.inputs ? minutes(total.durationMs / total.inputs) : "—"}</dd>
+        <dt>失敗と対応</dt><dd>失敗{total.failed.toLocaleString("ja-JP")}件、対応が必要{total.attention.toLocaleString("ja-JP")}件</dd>
+      </dl>
     </section>
   );
 }
@@ -448,15 +451,15 @@ opsRoutes.get("/costs", async (c) => {
   const summaries = await Promise.all(wards.map((ward) => getWardMetrics(c.env.DB, ward)));
   const months = [...new Set(summaries.flatMap((ward) => ward.months.map((row) => row.month)))].sort((a, b) => b.localeCompare(a));
   return c.html(
-    <OpsPage title="費用" loggedIn>
+    <OpsPage title="全体の費用" loggedIn>
       <p class="link-line"><a href="/ops/">区の一覧</a></p>
-      <h1>費用</h1>
-      <p>読む費用はSonnet 5.5の公開単価による見積もりです。処理記録の金額も加算しています。</p>
+      <h1>全体の費用</h1>
+      <p>読む費用は、AIの公開されている単価から見積もった金額です。AIの利用の記録にある金額も足しています。</p>
       <CostCard months={summaries.flatMap((ward) => ward.months)} title="全体の合計" />
       <h2>区ごと</h2>
       {summaries.map((ward) => {
         const total = summarize(ward.months);
-        return <section class="panel"><h3><a href={`/ops/wards/${ward.slug}/costs`}>{ward.name}</a></h3><p>入力{total.inputs}件、費用{usd(total.readEstimateCents + total.actualRunCostCents)}</p></section>;
+        return <section class="panel"><h3><a href={`/ops/wards/${ward.slug}/costs`}>{ward.name}</a></h3><p>送られた資料{total.inputs}件、費用{usd(total.readEstimateCents + total.actualRunCostCents)}</p></section>;
       })}
       <h2>月ごとの全体</h2>
       {months.map((month) => <CostCard months={summaries.flatMap((ward) => ward.months.filter((row) => row.month === month))} title={month} />)}
@@ -472,8 +475,8 @@ opsRoutes.get("/wards/:slug/costs", async (c) => {
   return c.html(
     <OpsPage title={`${ward.name}の費用`} loggedIn>
       <p class="link-line"><a href={`/ops/wards/${ward.slug}`}>{ward.name} の画面</a></p>
-      <h1>{ward.name} の費用</h1>
-      <p>読む費用はSonnet 5.5の公開単価による見積もりです。処理記録の金額も加算しています。</p>
+      <h1>{ward.name}の費用</h1>
+      <p>読む費用は、AIの公開されている単価から見積もった金額です。AIの利用の記録にある金額も足しています。</p>
       <CostCard months={metrics.months} title="全体の合計" />
       <h2>月ごと</h2>
       {metrics.months.map((row) => <CostCard months={[row]} title={row.month} />)}
