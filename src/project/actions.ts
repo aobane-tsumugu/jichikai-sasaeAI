@@ -347,7 +347,7 @@ export async function saveDocument(db: D1Database, wardId: string, projectId: st
   const before: DocumentBody = previous ? JSON.parse(previous.body) as DocumentBody : {
     text: "", items: (state?.items ?? []).map((item) => ({ key: item.key, content: item.current?.content ?? item.references[0]?.content ?? "" })),
   };
-  const body = reconcileDocumentBody(before, { text: record.text, items }, bodyChecks);
+  const body = reconcileDocumentBody(before, { text: record.text, items }, bodyChecks, input.kind === "notice");
   let doc = await db.prepare("SELECT document_id FROM documents WHERE ward_id = ? AND project_id = ? AND kind = ?").bind(wardId, projectId, input.kind).first<{ document_id: string }>();
   const now = nowIso();
   if (!doc) {

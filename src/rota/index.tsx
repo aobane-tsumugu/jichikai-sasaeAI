@@ -31,7 +31,7 @@ export async function rotaPanel(db: D1Database, ward: WardInfo, projectId: strin
       <form method="post" action={`${root}/start`}><div class="action-links"><button class="secondary">{preparation ? "今の名簿と免除を下書きに反映する" : comparison.hasPreviousTable === false ? "名簿から下書きを作る" : "去年の表と名簿から下書きを作る"}</button></div></form>
       <p class="muted">役員が直した行はそのまま残します。保存しただけでは配られません。</p>
     </> : <section class="next"><strong>次は</strong><p>去年の表も今の名簿もまだありません。手元の当番表を写真やファイルで送れます。</p>
-      <a class="button" href={adminPath(ward, `/intake?project=${encodeURIComponent(projectId)}#send-form`)}>当番表を送る</a></section>}
+      <a class="button secondary" href={adminPath(ward, `/intake?project=${encodeURIComponent(projectId)}#send-form`)}>当番表を送る</a></section>}
     <ul class="links"><li><a href={adminPath(ward, "/rota/exemptions")}>免除を記録する</a></li>
       <li><a href={adminPath(ward, "/rota/history")}>世帯ごとの当番と役を読む</a></li></ul>
   </section>;

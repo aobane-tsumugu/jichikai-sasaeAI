@@ -18,7 +18,7 @@ import { paperHeading } from "../../project/heading";
 import { makePaperCode, makeProjectPaperCode, printQrUrl, projectPaperQrUrl } from "../qr";
 import { getProjectState, getProjectSummary } from "../../project/api";
 import { createInvite, getSpace } from "../../space/api";
-import { TABLES, displayFieldValue, type TableKey } from "../../project/model";
+import { DOCUMENT_KIND_LABEL, TABLES, displayFieldValue, type DocumentKind, type TableKey } from "../../project/model";
 import type { RowView } from "../../project/types";
 import { currentPublicationTables, readPublicationTables } from "../../space/publication-tables";
 import { PosterPage } from "./poster";
@@ -51,11 +51,11 @@ admin.get("/print/:projectId", async (c) => {
   const id = c.req.param("projectId");
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
   if (!project) return c.notFound();
-  const papers = await c.env.DB.prepare(`SELECT d.document_id, d.kind, d.title, MAX(v.version_no) AS latest,
+  const papers = await c.env.DB.prepare(`SELECT d.document_id, d.kind, d.scope, d.title, MAX(v.version_no) AS latest,
     MAX(CASE WHEN v.published_at IS NOT NULL THEN v.version_no END) AS published
     FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
     WHERE d.ward_id = ? AND d.project_id = ? GROUP BY d.document_id ORDER BY d.created_at`).bind(ward.wardId, id)
-    .all<{ document_id: string; kind: string; title: string; latest: number; published: number | null }>();
+    .all<{ document_id: string; kind: string; scope: string; title: string; latest: number; published: number | null }>();
   return c.html(<AdminPage ward={ward} account={account} title="紙を印刷する" back={{ href: adminPath(ward, `/projects/${id}/map`), label: "← 段取りへ" }}>
     <h1>紙を印刷する</h1>
     <p class="lead">行事で使う紙を、全部ここから印刷できます。配る紙と、書き込んで撮って送る紙があります。</p>
@@ -66,7 +66,7 @@ admin.get("/print/:projectId", async (c) => {
         { href: `${base}${paper.published === null ? "/preview?paper=answer" : "/answer"}`, title: "回答票だけ", note: "答えを書いて渡してもらう紙です" },
         ...(paper.published !== null ? [{ href: `${base}/poster`, title: "掲示", note: "掲示板に貼る一枚です" }, { href: `${base}/leader`, title: "班長への一枚", note: "班長のページのQRコードが付いています" }] : []),
       ] : [];
-      return <><li><a class="row-link" href={adminPath(ward, `${base}${paper.published === null ? "/preview" : ["duty_roster", "procedure"].includes(paper.kind) ? "/duty" : "/announcement"}`)}><b>{paper.kind === "announcement" ? "案内と回答票" : paper.title}</b><span>{paper.published === null ? "下書きです。まだ配っていません。" : "配ったときの紙です。"}</span></a>
+      return <><li><a class="row-link" href={adminPath(ward, `${base}${paper.published === null ? "/preview" : ["duty_roster", "procedure"].includes(paper.kind) || paper.scope === "space" ? "/duty" : "/announcement"}`)}><b>{paper.kind === "announcement" ? "案内と回答票" : paper.title}</b><span>{paper.published === null ? "下書きです。まだ配っていません。" : "配ったときの紙です。"}</span></a>
         </li>{extra.map((row) => <li><a class="row-link" href={adminPath(ward, row.href)}><b>{row.title}</b><span>{row.note}</span></a></li>)}</>;
     })}</ul>{!papers.results.length ? <p>下書きを保存すると、ここから紙を開けます。</p> : null}
     <h2>書き込んで撮って送る紙</h2><p>電話や役員会で決まったことを、紙に書いて撮って送れます。案内を配る前から使えます。</p>
@@ -226,18 +226,21 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   const tables = readPublicationTables(row.tables_snapshot);
   const published = (table: TableKey) => (tables ?? []).filter((entry) => entry.kind === table);
   const footer = (squad = "") => <><span>{ward.name}{squad ? ` ${squad}` : ""}</span><span>{distributed}　紙の番号 {paperCode}</span></>;
-  const printTitle = `${row.title} ${kind === "announcement" && !withAnswer ? "本文の紙" : kindLabel(kind)}`;
+  // 公開の文書から開いた当番表の紙は、本文ではなく表を出す。
+  const dutyPaper = row.kind === "duty_roster" || row.scope !== "space";
+  const withTables = dutyPaper || row.kind === "procedure";
+  const printTitle = `${row.title} ${(kind === "announcement" && !withAnswer) || (kind === "duty" && !dutyPaper) ? "本文の紙" : kindLabel(kind)}`;
   return c.html(<PrintDocument title={printTitle} back={back} copies={copies}>
     {kind === "announcement" && !withAnswer ? <Sheet footer={footer()}>
-      <h1>{paperHeading(row.title, row.document_title)}</h1><PaperBody body={row.body} project={row.title} title={row.document_title} />
+      <h1>{paperHeading(row.title, row.document_title)}</h1><PaperBody body={row.body} project={row.title} title={row.document_title} kind={row.kind} />
     </Sheet> : null}
     {kind === "announcement" && withAnswer && onOneSheet ? paperSquads.map((squad) => <Sheet key={squad} footer={footer(squad)}>
-      <h1>{paperHeading(row.title, row.document_title)}</h1><PaperBody body={row.body} project={row.title} title={row.document_title} /><CutLine />
+      <h1>{paperHeading(row.title, row.document_title)}</h1><PaperBody body={row.body} project={row.title} title={row.document_title} kind={row.kind} /><CutLine />
       {answerSheet(squad)}
     </Sheet>) : null}
     {kind === "announcement" && withAnswer && !onOneSheet ? <>
       <Sheet footer={footer()}>
-        <h1>{paperHeading(row.title, row.document_title)}</h1><PaperBody body={row.body} project={row.title} title={row.document_title} />
+        <h1>{paperHeading(row.title, row.document_title)}</h1><PaperBody body={row.body} project={row.title} title={row.document_title} kind={row.kind} />
       </Sheet>
       {paperSquads.map((squad) => <Sheet key={squad} footer={footer(squad)}>{answerSheet(squad, true)}</Sheet>)}
     </> : null}
@@ -261,12 +264,13 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
       <p>班長のページの「答えた世帯」に名前が出た回答票は、名前が読めないようにして捨ててかまいません。捨てにくいときや念のため残したいときは、ついでのときに役員に渡してください。</p>
       {contact ? <><h2>なくしたとき、分からないときは</h2><p>{contact}</p></> : null}
     </Sheet>) : null}
-    {kind === "duty" ? <Sheet footer={<><span>{ward.name} 当番表と配置図</span><span>{distributed}　紙の番号 {paperCode}</span></>}>
-      <div class="paper-header"><div><h1>{row.title} 当番表と配置図</h1>
-      <p>{[publishedItem(row.body, "date_time"), publishedItem(row.body, "place"), publishedItem(row.body, "rain_plan")].filter(Boolean).join("。")}</p>
+    {kind === "duty" ? <Sheet footer={<><span>{ward.name} {dutyPaper ? "当番表と配置図" : DOCUMENT_KIND_LABEL[row.kind as DocumentKind] ?? row.document_title}</span><span>{distributed}　紙の番号 {paperCode}</span></>}>
+      <div class="paper-header"><div><h1>{dutyPaper ? `${row.title} 当番表と配置図` : paperHeading(row.title, row.document_title)}</h1>
+      {dutyPaper ? <p>{[publishedItem(row.body, "date_time"), publishedItem(row.body, "place"), publishedItem(row.body, "rain_plan")].filter(Boolean).join("。")}</p> : null}
       </div><div class="paper-identity"><PrintQr text={named()} sizeMm={26} /><span>紙の番号<br />{paperCode}</span></div></div>
-      {tables === null ? <p>配ったときの表の記録がありません。表を確かめて配り直してください。</p> : <>
-        <RowsTable table="duties" rows={published("duties")} paperCode={paperCode} />
+      {row.scope === "space" ? <PaperBody body={row.body} project={row.title} title={row.document_title} kind={row.kind} itemTable={!dutyPaper} /> : null}
+      {!withTables ? null : tables === null ? <p>配ったときの表の記録がありません。表を確かめて配り直してください。</p> : <>
+        {dutyPaper || published("duties").length ? <RowsTable table="duties" rows={published("duties")} paperCode={paperCode} /> : null}
         {published("layout").length ? <RowsTable table="layout" rows={published("layout")} paperCode={paperCode} /> : null}
         {published("committee").length ? <RowsTable table="committee" rows={published("committee")} paperCode={paperCode} /> : null}
       </>}
@@ -295,7 +299,7 @@ async function PrintChooser({ c }: { c: import("hono").Context<AdminEnv> }) {
   if (!row) return c.notFound();
   return c.html(<AdminPage ward={ward} account={account} title="印刷用ページ" back={{ href: adminPath(ward, `/publish/${projectId}`), label: "配る画面へ戻る" }}>
     <h1>{row.title} 印刷用ページ</h1>
-    <ul class="rows">{(row.scope === "space" ? ["duty"] as const : row.kind === "announcement" ? printKinds : ["announcement"] as const).map((kind) => <li key={kind}><a class="row-link" href={adminPath(ward, `/print/${projectId}/${documentId}/${versionNo}/${kind}`)}><b>{kind === "announcement" && row.kind !== "announcement" ? "本文の紙" : kindLabel(kind)}</b>{kind === "poster" ? <span>配った案内の題、日時、場所と、区のページへのQRを大きく出します。印刷や画面の撮影で使えます。</span> : null}</a></li>)}</ul>
+    <ul class="rows">{(row.scope === "space" ? ["duty"] as const : row.kind === "announcement" ? printKinds : ["announcement"] as const).map((kind) => <li key={kind}><a class="row-link" href={adminPath(ward, `/print/${projectId}/${documentId}/${versionNo}/${kind}`)}><b>{(kind === "announcement" && row.kind !== "announcement") || (kind === "duty" && row.kind !== "duty_roster") ? "本文の紙" : kindLabel(kind)}</b>{kind === "poster" ? <span>配った案内の題、日時、場所と、区のページへのQRを大きく出します。印刷や画面の撮影で使えます。</span> : null}</a></li>)}</ul>
   </AdminPage>);
 }
 
@@ -307,14 +311,16 @@ function kindLabel(kind: PrintKind): string {
 export const printPages: Bundle = { admin };
 
 /** 紙では項目を表で読み、本文に既に書いた内容は重ねない。 */
-export function PaperBody({ body, project, title }: { body: string; project?: string; title?: string }) {
+export function PaperBody({ body, project, title, kind, itemTable = true }: { body: string; project?: string; title?: string; kind?: string; itemTable?: boolean }) {
   let value: unknown;
   try { value = JSON.parse(body); } catch { return <ArticleBody body={body} />; }
   if (!value || typeof value !== "object" || !("text" in value) || typeof value.text !== "string") return <ArticleBody body={body} />;
   const pending = withoutPending(value.text);
   const text = project !== undefined && title !== undefined ? withoutTitleLine(pending, project, title) : pending;
   const names: Record<string, string> = { date_time: "いつ", place: "どこで", rain_plan: "雨のとき", content: "内容", belongings: "持ち物", helper_slots: "手伝い", due: "締切", public_contact: "連絡先" };
-  const items = Object.entries(names).flatMap(([key, label]) => {
+  // 知らせは本文が正。本文があれば、項目の表を足さない。
+  const showItems = itemTable && !(kind === "notice" && text.trim());
+  const items = !showItems ? [] : Object.entries(names).flatMap(([key, label]) => {
     const content = publishedItem(body, key);
     return content && !writtenInText(key, content, text) ? [{ label, content }] : [];
   });
