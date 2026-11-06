@@ -4,6 +4,8 @@
 // offset は行事の日（期限群の event_day）からの日数。行事の日が決まっていなければ時期は空のまま置く。
 // opens は、仕事を押した時にその仕事から開く物。材料、案、答え、収支の四つ。
 
+import type { DocumentKind, ProjectKind } from "../project/model";
+
 export type MapOpens = "materials" | "draft" | "answers" | "ledger";
 
 export interface TemplateTask {
@@ -14,6 +16,7 @@ export interface TemplateTask {
   start: number;
   end: number;
   opens: readonly MapOpens[];
+  draftKind?: DocumentKind;
 }
 
 /** 種類ごとの型。行事は設計書の「実行委員、会場、協賛、案内、回答、当番表、当日、報告」。 */
@@ -29,32 +32,38 @@ export const MAP_TEMPLATES: Record<string, readonly TemplateTask[]> = {
     { key: "report", name: "報告をまとめる", start: 1, end: 14, opens: ["draft", "ledger"] },
   ],
   general_meeting: [
-    { key: "agenda", name: "議案を決める", start: -45, end: -21, opens: ["materials", "draft"] },
-    { key: "notice", name: "招集を配る", start: -21, end: -14, opens: ["draft"] },
+    { key: "agenda", name: "議案を決める", start: -45, end: -21, opens: ["materials", "draft"], draftKind: "procedure" },
+    { key: "notice", name: "招集を配る", start: -21, end: -14, opens: ["draft"], draftKind: "announcement" },
     { key: "answers", name: "出欠を集める", start: -14, end: -3, opens: ["answers"] },
     { key: "day", name: "当日", start: 0, end: 0, opens: ["materials"] },
-    { key: "minutes", name: "議事録をまとめる", start: 1, end: 14, opens: ["materials"] },
+    { key: "minutes", name: "議事録をまとめる", start: 1, end: 14, opens: ["draft", "materials"], draftKind: "report" },
   ],
   city_request: [
     { key: "read", name: "通知を読む", start: -30, end: -25, opens: ["materials"] },
-    { key: "reply", name: "答えや配るものを用意する", start: -25, end: -7, opens: ["materials", "draft"] },
-    { key: "submit", name: "提出する", start: -7, end: 0, opens: ["draft"] },
+    { key: "reply", name: "答えや配るものを用意する", start: -25, end: -7, opens: ["materials", "draft"], draftKind: "procedure" },
+    { key: "submit", name: "提出する", start: -7, end: 0, opens: ["draft"], draftKind: "report" },
   ],
   board_meeting: [
-    { key: "agenda", name: "議題を集める", start: -14, end: -3, opens: ["materials", "draft"] },
+    { key: "agenda", name: "議題を集める", start: -14, end: -3, opens: ["materials", "draft"], draftKind: "procedure" },
     { key: "day", name: "当日", start: 0, end: 0, opens: ["materials"] },
-    { key: "minutes", name: "決めたことをまとめる", start: 1, end: 7, opens: ["draft"] },
+    { key: "minutes", name: "決めたことをまとめる", start: 1, end: 7, opens: ["draft", "materials"], draftKind: "report" },
   ],
   duty: [
-    { key: "assign", name: "担当を決める", start: -21, end: -7, opens: ["materials", "draft"] },
-    { key: "notify", name: "担当に知らせる", start: -7, end: -3, opens: ["draft"] },
+    { key: "assign", name: "担当を決める", start: -21, end: -7, opens: ["materials", "draft"], draftKind: "duty_roster" },
+    { key: "notify", name: "担当に知らせる", start: -7, end: -3, opens: ["draft"], draftKind: "notice" },
     { key: "day", name: "当日", start: 0, end: 0, opens: ["materials"] },
   ],
   request: [
-    { key: "content", name: "要望の中身をまとめる", start: -30, end: -14, opens: ["materials", "draft"] },
-    { key: "submit", name: "出す", start: -14, end: 0, opens: ["draft"] },
+    { key: "content", name: "要望の中身をまとめる", start: -30, end: -14, opens: ["materials", "draft"], draftKind: "procedure" },
+    { key: "submit", name: "出す", start: -14, end: 0, opens: ["draft"], draftKind: "report" },
   ],
 };
+
+/** 行事の対応は保ち、ほかの種類は仕事ごとに選ぶ。 */
+export function taskDraftKind(taskKey: string | null, kind: ProjectKind = "event"): DocumentKind {
+  return MAP_TEMPLATES[kind]?.find((task) => task.key === taskKey)?.draftKind
+    ?? (taskKey === "duty_roster" ? "duty_roster" : taskKey === "report" || taskKey === "minutes" ? "report" : "announcement");
+}
 
 /** 仕事を押した時に開く物。型にない仕事（役員が足した物）は材料だけ。 */
 export function opensOf(kind: string, taskKey: string | null): readonly MapOpens[] {

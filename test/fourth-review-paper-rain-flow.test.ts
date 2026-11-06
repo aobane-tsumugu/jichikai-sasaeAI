@@ -163,7 +163,7 @@ it("過ぎた締切を知らせて配り、雨の変更後に答えと手伝い�
       expect(await read(base)).not.toContain("回答票");
       expect((await get(realApp, `${base}/answer`, cookie)).status).toBe(404);
     }
-    expect(opensOf("general_meeting", "minutes")).toEqual(["materials"]);
+    expect(opensOf("general_meeting", "minutes")).toEqual(["draft", "materials"]);
   } finally {
     vi.useRealTimers();
   }
