@@ -10,7 +10,7 @@ it("プロジェクトを閉じると空間と原本を開けず、開き直す�
   const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "閉じる行事（架空）", year: 2026, accountId: account.accountId });
   const admin = `/${ward.slug}/admin`;
   const space = `/${ward.slug}/space/${project.projectId}`;
-  expect((await postForm(realApp, `${admin}/space/${project.projectId}/open`, { passphrase: "架空の合言葉です" }, cookie)).status).toBe(303);
+  expect((await postForm(realApp, `${admin}/space/${project.projectId}/open`, { passphrase: "架空の合言葉です" }, cookie)).status).toBe(200);
   const entered = await postForm(realApp, `${space}/enter`, { passphrase: "架空の合言葉です" });
   const member = cookieFrom(entered, `space_${project.projectId}`);
   expect(member).not.toBeNull();

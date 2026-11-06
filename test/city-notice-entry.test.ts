@@ -57,7 +57,7 @@ it("入口の四つから進み、市の通知を知らせに保存して通常�
     expect(before?.n).toBe(0);
     const publishPage = await get(realApp, publishPath, cookie, bindings);
     expect(publishPage.status).toBe(200);
-    expect(await publishPage.text()).toContain("配る内容を確認する");
+    expect(await publishPage.text()).toContain("配る内容を見る");
     const form = {
       documentId: version.document_id, versionId: version.version_id, versionNo: String(version.version_no), lineDelivery: "skip",
     };

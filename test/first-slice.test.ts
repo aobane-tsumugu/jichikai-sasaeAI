@@ -154,7 +154,7 @@ describe("秋の収穫祭の最初の一片", () => {
       recipientScope: "all_households", distribution: "",
     }, cookie);
     expect(confirm.status).toBe(200);
-    expect(await confirm.text()).toContain("配ります。");
+    expect(await confirm.text()).toContain("次の内容で配ります");
     const published = await postForm(realApp, `/${ward.slug}/admin/publish/${projectId}/send`, {
       documentId: document!.document_id, versionId: document!.version_id, versionNo: String(document!.version_no),
       stateVersion: String(document!.state_version), recipientScope: "all_households", distribution: "",
@@ -234,7 +234,7 @@ describe("秋の収穫祭の最初の一片", () => {
       kind: "duty_roster", title: FIRST_SLICE.dutyTitle, scope: "space",
       body: JSON.stringify({ text: FIRST_SLICE.dutyText, items: [] }), basedOn: (await getProjectState(env.DB, ward.wardId, projectId as string))?.project.stateVersion ?? 0,
     })).toBe(true);
-    expect((await postForm(realApp, `/${ward.slug}/admin/space/${projectId}/open`, { passphrase: FIRST_SLICE.passphrase }, cookie)).status).toBe(303);
+    expect((await postForm(realApp, `/${ward.slug}/admin/space/${projectId}/open`, { passphrase: FIRST_SLICE.passphrase }, cookie)).status).toBe(200);
     const locked = await get(realApp, `/${ward.slug}/space/${projectId}`);
     expect(locked.status).toBe(200);
     expect(await locked.text()).not.toContain(FIRST_SLICE.dutyText);
@@ -244,7 +244,7 @@ describe("秋の収穫祭の最初の一片", () => {
     const spacePage = await get(realApp, `/${ward.slug}/space/${projectId}`, spaceCookie ?? undefined);
     const spaceBody = await spacePage.text();
     expect(spacePage.status).toBe(200);
-    expect(spaceBody).toContain("文書はまだ配っていません。");
+    expect(spaceBody).toContain("まだ配っていません。");
     expect(spaceBody).not.toContain(FIRST_SLICE.dutyText);
     expect(spaceBody).not.toContain(FIRST_SLICE.layoutSpot);
     expect(spaceBody).not.toContain(FIRST_SLICE.layoutPosition);
@@ -267,7 +267,7 @@ describe("秋の収穫祭の最初の一片", () => {
     expect(distributedSpaceBody).toContain(FIRST_SLICE.dutyText);
     expect(distributedSpaceBody).toContain(FIRST_SLICE.layoutSpot);
     expect(distributedSpaceBody).toContain(FIRST_SLICE.layoutPosition);
-    expect(distributedSpaceBody).not.toContain("文書はまだ配っていません。");
+    expect(distributedSpaceBody).not.toContain("まだ配っていません。");
     const lockedAfterDistribution = await get(realApp, `/${ward.slug}/space/${projectId}`);
     const lockedAfterDistributionBody = await lockedAfterDistribution.text();
     expect(lockedAfterDistribution.status).toBe(200);

@@ -188,7 +188,7 @@ export async function getSpaceMaterials(db: D1Database, wardId: string, projectI
     ).bind(wardId, projectId).all<{ original_id: string; filename: string; media_type: string }>(),
   ]);
   const tables = publication ? readPublicationTables(publication.tables_snapshot) : null;
-  const items = (tables ?? []).map((row) => {
+  const items = (tables ?? []).filter((row) => district === null || row.kind !== "sponsors").map((row) => {
     const data = { ...row.data };
     if (row.kind === "sponsors") {
       delete data.amount;
@@ -199,5 +199,5 @@ export async function getSpaceMaterials(db: D1Database, wardId: string, projectI
   // 題は文書ごとの現在の値しか保存されていないため、作業中の題を出さず種類を見出しにする。
   const documents = docs.results.map((doc) => ({ document_id: doc.document_id, title: DOCUMENT_KIND_LABEL[doc.kind], body: doc.body }));
   return { title: project?.title ?? "", items, tablesPublished: publication !== null,
-    tablesRecorded: tables !== null, attendance: answers.results, documents, originals: originals.results };
+    tablesRecorded: tables !== null, attendance: answers.results, documents, originals: district === null ? originals.results : [] };
 }

@@ -27,7 +27,7 @@ it("配った当番・配置・協賛先は直しても変わらず、配り直�
   await change("layout", { spot: FIRST_SLICE.layoutSpot, position: FIRST_SLICE.layoutPosition });
   await change("sponsors", { name: FIRST_SLICE.sponsorName, reply: "yes", amount: FIRST_SLICE.sponsorAmount });
   await openSpace(env.DB, ward.wardId, id, FIRST_SLICE.passphrase, account.accountId);
-  const token = await createInvite(env.DB, ward.wardId, id, "leader", FIRST_SLICE.district, account.accountId, true);
+  const token = await createInvite(env.DB, ward.wardId, id, "member", null, account.accountId, true);
   const entered = await get(realApp, `${spacePath}/person/${token}`);
   const memberCookie = cookieFrom(entered, `space_${id}`);
   if (!memberCookie) throw new Error("班長が空間に入れません。");
@@ -71,7 +71,7 @@ it("配った当番・配置・協賛先は直しても変わらず、配り直�
   expect(unchanged).not.toContain(FIRST_SLICE.reportText);
   expect(await (await get(realApp, paperPath(first), cookie)).text()).toBe(originalPaper);
   expect(await (await get(realApp, `${admin}/publish/${id}`, cookie)).text())
-    .toContain("配った時から表が変わっています。今の表を空間に配り直せます。");
+    .toContain("配ったときから表が変わっています。今の表を配り直せます。");
 
   // 文書を手で保存し直さなくても、同じ所から今の表を配り直せる。
   expect((await distribute(first)).status).toBe(303);
@@ -89,7 +89,7 @@ it("配った当番・配置・協賛先は直しても変わらず、配り直�
   expect(newPaper).toContain(FIRST_SLICE.previousPlace);
   expect(newPaper).not.toContain(FIRST_SLICE.phoneHelper);
   expect(await (await get(realApp, paperPath(first), cookie)).text()).toBe(originalPaper);
-  expect(await (await get(realApp, `${admin}/publish/${id}`, cookie)).text()).not.toContain("今の表を空間に配り直せます。");
+  expect(await (await get(realApp, `${admin}/publish/${id}`, cookie)).text()).not.toContain("今の表を配り直せます。");
   const otherWard = await seedWard(env.DB);
   expect((await getSpaceMaterials(env.DB, otherWard.wardId, id, null)).tablesPublished).toBe(false);
 

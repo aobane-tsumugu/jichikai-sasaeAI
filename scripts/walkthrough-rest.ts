@@ -87,10 +87,10 @@ function readForm(html: string, match: string, sectionTitle?: string) {
     const body = form[2] ?? "";
     for (const input of body.matchAll(/<input\b([^>]*)>/gi)) {
       const attrs2 = input[1] ?? "";
+      if (/type="(?:checkbox|radio)"/i.test(attrs2) && !/\bchecked(?:\s|=|$)/i.test(attrs2)) continue;
       const name = /\bname="([^"]*)"/i.exec(attrs2)?.[1];
       const type = /\btype="([^"]*)"/i.exec(attrs2)?.[1];
-      if (type === "radio" && !/\bchecked(?:\s|=|$)/i.test(attrs2)) continue;
-      if (name && type !== "file" && type !== "submit" && type !== "checkbox") fields[name] = unescapeHtml(/\bvalue="([^"]*)"/i.exec(attrs2)?.[1] ?? "");
+      if (name && type !== "file" && type !== "submit") fields[name] = unescapeHtml(/\bvalue="([^"]*)"/i.exec(attrs2)?.[1] ?? "");
     }
     for (const field of body.matchAll(/<textarea\b([^>]*)>([\s\S]*?)<\/textarea>/gi)) {
       const name = /\bname="([^"]*)"/i.exec(field[1] ?? "")?.[1];
@@ -166,7 +166,7 @@ if (adminLoggedIn) {
     confirm.fields.lineDelivery = "skip";
     const check = await post(confirm.action, confirm.fields);
     const checkHtml = await check.text();
-    if (!check.ok || !checkHtml.includes("今回は公式 LINE に送りません")) throw new Error("送らない選択の確認へ進めません");
+    if (!check.ok || !checkHtml.includes("今回は公式LINEに送りません")) throw new Error("送らない選択の確認へ進めません");
     const final = readForm(checkHtml, "/publish/" + projectId + "/send");
     if (final.fields.lineDelivery !== "skip") throw new Error("一斉送信を止める選択がありません");
     const distributed = await post(final.action, final.fields);
@@ -326,16 +326,22 @@ else {
   try {
     const page = await get(admin + "/publish/" + projectId);
     if (!page.response.ok) throw new Error("配布画面を開けません");
-    const household = /<input\b[^>]*name="household"[^>]*value="([^"]*)"/i.exec(page.html)?.[1];
+    const entry = readForm(page.html, "/publish/" + projectId + "/confirm");
+    entry.fields.lineDelivery = "skip";
+    const preview = await post(entry.action, entry.fields);
+    if (!preview.ok) throw new Error("配る内容を開けません");
+    const previewHtml = await preview.text();
+    const household = /<input\b[^>]*name="household"[^>]*value="([^"]*)"/i.exec(previewHtml)?.[1];
     if (!household) skip(8, "対象者への配布", "名簿に選べる世帯がありません");
     else {
-      const form = readForm(page.html, "/publish/" + projectId + "/confirm");
+      const form = readForm(previewHtml, "/publish/" + projectId + "/send");
+      form.action = entry.action;
       form.fields.household = unescapeHtml(household);
       form.fields.lineDelivery = "skip";
       const confirm = await post(form.action, form.fields);
       const html = await confirm.text();
       const target = JSON.parse(form.fields.household) as [string, string];
-      if (!confirm.ok || !unescapeHtml(html).includes("紙の配布先: " + target.join(" / ")) || !html.includes("今回は公式 LINE に送りません")) throw new Error("選んだ世帯への紙の配布先を確認できません");
+      if (!confirm.ok || !unescapeHtml(html).includes(target.join(" / ")) || !html.includes("今回は公式LINEに送りません")) throw new Error("選んだ世帯への紙の配布先を確認できません");
       record(8, "対象者への配布", "通過", "一世帯を選び、紙の配布先と公式 LINE に送らない選択を確認。配る操作は実行していない", confirm.status, start);
     }
   } catch (error) { fail(8, "対象者への配布", error, start); }

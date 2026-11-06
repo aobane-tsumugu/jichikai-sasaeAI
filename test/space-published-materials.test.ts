@@ -6,6 +6,7 @@ import { FIRST_SLICE } from "../fixtures/first-slice";
 import { getAnswerTotals, listAnswers } from "../src/answers/api";
 import { seedAdmin } from "../src/core/testing";
 import { runRead, setPipelineDeps, type PipelineDeps } from "../src/intake/pipeline";
+import { createInvite } from "../src/space/api";
 import { saveDocument } from "../src/project/actions";
 import { applyChange, createProject, getProjectState } from "../src/project/api";
 import type { RowData } from "../src/project/model";
@@ -27,13 +28,10 @@ it("空間には配った文書を読みやすく出し、班長の回答票を�
   if (!generated) throw new Error("合言葉が用意されていません。");
   // 用意された言葉を書き換えても、その言葉で入れる。
   const passphrase = `${generated}${FIRST_SLICE.passphrase}`;
-  expect((await postForm(realApp, `${admin}/space/${projectId}/open`, { passphrase }, cookie)).status).toBe(303);
+  expect((await postForm(realApp, `${admin}/space/${projectId}/open`, { passphrase }, cookie)).status).toBe(200);
   expect((await postForm(realApp, `${spacePath}/enter`, { passphrase })).status).toBe(303);
-  const leaderResponse = await postForm(realApp, `${admin}/space/${projectId}/leader`, { district: FIRST_SLICE.district }, cookie);
-  const leaderHtml = await leaderResponse.text();
-  const leaderUrl = leaderHtml.match(/http:\/\/localhost\/[^<]+\/person\/([a-f0-9]+)/u)?.[0];
-  if (!leaderUrl) throw new Error("班長の専用URLがありません。");
-  const entered = await get(realApp, leaderUrl);
+  const leaderToken = await createInvite(env.DB, ward.wardId, projectId, "leader", FIRST_SLICE.district, account.accountId, true);
+  const entered = await get(realApp, `${spacePath}/person/${leaderToken}`);
   const memberCookie = cookieFrom(entered, `space_${projectId}`);
   if (!memberCookie) throw new Error("班長が空間に入れません。");
 
@@ -57,7 +55,7 @@ it("空間には配った文書を読みやすく出し、班長の回答票を�
   });
   expect(await save(FIRST_SLICE.dutyText)).toBe(true);
   const before = await (await get(realApp, spacePath, memberCookie)).text();
-  expect(before).toContain("文書はまだ配っていません。");
+  expect(before).toContain("まだ配っていません。");
   expect(before).not.toContain(FIRST_SLICE.dutyText);
   const published = await env.DB.prepare(`SELECT document_id, version_id, version_no FROM document_versions
     WHERE ward_id = ? AND project_id = ? ORDER BY version_no DESC LIMIT 1`)
@@ -69,11 +67,11 @@ it("空間には配った文書を読みやすく出し、班長の回答票を�
   // 作り直し中に見せる範囲と題も変わっても、配った本文と範囲を保つ。
   expect(await save(FIRST_SLICE.reportText, "staff")).toBe(true);
   const html = await (await get(realApp, spacePath, memberCookie)).text();
-  for (const value of [FIRST_SLICE.dutyText, FIRST_SLICE.previousPlace, FIRST_SLICE.sponsorName, FIRST_SLICE.sheetHelper,
-    FIRST_SLICE.layoutSpot, FIRST_SLICE.layoutPosition, "時間帯", "担当", "置く位置", "可", "出席", "回答票を撮って送る"]) {
+  for (const value of [FIRST_SLICE.dutyText, FIRST_SLICE.previousPlace, FIRST_SLICE.sheetHelper,
+    FIRST_SLICE.layoutSpot, FIRST_SLICE.layoutPosition, "時間帯", "担当", "置く位置", "出席", "回答票を撮って送る"]) {
     expect(html).toContain(value);
   }
-  for (const value of [FIRST_SLICE.reportText, FIRST_SLICE.amountNotPublished, "&quot;text&quot;", "&quot;assignee&quot;", "<pre"]) {
+  for (const value of [FIRST_SLICE.reportText, FIRST_SLICE.sponsorName, FIRST_SLICE.amountNotPublished, "&quot;text&quot;", "&quot;assignee&quot;", "<pre"]) {
     expect(html).not.toContain(value);
   }
 

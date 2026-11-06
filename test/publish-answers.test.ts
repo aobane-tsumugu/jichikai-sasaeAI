@@ -35,7 +35,7 @@ describe("配る画面と区のページ", () => {
       distribution: "",
     }, cookie);
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain("協賛の額: 6500");
+    expect(await response.text()).toContain("協賛の金額と同じ数字があります");
     const sent = await postForm(realApp, `/${ward.slug}/admin/publish/${project.projectId}/send`, {
       documentId: version!.document_id,
       versionId: version!.version_id,

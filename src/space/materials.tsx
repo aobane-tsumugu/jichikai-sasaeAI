@@ -11,14 +11,14 @@ export function MaterialsTable({ table, items }: {
   if (!rows.length) return <p>まだありません。</p>;
   const fields = Object.entries(TABLES[table].fields).filter(([name]) =>
     table !== "sponsors" || name === "name" || name === "reply");
-  return <div class="panel" style="overflow-x:auto" tabindex={0} role="region" aria-label={TABLES[table].label}>
-    <table style="min-width:28rem;overflow-wrap:anywhere">
+  return <div class="panel" role="region" aria-label={TABLES[table].label}>
+    <table class="stack">
       <caption>{table === "duties" ? "当番表" : table === "layout" ? "配置図" : "協賛先と打診"}</caption>
       <thead><tr>{fields.map(([name, field]) => <th scope="col" key={name}>{field.label}</th>)}</tr></thead>
       <tbody>{rows.map((row, index) => <tr key={index}>{fields.map(([name]) => {
         const value = row.data[name];
         const text: RowData[string] | undefined = typeof value === "string" || typeof value === "number" ? value : undefined;
-        return <td key={name} style="white-space:pre-wrap">{displayFieldValue(table, name, text) || "—"}</td>;
+        return <td key={name} data-label={TABLES[table].fields[name]?.label} class="preserve-lines">{displayFieldValue(table, name, text) || "—"}</td>;
       })}</tr>)}</tbody>
     </table>
   </div>;

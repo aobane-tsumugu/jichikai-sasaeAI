@@ -142,7 +142,7 @@ const shots: Shot[] = [
   { stage: 2, name: "プロジェクトのページ", path: "public/project", heading: "" },
   { stage: 3, name: "戻る", path: `${admin}/answers`, heading: "戻る" },
   { stage: 3, name: "回答の入口", path: "public/answer", heading: "回答" },
-  { stage: 4, name: "空間の管理", path: "project/space", heading: "空間" },
+  { stage: 4, name: "実行委員と班長のページ", path: "project/space", heading: "実行委員と班長のページ" },
   { stage: 5, name: "再配布", path: "project/publish", heading: "配る" },
   { stage: 6, name: "報告と閉じる", path: "project/close", heading: "報告" },
   { stage: 6, name: "記録", path: `${admin}/archive`, heading: "記録" },

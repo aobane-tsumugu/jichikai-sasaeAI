@@ -74,7 +74,7 @@ it("開設した二つの区はそれぞれの鍵で配り、未設定の区は�
       } else {
         expect(calls).toHaveLength(start);
         expect(record?.line_error).toBe(LINE_NOT_CONFIGURED);
-        expect(html).toContain(LINE_NOT_CONFIGURED);
+        expect(html).toContain("送れませんでした。区のページには載っています。紙も配れます。");
       }
       for (const value of Object.values(secrets)) expect(html).not.toContain(value);
     }
