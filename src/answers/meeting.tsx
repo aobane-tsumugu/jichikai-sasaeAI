@@ -61,6 +61,14 @@ export async function meetingNote(db: D1Database, wardId: string): Promise<strin
   return (await getTemplates(db, wardId)).find((entry) => entry.name === MEETING_NOTE_NAME)?.body ?? "";
 }
 
+/** 配った追記だけを読む。保存のない古い文書へ現在の設定を足さない。 */
+export function meetingNoteFromBody(body: string): string {
+  try {
+    const value: unknown = JSON.parse(body);
+    return typeof value === "object" && value !== null && "meetingNote" in value && typeof value.meetingNote === "string" ? value.meetingNote : "";
+  } catch { return ""; }
+}
+
 export function MeetingFields({ selected, proxyName = "", prefix = "meeting", disabled = false }: {
   selected?: string | null; proxyName?: string | null; prefix?: string; disabled?: boolean;
 }) {

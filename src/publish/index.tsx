@@ -1,4 +1,5 @@
 import { getAnswerLabels } from "../settings/answer-labels";
+import { meetingNote } from "../answers/meeting";
 import { deliveryAlert } from "../line/delivery-alert";
 import { Hono } from "hono";
 import { adminResult, AdminPage } from "../core/admin-ui";
@@ -37,6 +38,7 @@ interface DraftRow {
 
 interface ProjectRow {
   project_id: string;
+  kind: string;
   title: string;
   year: number;
   state_version: number;
@@ -85,7 +87,7 @@ function paperTargetLabel(raw: string): string {
 }
 
 async function getProject(db: D1Database, wardId: string, projectId: string): Promise<ProjectRow | null> {
-  return db.prepare(`SELECT project_id, title, year, state_version, closed_at FROM projects
+  return db.prepare(`SELECT project_id, kind, title, year, state_version, closed_at FROM projects
     WHERE ward_id = ? AND project_id = ?`).bind(wardId, projectId).first<ProjectRow>();
 }
 
@@ -370,11 +372,13 @@ admin.post("/publish/:projectId/send", async (c) => {
   // 過ぎた日を受付の締切に入れると、配った途端に回答が閉じる。去年の中身の案でも起きるので入れない
   const answerDue = draftDue && draftDue >= new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date()) ? draftDue : null;
   const answerLabels = await getAnswerLabels(c.env.DB, ward.wardId);
+  const generalMeeting = project.kind === "general_meeting" && row.kind === "announcement";
+  const note = generalMeeting ? { meetingNote: await meetingNote(c.env.DB, ward.wardId) } : {};
   let publishedBody = row.body;
-  try {
-    const parsed: unknown = JSON.parse(row.body);
-    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) publishedBody = JSON.stringify({ ...parsed, answerLabels });
-  } catch { /* 本文が文だけの古い下書きはそのまま残す。 */ }
+  let parsed: unknown;
+  try { parsed = JSON.parse(row.body); } catch { /* 文だけの古い下書きも配れる。 */ }
+  if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) publishedBody = JSON.stringify({ ...parsed, answerLabels, ...note });
+  else if (generalMeeting) publishedBody = JSON.stringify({ text: articleParagraphs(row.body).join("\n\n"), items: [], answerLabels, ...note });
   const publication = await c.env.DB.batch([
     c.env.DB.prepare(`UPDATE document_versions SET body = ?, published_at = ?, published_by_account_id = ?, tables_snapshot = ${publicationTablesSql}
       WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_id = ? AND version_no = ?

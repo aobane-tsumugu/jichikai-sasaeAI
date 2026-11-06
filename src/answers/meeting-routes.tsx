@@ -8,7 +8,7 @@ import { getSquads } from "../settings/store";
 import { getReadings } from "../intake/api";
 import { getAnswer, getAnswerDeadline, getRoster, listAnswers, unansweredRoster, type AnswerRow, type RosterEntry } from "./api";
 import { EventDetails, ReceptionClosed, ResidentContact, residentContext } from "./resident";
-import { isMeetingStatus, MEETING_LABELS, MeetingFields, meetingNote, meetingText, parseMeetingAnswer } from "./meeting";
+import { isMeetingStatus, MEETING_LABELS, MeetingFields, meetingNoteFromBody, meetingText, parseMeetingAnswer } from "./meeting";
 import { saveMeetingAnswer } from "./meeting-store";
 import { isAnswerSheetReading } from "../ai/schema";
 import { formatJstDate } from "../core/time";
@@ -212,12 +212,12 @@ export function installMeetingRoutes(admin: Hono<AdminEnv>, pub: Hono<WardEnv>) 
     const project = await getMeeting(c.env.DB, c.var.ward.wardId, id);
     if (!project) return next();
     c.header("Cache-Control", "private, no-store");
+    const context = await residentContext(c.env.DB, c.var.ward.wardId, id);
     if (receptionClosed(project)) {
-      const context = await residentContext(c.env.DB, c.var.ward.wardId, id);
       return c.html(<Layout title="答えの受付は終わりました" siteName={c.var.ward.name}><h1>答えの受付は終わりました</h1><ReceptionClosed closed={!!project.closed_at} due={project.due_on} /><ResidentContact contact={context.contact} /><div class="action-links"><a class="button secondary" href={`/${c.var.ward.slug}/p/${id}`}>案内へ戻る</a></div></Layout>);
     }
     const squads = await getSquads(c.env.DB, c.var.ward.wardId);
-    return c.html(<ResidentForm c={c} project={project} squads={squads} note={await meetingNote(c.env.DB, c.var.ward.wardId)} published={(await residentContext(c.env.DB, c.var.ward.wardId, id)).documents.length > 0} values={squads.includes(c.req.query("s") ?? "") ? { district: c.req.query("s") } : {}} />);
+    return c.html(<ResidentForm c={c} project={project} squads={squads} note={meetingNoteFromBody(context.documents.find((document) => document.kind === "announcement")?.body ?? "")} published={context.documents.length > 0} values={squads.includes(c.req.query("s") ?? "") ? { district: c.req.query("s") } : {}} />);
   });
   pub.use("/answer/:projectId", async (c, next) => {
     if (c.req.method !== "POST") return next();
@@ -242,7 +242,7 @@ export function installMeetingRoutes(admin: Hono<AdminEnv>, pub: Hono<WardEnv>) 
     if (receptionClosed(project)) return closed();
     const parsed = parseMeetingAnswer(form);
     const squads = await getSquads(c.env.DB, ward.wardId);
-    if (!parsed || !str(form.household).trim() || str(form.household).trim().length > 120 || str(form.district).length > 80 || (str(form.district) && squads.length && !squads.includes(str(form.district)))) return c.html(<ResidentForm c={c} project={project} squads={squads} note={await meetingNote(c.env.DB, ward.wardId)} published={context.documents.length > 0} values={form} error="代表のお名前と、出席・委任・欠席のどれかを入れてください。班は分からないままでも送れます。" />, 400);
+    if (!parsed || !str(form.household).trim() || str(form.household).trim().length > 120 || str(form.district).length > 80 || (str(form.district) && squads.length && !squads.includes(str(form.district)))) return c.html(<ResidentForm c={c} project={project} squads={squads} note={meetingNoteFromBody(context.documents.find((document) => document.kind === "announcement")?.body ?? "")} published={context.documents.length > 0} values={form} error="代表のお名前と、出席・委任・欠席のどれかを入れてください。班は分からないままでも送れます。" />, 400);
     const saved = await saveMeetingAnswer(c.env.DB, ward.wardId, { projectId: id, household: str(form.household), district: str(form.district), peopleCount: 0, ...parsed, source: "web" }, { submissionId });
     return saved ? received(saved) : closed();
   });
