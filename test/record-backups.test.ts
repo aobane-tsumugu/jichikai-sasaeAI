@@ -33,7 +33,8 @@ it("保存した問い合わせ・行政の答え・年間帳簿・活動紹介�
   const snapshot = await object!.json<{ tables: Record<string, unknown[]> }>();
   for (const { tables } of [exported, snapshot]) {
     expect(tables.inquiry_records).toEqual([expect.objectContaining({ ward_id: ward.wardId, subject: "架空の問い合わせ", answer: "架空の対応記録" })]);
-    expect(tables.city_request_details).toEqual([expect.objectContaining({ ward_id: ward.wardId, project_id: project.projectId, answer_draft: "架空の答えの下書き", due_on: "2026-11-30" })]);
+    expect(tables.city_request_details).toEqual([expect.objectContaining({ ward_id: ward.wardId, project_id: project.projectId, answer_draft: "", due_on: "2026-11-30" })]);
+    expect(tables.document_versions).toEqual(expect.arrayContaining([expect.objectContaining({ ward_id: ward.wardId, project_id: project.projectId, body: expect.stringContaining("架空の答えの下書き") })]));
     expect(tables.ward_annual_budgets).toEqual([expect.objectContaining({ ward_id: ward.wardId, year: 2026, budget_income: 12000, budget_expense: 10000, settlement_draft: "架空の決算の下書き" })]);
     expect(tables.project_activity_pages).toEqual([expect.objectContaining({ ward_id: ward.wardId, project_id: project.projectId, draft_body: expect.stringContaining("架空の活動紹介") })]);
   }

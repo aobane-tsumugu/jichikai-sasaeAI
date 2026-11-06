@@ -23,6 +23,7 @@ import { runSnapshotCron } from "./snapshot";
 import { runDeletionCron } from "../ops/lifecycle";
 import { MaterialsTable } from "../space/materials";
 import { readPublicationTables } from "../space/publication-tables";
+import { listSubmittedItems, SubmittedItems } from "../project/followup";
 
 interface SeedTask { task_id: string; task_key: string | null; name: string; period_start: string | null; period_end: string | null; offset_start_days: number | null; offset_end_days: number | null; sort_order: number; }
 const admin = new Hono<AdminEnv>();
@@ -186,7 +187,7 @@ admin.get("/archive/:projectId", async (c) => {
       <div class="field"><label for="year">年</label><input id="year" name="year" type="number" inputmode="numeric" value={project.year + 1} min="1900" max="2200" required /></div>
       <div class="field"><label for="eventDay">行事の日</label><input id="eventDay" name="eventDay" type="date" required={project.kind === "event"} /></div><div class="action-bar"><button>始める</button></div></form><p class="muted">新しく始めても、去年の記録は変わりません。</p>
   </AdminPage>);
-  const [reports, map, originals, documents, answers, state, helpCount] = await Promise.all([
+  const [reports, map, originals, documents, answers, state, helpCount, submittedItems] = await Promise.all([
     c.env.DB.prepare("SELECT scope, body FROM project_close_reports WHERE ward_id = ? AND project_id = ? ORDER BY scope").bind(ward.wardId, id).all<{ scope: string; body: string }>(),
     c.env.DB.prepare("SELECT task_id, name, period, progress, requested_by, difficulty, next_year FROM project_close_map WHERE ward_id = ? AND project_id = ? ORDER BY period, task_id").bind(ward.wardId, id).all<{ task_id: string; name: string; period: string; progress: string; requested_by: string; difficulty: string; next_year: string }>(),
     c.env.DB.prepare(`SELECT o.original_id, o.filename, o.kind FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
@@ -201,6 +202,7 @@ admin.get("/archive/:projectId", async (c) => {
     getProjectState(c.env.DB, ward.wardId, id),
     c.env.DB.prepare("SELECT help_offer_count_on_close FROM projects WHERE ward_id = ? AND project_id = ?")
       .bind(ward.wardId, id).first<{ help_offer_count_on_close: number | null }>(),
+    listSubmittedItems(c.env.DB, ward.wardId, id),
   ]);
   const labels = documents.results.filter((document) => document.kind === "announcement").at(-1);
   const meeting = project.kind === "general_meeting";
@@ -231,6 +233,7 @@ admin.get("/archive/:projectId", async (c) => {
       </> : null}
     </div></details>)}
     {!documents.results.length ? <p>配ったものはありません。</p> : null}
+    {submittedItems.length || ["city_request", "request"].includes(project.kind) ? <SubmittedItems items={submittedItems} /> : null}
 
     </section><aside>{meeting ? <MeetingCounts totals={meetingTotals} className="counts record-counts" /> : <div class="counts record-counts"><div class="count"><b>{answers.length}<small>世帯</small></b><span>答えた</span></div><div class="count"><b>{answers.reduce((sum, answer) => sum + answer.peopleCount, 0)}<small>人</small></b><span>参加すると答えた</span></div></div>}
       <ul class="links"><li class="link-line"><a href="#report">報告を読む</a></li><li class="link-line"><a href="#answers">答えの一覧を読む</a></li><li class="link-line"><a href="#orig">元の資料を読む（{originals.results.length}件）</a></li></ul>

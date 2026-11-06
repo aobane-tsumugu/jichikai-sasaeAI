@@ -13,6 +13,7 @@ import { createProject } from "../src/project/api";
 import { getDigestSettings } from "../src/settings/digest";
 import { sendOfficerDigest } from "../src/line/digest";
 import { saveDocument } from "../src/project/actions";
+import { recordLineInquiry } from "../src/project/followup";
 import { get, postForm, realApp, withEnv } from "./helpers";
 
 it("写真を引用して一問ずつ聞き、撮り直しと分からないで閉じ、役員が元のトークへ返事を送り、翌朝知らせて雨は送らず配る", async () => {
@@ -154,9 +155,34 @@ it("写真を引用して一問ずつ聞き、撮り直しと分からないで�
     expect((await env.DB.prepare("SELECT answer FROM inquiry_records WHERE ward_id = ?").bind(ward.wardId).all<{ answer: string }>()).results.every((r) => r.answer === fixture.publicDayText)).toBe(true);
     await webhook({ type: "message", webhookEventId: "fictional-no-user", replyToken: "fictional-no-user-reply", source: { type: "group", groupId }, message: { type: "text", id: "fictional-no-user", text: `公式へ、${fixture.previousMaterial}を教えてください。` } });
     const noUser = await env.DB.prepare("SELECT inquiry_id FROM inquiry_records WHERE ward_id = ? AND line_event_id = 'fictional-no-user'").bind(ward.wardId).first<{ inquiry_id: string }>();
-    if (!noUser) throw new Error("本人の分からない問い合わせがありません");
-    expect(await (await get(realApp, `${root}/inquiries/${noUser.inquiry_id}`, cookie, runtime)).text()).toContain("電話や直接");
-    expect((await postForm(realApp, `${root}/inquiries/${noUser.inquiry_id}`, { answer: fixture.publicDayText, operation: "send" }, cookie, runtime)).status).toBe(400);
+    if (!noUser) throw new Error("発言者のIDがないグループの問い合わせがありません");
+    // 発言者のIDがなくても、届いたグループが分かればそこへ返せる。
+    const noUserPath = `${root}/inquiries/${noUser.inquiry_id}`;
+    const noUserHtml = await (await get(realApp, noUserPath, cookie, runtime)).text();
+    expect(noUserHtml).toContain("1か所に送る");
+    expect(noUserHtml).not.toContain("送り先が分からないため送れません");
+    const beforeNoUserReply = sent.length;
+    expect((await postForm(realApp, noUserPath, { answer: fixture.publicDayText, operation: "send" }, cookie, runtime)).status).toBe(303);
+    expect(sent.slice(beforeNoUserReply)).toMatchObject([{ to: groupId, messages: [{ text: fixture.publicDayText }] }]);
+    expect(await env.DB.prepare("SELECT line_user_id, answer, line_answer_sent_at IS NOT NULL AS sent, line_pending_answer FROM inquiry_records WHERE ward_id = ? AND inquiry_id = ?")
+      .bind(ward.wardId, noUser.inquiry_id).first()).toEqual({ line_user_id: null, answer: fixture.publicDayText, sent: 1, line_pending_answer: null });
+    expect((await postForm(realApp, noUserPath, { answer: fixture.publicDayText, operation: "send" }, cookie, runtime)).status).toBe(303);
+    expect(sent).toHaveLength(beforeNoUserReply + 1);
+
+    // 届いた場所そのものが分からない記録は、送らずに書いた返事を残す。
+    await recordLineInquiry(env.DB, ward.wardId, { eventId: "fictional-no-target", receivedAt: now.toISOString(), text: fixture.previousMaterial,
+      sourceType: "group", sourceId: "", userId: null, senderLabel: null });
+    const noTarget = await env.DB.prepare("SELECT inquiry_id FROM inquiry_records WHERE ward_id = ? AND line_event_id = 'fictional-no-target'").bind(ward.wardId).first<{ inquiry_id: string }>();
+    if (!noTarget) throw new Error("送り先が分からない問い合わせがありません");
+    const noTargetPath = `${root}/inquiries/${noTarget.inquiry_id}`;
+    expect(await (await get(realApp, noTargetPath, cookie, runtime)).text()).toContain("送り先が分からないため送れません");
+    const beforeNoTargetReply = sent.length;
+    const noTargetReply = await postForm(realApp, noTargetPath, { answer: fixture.publicDayText, operation: "send" }, cookie, runtime);
+    expect(noTargetReply.status).toBe(400);
+    expect(await noTargetReply.text()).toContain("電話や直接");
+    expect(sent).toHaveLength(beforeNoTargetReply);
+    expect(await env.DB.prepare("SELECT answer, line_answer_sent_at, line_pending_answer FROM inquiry_records WHERE ward_id = ? AND inquiry_id = ?")
+      .bind(ward.wardId, noTarget.inquiry_id).first()).toEqual({ answer: "", line_answer_sent_at: null, line_pending_answer: fixture.publicDayText });
     rejected = true;
     expect((await postForm(realApp, replyPath, { answer: fixture.reportText, operation: "send" }, cookie, runtime)).status).toBe(502);
     expect(await (await get(realApp, replyPath, cookie, runtime)).text()).toContain(fixture.reportText);
