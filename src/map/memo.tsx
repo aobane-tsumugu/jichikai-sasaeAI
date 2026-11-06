@@ -216,8 +216,8 @@ memoAdmin.get("/projects/:projectId/ledger", async (c) => {
     <p class="lead">行事でよく要るものを並べました。写真から読めた分が入っています。情報なしの行は、そのままでかまいません。来年の担当の方が見ます。</p>
     <Notice><strong>参考の記録です</strong><p>会計の帳簿や決算の代わりにはなりません。証跡として使わず、税務と法務の判断はしません。領収書の紙は、これまでどおり会計の方で保管してください。</p></Notice>
     {result ? <><div class="notice done" role="status"><strong>{result}</strong><p>元の資料は変わりません。ほかの行は、そのままでかまいません。</p></div><section class="next"><strong>次は</strong><p>思い出したときに書き直せます。</p><a class="button" href={changedRow ? adminPath(ward, rowPath(id, changedRow.key)) : root}>メモを開く</a></section><p><a class="quiet" href={adminPath(ward, `/projects/${id}/map`)}>段取りに戻る</a></p></> : null}
-    {!state.project.closedAt ? <div class="action-links"><a class="button" href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>写真を送る</a></div> : <Notice>この行事は閉じています。記録を読めます。<p><a class="quiet" href={adminPath(ward, `/close/${id}`)}>行事をもう一度開く画面へ</a></p></Notice>}
     {costs || sumOf(sponsors) ? <p>分かっている費用は{yen(costs)}、協賛は{yen(sumOf(sponsors))}です{unknownSponsors.length ? `（${unknownSponsors.join("、")}の額は分かっていません）` : ""}。</p> : null}
+    {!state.project.closedAt ? <div class="action-links"><a class="button" href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>写真を送る</a></div> : <Notice>この行事は閉じています。記録を読めます。<p><a class="quiet" href={adminPath(ward, `/close/${id}`)}>行事をもう一度開く画面へ</a></p></Notice>}
     <h2>よく要るもの</h2>{renderRows(active.filter((row) => !row.sponsor))}
     {!state.project.closedAt ? <p><a class="button secondary" href={adminPath(ward, `${rootPath(id)}/new`)}>行を足す</a></p> : null}
     {active.some((row) => row.sponsor) ? <><h2>協賛</h2>{renderRows(active.filter((row) => row.sponsor))}</> : null}

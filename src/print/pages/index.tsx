@@ -217,7 +217,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   </div>;
   // 返す案内や時間帯の分も見積もる。文字を縮めず、長ければ回答票を別の紙にする。
   const onOneSheet = withAnswer && fitsAboveAnswer(row.body, generalMeeting
-    ? note + due + contact + "□出席□委任□欠席。委任する相手のお名前。世帯の代表のお名前。委任を選んだときは、この回答票を委任状として受け付けます。委任する相手を書かなかったときは、空欄のまま受け付けます。"
+    ? note + due + contact + "□出席□委任□欠席。委任する相手のお名前。代表者のお名前。委任を選んだときは、この回答票を委任状として受け付けます。委任する相手を書かなかったときは、空欄のまま受け付けます。"
     : labels.join("") + helperSlots + due + contact + "参加しないときも、答えてください。答えがないときは、欠席として数えます。□参加する□参加しない。いない欄は、空けたままでかまいません");
   const tables = readPublicationTables(row.tables_snapshot);
   const published = (table: TableKey) => (tables ?? []).filter((entry) => entry.kind === table);
@@ -307,7 +307,7 @@ export function PaperBody({ body }: { body: string }) {
   try { value = JSON.parse(body); } catch { return <ArticleBody body={body} />; }
   if (!value || typeof value !== "object" || !("text" in value) || typeof value.text !== "string") return <ArticleBody body={body} />;
   const text = value.text;
-  const names: Record<string, string> = { date_time: "いつ", place: "どこで", rain_plan: "雨のとき", content: "中身", belongings: "持ち物", helper_slots: "手伝い", due: "締切", public_contact: "連絡先" };
+  const names: Record<string, string> = { date_time: "いつ", place: "どこで", rain_plan: "雨のとき", content: "内容", belongings: "持ち物", helper_slots: "手伝い", due: "締切", public_contact: "連絡先" };
   const items = Object.entries(names).flatMap(([key, label]) => {
     const content = publishedItem(body, key);
     return content && !text.includes(content.slice(0, 10)) ? [{ label, content }] : [];

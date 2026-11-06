@@ -104,7 +104,9 @@ admin.get("/close/:projectId", async (c) => {
     <h1>もう一度開きました</h1><p class="lead">報告と段取りを直せます。</p><section class="next"><strong>次は</strong><p>段取りから仕事を続けられます。</p><a class="button" href={adminPath(ward, `/projects/${id}/map`)}>段取りへ</a></section><a class="quiet" href={adminPath(ward, `/close/${id}`)}>閉じる画面に戻る</a>
   </AdminPage>);
   const [tasks, reports, status, generatedReport, activityPage] = await Promise.all([
-    c.env.DB.prepare("SELECT task_id, name, period, progress, requested_by, difficulty, next_year FROM project_close_map WHERE ward_id = ? AND project_id = ? ORDER BY period, task_id")
+    c.env.DB.prepare(`SELECT m.task_id, m.name, m.period, m.progress, m.requested_by, m.difficulty, m.next_year FROM project_close_map m
+      LEFT JOIN project_map_tasks t ON t.ward_id = m.ward_id AND t.task_id = m.task_id
+      WHERE m.ward_id = ? AND m.project_id = ? ORDER BY t.sort_order, m.task_id`)
       .bind(ward.wardId, id).all<CloseEntry>(),
     c.env.DB.prepare("SELECT scope, body FROM project_close_reports WHERE ward_id = ? AND project_id = ? ORDER BY scope")
       .bind(ward.wardId, id).all<{ scope: "public" | "staff"; body: string }>(),
@@ -196,7 +198,9 @@ admin.post("/close/:projectId/activity", async (c) => {
   const action = String(form.get("action") ?? "save");
   if (action !== "save" && action !== "publish") return c.notFound();
   if (action === "publish" && !project.closedAt) return adminResult(c, "行事を閉じてから載せられます。", 400, { href: adminPath(c.var.ward, `/close/${encodeURIComponent(c.req.param("projectId"))}`), label: "報告と閉じる画面に戻る" }, "報告と行事の内容を確かめて、もう一度操作してください。");
-  const rows = await c.env.DB.prepare("SELECT task_id, name, period FROM project_close_map WHERE ward_id = ? AND project_id = ? ORDER BY period, task_id")
+  const rows = await c.env.DB.prepare(`SELECT m.task_id, m.name, m.period FROM project_close_map m
+    LEFT JOIN project_map_tasks t ON t.ward_id = m.ward_id AND t.task_id = m.task_id
+    WHERE m.ward_id = ? AND m.project_id = ? ORDER BY t.sort_order, m.task_id`)
     .bind(ward.wardId, projectId).all<{ task_id: string; name: string; period: string }>();
   const selectedIds = new Set(form.getAll("taskId").map(String));
   const selectedTasks = rows.results.filter((row) => selectedIds.has(row.task_id)).map((row) => ({
