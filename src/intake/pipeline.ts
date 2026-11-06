@@ -34,6 +34,7 @@ import {
   withdrawJob as withdrawStoredJob,
 } from "./store";
 import type { Waitable } from "./types";
+import { attachClarificationQuestions, processPhotoBatches } from "../line/clarifications";
 
 export interface PipelineDeps {
   /** 試験で差し替える。既定は署名鍵から作る本物のクライアント */
@@ -173,6 +174,10 @@ async function performRead(
     }
     if (latest?.project_id && latest.read_kind !== "answer_sheet") await dispatchProject(env, wardId, latest.project_id).catch((e) => console.error("繋げるの起動に失敗しました", describe(e)));
     else if (latest && (latest.via === "admin" || latest.via === "line_direct" || latest.via === "line_group")) await matchUnassignedAdminJob(env, wardId, jobId, client).catch((e) => console.error("受け箱の当てに失敗しました", describe(e)));
+    if (placed) {
+      await attachClarificationQuestions(env.DB, wardId, jobId).catch(() => undefined);
+      await processPhotoBatches(env, wardId).catch(() => undefined);
+    }
     return placed ? "read" : "skipped";
   } catch (err) {
     const read = err instanceof ReadError ? err : null;

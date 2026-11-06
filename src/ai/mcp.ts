@@ -170,10 +170,21 @@ async function runTool(env: Env, wardId: string, job: JobRow | null, name: strin
         .map((original) => ({ original_id: original.original_id, filename: original.filename }));
       const readings = await readingsForJob(env.DB, job);
       if (!readings) return fail("紙の該当欄を開けませんでした。");
-      return ok({ job_task: job.task, instruction: job.instruction, originals, readings });
+      const clarifications = await env.DB.prepare(`SELECT c.text AS question, c.original_id AS photo_original_id, c.job_id AS photo_job_id, c.topic
+        FROM line_clarification_answers a JOIN line_clarifications c ON c.ward_id = a.ward_id AND c.clarification_id = a.clarification_id
+        JOIN jobs photo ON photo.ward_id = c.ward_id AND photo.job_id = c.job_id
+        WHERE a.ward_id = ? AND a.job_id = ? AND photo.project_id = ? AND photo.withdrawn_at IS NULL`)
+        .bind(wardId, job.job_id, job.project_id).all<{ question: string; photo_original_id: string; photo_job_id: string; topic: string }>();
+      const context = await Promise.all(clarifications.results.map(async (question) => ({ ...question, readings: await getReadings(env.DB, wardId, question.photo_job_id) })));
+      return ok({ job_task: job.task, instruction: job.instruction, originals, readings, ...(context.length ? { clarification_answers: context } : {}) });
     }
     case "write_change": {
       const kind = asString(args.kind, 20) as ChangeKind;
+      if (kind === "decision" || kind === "draft" || kind === "map_task") {
+        const clarification = await env.DB.prepare("SELECT event_id FROM line_clarification_answers WHERE ward_id = ? AND job_id = ? LIMIT 1")
+          .bind(wardId, job.job_id).first();
+        if (clarification) return ok({ status: "rejected", note: "送った資料への答えから、運営上の決定や配る内容は変えません。" });
+      }
       if (!["item", "row", "decision", "conflict", "map_task", "draft", "map_draft"].includes(kind)) return fail("kind が違います。");
       const allowedForTask: Record<JobRow["task"], readonly ChangeKind[]> = {
         connect: ["item", "row", "decision", "conflict", "map_task", "draft"],

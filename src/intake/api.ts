@@ -6,6 +6,8 @@ import { receive, type ReceiveInput, type ReceiveOutcome } from "./receive";
 import { dispatchProject } from "../ai/session";
 import { getJob, resetForRetry, setJobProject, withdrawJob as withdraw } from "./store";
 import type { Waitable } from "./types";
+import { quickCheckPhotos } from "./photo-check";
+import { attachClarificationQuestions } from "../line/clarifications";
 
 export { ReceiveError } from "./receive";
 export type { ReceiveInput, ReceiveOutcome, ReceivePart } from "./receive";
@@ -23,6 +25,8 @@ export async function receiveOriginal(
   deps?: PipelineDeps,
 ): Promise<ReceiveOutcome> {
   const outcome = await receive(env, input);
+  // 受付を先に済ませる。短い確認が失敗しても、通常の読み取りは始める。
+  if (outcome.jobId && outcome.needsModelRead && input.via !== "line_direct" && input.via !== "line_group") await quickCheckPhotos(env, input, outcome.jobId).catch(() => undefined);
   if (outcome.jobId && outcome.needsModelRead) kickRead(env, ctx, input.wardId, outcome.jobId, deps);
   // 読みが要らない（文字と Word と Excel だけ）物は、すぐ繋げる順番に入る
   if (outcome.jobId && !outcome.needsModelRead && input.projectId) {
@@ -73,6 +77,7 @@ export async function assignProject(
   const current = await getJob(env.DB, wardId, jobId);
   if (current && !current.withdrawn_at && current.project_id === projectId) return true;
   const changed = await setJobProject(env.DB, wardId, jobId, projectId);
+  if (changed && projectId) await attachClarificationQuestions(env.DB, wardId, jobId);
   if (changed && projectId) ctx.waitUntil(dispatchProject(env, wardId, projectId).catch(logDispatchError));
   return changed;
 }

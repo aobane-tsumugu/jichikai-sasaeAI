@@ -3,6 +3,10 @@ import type { Env } from "../env";
 import { createLineIntakePorts, type InboxMatch, type LineIntakePorts, type LineOriginal } from "./intake";
 import type { Waitable } from "../intake/types";
 import { getLineMemberDisplayName, lineChannelCredentials, replyLineText } from "./api";
+import { getClient } from "../ai/deps";
+import { matchClarificationAnswer } from "../ai/clarification";
+import { recordLineInquiry } from "../project/followup";
+import { PHOTO_GROUP_GAP_MS, processPhotoBatches, registerLinePhoto, replyQuickPhotoChecks, saveClarificationAnswers, sentQuestionsForSource, type ClarificationRow, type PhotoSource } from "./clarifications";
 
 const RECEIPT_RETENTION_DAYS = 30;
 
@@ -13,7 +17,9 @@ interface LineMessageEvent {
   replyToken?: string;
   joined?: { members?: Array<{ userId?: string }> };
   source?: { type?: string; userId?: string; groupId?: string; roomId?: string };
-  message?: { type?: string; id?: string; text?: string };
+  message?: { type?: string; id?: string; text?: string; imageSet?: { id?: string; index?: number; total?: number }; quoteToken?: string; quotedMessageId?: string;
+    mention?: { mentionees?: Array<{ isSelf?: boolean }> } };
+  postback?: { data?: string };
 }
 
 interface LineWebhookBody {
@@ -69,6 +75,14 @@ function isMessageEvent(event: LineMessageEvent): event is LineMessageEvent & {
 export interface WebhookDependencies {
   fetch: typeof fetch;
   ports: LineIntakePorts;
+  matchAnswer?: typeof matchClarificationAnswer;
+}
+
+const looksLikeInquiry = (text: string) => /[?？]|(?:です|ます|でしょう|なの|ません)か[。\s]*$|教えて|知りたい|お願い(?:します|したい)|相談|要望/.test(text);
+
+function photoSource(source: NonNullable<LineMessageEvent["source"]>): PhotoSource | null {
+  const id = source.type === "user" ? source.userId : source.type === "group" ? source.groupId : source.type === "room" ? source.roomId : null;
+  return id && (source.type === "user" || source.type === "group" || source.type === "room") ? { type: source.type, id, senderId: source.userId ?? "" } : null;
 }
 
 async function getImageContent(messageId: string, token: string, fetcher: typeof fetch) {
@@ -124,7 +138,9 @@ export async function acceptLineWebhook(
   // LINE は応答を待たずに接続を切ることがある。AI の当てを待つと処理ごと止まるので、応答を先に返す。
   const events = payload.events;
   const processEvents = async (): Promise<void> => {
-  for (const event of events) {
+  let receivedPhoto = false;
+  const photoChecksPending: Promise<void>[] = [];
+  for (let event of events) {
     const eventId = event.webhookEventId;
     if (!eventId) continue;
     const stored = await db.prepare(`
@@ -156,9 +172,16 @@ export async function acceptLineWebhook(
       }
       continue;
     }
+    const postback = event.type === "postback" && typeof event.postback?.data === "string" ? new URLSearchParams(event.postback.data) : null;
+    if (postback) {
+      if (!postback.get("clarification") || !postback.get("answer") || !event.source) continue;
+      event = { ...event, type: "message", message: { type: "text", id: eventId, text: postback.get("answer")! } };
+    }
     if (!isMessageEvent(event)) continue;
 
     try {
+      const source = photoSource(event.source);
+      if (!source) continue;
       const original: LineOriginal = {
         eventId,
         senderId: event.source.userId ?? event.source.groupId ?? event.source.roomId ?? "",
@@ -169,6 +192,7 @@ export async function acceptLineWebhook(
           ? await getLineMemberDisplayName(accessToken, event.source, fetcher)
           : null,
         ...(event.message.type === "text" ? { text: event.message.text ?? "" } : {}),
+        officialAddressed: event.source.type === "user" || event.message.mention?.mentionees?.some((mention) => mention.isSelf === true) || /^公式(?:へ|さん|[\s:：、])/.test(event.message.text ?? ""),
       };
       if (event.message.type === "image") {
         const content = await getImageContent(event.message.id, accessToken, fetcher);
@@ -177,12 +201,47 @@ export async function acceptLineWebhook(
       }
       // テキストは受信ジョブを作る前に分類する。無関係な文はジョブや原本を残さず、日次集計だけに加える。
       let match: InboxMatch | null = null;
+      let answers: Array<{ question: ClarificationRow; text: string }> = [];
       if (original.kind === "text") {
-        try {
+        const questions = await sentQuestionsForSource(db, wardId, payload.destination!, source, {
+          quotedMessageId: event.message.quotedMessageId, clarificationId: postback?.get("clarification") ?? undefined, now,
+        });
+        if (event.message.quotedMessageId && questions.length) original.officialAddressed = true;
+        if (postback) {
+          const question = questions.find((question) => question.options.includes(original.text ?? ""));
+          if (!question) continue;
+          answers = [{ question, text: original.text ?? "" }];
+        } else if (questions.length && !looksLikeInquiry(original.text ?? "")) {
+          try {
+            const matched = await (dependencies?.matchAnswer ?? matchClarificationAnswer)(getClient(env), original.text ?? "", questions);
+            answers = matched.flatMap((answer) => {
+              const question = questions.find((question) => question.id === answer.id);
+              return question ? [{ question, text: original.text ?? "" }] : [];
+            });
+          } catch { /* AI が止まっていても、資料や問い合わせとして受ける。 */ }
+        }
+        if (answers.length) {
+          const projectIds = [...new Set(answers.flatMap((answer) => answer.question.project_id ? [answer.question.project_id] : []))];
+          match = projectIds.length === 1 ? { disposition: "matched", projectId: projectIds[0] } : { disposition: "unmatched" };
+          if (!projectIds.length && answers.some((answer) => answer.question.topic === "project")) {
+            try { match = await ports.matchInboxItem(wardId, { ...original, officialAddressed: false }); } catch { /* 行事が分からなくても受ける。 */ }
+          }
+        } else if (original.officialAddressed && looksLikeInquiry(original.text ?? "")) {
+          match = { disposition: "unmatched", inquiry: true };
+        } else try {
           match = await ports.matchInboxItem(wardId, original);
         } catch (error) {
           console.error("LINE の当て先を確認できませんでした", wardId, eventId, error instanceof Error ? error.name : "");
-          match = { disposition: "unmatched", reason: "当て先を確認できませんでした" };
+          match = { disposition: "unmatched", reason: "当て先を確認できませんでした", inquiry: original.officialAddressed };
+        }
+        if (original.officialAddressed && match?.inquiry) {
+          await recordLineInquiry(db, wardId, { eventId, receivedAt: original.receivedAt, text: original.text ?? "", sourceType: source.type, sourceId: source.id, senderLabel: original.senderDisplayName ?? null });
+          if (event.replyToken) try {
+            await replyLineText(accessToken, event.replyToken, "役員に伝えて、内容を確認します。", fetcher);
+            await db.prepare("UPDATE inquiry_records SET line_replied_at = ? WHERE ward_id = ? AND line_event_id = ?")
+              .bind(now.toISOString(), wardId, eventId).run();
+          } catch { /* 届いた問い合わせは消さず、返事を約束しない。 */ }
+          continue;
         }
       }
       if (match?.disposition === "unrelated") {
@@ -204,9 +263,25 @@ export async function acceptLineWebhook(
         original.senderDisplayName, original.sourceType === "group" ? "LINE グループ" : original.sourceType === "room" ? "LINE 複数人トーク" : "LINE 個別",
         itemId,
       ).run();
+      if (original.kind === "image") {
+        await registerLinePhoto(db, wardId, { destination: payload.destination!, source, jobId: itemId, messageId: event.message.id,
+          imageSet: event.message.imageSet, quoteToken: event.message.quoteToken, replyToken: event.replyToken, now });
+        receivedPhoto = true;
+        if (ports.checkPhoto) photoChecksPending.push(ports.checkPhoto(wardId, original, itemId).catch(() => undefined));
+      }
+      if (answers.length) {
+        await saveClarificationAnswers(db, wardId, eventId, itemId, original.senderDisplayName || "LINEで答えた人", answers, now);
+        if (match?.projectId && answers.some((answer) => answer.question.topic === "project")) {
+          const batchIds = [...new Set(answers.filter((answer) => answer.question.topic === "project").map((answer) => answer.question.batch_id))];
+          for (const batchId of batchIds) {
+            const photos = await db.prepare("SELECT job_id FROM line_photo_items WHERE ward_id = ? AND batch_id = ?").bind(wardId, batchId).all<{ job_id: string }>();
+            for (const photo of photos.results) await ports.assignProject(wardId, photo.job_id, match.projectId);
+          }
+        }
+      }
       // 文は届いた文そのもので当てる。写真は束 2 が読み取りを終えてから当てる。
       if (match?.disposition === "matched" && match.projectId) {
-        await ports.saveAnswerReply?.(wardId, match.projectId, original, itemId);
+        if (!answers.length) await ports.saveAnswerReply?.(wardId, match.projectId, original, itemId);
         await ports.assignProject(wardId, itemId, match.projectId);
       }
       await db.prepare(`
@@ -220,6 +295,14 @@ export async function acceptLineWebhook(
       `).bind(wardId, eventId).run();
       throw error;
     }
+  }
+  if (receivedPhoto) {
+    await Promise.all(photoChecksPending);
+    // imageSet の無い連続写真にも、短い間だけまとめる余地を持たせる。
+    if (!dependencies) await new Promise((resolve) => setTimeout(resolve, PHOTO_GROUP_GAP_MS));
+    const deliveryNow = dependencies ? now : new Date();
+    await replyQuickPhotoChecks(env, wardId, { fetch: fetcher, now: deliveryNow });
+    await processPhotoBatches(env, wardId, { fetch: fetcher, now: deliveryNow });
   }
   };
   const work = processEvents();

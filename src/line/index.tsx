@@ -1,7 +1,9 @@
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { WardBucket } from "../core/storage";
-import { Layout, Notice } from "../core/ui";
+import { Hint, Layout, Notice } from "../core/ui";
+import { CRON } from "../core/cron";
+import { listClarifications, processPhotoBatches } from "./clarifications";
 import type { AdminEnv, AppEnv } from "../env";
 import { getLineAllowance, lineAccessToken, sendLineTitleAndUrl } from "./api";
 import { markInboxItemUnrelated } from "./intake";
@@ -52,7 +54,7 @@ admin.get("/inbox", async (c) => {
     listInboxItems(db, ward.wardId), listJobs(db, ward.wardId, { limit: 100 }),
     db.prepare("SELECT project_id, title AS name FROM projects WHERE ward_id = ? AND closed_at IS NULL ORDER BY created_at DESC").bind(ward.wardId).all<{ project_id: string; name: string }>(),
     pendingMaterialGroups(db, ward.wardId),
-    db.prepare("SELECT inquiry_id, subject, received_at, answer FROM inquiry_records WHERE ward_id = ? AND kind = 'inquiry' ORDER BY received_at DESC LIMIT 30").bind(ward.wardId).all<{ inquiry_id: string; subject: string; received_at: string; answer: string }>(),
+    db.prepare("SELECT inquiry_id, subject, received_at, answer, line_sender_label, line_source_type, line_replied_at FROM inquiry_records WHERE ward_id = ? AND kind = 'inquiry' ORDER BY received_at DESC LIMIT 30").bind(ward.wardId).all<{ inquiry_id: string; subject: string; received_at: string; answer: string; line_sender_label: string | null; line_source_type: string | null; line_replied_at: string | null }>(),
   ]);
   const adminJobs = jobs.filter((j) => j.via === "admin" && !j.withdrawn_at);
   const lineRows = await Promise.all(items.map(async (item) => ({ item, job: item.job_id ? await getJob(db, ward.wardId, item.job_id) : null })));
@@ -87,7 +89,11 @@ admin.get("/inbox", async (c) => {
       <a class="quiet" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a>
     </section>
     <h2>役員に届いた問い合わせ</h2>
-    {inquiries.results.length ? <ul class="rows">{inquiries.results.map((q) => <li><a class="row-link" href={adminPath(ward, "/inquiries")}><b>{q.subject}</b><span>{formatJst(q.received_at)}に届きました</span>{q.answer ? <span>{q.answer}</span> : null}</a></li>)}</ul> : <p class="muted">問い合わせはありません。</p>}
+    {inquiries.results.length ? <ul class="rows">{inquiries.results.map((q) => <li><a class="row-link" href={adminPath(ward, "/inquiries")}><b>{q.subject}</b><span>{formatJst(q.received_at)}に届きました</span>
+      {q.line_source_type ? <span>送った人: {q.line_sender_label || "名前は分かりません"}（{q.line_source_type === "user" ? "公式への一対一" : "LINE グループ"}）</span> : null}
+      {q.line_replied_at ? <span>AIは答えていません。送った人には「役員に伝えて、内容を確認します。」と返しました。</span> : null}
+      {q.answer ? <span>{q.answer}</span> : null}</a></li>)}</ul> : <p class="muted">問い合わせはありません。</p>}
+    <p><a href={adminPath(ward, "/inbox/questions")}>送った資料についての質問を見る</a></p>
     <h2>行事に入れたもの</h2><ul class="rows">
       {await Promise.all(adminJobs.filter((j) => j.project_id).map(async (j) => {
         const originals = await listOriginals(db, ward.wardId, j.job_id);
@@ -105,6 +111,22 @@ admin.get("/inbox", async (c) => {
     {adminJobs.every((j) => !j.project_id) && items.length === 0 ? <p>まだありません。</p> : null}
     <p class="muted">関係のない雑談は、AIが外しています。</p>
     <a class="quiet" href={adminPath(ward, "/")}>最初の画面へ</a>
+  </Layout>);
+});
+
+admin.get("/inbox/questions", async (c) => {
+  const { ward } = c.var;
+  const questions = await listClarifications(c.env.DB, ward.wardId);
+  return c.html(<Layout title="質問" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <a class="back" href={adminPath(ward, "/inbox")}>届いたものへ</a>
+    <h1>送った資料についての質問 <Hint text="読めないところなどを残しています。分かるものだけ答えられます。答えがなくても仕事は進められます。" /></h1>
+    {questions.map((question) => <section class="panel"><h2>{question.text}</h2>
+      <p><a href={adminPath(ward, `/intake/originals/${question.original_id}`)}>元の資料を見る</a></p>
+      <p>{question.sent_at ? "写真が届いた場所で聞きました。答えがなくても、催促はしません。" : "まだ公式LINEでは聞いていません。"}</p>
+      {question.answer ? <p class="preserve-lines">届いた答え: {question.answer}</p> : null}
+      {question.project_id ? <a href={adminPath(ward, `/projects/${question.project_id}/questions`)}>行事の質問を見る</a> : <p>どの行事か分からないものは、届いたものから入れ直せます。</p>}
+    </section>)}
+    {!questions.length ? <p>質問はありません。</p> : null}
   </Layout>);
 });
 
@@ -191,6 +213,13 @@ admin.post("/inbox/:itemId", async (c) => {
 
 export const line: Bundle = {
   admin,
+  async scheduled(event, env) {
+    if (event.cron !== CRON.EVERY_5_MIN) return;
+    // 最初に接続先の台帳から区だけを取り出し、以後の読み書きは全てその区に限定する。
+    const wards = await env.DB.prepare(`SELECT DISTINCT l.ward_id FROM line_channels l JOIN wards w ON w.ward_id = l.ward_id
+      WHERE w.ward_id = l.ward_id AND w.is_active = 1`).all<{ ward_id: string }>();
+    for (const ward of wards.results) await processPhotoBatches(env, ward.ward_id);
+  },
   hooks: new Hono<AppEnv>().post("/line", async (c) =>
     acceptLineWebhook(c.req.raw, c.env, c.env.DB, undefined, new Date(), c.executionCtx),
   ),

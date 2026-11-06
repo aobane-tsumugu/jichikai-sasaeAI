@@ -27,12 +27,15 @@ export interface MatchInput {
   excerpt?: string;
   /** 送った人の表示名など */
   senderLabel?: string;
+  /** 公式宛ての文だけ、問い合わせかどうかも選ぶ。グループの会話は問い合わせにしない。 */
+  officialAddressed?: boolean;
 }
 
 export interface MatchResult {
   /** 選ばれた候補の ID。MATCH_NEW、MATCH_MULTIPLE、MATCH_UNRELATED のこともある */
   choice: string;
   reason: string;
+  intent?: "inquiry" | "material";
   usage: { input_tokens: number; output_tokens: number };
 }
 
@@ -53,10 +56,11 @@ export function buildMatchSchema(candidates: MatchCandidate[]) {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["choice", "reason"],
+    required: ["choice", "reason", "intent"],
     properties: {
       choice: { type: "string", enum: [...candidates.map((c) => c.id), MATCH_NEW, MATCH_MULTIPLE, MATCH_UNRELATED] },
       reason: { type: "string" },
+      intent: { type: "string", enum: ["inquiry", "material"] },
     },
   } as const;
 }
@@ -69,6 +73,7 @@ export function buildMatchPrompt(input: MatchInput): string {
     lines.length > 0 ? lines.join("\n") : "（開いているプロジェクトはありません）",
     "",
     input.senderLabel ? `送った人: ${input.senderLabel}` : "",
+    input.officialAddressed ? "公式宛ての文です。質問や要望、相談、判断を求める文なら intent は inquiry。答えは書かず分類だけしてください。" : "資料やグループの会話です。intent は material。",
     `受け取った物の要約: ${input.summary}`,
     excerpt ? `文字の抜き出し:\n${excerpt}` : "",
   ]
@@ -97,7 +102,7 @@ export async function matchProject(client: Anthropic, input: MatchInput): Promis
   if (response.stop_reason === "refusal") throw new Error("当てるの呼び出しが断られました");
   const text = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
   if (!text) throw new Error("当てるの応答に本文がありません");
-  const parsed = JSON.parse(text.text) as { choice?: unknown; reason?: unknown };
+  const parsed = JSON.parse(text.text) as { choice?: unknown; reason?: unknown; intent?: unknown };
   const allowed = new Set([...ids, MATCH_NEW, MATCH_MULTIPLE, MATCH_UNRELATED]);
   if (typeof parsed.choice !== "string" || !allowed.has(parsed.choice)) {
     throw new Error("当てるの応答が候補に無い ID を返しました");
@@ -105,6 +110,7 @@ export async function matchProject(client: Anthropic, input: MatchInput): Promis
   return {
     choice: parsed.choice,
     reason: typeof parsed.reason === "string" ? parsed.reason : "",
+    ...(input.officialAddressed ? { intent: parsed.intent === "inquiry" ? "inquiry" as const : "material" as const } : {}),
     usage: { input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens },
   };
 }

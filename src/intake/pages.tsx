@@ -16,6 +16,7 @@ import { lookupPrintQr } from "../print/qr";
 import { createProject, getProjectState } from "../project/api";
 import { formatDateText } from "../core/time";
 import { pendingMaterialGroups, startMaterialGroup } from "./groups";
+import { PhotoCheckNotice, photoChecks } from "./photo-check";
 
 /** Hono のテスト用 request には ExecutionContext が無い場合がある。 */
 function waitableContext(context: { executionCtx: Waitable }): Waitable {
@@ -125,6 +126,7 @@ intakeAdmin.get("/intake/received", async (c) => {
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     <h2>送ったもの</h2><ul class="rows">{await Promise.all(jobs.map(async (job) => <li class="panel">
       <b>{await jobTitle(c.env.DB, ward.wardId, job)}</b><p class="muted">{STATUS_LABEL[job.status]}</p>
+      <PhotoCheckNotice checks={await photoChecks(c.env.DB, ward.wardId, job.job_id)} retakeHref={adminPath(ward, "/intake")} continueHref={readHref} />
       {job.project_id ? <a href={adminPath(ward, `/projects/${job.project_id}/map`)}>段取りを見る</a> : null}
       {job.status === "failed" ? <><form method="post" action={adminPath(ward, `/intake/${job.job_id}/retry`)}><button class="quiet">もう一度読む</button></form>
         <form method="post" action={adminPath(ward, `/intake/${job.job_id}/continue`)}><button class="quiet">このまま進める</button></form></> : null}
