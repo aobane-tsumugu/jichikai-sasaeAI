@@ -147,8 +147,8 @@ it("初年度の出欠を紙とWebとLINEで受け、締切後は未回答を欠
 
     // Pushは全て偽物。残り通数、翌朝8時、重複実行、別の区、問い合わせ0件を同じ流れで確かめる。
     const secrets = lineSecretNames(ward.wardId);
-    const bindings = withEnv({ [secrets.accessTokenBinding]: fixture.passphrase,
-      [`LINE_${ward.wardId.toUpperCase().replaceAll("-", "_")}_OFFICER_GROUP_ID`]: `C${ward.wardId}` });
+    await env.DB.prepare("INSERT INTO ward_settings (ward_id, key, value) VALUES (?, 'line.officer_group', ?)").bind(ward.wardId, `C${ward.wardId}`).run();
+    const bindings = withEnv({ [secrets.accessTokenBinding]: fixture.passphrase });
     await env.DB.prepare(`INSERT INTO line_channels (ward_id, destination, channel_secret_binding, access_token_binding) VALUES (?, ?, ?, ?)`)
       .bind(ward.wardId, ward.wardId, secrets.channelSecretBinding, secrets.accessTokenBinding).run();
     expect(await lineAccessToken(bindings, ward.wardId)).toBe(fixture.passphrase);

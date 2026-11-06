@@ -94,8 +94,21 @@ async function lineGet<T>(path: string, token: string, request: typeof fetch): P
 }
 
 /** 提供側が区ごとに指定した役員グループだけを使う。受信したグループから推測しない。 */
-export function officerGroupId(env: Env, wardId: string): string | null {
-  return secretValue(env, `LINE_${wardId.toUpperCase().replaceAll("-", "_")}_OFFICER_GROUP_ID`);
+export async function officerGroupId(env: Env, wardId: string): Promise<string | null> {
+  const row = await env.DB.prepare("SELECT value FROM ward_settings WHERE ward_id = ? AND key = 'line.officer_group'")
+    .bind(wardId).first<{ value: string }>();
+  return row?.value || null;
+}
+
+/** 提供側がグループの名前で選べるようにする。取得できないときも設定の画面を開ける。 */
+export async function lineGroupSummary(token: string, groupId: string, request: typeof fetch = fetch) {
+  try {
+    const [group, members] = await Promise.all([
+      lineGet<{ groupName: string }>(`/v2/bot/group/${encodeURIComponent(groupId)}/summary`, token, request),
+      lineGet<{ count: number }>(`/v2/bot/group/${encodeURIComponent(groupId)}/members/count`, token, request),
+    ]);
+    return { name: group.groupName, count: members.count };
+  } catch { return null; }
 }
 
 /** 無料の範囲を上限にし、役員グループの人数を送信前に数える。 */
@@ -125,20 +138,28 @@ export async function getLineAllowance(
   request: typeof fetch = fetch,
   now = new Date(),
 ): Promise<LineAllowance> {
-  const day = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now).replaceAll("-", "");
-  const [followers, quota, consumption] = await Promise.all([
-    lineGet<{ status: string; followers: number | null }>(`/v2/bot/insight/followers?date=${day}`, token, request),
+  // 当日はまだ集計中なので、昨日からさかのぼって直近の集計済みの日を見る。
+  const followersPromise = (async () => {
+    for (let days = 1; days <= 7; days++) {
+      const day = new Date(now.getTime() + 9 * 3600_000 - days * 86400_000).toISOString().slice(0, 10).replaceAll("-", "");
+      const result = await lineGet<{ status: string; followers: number | null }>(`/v2/bot/insight/followers?date=${day}`, token, request);
+      if (result.status === "ready") return Number.isSafeInteger(result.followers) && result.followers! >= 0 ? result.followers : null;
+      if (result.status !== "unready") break;
+    }
+    return null;
+  })();
+  const [friends, quota, consumption] = await Promise.all([
+    followersPromise,
     lineGet<{ type: string; value: number }>("/v2/bot/message/quota", token, request),
     lineGet<{ totalUsage: number }>("/v2/bot/message/quota/consumption", token, request),
   ]);
+  if (!Number.isSafeInteger(consumption.totalUsage) || consumption.totalUsage < 0 ||
+    (quota.type !== "none" && (quota.type !== "limited" || !Number.isSafeInteger(quota.value) || quota.value < 0))) {
+    throw new Error("送れる通数を確かめられませんでした。");
+  }
   const monthlyLimit = quota.type === "limited" ? quota.value ?? null : null;
   return {
-    friends: followers.status === "ready" ? followers.followers : null,
+    friends,
     monthlyLimit,
     used: consumption.totalUsage,
     remaining: monthlyLimit === null ? null : Math.max(0, monthlyLimit - consumption.totalUsage),

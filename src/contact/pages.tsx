@@ -1,3 +1,4 @@
+import { sha256Hex } from "../core/password";
 import { Hono, type Context } from "hono";
 import { csrf } from "hono/csrf";
 import { bodyLimit } from "hono/body-limit";
@@ -6,7 +7,7 @@ import type { AppEnv, Env } from "../env";
 import { Layout, Notice } from "../core/ui";
 import { formatJst } from "../core/time";
 import { WardBucket } from "../core/storage";
-import { allowSend, appendMessage, CONTACT_WARD, contactBindings, contactByToken, grantSecret, KINDS, messages, receiveContact, type Contact, type ContactKind, type Message } from "./store";
+import { allowSend, appendMessage, CONTACT_WARD, contactBindings, contactByToken, contactInvitationToken, KINDS, messages, receiveContact, type Contact, type ContactKind, type Message } from "./store";
 
 export const ContactPage = (props: PropsWithChildren<{ title: string; ops?: boolean }>) => <Layout title={props.title} siteName={props.ops ? "SasaeAI 運用の画面" : "SasaeAI"} noindex>
   {props.ops ? <a class="quiet" href="/ops/contacts">問い合わせの一覧へ戻る</a> : null}{props.children}
@@ -78,8 +79,8 @@ contactRoutes.get("/", (c) => c.html(<ContactPage title="SasaeAIへの問い合�
   </div></fieldset>
     <label for="contact-ward">区の名前</label><input id="contact-ward" name="wardName" maxlength={60} value={c.req.query("ward")?.slice(0, 60) ?? ""} />
     <label for="contact-name">お名前</label><input id="contact-name" name="name" required maxlength={60} autocomplete="name" />
-    <label for="contact-reach">連絡先（書かなくてかまいません）</label><input id="contact-reach" name="reach" maxlength={200} />
-    <p>今使えるメールアドレスか電話番号を書いてください。登録したものと違ってかまいません。連絡先がない方は、送ったあとの画面を閉じないでください。</p>
+    <label for="contact-reach">メールアドレス</label><input id="contact-reach" name="reach" type="email" required maxlength={200} autocomplete="email" />
+    <p>受付番号と、やりとりの画面のリンクを送ります。今使えるメールアドレスを書いてください。登録したものと違っても、家族のメールでもかまいません。</p>
     <label for="contact-body">くわしく</label><textarea id="contact-body" name="body" required maxlength={5000} rows={6} />
     <Turnstile sitekey={sitekey(c.env)} /><div class="action-bar"><button>送る</button></div>
   </form><a class="quiet" href="/">最初の画面へ戻る</a>
@@ -88,8 +89,8 @@ contactRoutes.post("/", async (c) => {
   const form = await c.req.parseBody();
   const text = (key: string) => typeof form[key] === "string" ? form[key].trim() : "";
   const kind = text("kind"), name = text("name"), wardName = text("wardName"), reach = text("reach"), body = text("body");
-  if (!Object.hasOwn(KINDS, kind) || !name || name.length > 60 || wardName.length > 60 || reach.length > 200 || !body || body.length > 5000) {
-    return c.html(<ContactError message="お名前と、くわしい内容を入れてください。" />, 400);
+  if (!Object.hasOwn(KINDS, kind) || !name || name.length > 60 || wardName.length > 60 || (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(reach) || reach.length > 200) || !body || body.length > 5000) {
+    return c.html(<ContactError message="お名前と、使えるメールアドレス、くわしい内容を入れてください。" />, 400);
   }
   if (!await allowSend(c.env.DB, `ip:${c.req.header("cf-connecting-ip") ?? "unknown"}`)
     || (reach && !await allowSend(c.env.DB, `reach:${reach.toLowerCase()}`, 3600, 3))) {
@@ -102,7 +103,7 @@ contactRoutes.post("/", async (c) => {
   return c.html(<ContactPage title="問い合わせを受け取りました"><h1>問い合わせを受け取りました</h1>
     <Notice>受付番号{receiptLabel(received.receipt)}</Notice>
     <p>{mailed === "sent" ? "受付番号と、やりとりの画面のリンクをメールで送りました。迷惑メールのフォルダも見てください。"
-      : "この画面を閉じないでください。返事は、下のやりとりの画面で読めます。"}</p>
+      : "メールをまだ送れないため、この画面を閉じないでください。返事は、下のやりとりの画面で読めます。"}</p>
     {mailed === "failed" ? <Notice error>問い合わせは受け付けましたが、メールを送れませんでした。</Notice> : null}
     <p>受付番号からは、やりとりの画面を開き直せません。</p>
     <section class="next"><strong>次は</strong><p>やりとりの画面を開いて、返事を見てください。</p><a class="button contact-thread-link" href={href}>やりとりの画面を開く</a></section>
@@ -113,15 +114,19 @@ contactRoutes.get("/:token", async (c) => {
   const contact = await contactByToken(c.env.DB, c.req.param("token"));
   if (!contact) return c.html(<ContactPage title="見つかりません"><h1>見つかりません</h1><p>受け付けたときのリンクを確かめてください。</p><a class="quiet" href="/contact">問い合わせのフォームへ戻る</a></ContactPage>, 404);
   let invitation: string | null = null;
-  if (contact.grant_id && contact.grant_secret && contact.target_ward_id && contact.grant_expires_at! > new Date().toISOString()) {
-    const active = await c.env.DB.prepare("SELECT 1 FROM sign_in_links WHERE ward_id = ? AND link_id = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?")
-      .bind(contact.target_ward_id, contact.grant_id, new Date().toISOString()).first();
-    if (active) invitation = await grantSecret(c.env, contact.grant_secret, true);
+  if (contact.grant_id && contact.target_ward_id && contact.grant_expires_at! > new Date().toISOString()) {
+    const active = await c.env.DB.prepare("SELECT token_hash FROM sign_in_links WHERE ward_id = ? AND link_id = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?")
+      .bind(contact.target_ward_id, contact.grant_id, new Date().toISOString()).first<{ token_hash: string }>();
+    if (active) {
+      const ward = await c.env.DB.prepare("SELECT slug FROM wards WHERE ward_id = ?").bind(contact.target_ward_id).first<{ slug: string }>();
+      const token = await contactInvitationToken(c.env, contact.contact_id, contact.grant_id);
+      if (ward && active.token_hash === await sha256Hex(token)) invitation = new URL(`/${encodeURIComponent(ward.slug)}/admin/invite/${token}`, c.req.url).href;
+    }
   }
   const href = c.req.path;
   return c.html(<ContactPage title="問い合わせのやりとり"><h1>問い合わせのやりとり</h1><p class="lead">受付番号{receiptLabel(contact.receipt)} {contact.closed_at ? "受付は閉じています" : "返事をここで読めます"}</p>
     {c.req.query("sent") === "1" ? <Notice>書き足した内容を送りました。下のボタンで返事を確かめられます。</Notice> : null}
-    {!contact.reach ? <Notice>この画面を閉じないでください。返事を見るときは「返事を確かめる」を押してください。</Notice> : null}
+    {!contactBindings(c.env).CONTACT_MAIL ? <Notice>メールをまだ送れないため、この画面を閉じないでください。「返事を確かめる」で返事を読めます。</Notice> : null}
     <Conversation contact={contact} entries={await messages(c.env.DB, contact.contact_id)} photoBase={`${href}/photos`} />
     {invitation ? <section class="next"><strong>本人と確かめました</strong><p>入り方を選んでください。一度だけ、24時間使えます。</p><a class="button" href={invitation}>入り方を選ぶ</a></section> : null}
     <a class="button secondary" href={href}>返事を確かめる</a>

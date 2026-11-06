@@ -1,3 +1,4 @@
+import { createInvitation, createPasswordSignIn } from "../src/core/sign-in";
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { seedAccount, seedDeviceCookie, seedSeat, seedWard } from "../src/core/testing";
@@ -9,7 +10,6 @@ import {
   lockOutDevices,
   removeAccount,
   removeSeat,
-  resetPassword,
   setAccountSeat,
 } from "../src/settings/accounts";
 
@@ -113,7 +113,7 @@ describe("アカウント", () => {
     expect((await listAccounts(db, b.wardId)).length).toBe(2);
   });
 
-  it("初期化: 新しいパスワードを渡し、古いパスワードと他の端末は使えなくなる", async () => {
+  it("リンクの再発行: 本人がパスワードを作り、覚えた端末は残る", async () => {
     const ward = await seedWard(db);
     const person = await seedAccount(db, ward.wardId, "初期化する人");
     const keep = await seedDeviceCookie(db, ward.wardId, person.accountId);
@@ -125,17 +125,20 @@ describe("アカウント", () => {
     )?.device_id;
     expect(keep).toContain("device=");
 
-    const reset = await resetPassword(db, ward.wardId, person.accountId, keepId);
+    const reset = await createInvitation(db, ward.wardId, person.accountId, { accountId: person.accountId });
     expect(reset.ok).toBe(true);
-    if (!reset.ok) return;
-    expect(reset.password).not.toBe(person.password);
+    if (!reset.ok) throw new Error(reset.message);
+    const chosen = await createPasswordSignIn(db, ward.wardId, { token: reset.token });
+    if (!chosen.ok) throw new Error(chosen.message);
+    expect(chosen.password).not.toBe(person.password);
     const accounts = await listAccounts(db, ward.wardId);
-    expect(accounts[0]?.devices.map((d) => d.deviceId)).toEqual([keepId]);
+    expect(accounts[0]?.devices).toHaveLength(2);
+    expect(accounts[0]?.devices.some((d) => d.deviceId === keepId)).toBe(true);
 
-    const missing = await resetPassword(db, ward.wardId, "no-such-account");
+    const missing = await createInvitation(db, ward.wardId, "no-such-account", { accountId: person.accountId });
     expect(missing.ok).toBe(false);
     const other = await seedWard(db);
-    expect((await resetPassword(db, other.wardId, person.accountId)).ok).toBe(false);
+    expect((await createInvitation(db, other.wardId, person.accountId, { provider: true })).ok).toBe(false);
   });
 
   it("端末の締め出し: 一台だけ、またはそのアカウントの全部", async () => {

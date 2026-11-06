@@ -23,8 +23,8 @@ it("混ざった送り先の返事を残った場所へだけ送り直し、時�
   const destination = crypto.randomUUID();
   const group = "C-fictional-u13-group";
   const secret = "fictional-u13-secret";
-  const runtime = withEnv({ LINE_CHANNEL_SECRET: secret, LINE_CHANNEL_ACCESS_TOKEN: "fictional-u13-token",
-    [`LINE_${ward.wardId.toUpperCase().replaceAll("-", "_")}_OFFICER_GROUP_ID`]: "C-fictional-u13-officers" });
+  await env.DB.prepare("INSERT INTO ward_settings (ward_id, key, value) VALUES (?, 'line.officer_group', ?)").bind(ward.wardId, "C-fictional-u13-officers").run();
+  const runtime = withEnv({ LINE_CHANNEL_SECRET: secret, LINE_CHANNEL_ACCESS_TOKEN: "fictional-u13-token"});
   await env.DB.prepare("INSERT INTO line_channels (ward_id, destination, channel_secret_binding, access_token_binding) VALUES (?, ?, 'LINE_CHANNEL_SECRET', 'LINE_CHANNEL_ACCESS_TOKEN')").bind(ward.wardId, destination).run();
   const calls: Array<{ to: string; text: string; key: string }> = [];
   const accepted = new Set<string>();
@@ -89,7 +89,11 @@ it("混ざった送り先の返事を残った場所へだけ送り直し、時�
     const noUser = await env.DB.prepare("SELECT inquiry_id FROM inquiry_records WHERE ward_id = ? AND line_event_id = ?").bind(ward.wardId, "fictional-u13-no-user").first<{ inquiry_id: string }>();
     if (!noUser) throw new Error("送り先が分からない問い合わせがありません");
     const noSend = await (await get(realApp, `${root}/inquiries/${noUser.inquiry_id}`, cookie, runtime)).text();
-    expect(noSend).toContain("LINEでは返せません"); expect(noSend).not.toContain('value="send"');
+    expect(noSend).toContain("送り先が分からないため送れません");
+    expect(noSend).toContain('value="send"');
+    const sendError = await postForm(realApp, `${root}/inquiries/${noUser.inquiry_id}`, { operation: "send", answer: fixture.publicDayText }, cookie, runtime);
+    expect(sendError.status).toBe(400);
+    expect(await sendError.text()).toContain("返事を送れませんでした");
     expect((await postForm(realApp, `${root}/inquiries/${noUser.inquiry_id}`, { operation: "wish" }, cookie, runtime)).status).toBe(303);
     expect(await (await get(realApp, `${root}/inquiries/${noUser.inquiry_id}?wish=1`, cookie, runtime)).text()).toContain("要望として残しました");
     expect((await get(realApp, `/${other.ward.slug}/admin/inquiries/${row.inquiry_id}`, other.cookie, runtime)).status).toBe(404);
@@ -97,7 +101,7 @@ it("混ざった送り先の返事を残った場所へだけ送り直し、時�
     used = 0;
     const digestNow = new Date("2026-11-06T23:00:00Z");
     const beforeDigest = calls.length;
-    await sendOfficerDigest(withEnv({ LINE_CHANNEL_SECRET: secret, LINE_CHANNEL_ACCESS_TOKEN: "fictional-u13-token" }), ward.wardId, ward.slug, digestNow, fakeLine);
+    await sendOfficerDigest(runtime, other.ward.wardId, other.ward.slug, digestNow, fakeLine);
     expect(calls).toHaveLength(beforeDigest);
     const settings = { cutoff: "08:00", send: "08:00", eventDays: 7, dueDays: 3 };
     expect(digestCutoff(settings, digestNow).toISOString()).toBe("2026-11-05T23:00:00.000Z");
@@ -111,8 +115,8 @@ it("混ざった送り先の返事を残った場所へだけ送り直し、時�
     const photo = await receive(runtime, { wardId: ward.wardId, projectId: project.projectId, via: "line_direct", parts: [{ kind: "photo", filename: fixture.answerSheetFilename, mediaType: "image/jpeg", bytes: new Uint8Array(fixture.answerSheetPhotoBytes) }] });
     if (!photo.jobId || !photo.received[0]) throw new Error("写真がありません");
     const batch = await registerLinePhoto(env.DB, ward.wardId, { destination, source: { type: "user", id: "U-fictional-u13-photo", senderId: "U-fictional-u13-photo" }, jobId: photo.jobId, messageId: "fictional-u13-photo", now });
-    await env.DB.prepare("INSERT INTO line_clarifications (ward_id, clarification_id, batch_id, job_id, original_id, topic, text, options) VALUES (?, ?, ?, ?, ?, 'year', ?, ?)")
-      .bind(ward.wardId, "fictional-u13-question", batch, photo.jobId, photo.received[0].originalId, fixture.previousMaterial, JSON.stringify(["今年のもの", "去年のもの", "分からない"])).run();
+    await env.DB.prepare("INSERT INTO line_clarifications (ward_id, clarification_id, batch_id, job_id, original_id, topic, text, options, sent_at) VALUES (?, ?, ?, ?, ?, 'year', ?, ?, ?)")
+      .bind(ward.wardId, "fictional-u13-question", batch, photo.jobId, photo.received[0].originalId, fixture.previousMaterial, JSON.stringify(["今年のもの", "去年のもの", "分からない"]), now.toISOString()).run();
     await env.DB.prepare("UPDATE line_photo_batches SET prepared_at = ?, message_text = 'ready' WHERE ward_id = ? AND batch_id = ?").bind(now.toISOString(), ward.wardId, batch).run();
     await attachClarificationQuestions(env.DB, ward.wardId, photo.jobId);
     const question = (await listClarifications(env.DB, ward.wardId, batch))[0];
@@ -128,7 +132,10 @@ it("混ざった送り先の返事を残った場所へだけ送り直し、時�
     const beforeScreenReplies = replies;
     expect((await postForm(realApp, `${questionsPath}/${question.question_id}`, { action: "answer", answer: fixture.publicDayText }, cookie, runtime)).status).toBe(303);
     await processPhotoBatches(runtime, ward.wardId, { fetch: fakeLine, now });
-    expect(calls).toHaveLength(beforeScreenAnswer); expect(replies).toBe(beforeScreenReplies);
+    expect(calls).toHaveLength(beforeScreenAnswer + 1); expect(replies).toBe(beforeScreenReplies);
+    expect(calls.at(-1)?.text).toContain("聞くことは以上です");
+    await processPhotoBatches(runtime, ward.wardId, { fetch: fakeLine, now });
+    expect(calls).toHaveLength(beforeScreenAnswer + 1);
     expect((await getProjectState(env.DB, ward.wardId, project.projectId))?.questions).toHaveLength(0);
 
     expect(await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, { kind: "announcement", title: "案内", scope: "public", basedOn: project.stateVersion, body: JSON.stringify({ text: fixture.publicAnnouncement, items: [{ key: "date_time", content: fixture.publicDayText }] }) })).toBe(true);
@@ -140,7 +147,7 @@ it("混ざった送り先の返事を残った場所へだけ送り直し、時�
     expect(await (await get(realApp, `${root}/print/${project.projectId}`, cookie, runtime)).text()).toContain(`${paperPath}/preview`);
     used = 200;
     expect((await postForm(realApp, `${root}/publish/${project.projectId}/send`, { documentId: document.document_id, versionId: document.version_id, versionNo: String(document.version_no), lineDelivery: "send" }, cookie, runtime)).status).toBe(303);
-    expect(calls).toHaveLength(beforeScreenAnswer);
+    expect(calls).toHaveLength(beforeScreenAnswer + 1);
     expect(await getSetting(env.DB, ward.wardId, "line.delivery_alert.publish")).toContain("通数が足りない");
     const printList = await (await get(realApp, `${root}/print/${project.projectId}`, cookie, runtime)).text();
     expect(printList).toContain(`href="${paperPath}/announcement"`); expect(printList).not.toContain(`${paperPath}/preview`);

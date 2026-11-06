@@ -27,16 +27,16 @@ describe("秋の収穫祭の最初の一片", () => {
     expect(opsCookie).toBeTruthy();
     const slug = uniqueSlug("first-slice");
     const openedWard = await postForm(realApp, "/ops/wards", {
-      name: FIRST_SLICE.wardName, slug, firstAccountName: FIRST_SLICE.firstOfficer,
+      name: FIRST_SLICE.wardName, slug, firstAccountName: FIRST_SLICE.firstOfficer, lineDestination: `fictional-${crypto.randomUUID()}`, officialLineUrl: "https://example.invalid/line",
     }, opsCookie ?? undefined, opsEnv, { accept: "application/json" });
     expect(openedWard.status).toBe(201);
-    const openedBody = await openedWard.json() as { slug: string; account: { name: string; password: string } };
+    const openedBody = await openedWard.json() as { slug: string; account: { name: string; invitationUrl: string } };
     const wardRow = await env.DB.prepare("SELECT ward_id, slug FROM wards WHERE slug = ?").bind(openedBody.slug)
       .first<{ ward_id: string; slug: string }>();
     if (!wardRow) throw new Error("開いた区が見つかりません");
     const ward = { wardId: wardRow.ward_id, slug: wardRow.slug };
-    const loggedIn = await postForm(realApp, `/${openedBody.slug}/admin/login`, openedBody.account);
-    expect(loggedIn.status).toBe(303);
+    const loggedIn = await postForm(realApp, `${new URL(openedBody.account.invitationUrl).pathname}/password`, {});
+    expect(loggedIn.status).toBe(200);
     const cookie = cookieFrom(loggedIn, "device");
     if (!cookie) throw new Error("役員画面に入る札がありません");
     const accountRow = await env.DB.prepare("SELECT account_id FROM accounts WHERE ward_id = ? AND name = ?")

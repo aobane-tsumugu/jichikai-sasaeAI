@@ -1,13 +1,13 @@
 // 区の開設（提供側）: 区、最初の役員のアカウント、固定 URL と QR を作る。
 //
-//   npm run open-ward -- --name "区の名前" --slug <区の URL> --first "最初の役員の名前" \
+//   npm run open-ward -- --name "区の名前" --slug <区の URL> --first "最初の役員の名前" --line-destination <公式LINEの送信先ID> --official-line-url <友だち追加のURL> \
 //       [--base <運用の画面の URL>] [--keys <鍵のファイルのパス>] [--qr-out <QR を書く .svg>] \
-//       [--credentials-out <名前とパスワードを書くファイル>]
+//       [--credentials-out <名前と入るためのリンクを書くファイル>]
 //
 // 運用の画面（/ops）に OPS_ID と OPS_PASSWORD でログインして、POST /ops/wards を呼ぶ。
 // OPS_ID と OPS_PASSWORD は鍵のファイル（--keys か環境変数 JICHIKAI_KEYS_FILE）から読み、表示しない。
 // --base の既定は wrangler.toml の PUBLIC_BASE_URL。ローカルなら --base http://localhost:8787。
-// 最初の役員のパスワードはここで一度だけ見える。--credentials-out を付けるとファイルに書き、画面には出さない。
+// 最初の役員の入るためのリンクはここで一度だけ見える。--credentials-out を付けるとファイルに書き、画面には出さない。
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,13 +36,15 @@ interface OpenedWard {
   url: string;
   adminUrl: string;
   qrSvgUrl: string;
-  account: { loginId: string; name: string; password: string };
+  account: { loginId: string; name: string; invitationUrl: string; expiresAt: string };
 }
 
 async function main(): Promise<void> {
   const name = required("--name");
   const slug = required("--slug");
   const first = required("--first");
+  const lineDestination = required("--line-destination");
+  const officialLineUrl = required("--official-line-url");
   const base = (argValue(argv, "--base") ?? defaultBase()).replace(/\/+$/, "");
   const origin = new URL(base).origin;
 
@@ -83,7 +85,7 @@ async function main(): Promise<void> {
       origin,
       cookie: session,
     },
-    body: new URLSearchParams({ name, slug, firstAccountName: first }),
+    body: new URLSearchParams({ name, slug, firstAccountName: first, lineDestination, officialLineUrl }),
     signal: timeout(),
   });
   const body = (await response.json().catch(() => null)) as OpenedWard | { ok: false; message: string } | null;
@@ -99,13 +101,13 @@ async function main(): Promise<void> {
 
   const credentialsOut = argValue(argv, "--credentials-out");
   if (credentialsOut) {
-    writeFileSync(credentialsOut, `ID: ${body.account.loginId}\n表示名: ${body.account.name}\nパスワード: ${body.account.password}\n`, {
+    writeFileSync(credentialsOut, `ID: ${body.account.loginId}\n表示名: ${body.account.name}\n入るためのリンク: ${body.account.invitationUrl}\n`, {
       encoding: "utf8",
       mode: 0o600,
     });
-    console.log(`  パスワード: ${credentialsOut} に書きました（役員に渡したら消してください）`);
+    console.log(`  入るためのリンク: ${credentialsOut} に書きました（役員に渡したら消してください）`);
   } else {
-    console.log(`  パスワード: ${body.account.password}  （一度だけの表示です。役員に渡してください）`);
+    console.log(`  入るためのリンク: ${body.account.invitationUrl}  （一度だけの表示です。役員に渡してください）`);
   }
 
   const qrOut = argValue(argv, "--qr-out");

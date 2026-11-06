@@ -13,6 +13,8 @@ async function opsLogin(): Promise<string> {
   return cookie!;
 }
 
+const lineInput = () => ({ lineDestination: `fictional-${crypto.randomUUID()}`, officialLineUrl: "https://example.invalid/line" });
+const enterInvitation = (url: string) => postForm(realApp, `${new URL(url).pathname}/password`, {});
 const JSON_HEADERS = { accept: "application/json" };
 
 describe("運用の画面の入る", () => {
@@ -73,13 +75,13 @@ describe("運用の画面の入る", () => {
 });
 
 describe("区の開設", () => {
-  it("区と最初の役員を作り、そのパスワードで役員画面に入れる", async () => {
+  it("区と最初の役員を作り、本人が入り方を選んで役員画面に入れる", async () => {
     const cookie = await opsLogin();
     const slug = uniqueSlug("open");
     const res = await postForm(
       realApp,
       "/ops/wards",
-      { name: "試験の区（架空）", slug, firstAccountName: "最初の役員" },
+      { name: "試験の区（架空）", slug, firstAccountName: "最初の役員", ...lineInput() },
       cookie,
       opsEnv,
       JSON_HEADERS,
@@ -91,18 +93,15 @@ describe("区の開設", () => {
       url: string;
       adminUrl: string;
       qrSvgUrl: string;
-      account: { name: string; password: string };
+      account: { name: string; invitationUrl: string };
     };
     expect(body.slug).toBe(slug);
     expect(body.url).toBe(`${env.PUBLIC_BASE_URL}/${slug}/`);
     expect(body.adminUrl).toBe(`${env.PUBLIC_BASE_URL}/${slug}/admin/`);
-    expect(body.account.password).toMatch(/^[a-z0-9]{6}(-[a-z0-9]{6}){3}$/);
+    expect(body.account.invitationUrl).toContain(`/${slug}/admin/invite/`);
 
-    const login = await postForm(realApp, `/${slug}/admin/login`, {
-      name: body.account.name,
-      password: body.account.password,
-    });
-    expect(login.status).toBe(303);
+    const login = await enterInvitation(body.account.invitationUrl);
+    expect(login.status).toBe(200);
     const home = await get(realApp, `/${slug}/admin/`, cookieFrom(login, "device")!);
     expect(home.status).toBe(200);
     expect(await home.text()).toContain("試験の区（架空）");
@@ -111,18 +110,18 @@ describe("区の開設", () => {
     const stored = await env.DB.prepare("SELECT password_hash, password_salt FROM accounts WHERE name = ?")
       .bind("最初の役員")
       .all<{ password_hash: string; password_salt: string }>();
-    expect(JSON.stringify(stored.results)).not.toContain(body.account.password);
+    expect(JSON.stringify(stored.results)).not.toContain(body.account.invitationUrl);
   });
 
-  it("画面からも開け、結果の画面にパスワードが一度だけ出る", async () => {
+  it("画面からも開け、結果の画面に入るためのリンクが一度だけ出る", async () => {
     const cookie = await opsLogin();
     const slug = uniqueSlug("form");
-    const res = await postForm(realApp, "/ops/wards", { name: "画面から開く区", slug, firstAccountName: "役員A" }, cookie, opsEnv);
+    const res = await postForm(realApp, "/ops/wards", { name: "画面から開く区", slug, firstAccountName: "役員A", ...lineInput() }, cookie, opsEnv);
     expect(res.status).toBe(201);
     expect(res.headers.get("cache-control")).toBe("no-store");
     const html = await res.text();
     expect(html).toContain("区を開きました");
-    expect(html).toMatch(/class="secret">[a-z0-9]{6}(-[a-z0-9]{6}){3}</);
+    expect(html).toContain('class="secret invite-link"');
     expect(html).toContain(`/${slug}/`);
     // 一覧には出るが、パスワードは出ない
     const list = await (await get(realApp, "/ops/", cookie, opsEnv)).text();
@@ -133,7 +132,7 @@ describe("区の開設", () => {
   it("使えないURL、重複、名前の抜けは開かない", async () => {
     const cookie = await opsLogin();
     const open = (form: Record<string, string>) =>
-      postForm(realApp, "/ops/wards", form, cookie, opsEnv, JSON_HEADERS);
+      postForm(realApp, "/ops/wards", { ...lineInput(), ...form }, cookie, opsEnv, JSON_HEADERS);
     const base = { name: "区", firstAccountName: "役員" };
 
     for (const slug of ["ops", "contact", "Bad_Slug", "a", "-x", "区"]) {
@@ -157,19 +156,18 @@ describe("区の開設", () => {
     const cookie = await opsLogin();
     const open = async (name: string) => {
       const slug = uniqueSlug("multi");
-      const res = await postForm(realApp, "/ops/wards", { name, slug, firstAccountName: "同じ名前の役員" }, cookie, opsEnv, JSON_HEADERS);
-      return (await res.json()) as { slug: string; account: { name: string; password: string } };
+      const res = await postForm(realApp, "/ops/wards", { name, slug, firstAccountName: "同じ名前の役員", ...lineInput() }, cookie, opsEnv, JSON_HEADERS);
+      return (await res.json()) as { slug: string; account: { name: string; invitationUrl: string } };
     };
     const a = await open("区A（架空）");
     const b = await open("区B（架空）");
-    expect(a.account.password).not.toBe(b.account.password);
-
-    const aLogin = await postForm(realApp, `/${a.slug}/admin/login`, a.account);
-    const bLogin = await postForm(realApp, `/${b.slug}/admin/login`, b.account);
-    expect(aLogin.status).toBe(303);
-    expect(bLogin.status).toBe(303);
-    // A のパスワードで B には入れない（名前が同じでも）
-    expect((await postForm(realApp, `/${b.slug}/admin/login`, a.account)).status).toBe(401);
+    expect(a.account.invitationUrl).not.toBe(b.account.invitationUrl);
+    const aLogin = await enterInvitation(a.account.invitationUrl);
+    const bLogin = await enterInvitation(b.account.invitationUrl);
+    expect(aLogin.status).toBe(200);
+    expect(bLogin.status).toBe(200);
+    const cross = new URL(a.account.invitationUrl).pathname.replace(`/${a.slug}/`, `/${b.slug}/`);
+    expect((await postForm(realApp, `${cross}/password`, {})).status).toBe(400);
     // A の端末の記憶で B の役員画面は開かない
     expect((await get(realApp, `/${b.slug}/admin/`, cookieFrom(aLogin, "device")!)).status).toBe(303);
   });
@@ -179,7 +177,7 @@ describe("固定URLとQRと案内", () => {
   it("区の画面にURLとQRが出る。QRの画像は区のページのURL", async () => {
     const cookie = await opsLogin();
     const slug = uniqueSlug("qr");
-    await postForm(realApp, "/ops/wards", { name: "QRの区", slug, firstAccountName: "役員" }, cookie, opsEnv);
+    await postForm(realApp, "/ops/wards", { name: "QRの区", slug, firstAccountName: "役員", ...lineInput() }, cookie, opsEnv);
     const url = wardUrl(env, "http://localhost/", slug);
 
     const detail = await (await get(realApp, `/ops/wards/${slug}`, cookie, opsEnv)).text();
@@ -207,7 +205,7 @@ describe("役員が入れなくなったときの復旧（提供側）", () => {
   it("区の画面からは足さず、作り直さず、問い合わせの受付へ案内する", async () => {
     const cookie = await opsLogin();
     const slug = uniqueSlug("recover");
-    await postForm(realApp, "/ops/wards", { name: "復旧の区（架空）", slug, firstAccountName: "役員" }, cookie, opsEnv, JSON_HEADERS);
+    await postForm(realApp, "/ops/wards", { name: "復旧の区（架空）", slug, firstAccountName: "役員", ...lineInput() }, cookie, opsEnv, JSON_HEADERS);
     const ward = await env.DB.prepare("SELECT ward_id FROM wards WHERE ward_id = (SELECT ward_id FROM wards WHERE slug = ?)").bind(slug).first<{ ward_id: string }>();
     const account = await env.DB.prepare("SELECT account_id FROM accounts WHERE ward_id = ? AND name = ?").bind(ward!.ward_id, "役員").first<{ account_id: string }>();
     expect((await postForm(realApp, `/ops/wards/${slug}/accounts`, { name: "新しい役員（架空）" }, cookie, opsEnv)).status).toBe(404);

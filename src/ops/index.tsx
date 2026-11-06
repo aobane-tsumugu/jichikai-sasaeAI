@@ -1,9 +1,11 @@
+import { getOfficialLineUrl, setSetting } from "../settings/store";
+import { lineAccessToken, lineGroupSummary, officerGroupId } from "../line/api";
 import { DigestFields, getDigestSettings, saveDigestSettings } from "../settings/digest";
 import { AnswerLabelFields, getAnswerLabels, saveAnswerLabels } from "../settings/answer-labels";
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { baseUrl, wardUrl } from "../core/ward";
-import { Credentials, Layout, Notice } from "../core/ui";
+import { Layout, Notice } from "../core/ui";
 import type { AppEnv } from "../env";
 import { CutLine, PrintDocument, PrintQr, Sheet, qrSvg } from "../print";
 import { dispatchProject, SESSION_BUDGET_CENTS } from "../ai/session";
@@ -122,7 +124,7 @@ opsRoutes.post("/logout", (c) => {
 
 // ---- 区の一覧と開設 ----
 
-const OpenForm = (props: { error?: string; values?: { slug: string; name: string; firstAccountName: string; lineDestination?: string; providerPhone?: string; providerEmail?: string } }) => (
+const OpenForm = (props: { error?: string; values?: { slug: string; name: string; firstAccountName: string; lineDestination?: string; officialLineUrl?: string; providerPhone?: string; providerEmail?: string } }) => (
   <>
     <h2 id="open-ward">新しい区を開く</h2>
     {props.error ? <Notice error>{props.error}</Notice> : null}
@@ -135,11 +137,12 @@ const OpenForm = (props: { error?: string; values?: { slug: string; name: string
       <input id="first" name="firstAccountName" type="text" required maxlength={40} value={props.values?.firstAccountName ?? ""} />
       <label for="provider-phone">区の連絡先の電話（提供側だけが見ます）</label><input id="provider-phone" name="providerPhone" maxlength={200} value={props.values?.providerPhone ?? ""} />
       <label for="provider-email">区の連絡先のメール（書かなくてかまいません）</label><input id="provider-email" name="providerEmail" type="email" maxlength={200} value={props.values?.providerEmail ?? ""} />
-      <details><summary>公式LINEを使う区だけ</summary>
-        <label for="line-destination">公式LINEの送信先ID（書かなくてかまいません）</label>
-        <input id="line-destination" name="lineDestination" type="text" maxlength={100} value={props.values?.lineDestination ?? ""} />
+      <section><h3>公式LINE</h3><p>提供側が公式アカウントを作り、接続の設定まで進めます。</p>
+        <label for="line-destination">公式LINEの送信先ID</label>
+        <input id="line-destination" name="lineDestination" type="text" required maxlength={100} value={props.values?.lineDestination ?? ""} />
         <p>鍵の値は入力しません。開いたあとに出る名前で、提供側の設定に入れてください。</p>
-      </details>
+        <label for="official-line-url">友だち追加の入口</label><input id="official-line-url" name="officialLineUrl" type="url" required maxlength={2000} value={props.values?.officialLineUrl ?? ""} />
+      </section>
       <p>
         <button type="submit">開く</button>
       </p>
@@ -171,7 +174,7 @@ opsRoutes.get("/", async (c) => {
 opsRoutes.post("/wards", async (c) => {
   const form = await c.req.parseBody();
   const text = (key: string) => (typeof form[key] === "string" ? (form[key] as string) : "");
-  const input = { slug: text("slug"), name: text("name"), firstAccountName: text("firstAccountName"), lineDestination: text("lineDestination"), providerPhone: text("providerPhone"), providerEmail: text("providerEmail") };
+  const input = { slug: text("slug"), name: text("name"), firstAccountName: text("firstAccountName"), lineDestination: text("lineDestination"), officialLineUrl: text("officialLineUrl"), providerPhone: text("providerPhone"), providerEmail: text("providerEmail") };
   const result = await openWard(c.env.DB, input);
 
   if (!result.ok) {
@@ -197,7 +200,7 @@ opsRoutes.post("/wards", async (c) => {
         url,
         adminUrl,
         qrSvgUrl: `${baseUrl(c.env, c.req.url)}/ops/wards/${result.ward.slug}/qr.svg`,
-        account: { loginId: result.account.loginId, name: result.account.name, password: result.account.password },
+        account: { loginId: result.account.loginId, name: result.account.name, invitationUrl: `${adminUrl}invite/${result.account.token}`, expiresAt: result.account.expiresAt },
         ...(result.line ? { line: result.line } : {}),
       },
       201,
@@ -206,7 +209,12 @@ opsRoutes.post("/wards", async (c) => {
   return c.html(
     <OpsPage title="区を開きました" loggedIn>
       <h1>区を開きました</h1>
-      <Credentials loginId={result.account.loginId} name={result.account.name} password={result.account.password} />
+      <Notice>{result.account.name}さんの、入るためのリンクを作りました。</Notice>
+      <p>このリンクを本人に渡してください。開くと入り方を選べます。一度だけ、7日のあいだ使えます。</p>
+      <p class="secret invite-link">{`${adminUrl}invite/${result.account.token}`}</p>
+      <div class="qrbox" dangerouslySetInnerHTML={{ __html: qrSvg(`${adminUrl}invite/${result.account.token}`) }} />
+      <section class="next"><strong>次は</strong><p>公式LINEの接続を済ませ、一緒に役員グループの指定まで進めてください。</p><a class="button" href={`/ops/wards/${result.ward.slug}`}>区の画面へ</a></section>
+      <a class="quiet" href="/ops/">区の一覧へ戻る</a>
       {result.line ? <><h2>公式LINEの鍵の設定</h2>
         <p>Workers secretsに次の名前で鍵を設定してください。値はこの画面にもD1にも保存しません。</p>
         <p>チャネルシークレット: <code>{result.line.channelSecretBinding}</code></p>
@@ -264,6 +272,12 @@ opsRoutes.get("/wards/:slug", async (c) => {
   const digest = await getDigestSettings(c.env.DB, ward.wardId);
   const accounts = await listAccounts(c.env.DB, ward.wardId);
   const privateContact = await getPrivateWardContact(c.env.DB, ward.wardId);
+  const officialLineUrl = await getOfficialLineUrl(c.env.DB, ward.wardId);
+  const selectedGroup = await officerGroupId(c.env, ward.wardId);
+  const token = await lineAccessToken(c.env, ward.wardId);
+  const groupRows = await c.env.DB.prepare("SELECT group_id, first_joined_at FROM line_group_notices WHERE ward_id = ? ORDER BY first_joined_at, group_id")
+    .bind(ward.wardId).all<{ group_id: string; first_joined_at: string }>();
+  const groups = await Promise.all(groupRows.results.map(async (group) => ({ ...group, summary: token ? await lineGroupSummary(token, group.group_id) : null })));
   const url = wardUrl(c.env, c.req.url, ward.slug);
   return c.html(
     <OpsPage title={ward.name} loggedIn>
@@ -274,6 +288,13 @@ opsRoutes.get("/wards/:slug", async (c) => {
       <PrivateWardContact value={privateContact} />
       <p>入る人を足すことと、リンクを出すことは、問い合わせの受付で行います。</p>
       <a class="button" href="/ops/contacts">問い合わせを見る</a>
+      <h2>公式LINE</h2><p>友だち追加の入口: {officialLineUrl || "開設の途中です"}</p>
+      {c.req.query("group") === "saved" ? <><Notice>役員グループにしました。問い合わせの知らせをこのグループへ送ります。</Notice><section class="next"><strong>次は</strong><p>区の画面で、ほかの内容を確かめてください。</p><a class="button secondary" href={`/ops/wards/${ward.slug}`}>区の画面へ戻る</a></section></> : null}
+      <h3>公式が入っているグループ</h3>
+      {groups.length ? groups.map((group, index) => <section class="panel"><h3>{group.summary?.name || `参加したグループ${index + 1}`}{group.summary ? `（${group.summary.count}人）` : ""}</h3>
+        {!group.summary ? <p>{formatJst(group.first_joined_at)}に参加しました。名前を取得できません。公式LINEの管理画面で確かめてください。</p> : null}
+        {selectedGroup === group.group_id ? <p>役員グループ</p> : <form method="post" action={`/ops/wards/${ward.slug}/officer-group`}><input type="hidden" name="groupId" value={group.group_id} /><button class="secondary">役員グループにする</button></form>}
+      </section>) : <p>まだありません。公式を役員のLINEグループに入れてから、この画面を開き直してください。</p>}
       <h2>役員の入る人</h2>
       <table class="stack">
         <thead>
@@ -310,6 +331,17 @@ opsRoutes.get("/wards/:slug", async (c) => {
 
     </OpsPage>,
   );
+});
+
+opsRoutes.post("/wards/:slug/officer-group", async (c) => {
+  const ward = await wardOrNull(c, c.req.param("slug"));
+  if (!ward) return c.html(<WardNotFound />, 404);
+  const form = await c.req.parseBody();
+  const groupId = typeof form.groupId === "string" ? form.groupId : "";
+  const group = await c.env.DB.prepare("SELECT 1 FROM line_group_notices WHERE ward_id = ? AND group_id = ?").bind(ward.wardId, groupId).first();
+  if (!group) return c.html(<OpsPage title="役員グループを指定できませんでした" loggedIn><h1>役員グループを指定できませんでした</h1><Notice error>公式が入っているグループから選んでください。</Notice><section class="next"><strong>次は</strong><p>区の画面でグループを確かめてください。</p><a class="button" href={`/ops/wards/${ward.slug}`}>区の画面へ戻る</a></section></OpsPage>, 400);
+  await setSetting(c.env.DB, ward.wardId, "line.officer_group", groupId, null);
+  return c.redirect(`/ops/wards/${ward.slug}?group=saved`, 303);
 });
 
 opsRoutes.post("/wards/:slug/digest", async (c) => {

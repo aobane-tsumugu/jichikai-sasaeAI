@@ -24,8 +24,8 @@ it("写真を引用して一問ずつ聞き、撮り直しと分からないで�
   const secret = "fictional-u5-secret";
   const destination = crypto.randomUUID();
   const groupId = "C-fictional-u5-group";
-  const runtime = withEnv({ LINE_CHANNEL_SECRET: secret, LINE_CHANNEL_ACCESS_TOKEN: "fictional-u5-token",
-    [`LINE_${ward.wardId.toUpperCase().replaceAll("-", "_")}_OFFICER_GROUP_ID`]: "C-fictional-officers" });
+  await env.DB.prepare("INSERT INTO ward_settings (ward_id, key, value) VALUES (?, 'line.officer_group', ?)").bind(ward.wardId, "C-fictional-officers").run();
+  const runtime = withEnv({ LINE_CHANNEL_SECRET: secret, LINE_CHANNEL_ACCESS_TOKEN: "fictional-u5-token"});
   await env.DB.prepare("INSERT INTO line_channels (ward_id, destination, channel_secret_binding, access_token_binding) VALUES (?, ?, 'LINE_CHANNEL_SECRET', 'LINE_CHANNEL_ACCESS_TOKEN')")
     .bind(ward.wardId, destination).run();
   type Sent = { to?: string; replyToken?: string; messages: Array<{ text: string; quoteToken?: string; quickReply?: { items: Array<{ action: { type: string; data?: string } }> } }> };

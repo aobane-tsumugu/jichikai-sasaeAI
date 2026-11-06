@@ -6,17 +6,16 @@ import { adminPath } from "../core/auth";
 import { Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { LIMITS, PUBLIC_PRIVACY_NOTICE, SETTING_KEYS, linesToList } from "./keys";
-import { deleteSetting, getOfficialLineUrl, getPublicContact, getSquads, setSetting } from "./store";
+import { deleteSetting, getPublicContact, getSquads, setSetting } from "./store";
 
-// 区の情報: 公開用の連絡先、公式 LINE の友だち追加の入口、班の名前。いずれも任意。
+// 区の情報: 公開用の連絡先、班の名前、答えの聞き方、知らせの時刻。公式LINEは提供側が開設時に用意する。
 
 export const info = new Hono<AdminEnv>();
 
-async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: string } = {}, status: 200 | 400 = 200, form?: { contact: string; squads: string; lineUrl: string }) {
+async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: string } = {}, status: 200 | 400 = 200, form?: { contact: string; squads: string }) {
   const { ward, account } = c.var;
   const contact = form?.contact ?? (await getPublicContact(c.env.DB, ward.wardId));
   const squads = form?.squads ?? (await getSquads(c.env.DB, ward.wardId)).join("\n");
-  const lineUrl = form?.lineUrl ?? (await getOfficialLineUrl(c.env.DB, ward.wardId));
   const digest = await getDigestSettings(c.env.DB, ward.wardId);
   const labels = await getAnswerLabels(c.env.DB, ward.wardId);
   c.header("Cache-Control", "no-store");
@@ -34,9 +33,6 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
         <textarea id="contact" name="contact" rows={4} maxlength={LIMITS.publicContact}>
           {contact}
         </textarea>
-        <label for="official-line-url">公式LINEの友だち追加の入口（書かなくてかまいません） </label><p class="help-text">公式LINEの管理画面で確認できる、友だち追加のURLを貼ってください。区のページに入口が出ます。空にして保存すると入口を外せます。</p>
-        <input id="official-line-url" name="official_line_url" type="url" value={lineUrl} />
-        <p class="muted">友だち追加は、しなくてもかまいません。住民に名前や世帯の登録を求めません。</p>
         <label for="squads">班の名前（一行に一つ）</label>
         <p class="muted">回答票に印字され、答える画面の選択肢になります。名簿を入れると、そこから入ります。</p>
         <textarea id="squads" name="squads" rows={8}>
@@ -66,36 +62,26 @@ info.post("/", async (c) => {
   const contact = typeof body["contact"] === "string" ? body["contact"].replace(/\r\n?/g, "\n").trim() : "";
   const squadText = typeof body["squads"] === "string" ? body["squads"] : "";
   const squads = linesToList(squadText);
-  const lineUrl = typeof body["official_line_url"] === "string" ? body["official_line_url"].trim() : "";
-  if (lineUrl) {
-    try {
-      if (new URL(lineUrl).protocol !== "https:") throw new Error("https");
-    } catch {
-      return show(c, { error: "友だち追加のURLはhttps:// で始まるURLを入れてください。" }, 400, { contact, squads: squadText, lineUrl });
-    }
-  }
 
   if (contact.length > LIMITS.publicContact) {
-    return show(c, { error: `公開用の連絡先は${LIMITS.publicContact}文字までです。` }, 400, { contact, squads: squadText, lineUrl });
+    return show(c, { error: `公開用の連絡先は${LIMITS.publicContact}文字までです。` }, 400, { contact, squads: squadText });
   }
   if (squads.length > LIMITS.squadCount || squads.some((s) => s.length > LIMITS.squadName)) {
     return show(
       c,
       { error: `班の名前は${LIMITS.squadCount}個まで、一つ${LIMITS.squadName}文字までです。` },
       400,
-      { contact, squads: squadText, lineUrl },
+      { contact, squads: squadText },
     );
   }
 
   if (typeof body.answer_label_0 === "string" || body.answer_labels_reset === "1") {
-    if (!await saveAnswerLabels(c.env.DB, ward.wardId, body, account.accountId)) return show(c, { error: "人数の聞き方を三つとも入れてください。一つ80文字までです。" }, 400, { contact, squads: squadText, lineUrl });
+    if (!await saveAnswerLabels(c.env.DB, ward.wardId, body, account.accountId)) return show(c, { error: "人数の聞き方を三つとも入れてください。一つ80文字までです。" }, 400, { contact, squads: squadText });
   }
-  if (!await saveDigestSettings(c.env.DB, ward.wardId, body, account.accountId)) return show(c, { error: "知らせの時刻と日数を確かめてください。日数は0から365までです。" }, 400, { contact, squads: squadText, lineUrl });
+  if (!await saveDigestSettings(c.env.DB, ward.wardId, body, account.accountId)) return show(c, { error: "知らせの時刻と日数を確かめてください。日数は0から365までです。" }, 400, { contact, squads: squadText });
   if (contact === "") await deleteSetting(c.env.DB, ward.wardId, SETTING_KEYS.publicContact);
   else await setSetting(c.env.DB, ward.wardId, SETTING_KEYS.publicContact, contact, account.accountId);
   if (squads.length === 0) await deleteSetting(c.env.DB, ward.wardId, SETTING_KEYS.squads);
   else await setSetting(c.env.DB, ward.wardId, SETTING_KEYS.squads, JSON.stringify(squads), account.accountId);
-  if (lineUrl === "") await deleteSetting(c.env.DB, ward.wardId, SETTING_KEYS.officialLineUrl);
-  else await setSetting(c.env.DB, ward.wardId, SETTING_KEYS.officialLineUrl, lineUrl, account.accountId);
   return c.redirect(adminPath(ward, "/settings/info?done=1"), 303);
 });

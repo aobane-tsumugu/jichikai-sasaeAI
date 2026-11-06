@@ -156,20 +156,26 @@ export async function acceptLineWebhook(
     `).bind(wardId, eventId, addDays(now, RECEIPT_RETENTION_DAYS)).run();
     if (receipt.meta.changes === 0) continue;
 
-    if (event.type === "join" && event.source?.type === "group" && event.source.groupId && event.replyToken) {
+    if (event.type === "leave" && event.source?.type === "group" && event.source.groupId) {
+      await db.batch([
+        db.prepare("DELETE FROM line_group_notices WHERE ward_id = ? AND group_id = ?").bind(wardId, event.source.groupId),
+        db.prepare("DELETE FROM ward_settings WHERE ward_id = ? AND key = 'line.officer_group' AND value = ?").bind(wardId, event.source.groupId),
+      ]);
+      continue;
+    }
+    if (event.type === "join" && event.source?.type === "group" && event.source.groupId) {
       const prior = await db.prepare("SELECT notice_sent_at FROM line_group_notices WHERE ward_id = ? AND group_id = ?")
         .bind(wardId, event.source.groupId).first<{ notice_sent_at: string | null }>();
       if (!prior) {
         const inserted = await db.prepare(`INSERT OR IGNORE INTO line_group_notices (ward_id, group_id, first_joined_at)
           VALUES (?, ?, ?)`).bind(wardId, event.source.groupId, now.toISOString()).run();
-        if ((inserted.meta.changes ?? 0) === 0) continue;
+        if ((inserted.meta.changes ?? 0) === 0 || !event.replyToken) continue;
         try {
-          await replyLineText(accessToken, event.replyToken, "自治会の公式LINEです。このグループに貼られた写真と文は、全部、自治会の記録に残ります。問い合わせるときは、文の頭に「公式へ」と書いてください。", fetcher);
+          await replyLineText(accessToken, event.replyToken, "自治会の公式LINEです。このグループに貼られた写真と文は、全部、自治会の記録に残ります。公式あての問い合わせには一言返し、写真に確かめが要るときは聞きます。それ以外は何も書きません。残したくないときは、公式をグループから外せます。", fetcher);
           await db.prepare("UPDATE line_group_notices SET notice_sent_at = ? WHERE ward_id = ? AND group_id = ? AND notice_sent_at IS NULL")
             .bind(now.toISOString(), wardId, event.source.groupId).run();
         } catch (error) {
-          await db.prepare("DELETE FROM line_group_notices WHERE ward_id = ? AND group_id = ? AND notice_sent_at IS NULL")
-            .bind(wardId, event.source.groupId).run();
+          // 案内を送れなくても、参加したグループは提供側が指定できるよう残す。
           console.error("LINEグループへの案内を送れませんでした", wardId, error instanceof Error ? error.name : "");
         }
       }

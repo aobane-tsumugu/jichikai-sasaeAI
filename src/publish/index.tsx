@@ -410,7 +410,7 @@ admin.post("/publish/:projectId/send", async (c) => {
         lineRecipients = allowance.friends;
         if (allowance.friends === null || (allowance.remaining !== null && allowance.remaining < allowance.friends)) {
           lineStatus = "failed";
-          lineError = allowance.friends === null ? "送り先の人数を確かめられないため、公式LINEには送っていません。" : "今月、公式LINEで送れる通数が足りないため、送っていません。";
+          lineError = allowance.friends === null ? "集計の済んだ友だちの人数を取得できないため、公式LINEには送っていません。区のページと紙は使えます。" : "今月、公式LINEで送れる通数が足りないため、送っていません。";
         } else {
           await sendLineTitleAndUrl(token, paperHeading(project.title, row.title), publicUrl);
           lineStatus = "sent";

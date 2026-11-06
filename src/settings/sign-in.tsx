@@ -1,10 +1,12 @@
+import { newId, nowIso } from "../core/ids";
+import { generateDeviceToken, sha256Hex } from "../core/password";
 import { Hono, type Context } from "hono";
 import type { AdminEnv, WardEnv } from "../env";
 import { AdminPage } from "../core/admin-ui";
 import { adminPath, issueDevice, requireAdmin } from "../core/auth";
 import { Layout, Notice } from "../core/ui";
-import { connectVerifiedSignIn, createPasswordSignIn, findVerifiedSignIn, listSignInMethods, readInvitation,
-  removeSignInMethod, LINK_UNAVAILABLE, SIGN_IN_LABEL, type SignInKind } from "../core/sign-in";
+import { connectVerifiedSignIn, createPasswordSignIn, findVerifiedSignIns, listSignInMethods, readInvitation,
+  LINK_UNAVAILABLE, SIGN_IN_LABEL, type SignInKind } from "../core/sign-in";
 import { signInConnections, type ExternalSignInKind } from "../core/sign-in-connections";
 
 export const mySignInPath = (ward: { slug: string }) => adminPath(ward, "/sign-in");
@@ -43,37 +45,12 @@ mine.get("/", async (c) => {
       const available = kind === "password" || connections[kind] !== undefined;
       if (!available) return null;
       return <section class="panel"><h2>{SIGN_IN_LABEL[kind]}</h2>
-        {method ? <><p>{method.email ?? "使えるようになっています。"}</p>
-          {active.length > 1 ? <form method="post" action={`${mySignInPath(c.var.ward)}/${kind}/remove`}><button class="secondary">{SIGN_IN_LABEL[kind]}を外す</button></form>
-            : <p>最後の一つなので外せません。</p>}</>
-          : <><p>まだ使っていません。</p><form method="post" action={kind === "password" ? `${mySignInPath(c.var.ward)}/password` : adminPath(c.var.ward, `/sign-in-connect/${kind}/start`)}>
-            <input type="hidden" name="add" value="1" /><button class="secondary">{SIGN_IN_LABEL[kind]}を{methods.some((m) => m.kind === kind) ? "つなぎ直す" : "足す"}</button></form></>}
+        {method ? <p>{method.email ?? "使えるようになっています。"}</p> : <p>まだ使っていません。</p>}
+        {(!method || kind === "email") ? <form method="post" action={kind === "password" ? `${mySignInPath(c.var.ward)}/password` : adminPath(c.var.ward, `/sign-in-connect/${kind}/start`)}>
+          <input type="hidden" name="add" value="1" /><button class="secondary">{SIGN_IN_LABEL[kind]}を{method ? "変える" : "足す"}</button></form> : null}
       </section>;
     })}
-    <p>最後の一つは外せません。外した入り方は、つなぎ直せます。</p>
-  </AdminPage>);
-});
-
-mine.post("/:kind/remove", async (c) => {
-  const kind = kindOf(c.req.param("kind"));
-  const result = kind ? await removeSignInMethod(c.env.DB, c.var.ward.wardId, c.var.account.accountId, kind) : { ok: false, message: "その入り方は見つかりません。" };
-  if (!result.ok) return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="入り方を外せませんでした">
-    <h1>入り方を外せませんでした</h1><Notice error>{result.message}</Notice>
-    <section class="next"><strong>次は</strong><p>別の入り方を先に足してください。</p><a class="button" href={mySignInPath(c.var.ward)}>自分の入り方へ戻る</a></section>
-  </AdminPage>, 400);
-  return c.redirect(`${mySignInPath(c.var.ward)}/removed?kind=${kind}`, 303);
-});
-
-mine.get("/removed", async (c) => {
-  const kind = kindOf(c.req.query("kind") ?? "");
-  const remaining = (await listSignInMethods(c.env.DB, c.var.ward.wardId, c.var.account.accountId)).filter((m) => m.removed_at === null);
-  return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="入り方を外しました" back={{ href: mySignInPath(c.var.ward), label: "自分の入り方へ" }}>
-    <h1>入り方を外しました</h1><Notice>{kind ? SIGN_IN_LABEL[kind] : "入り方"}を外しました。次から、{remaining.map((m) => SIGN_IN_LABEL[m.kind]).join("、")}で入れます。</Notice>
-    <section class="next"><strong>次は</strong><p>このまま使ってください。</p><a class="button" href={adminPath(c.var.ward, "/")}>最初の画面へ</a></section>
-    <h2>間違えたときは</h2>{kind && (kind === "password" || signInConnections(c.env)[kind])
-      ? <form method="post" action={kind === "password" ? `${mySignInPath(c.var.ward)}/password` : adminPath(c.var.ward, `/sign-in-connect/${kind}/start`)}>
-        <input type="hidden" name="add" value="1" /><button class="secondary">{SIGN_IN_LABEL[kind]}をつなぎ直す</button></form>
-      : <a class="button secondary" href={mySignInPath(c.var.ward)}>入り方をつなぎ直す</a>}
+    <p>つないでいないものは、押すと足せます。</p>
   </AdminPage>);
 });
 
@@ -87,7 +64,7 @@ mine.get("/saved", (c) => {
   return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="入り方を足しました" back={{ href: mySignInPath(c.var.ward), label: "自分の入り方へ" }}>
     <h1>入り方を足しました</h1><Notice>{kind ? SIGN_IN_LABEL[kind] : "入り方"}を足しました。次から、この入り方も使えます。</Notice>
     <section class="next"><strong>次は</strong><p>このまま使ってください。</p><a class="button" href={adminPath(c.var.ward, "/")}>最初の画面へ</a></section>
-    <h2>間違えたときは</h2><p>自分の入り方の画面で、外せます。</p>
+    <a class="quiet" href={mySignInPath(c.var.ward)}>自分の入り方へ戻る</a>
   </AdminPage>);
 });
 mine.get("/done", (c) => c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="入れました">
@@ -108,8 +85,8 @@ signInRoutes.get("/invite/:token", async (c) => {
   if (!invitation) return unavailableLink(c);
   const connections = signInConnections(c.env);
   return c.html(<Layout title="入り方を選ぶ" siteName={`${c.var.ward.name}役員の画面`} noindex>
-    <h1>{invitation.name}さん、入り方を{invitation.purpose === "reset" ? "決め直して" : "選んで"}ください</h1>
-    <p class="lead">{invitation.purpose === "reset" ? "前の入り方は使えなくなりました。同じ方法を選んでもかまいません。" : "役員の画面に入れるようになります。あとから変えられます。"}</p>
+    <h1>{invitation.name}さん、入り方を選んでください</h1>
+    <p class="lead">役員の画面に入れるようになります。入り方はあとから足せます。</p>
     {(["line", "email"] as const).map((kind) => connections[kind] ? <form method="post" action={adminPath(c.var.ward, `/sign-in-connect/${kind}/start`)}>
       <input type="hidden" name="invitation" value={token} /><button class="secondary">{SIGN_IN_LABEL[kind]}で続ける</button></form> : null)}
     <form method="post" action={adminPath(c.var.ward, `/invite/${token}/password`)}><button>IDとパスワードを作る</button></form>
@@ -143,6 +120,18 @@ signInRoutes.post("/sign-in-connect/:kind/start", async (c) => {
   }
   return connection.start(c, { login: true });
 });
+signInRoutes.post("/sign-in-select", async (c) => {
+  const form = await c.req.parseBody();
+  const token = typeof form.token === "string" ? form.token : "";
+  const row = await c.env.DB.prepare(`UPDATE sign_in_links SET used_at = ? WHERE ward_id = ? AND purpose = 'email'
+    AND token_hash = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?
+    AND EXISTS (SELECT 1 FROM accounts a WHERE a.ward_id = sign_in_links.ward_id AND a.account_id = sign_in_links.account_id AND a.removed_at IS NULL AND a.sign_in_required = 0)
+    RETURNING account_id`).bind(nowIso(), c.var.ward.wardId, await sha256Hex(token), nowIso()).first<{ account_id: string }>();
+  if (!row) return unavailableLink(c);
+  await issueDevice(c, c.var.ward, row.account_id);
+  return c.redirect(adminPath(c.var.ward, "/"), 303);
+});
+
 signInRoutes.get("/sign-in-connect/:kind/callback", async (c) => {
   const kind = c.req.param("kind") as ExternalSignInKind;
   const connection = kind === "line" || kind === "email" ? signInConnections(c.env)[kind] : undefined;
@@ -157,10 +146,24 @@ signInRoutes.get("/sign-in-connect/:kind/callback", async (c) => {
   if (verified.identity.kind !== kind) return c.redirect(adminPath(c.var.ward, "/login/help"), 303);
   const { identity, intent } = verified;
   if ("login" in intent) {
-    const account = await findVerifiedSignIn(c.env.DB, c.var.ward.wardId, { kind, subject: identity.kind === "email" ? identity.email : identity.subject });
-    if (!account) return c.redirect(adminPath(c.var.ward, "/login/help"), 303);
-    await issueDevice(c, c.var.ward, account.account_id);
-    return c.redirect(adminPath(c.var.ward, "/"), 303);
+    const accounts = await findVerifiedSignIns(c.env.DB, c.var.ward.wardId, { kind, subject: identity.kind === "email" ? identity.email : identity.subject });
+    if (!accounts.length) return c.redirect(adminPath(c.var.ward, "/login/help"), 303);
+    if (accounts.length === 1) {
+      await issueDevice(c, c.var.ward, accounts[0]!.account_id);
+      return c.redirect(adminPath(c.var.ward, "/"), 303);
+    }
+    // 同じ連絡先で入れる人が複数いるとき、勝手に一人として入れない。
+    const choices = await Promise.all(accounts.map(async (account) => {
+      const token = generateDeviceToken();
+      await c.env.DB.prepare(`INSERT INTO sign_in_links (link_id, ward_id, account_id, purpose, token_hash, expires_at, created_at)
+        VALUES (?, ?, ?, 'email', ?, ?, ?)`).bind(newId(), c.var.ward.wardId, account.account_id, await sha256Hex(token), new Date(Date.now() + 30 * 60_000).toISOString(), nowIso()).run();
+      return { ...account, token };
+    }));
+    return c.html(<Layout title="入る人を選ぶ" siteName={`${c.var.ward.name}役員の画面`} noindex>
+      <h1>だれとして入りますか</h1><p class="lead">この入り方で入れる人から、ご自分の名前を選んでください。</p>
+      {choices.map((choice) => <form method="post" action={adminPath(c.var.ward, "/sign-in-select")}><input type="hidden" name="token" value={choice.token} /><button>{choice.name}（ID{choice.login_id}）</button></form>)}
+      <a class="quiet" href={adminPath(c.var.ward, "/login")}>入る画面へ戻る</a>
+    </Layout>);
   }
   if ("accountId" in intent) {
     // 足す途中で端末が変わった時は、入り直してから足す。
