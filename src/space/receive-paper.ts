@@ -6,22 +6,24 @@ import { kickRead } from "../intake/pipeline";
 import { claimRead, failJob, getJob, resetForRetry } from "../intake/store";
 import { WardBucket } from "../core/storage";
 import type { Waitable } from "../intake/types";
+import { imagesBinding, useReadingCopies, type ReadingCopy } from "../intake/photo-copy";
+import type { ReadableOriginal } from "../ai/read";
 
 /** 実行委員に紙の種類を選ばせず、既存の読み取りと答えの受付につなぐ。 */
-export async function receiveSpacePaper(env: Env, ctx: Waitable, wardId: string, projectId: string, file: File) {
+export async function receiveSpacePaper(env: Env, ctx: Waitable, wardId: string, projectId: string, file: File, readingCopy?: ReadingCopy) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const outcome = await receive(env, { wardId, projectId, via: "space", readKind: "general",
-    parts: [{ kind: "photo", filename: file.name, mediaType: file.type, bytes }],
+    parts: [{ kind: "photo", filename: file.name, mediaType: file.type, bytes, readingCopy }],
   });
   const jobId = outcome.jobId;
-  if (jobId) ctx.waitUntil(readSpacePaper(env, ctx, wardId, jobId).catch(async (error: unknown) => {
+  if (jobId) ctx.waitUntil(readSpacePaper(env, ctx, wardId, jobId, outcome.readingCopies).catch(async (error: unknown) => {
     await failJob(env.DB, wardId, jobId, error instanceof ReadError ? error.failure : "error");
   }));
   return outcome;
 }
 
 /** 読み分けの前に原本を預かる。読めなくても、役員と提供側から読み直せる。 */
-export async function readSpacePaper(env: Env, ctx: Waitable, wardId: string, jobId: string) {
+export async function readSpacePaper(env: Env, ctx: Waitable, wardId: string, jobId: string, readingCopies?: ReadableOriginal[]) {
   const job = await getJob(env.DB, wardId, jobId);
   if (!job || job.via !== "space" || job.withdrawn_at) return false;
   if (job.status === "failed") await resetForRetry(env.DB, wardId, jobId);
@@ -36,8 +38,9 @@ export async function readSpacePaper(env: Env, ctx: Waitable, wardId: string, jo
   if (!object) { await failJob(env.DB, wardId, jobId, "error"); return false; }
   const classified = await readOriginals(getClient(env), {
     kind: "general",
-    originals: [{ originalId: original.original_id, filename: original.filename, mediaType: original.media_type,
-      bytes: new Uint8Array(await object.arrayBuffer()), position: 1 }],
+    images: imagesBinding(env),
+    originals: useReadingCopies([{ originalId: original.original_id, filename: original.filename, mediaType: original.media_type,
+      bytes: new Uint8Array(await object.arrayBuffer()), position: 1 }], readingCopies),
   });
   const answer = "document_kind" in classified.body && classified.body.document_kind === "answer_sheet";
   const changed = await env.DB.prepare(`UPDATE jobs SET read_kind = ?, status = 'received', failure = '', attempt = 0
@@ -53,6 +56,6 @@ export async function readSpacePaper(env: Env, ctx: Waitable, wardId: string, jo
       output_tokens: result.usage.output_tokens + classified.usage.output_tokens,
       cache_read_input_tokens: result.usage.cache_read_input_tokens + classified.usage.cache_read_input_tokens,
     } };
-  } });
+  } }, readingCopies);
   return true;
 }

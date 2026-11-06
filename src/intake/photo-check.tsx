@@ -4,6 +4,8 @@ import { getClient } from "../ai/deps";
 import { checkPhoto, type PhotoCheck } from "../ai/photo-check";
 import type { ReceiveInput } from "./receive";
 import { classifyUpload, sha256Hex } from "./media";
+import { getReadings } from "./store";
+import { validReadingCopy } from "./photo-copy";
 
 /** 画像の見出しだけを読む。画素の展開や画像処理の依存は足さない。 */
 export function imageDimensions(bytes: Uint8Array): { width: number; height: number } | null {
@@ -56,12 +58,15 @@ export async function quickCheckPhotos(env: Env, input: ReceiveInput, jobId: str
     if (!original.media_type.startsWith("image/")) return;
     const part = parts.find((candidate) => candidate.hash === original.content_hash)?.part;
     if (!part) return;
-    const dimensions = imageDimensions(part.bytes);
+    const copy = validReadingCopy(part.readingCopy);
+    const bytes = copy?.bytes ?? part.bytes;
+    const mediaType = copy?.mediaType ?? original.media_type;
+    const dimensions = imageDimensions(bytes);
     let check: PhotoCheck = { readability: "unknown", paperKind: "other", reason: "other" };
     if (dimensions && Math.min(dimensions.width, dimensions.height) < 480) check = { readability: "unreadable", paperKind: "other", reason: "small" };
-    else if (dimensions && part.bytes.length <= 5 * 1024 * 1024) {
+    else if (dimensions && bytes.length <= 5 * 1024 * 1024) {
       try {
-        check = await checkPhoto(getClient(env), part.bytes, original.media_type as "image/jpeg" | "image/png" | "image/gif" | "image/webp");
+        check = await checkPhoto(getClient(env), bytes, mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp");
       } catch { /* 受け取った原本と通常の読み取りは残す。 */ }
     }
     await env.DB.prepare(`INSERT OR IGNORE INTO intake_photo_checks (ward_id, original_id, job_id, width, height, readability, paper_kind, reason)
@@ -73,7 +78,15 @@ export async function photoChecks(db: D1Database, wardId: string, jobId: string)
   const rows = await db.prepare(`SELECT c.original_id, c.job_id, c.width, c.height, c.readability, c.paper_kind AS paperKind, c.reason
     FROM intake_photo_checks c JOIN originals o ON o.ward_id = c.ward_id AND o.original_id = c.original_id
     WHERE c.ward_id = ? AND c.job_id = ? AND o.withdrawn_at IS NULL ORDER BY o.position`).bind(wardId, jobId).all<StoredPhotoCheck>();
-  return rows.results;
+  const checks = rows.results;
+  const unreadable = (await getReadings(db, wardId, jobId)).flatMap((reading) => reading.body.unreadable);
+  for (const item of unreadable) {
+    const check = checks.find((entry) => entry.original_id === item.original_id);
+    if (check) { check.readability = "unreadable"; check.reason = "other"; }
+    else checks.push({ original_id: item.original_id, job_id: jobId, width: null, height: null,
+      readability: "unreadable", paperKind: "other", reason: "other" });
+  }
+  return checks;
 }
 
 export function photoCheckMessage(check: PhotoCheck): string {

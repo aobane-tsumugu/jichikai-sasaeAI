@@ -6,7 +6,9 @@
 // 2. 選んだ物と一行の文を、fetch で受付に送り、返事の文を画面に出す。
 //
 // 注意: この文字列の中に、バッククォートと ${ を書かない。
-export const SEND_SCRIPT = String.raw`(function (root) {
+import { PHOTO_SCRIPT } from "./photo-script";
+
+export const SEND_SCRIPT = PHOTO_SCRIPT + String.raw`(function (root) {
   'use strict';
 
   function u16(d, o) { return d[o] | (d[o + 1] << 8); }
@@ -296,6 +298,9 @@ export const SEND_SCRIPT = String.raw`(function (root) {
         fd.append('part', f, f.name);
         fd.append('part_kind', picked[i].kind);
         fd.append('part_extracted', extracted);
+        var copy = await root.__sendPhoto.makeReadingCopy(f);
+        if (copy) fd.append('part_reading', copy, 'reading.jpg');
+        else fd.append('part_reading', '');
       }
       var res = await fetch(form.action, { method: 'POST', body: fd, headers: { accept: 'application/json' }, credentials: 'same-origin' });
       if (!(res.headers.get('content-type') || '').toLowerCase().includes('application/json')) {

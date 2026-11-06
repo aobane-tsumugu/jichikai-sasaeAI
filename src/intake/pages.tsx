@@ -6,6 +6,7 @@ import { ErrorNotice, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { receiveOriginal, ReceiveError, retryJob, withdrawJob } from "./api";
 import { SEND_SCRIPT } from "./browser-script";
+import { readingCopyFromForm } from "./photo-copy";
 import { projectDirectory } from "./project-port";
 import { getJob, getOriginal, getReadings, listJobs, type JobListItem } from "./store";
 import type { JobStatus, OriginalKind } from "./types";
@@ -261,6 +262,7 @@ intakeAdmin.post("/intake", async (c) => {
   const files = form.getAll("part").filter((v): v is File => typeof v !== "string" && v.size > 0);
   const kinds = form.getAll("part_kind").map(String);
   const extracted = form.getAll("part_extracted").map(String);
+  const readingCopies = form.getAll("part_reading");
   const parts: ReceivePart[] = [];
   for (let i = 0; i < files.length; i++) {
     const file = files[i] as File;
@@ -279,6 +281,7 @@ intakeAdmin.post("/intake", async (c) => {
       filename: file.name,
       mediaType: file.type,
       bytes: new Uint8Array(await file.arrayBuffer()),
+      readingCopy: await readingCopyFromForm(readingCopies[i] ?? null),
       extracted: parsed,
     });
   }

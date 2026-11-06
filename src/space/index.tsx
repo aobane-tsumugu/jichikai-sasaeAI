@@ -16,6 +16,8 @@ import { formatJstDate } from "../core/time";
 import { PrintDocument, Sheet, PrintQr } from "../print/a4";
 import { qrSvg } from "../print";
 import { receiveSpacePaper } from "./receive-paper";
+import { PHOTO_SCRIPT } from "../intake/photo-script";
+import { readingCopyFromForm } from "../intake/photo-copy";
 import type { AdminEnv, WardEnv } from "../env";
 import { receiveOriginal } from "../intake/api";
 import { PhotoCheckNotice, photoChecks } from "../intake/photo-check";
@@ -179,12 +181,13 @@ async function sendMaterial(c: Context<WardEnv>, readKind: "general" | "answer_s
   const file = form.get("file");
   if (!(file instanceof File)) return c.redirect(`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/send-error`, 303);
   try {
-    const outcome = readKind === "general" ? await receiveSpacePaper(c.env, c.executionCtx, c.var.ward.wardId, projectId, file) : await receiveOriginal(c.env, c.executionCtx, {
+    const readingCopy = await readingCopyFromForm(form.get("reading_copy"));
+    const outcome = readKind === "general" ? await receiveSpacePaper(c.env, c.executionCtx, c.var.ward.wardId, projectId, file, readingCopy) : await receiveOriginal(c.env, c.executionCtx, {
       wardId: c.var.ward.wardId,
       projectId,
       via: "space",
       readKind,
-      parts: [{ kind: "photo", filename: file.name, mediaType: file.type, bytes: new Uint8Array(await file.arrayBuffer()) }],
+      parts: [{ kind: "photo", filename: file.name, mediaType: file.type, bytes: new Uint8Array(await file.arrayBuffer()), readingCopy }],
     });
     if (outcome.jobId) setCookie(c, "space_photo_receipt", outcome.jobId, { path: `/${c.var.ward.slug}/space/${projectId}`, httpOnly: true, sameSite: "Lax", secure: new URL(c.req.url).protocol === "https:", maxAge: 600 });
     return c.redirect(`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}?sent=${readKind === "answer_sheet" ? "answer" : "paper"}`, 303);
@@ -237,7 +240,8 @@ async function renderSpace(c: Context<WardEnv>, direct: string | null) {
       <h2>間違えて送ったときは</h2><p>役員に知らせてください。</p><p class="preserve-lines">{contact || "連絡先は役員に聞いてください。"}</p><a class="quiet" href={base}>{homeLabel}</a>
     </> : <>
       <p class="lead">{sheet ? "預かった回答票を撮ってください。一枚の写真に何枚写っていてもかまいません。" : "回答票、当番表、当日の紙のどれでもかまいません。一枚の写真に何枚写っていてもかまいません。"}</p>
-      <form method="post" action={`${base}/${sheet ? "send-answer" : "send"}`} enctype="multipart/form-data"><div class="field"><label class="file-button">{sheet ? "カメラで回答票を撮る" : "カメラで紙を撮る"}<input name="file" type="file" accept="image/*,.pdf" capture="environment" required /></label></div><div class="action-links"><button type="submit">送る</button></div></form>
+      <form data-photo-form method="post" action={`${base}/${sheet ? "send-answer" : "send"}`} enctype="multipart/form-data"><div class="field"><label class="file-button">{sheet ? "カメラで回答票を撮る" : "カメラで紙を撮る"}<input name="file" type="file" accept="image/*,.pdf" capture="environment" required /></label></div><div class="action-links"><button type="submit">送る</button></div><p role="status" /></form>
+      <script dangerouslySetInnerHTML={{ __html: PHOTO_SCRIPT }} />
       <p>写真かPDFを送れます。{deadline ? `答えの締切は${formatJstDate(deadline)}です。` : ""}</p>
       <details class="hint"><summary>読みにくい字があったとき</summary><div><p>そのまま送ってください。読めないところは役員が直します。{leader ? "班長さん" : "実行委員さん"}が確かめる必要はありません。</p></div></details>
       {!leader ? <details class="hint"><summary>何の紙か書かなくてよいのですか</summary><div><p>書かなくてかまいません。そのまま送ってください。役員が読んで、必要なところを直します。</p></div></details> : null}
