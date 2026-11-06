@@ -322,24 +322,37 @@ export function answerDeadlineFromDraft(body: string, projectYear: number): stri
   return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === dueOn ? dueOn : null;
 }
 
+/** 同じ班の同名世帯も一件ずつ照合する。班が不明なときは名簿の候補が一つの場合だけ。 */
+export function unansweredRoster(roster: readonly RosterEntry[], answers: readonly RosterEntry[]): RosterEntry[] {
+  const keyOf = (entry: RosterEntry) => JSON.stringify([entry.district, normalizeHousehold(entry.household)]);
+  const answered = new Map<string, number>();
+  for (const answer of answers) {
+    let target = answer;
+    if (!answer.district) {
+      const matches = roster.filter((entry) => normalizeHousehold(entry.household) === normalizeHousehold(answer.household));
+      if (matches.length !== 1) continue;
+      target = matches[0]!;
+    }
+    const key = keyOf(target);
+    answered.set(key, (answered.get(key) ?? 0) + 1);
+  }
+  return roster.filter((entry) => {
+    const key = keyOf(entry), count = answered.get(key) ?? 0;
+    if (!count) return true;
+    answered.set(key, count - 1);
+    return false;
+  });
+}
+
 export async function listUnansweredByDistrict(
   db: D1Database,
   wardId: string,
   projectId: string,
 ): Promise<Array<{ district: string; households: string[] }>> {
   const [roster, answers] = await Promise.all([getRoster(db, wardId), listAnswers(db, wardId, projectId)]);
-  const keyOf = (entry: RosterEntry) => JSON.stringify([entry.district, normalizeHousehold(entry.household)]);
-  const answered = new Set(answers.filter((answer) => answer.district !== "").map(keyOf));
-  for (const answer of answers.filter((entry) => entry.district === "")) {
-    const matches = roster.filter((entry) => normalizeHousehold(entry.household) === normalizeHousehold(answer.household));
-    if (matches.length === 1) answered.add(keyOf(matches[0]!));
-  }
   const districts = new Map<string, string[]>();
-  for (const entry of roster) {
-    const members = districts.get(entry.district) ?? [];
-    if (!answered.has(keyOf(entry))) members.push(entry.household);
-    districts.set(entry.district, members);
-  }
+  for (const entry of roster) if (!districts.has(entry.district)) districts.set(entry.district, []);
+  for (const entry of unansweredRoster(roster, answers)) districts.get(entry.district)!.push(entry.household);
   return [...districts.keys()].sort().map((district) => ({ district, households: districts.get(district) ?? [] }));
 }
 
