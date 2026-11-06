@@ -72,6 +72,9 @@ button.secondary:active, a.button.secondary:active { background: var(--accent); 
 button.danger:active, a.button.danger:active { background: var(--danger); border-color: var(--danger); color: var(--accent-fg); }
 .action-links { display: flex; flex-direction: column; gap: var(--space-3); margin: var(--space-4) 0; }
 .quiet { display: inline-flex; align-items: center; min-height: var(--tap); font-weight: 600; }
+.invite-link { overflow-wrap: anywhere; word-break: break-all; }
+.invite-qr { width: min(100%, 16rem); margin: var(--space-4) auto; }
+.invite-qr svg { display: block; width: 100%; height: auto; }
 .question-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
 .question-actions button.quiet { display: inline-flex; width: auto; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--accent); font-size: 1rem; text-decoration: underline; }
 .question-actions button.quiet:active { background: var(--info-bg); }

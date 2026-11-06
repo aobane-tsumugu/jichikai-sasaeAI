@@ -66,6 +66,8 @@ export async function issueDevice(
       nowIso(),
     )
     .run();
+  await c.env.DB.prepare("UPDATE accounts SET sign_in_completed_at = COALESCE(sign_in_completed_at, ?) WHERE ward_id = ? AND account_id = ? AND removed_at IS NULL")
+    .bind(nowIso(), ward.wardId, accountId).run();
   setDeviceCookie(c, ward, token);
   return deviceId;
 }
@@ -103,7 +105,7 @@ export const requireAdmin: MiddlewareHandler<AdminEnv> = async (c, next) => {
          FROM devices d
          JOIN accounts a ON a.ward_id = d.ward_id AND a.account_id = d.account_id
          JOIN wards w ON w.ward_id = d.ward_id AND w.is_active = 1
-        WHERE d.ward_id = ? AND d.token_hash = ? AND a.removed_at IS NULL`,
+        WHERE d.ward_id = ? AND d.token_hash = ? AND a.removed_at IS NULL AND a.sign_in_required = 0`,
     )
       .bind(ward.wardId, await sha256Hex(token))
       .first<DeviceRow>();
