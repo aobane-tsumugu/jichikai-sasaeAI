@@ -3,6 +3,7 @@ import { installMeetingRoutes } from "./meeting-routes";
 import { AttendanceFields, CountFields, countText, countUnread, parseAnswerCounts } from "./counts";
 import { type AnswerLabels } from "../settings/answer-labels";
 import { EventDetails, ReceptionClosed, ResidentContact, residentContext } from "./resident";
+import { PENDING } from "../project/document-body";
 import { PrintDocument, Sheet } from "../print/a4";
 import { formatJstDate } from "../core/time";
 import { newId, nowIso } from "../core/ids";
@@ -632,8 +633,8 @@ pub.get("/answer/:projectId", async (c) => {
   const [squads, context] = await Promise.all([getSquads(c.env.DB, c.var.ward.wardId), residentContext(c.env.DB, c.var.ward.wardId, projectId)]);
   if (isAnswerClosed(project)) return c.html(<Layout title="答えの受付は終わりました" siteName={c.var.ward.name}><h1>{project.title}のご案内</h1><ReceptionClosed closed={!!project.closed_at} due={project.due_on} /><ResidentContact contact={context.contact} /><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>案内を読む</a></Layout>);
   const selected = squads.includes(c.req.query("s") ?? "") ? c.req.query("s") : "";
-  const recruitment = context.documents.find((document) => document.kind === "recruitment");
-  return c.html(<AnswerForm wardName={c.var.ward.name} slug={c.var.ward.slug} projectId={projectId} title={project.title} squads={squads} labels={context.labels} published={context.documents.length > 0} selected={selected} choices={helpTimeChoices(recruitment?.body ?? "")} />);
+  const announcement = context.documents.find((document) => document.kind === "announcement");
+  return c.html(<AnswerForm wardName={c.var.ward.name} slug={c.var.ward.slug} projectId={projectId} title={project.title} squads={squads} labels={context.labels} published={context.documents.length > 0} selected={selected} choices={helpTimeChoices(announcement?.body ?? "").filter((time) => time !== PENDING)} />);
 });
 
 pub.post("/answer/:projectId", async (c) => {
@@ -665,7 +666,7 @@ pub.post("/answer/:projectId", async (c) => {
   const helperTimes = asString(form.helper_times).trim();
   const squads = await getSquads(c.env.DB, c.var.ward.wardId);
   const error = !household ? "お名前が入っていません。お名前を入れて、もう一度送ってください。" : household.length > 120 || district.length > 80 || !counts || helperName.length > 120 || helperTimes.length > 240 ? "入力を確認してください。お名前と人数を書き直してください。" : district && squads.length && !squads.includes(district) ? "班を選び直してください。分からないときは「分からない」を選べます。" : "";
-  if (error) return c.html(<AnswerForm wardName={c.var.ward.name} slug={c.var.ward.slug} projectId={projectId} title={project.title} squads={squads} labels={context.labels} published={context.documents.length > 0} selected={squads.includes(c.req.query("s") ?? "") ? c.req.query("s") : ""} values={form} error={error} choices={helpTimeChoices(context.documents.find((document) => document.kind === "recruitment")?.body ?? "")} />, 400);
+  if (error) return c.html(<AnswerForm wardName={c.var.ward.name} slug={c.var.ward.slug} projectId={projectId} title={project.title} squads={squads} labels={context.labels} published={context.documents.length > 0} selected={squads.includes(c.req.query("s") ?? "") ? c.req.query("s") : ""} values={form} error={error} choices={helpTimeChoices(context.documents.find((document) => document.kind === "announcement")?.body ?? "").filter((time) => time !== PENDING)} />, 400);
   if (!submissionId) {
     // 既に開いている旧画面からの答えも受け付ける。
     const id = await addAnswer(c.env.DB, wardId, { projectId, household, district, ...counts!, helperName, helperTimes, source: "web" });

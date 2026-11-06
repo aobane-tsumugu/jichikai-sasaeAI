@@ -237,8 +237,8 @@ admin.post("/publish/:projectId/space", async (c) => {
   const publishedVersionId = row.published_at ? newId() : versionId;
   const publish = row.published_at
     ? c.env.DB.prepare(`INSERT INTO document_versions (version_id, ward_id, project_id, document_id, version_no,
-        scope, body, title, based_on_state_version, origin, created_at, created_by_account_id, published_at, published_by_account_id, tables_snapshot)
-      SELECT ?, v.ward_id, v.project_id, v.document_id, v.version_no + 1, v.scope, v.body, COALESCE(v.title, d.title),
+        scope, body, title, project_title, based_on_state_version, origin, created_at, created_by_account_id, published_at, published_by_account_id, tables_snapshot)
+      SELECT ?, v.ward_id, v.project_id, v.document_id, v.version_no + 1, v.scope, v.body, COALESCE(v.title, d.title), p.title,
         p.state_version, 'person', ?, ?, ?, ?, ${publicationTablesSql}
       FROM document_versions v JOIN projects p ON p.ward_id = v.ward_id AND p.project_id = v.project_id
       JOIN documents d ON d.ward_id = v.ward_id AND d.document_id = v.document_id
@@ -247,12 +247,12 @@ admin.post("/publish/:projectId/space", async (c) => {
         AND p.closed_at IS NULL AND d.scope = 'space' AND v.scope = 'space'`)
       .bind(publishedVersionId, now, account.accountId, now, account.accountId, ward.wardId, projectId,
         ward.wardId, projectId, documentId, versionId, versionNo)
-    : c.env.DB.prepare(`UPDATE document_versions SET published_at = ?, published_by_account_id = ?, tables_snapshot = ${publicationTablesSql}
+    : c.env.DB.prepare(`UPDATE document_versions SET published_at = ?, published_by_account_id = ?, project_title = ?, tables_snapshot = ${publicationTablesSql}
     WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_id = ? AND version_no = ? AND published_at IS NULL AND scope = 'space'
       AND version_no = (SELECT MAX(v.version_no) FROM document_versions v WHERE v.ward_id = ? AND v.document_id = ?)
       AND EXISTS (SELECT 1 FROM documents d WHERE d.ward_id = ? AND d.document_id = ? AND d.scope = 'space')
       AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL)`)
-    .bind(now, account.accountId, ward.wardId, projectId, ward.wardId, projectId, documentId, versionId, versionNo,
+    .bind(now, account.accountId, project.title, ward.wardId, projectId, ward.wardId, projectId, documentId, versionId, versionNo,
       ward.wardId, documentId, ward.wardId, documentId, ward.wardId, projectId);
   const result = await publish.run();
   if (result.meta.changes !== 1) return adminResult(c, "下書きの内容が変わったか、すでに配っています。配る画面で内容を確かめてください。", 409, { href: adminPath(c.var.ward, `/publish/${encodeURIComponent(c.req.param("projectId"))}`), label: "配る画面に戻る" }, "配る内容と配る相手を確かめて、もう一度操作してください。");
@@ -334,8 +334,8 @@ async function confirmPublication(c: Context<AdminEnv>) {
       {draft.stale_since_version !== null ? <Notice>新しいものが入っています。ここに表示した内容で配れます。直すときは下書きに戻ってください。</Notice> : null}
       {warnings.filter((warning) => !warning.startsWith("まだ決まっていないところ")).map((warning) => <PublicWarning finding={warning} />)}
       {draft.body.includes(PENDING) ? <div class="notice warn"><strong>まだ決めていないところがあります</strong><p>「（確認中）」のところは、紙とページから外して配ります。入れるときは下書きを直してください。</p><a class="quiet" href={adminPath(ward, `/projects/${projectId}/draft/${draft.kind}`)}>下書きを直す</a></div> : null}
-      <div class="compare"><section class="compare-paper"><b>紙{copies ? `（${recipientScope === "all_households" ? "全戸" : "加入世帯"}に${copies}部）` : ""}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} />{tablesPreview}{withAnswer ? <p class="answer-slip-preview"><b>回答票</b>　切り取って班長か役員に渡します。{project.kind === "general_meeting" ? "出席、委任、欠席の欄があります。" : "代表者のお名前、人数、手伝いの欄があります。"}</p> : null}</div></section>
-        <section><b>{publicScope ? "区のページ" : "実行委員と班長のページ"}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} />{tablesPreview}{withAnswer ? <p class="muted">この下に「出欠を答える」のボタンが出ます。</p> : null}</div></section></div>
+      <div class="compare"><section class="compare-paper"><b>紙{copies ? `（${recipientScope === "all_households" ? "全戸" : "加入世帯"}に${copies}部）` : ""}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} kind={draft.kind} />{tablesPreview}{withAnswer ? <p class="answer-slip-preview"><b>回答票</b>　切り取って班長か役員に渡します。{project.kind === "general_meeting" ? "出席、委任、欠席の欄があります。" : "代表者のお名前、人数、手伝いの欄があります。"}</p> : null}</div></section>
+        <section><b>{publicScope ? "区のページ" : "実行委員と班長のページ"}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} kind={draft.kind} />{tablesPreview}{withAnswer ? <p class="muted">この下に「出欠を答える」のボタンが出ます。</p> : null}</div></section></div>
       <p class="compare-link"><a class="quiet" href={printHref}>紙の見え方を見る</a></p><p class="muted">{publicScope ? "配ったあとも、区のページからは下げられます。" : "実行委員と班長に配ります。区のページには載りません。"}</p>
       <div class="action-bar"><button type="submit">{sendLabel}</button><a class="button secondary" href={editHref}>下書きに戻る</a></div>
     </form></div>
@@ -387,13 +387,13 @@ admin.post("/publish/:projectId/send", async (c) => {
   if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) publishedBody = JSON.stringify({ ...parsed, answerLabels, ...note });
   else if (generalMeeting) publishedBody = JSON.stringify({ text: articleParagraphs(row.body).join("\n\n"), items: [], answerLabels, ...note });
   const publication = await c.env.DB.batch([
-    c.env.DB.prepare(`UPDATE document_versions SET body = ?, published_at = ?, published_by_account_id = ?, tables_snapshot = ${publicationTablesSql}
+    c.env.DB.prepare(`UPDATE document_versions SET body = ?, published_at = ?, published_by_account_id = ?, project_title = ?, tables_snapshot = ${publicationTablesSql}
       WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_id = ? AND version_no = ?
         AND published_at IS NULL
         AND version_no = (SELECT MAX(v.version_no) FROM document_versions v WHERE v.ward_id = ? AND v.document_id = ?)
         AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL)
         AND EXISTS (SELECT 1 FROM documents d WHERE d.ward_id = ? AND d.document_id = ? AND d.scope = 'public')`)
-      .bind(publishedBody, now, account.accountId, ward.wardId, projectId, ward.wardId, projectId, documentId, versionId, versionNo,
+      .bind(publishedBody, now, account.accountId, project.title, ward.wardId, projectId, ward.wardId, projectId, documentId, versionId, versionNo,
         ward.wardId, documentId, ward.wardId, projectId, ward.wardId, documentId),
     c.env.DB.prepare(`INSERT INTO publication_records
       (ward_id, publication_id, project_id, document_id, version_id, version_no, recipient_scope, distribution, line_status, published_at, published_by_account_id)
