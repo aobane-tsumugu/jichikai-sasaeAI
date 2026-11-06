@@ -2,6 +2,25 @@ import type { Env } from "../env";
 
 const LINE_API = "https://api.line.me";
 
+/** 写真が届いた場所への質問だけに使う。一斉送信の関数とは分ける。 */
+export async function sendLineQuestion(token: string, input: {
+  to: string; replyToken: string | null; text: string; batchId: string;
+  options: Array<{ label: string; id: string }>;
+}, request: typeof fetch = fetch): Promise<string | null> {
+  const message = { type: "text", text: input.text, ...(input.options.length ? { quickReply: {
+    items: input.options.map((option) => ({ type: "action", action: { type: "postback", label: option.label.slice(0, 20),
+      displayText: option.label, data: new URLSearchParams({ clarification: option.id, answer: option.label }).toString() } })),
+  } } : {}) };
+  const response = await request(`${LINE_API}/v2/bot/message/${input.replyToken ? "reply" : "push"}`, {
+    method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json",
+      ...(!input.replyToken ? { "X-Line-Retry-Key": crypto.randomUUID() } : {}) },
+    body: JSON.stringify(input.replyToken ? { replyToken: input.replyToken, messages: [message] } : { to: input.to, messages: [message] }),
+  });
+  if (!response.ok) throw new Error(`LINE API request failed (${response.status})`);
+  const value = await response.json() as { sentMessages?: Array<{ id?: string }> };
+  return value.sentMessages?.[0]?.id ?? null;
+}
+
 export async function replyLineText(token: string, replyToken: string, text: string, request: typeof fetch = fetch): Promise<void> {
   const response = await request(`${LINE_API}/v2/bot/message/reply`, {
     method: "POST",

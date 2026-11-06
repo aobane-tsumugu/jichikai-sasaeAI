@@ -5,6 +5,7 @@ import { assignProject as assignIntakeProject, receiveOriginal as receiveIntakeO
 import type { Waitable } from "../intake/types";
 import type { Env } from "../env";
 import { addAnswer, getRoster, normalizeHousehold } from "../answers/api";
+import { quickCheckPhotos } from "../intake/photo-check";
 
 export interface LineOriginal {
   eventId: string;
@@ -16,6 +17,7 @@ export interface LineOriginal {
   text?: string;
   bytes?: ArrayBuffer;
   contentType?: string;
+  officialAddressed?: boolean;
 }
 
 export interface InboxMatch {
@@ -23,9 +25,11 @@ export interface InboxMatch {
   projectId?: string;
   projectName?: string;
   reason?: string;
+  inquiry?: boolean;
 }
 
 export interface LineIntakePorts {
+  checkPhoto?: (wardId: string, original: LineOriginal, jobId: string) => Promise<void>;
   receiveOriginal: (wardId: string, original: LineOriginal) => Promise<string | null>;
   matchInboxItem: (wardId: string, original: LineOriginal) => Promise<InboxMatch>;
   assignProject: (wardId: string, jobId: string, projectId: string) => Promise<void>;
@@ -84,6 +88,12 @@ export function createLineIntakePorts(
   match?: (wardId: string, original: LineOriginal) => Promise<MatchResult>,
 ): LineIntakePorts {
   return {
+    async checkPhoto(wardId, original, jobId) {
+      if (!original.bytes) return;
+      await quickCheckPhotos(env, { wardId, via: original.sourceType === "user" ? "line_direct" : "line_group",
+        parts: [{ kind: "photo", filename: "LINE の写真", mediaType: original.contentType ?? "application/octet-stream", bytes: new Uint8Array(original.bytes) }] },
+      jobId);
+    },
     async receiveOriginal(wardId, original) {
       const bytes = original.kind === "text"
         ? new TextEncoder().encode(original.text ?? "")
@@ -118,12 +128,14 @@ export function createLineIntakePorts(
         title: project.title,
         detail: `${project.kind} ${project.year ?? ""}`.trim(),
       }));
-      const result = await (match ?? (async (_wardId, item) => matchProject(createAnthropic(env), {
+      const result = await (match ?? (async (_wardId, item) => matchProject(createAnthropic(env, { maxRetries: 0, timeoutMs: 5000 }), {
         candidates,
         summary: item.kind === "text" ? (item.text ?? "") : "LINE から写真が届きました",
         ...(item.kind === "text" && item.text ? { excerpt: item.text } : {}),
         senderLabel: item.senderDisplayName || item.senderId,
+        officialAddressed: item.officialAddressed,
       })))(wardId, original);
+      if (original.officialAddressed && result.intent === "inquiry") return { disposition: "unmatched", reason: result.reason, inquiry: true };
       if (result.choice === MATCH_UNRELATED) return { disposition: "unrelated", reason: result.reason };
       if (result.choice === MATCH_NEW) return { disposition: "unmatched", reason: result.reason };
       const project = open.find((candidate) => candidate.projectId === result.choice);

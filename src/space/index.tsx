@@ -13,6 +13,7 @@ import { formatJstDate } from "../core/time";
 import { PrintDocument, Sheet, PrintQr } from "../print/a4";
 import type { AdminEnv, WardEnv } from "../env";
 import { receiveOriginal } from "../intake/api";
+import { PhotoCheckNotice, photoChecks } from "../intake/photo-check";
 import { articleParagraphs } from "../publish";
 import { createInvite, enterWithPassphrase, exchangeInvite, findMember, getSpace, getSpaceMaterials, makePassphrase, openSpace, closeSpace, type SpaceCredential } from "./api";
 import { MaterialsTable } from "./materials";
@@ -161,13 +162,14 @@ async function sendMaterial(c: Context<WardEnv>, readKind: "general" | "answer_s
   const file = form.get("file");
   if (!(file instanceof File)) return c.redirect(`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/send-error`, 303);
   try {
-    await receiveOriginal(c.env, c.executionCtx, {
+    const outcome = await receiveOriginal(c.env, c.executionCtx, {
       wardId: c.var.ward.wardId,
       projectId,
       via: "space",
       readKind,
       parts: [{ kind: "photo", filename: file.name, mediaType: file.type, bytes: new Uint8Array(await file.arrayBuffer()) }],
     });
+    if (outcome.jobId) setCookie(c, "space_photo_receipt", outcome.jobId, { path: `/${c.var.ward.slug}/space/${projectId}`, httpOnly: true, sameSite: "Lax", secure: new URL(c.req.url).protocol === "https:", maxAge: 600 });
     return c.redirect(`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}?sent=${readKind === "answer_sheet" ? "answer" : "paper"}`, 303);
   } catch {
     return c.redirect(`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/send-error`, 303);
@@ -198,10 +200,15 @@ async function renderSpace(c: Context<WardEnv>, direct: string | null) {
   const sheet = sent === "answer" || send === "answer";
   const sending = send === "answer" || (!leader && send === "paper");
   const received = sent === "answer" || (!leader && sent === "paper");
+  const receiptId = received ? getCookie(c, "space_photo_receipt") : undefined;
+  const ownReceipt = receiptId ? await c.env.DB.prepare("SELECT job_id FROM jobs WHERE ward_id = ? AND job_id = ? AND project_id = ? AND via = 'space' AND withdrawn_at IS NULL")
+    .bind(c.var.ward.wardId, receiptId, projectId).first<{ job_id: string }>() : null;
+  const checks = ownReceipt ? await photoChecks(c.env.DB, c.var.ward.wardId, ownReceipt.job_id) : [];
   if (sending || received) return c.html(<Layout title={received ? sheet ? "回答票を受け取りました" : "紙を受け取りました" : sheet ? "回答票を撮って送る" : "書き込んだ紙を撮って送る"} siteName={`${c.var.ward.name} ${project.title}`} noindex>
     {!received ? <a class="back" href={base}>{homeLabel}</a> : null}
     <h1>{received ? sheet ? "回答票を受け取りました" : "紙を受け取りました" : sheet ? "回答票を撮って送る" : "書き込んだ紙を撮って送る"}</h1>
     {received ? <>
+      <PhotoCheckNotice checks={checks} retakeHref={`${base}?send=${sheet ? "answer" : "paper"}`} continueHref={base} />
       <p class="lead">{sheet ? "ありがとうございました。読み取れた分から数えます。この画面は閉じてかまいません。" : "ありがとうございました。役員に届きました。配られたものは、役員が配り直すまで変わりません。"}</p>
       <section class="next"><strong>次は</strong><p>{sheet ? "回答票が残っていれば、続けて撮って送ってください。残りがなければ、これで終わりです。" : "紙が残っていれば、続けて撮って送ってください。残りがなければ、これで終わりです。"}</p><a class="button" href={`${base}?send=${sheet ? "answer" : "paper"}`}>続けて撮って送る</a></section>
       {sheet && leader ? <><h2>撮った回答票の紙は</h2><p>班長のページの「答えた世帯」に名前が出たら、紙は名前が読めないようにして捨ててかまいません。写真が残ります。</p><p>捨てにくいときや、念のため残したいときは、ついでのときに役員に渡してください。急ぎません。</p></> : null}

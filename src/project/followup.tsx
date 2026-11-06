@@ -12,11 +12,22 @@ import { saveDocument } from "./actions";
 
 export const followupAdmin = new Hono<AdminEnv>();
 
+/** 公式 LINE の問い合わせは原文で残す。AI も架空の入力者アカウントも使わない。 */
+export async function recordLineInquiry(db: D1Database, wardId: string, input: {
+  eventId: string; receivedAt: string; text: string; sourceType: string; sourceId: string; senderLabel: string | null;
+}): Promise<void> {
+  await db.prepare(`INSERT OR IGNORE INTO inquiry_records
+    (inquiry_id, ward_id, received_at, kind, subject, answer, submitted_to_city, created_by_account_id, created_at,
+      line_event_id, line_source_type, line_source_id, line_sender_label)
+    VALUES (?, ?, ?, 'inquiry', ?, '', 0, NULL, ?, ?, ?, ?, ?)`)
+    .bind(newId(), wardId, input.receivedAt, input.text, nowIso(), input.eventId, input.sourceType, input.sourceId, input.senderLabel).run();
+}
+
 followupAdmin.get("/inquiries", async (c) => {
   const { ward } = c.var;
-  const records = await c.env.DB.prepare(`SELECT inquiry_id, received_at, kind, subject, answer, submitted_to_city
+  const records = await c.env.DB.prepare(`SELECT inquiry_id, received_at, kind, subject, answer, submitted_to_city, line_source_type, line_sender_label, line_replied_at
     FROM inquiry_records WHERE ward_id = ? ORDER BY received_at DESC, created_at DESC LIMIT 200`)
-    .bind(ward.wardId).all<{ inquiry_id: string; received_at: string; kind: "inquiry" | "request"; subject: string; answer: string; submitted_to_city: number }>();
+    .bind(ward.wardId).all<{ inquiry_id: string; received_at: string; kind: "inquiry" | "request"; subject: string; answer: string; submitted_to_city: number; line_source_type: string | null; line_sender_label: string | null; line_replied_at: string | null }>();
   return c.html(<Layout title="問い合わせ" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>問い合わせと要望 <Hint text="受けた内容と、どう答えたかを残します。受けた日から順に入力してください。" /></h1>
     {c.req.query("saved") ? <Notice>記録しました。</Notice> : null}
@@ -30,7 +41,10 @@ followupAdmin.get("/inquiries", async (c) => {
     </form>
     <h2>対応の記録</h2>
     {records.results.map((record) => <article class="panel"><p>{formatJstDate(record.received_at)} / {record.kind === "request" ? "要望" : "問い合わせ"}</p>
-      <h3>{record.subject}</h3><p>答え: {record.answer}</p><p>{record.submitted_to_city ? "行政に提出" : "行政への提出なし"}</p></article>)}
+      <h3 class="preserve-lines">{record.subject}</h3>
+      {record.line_source_type ? <><p>送った人: {record.line_sender_label || "名前は分かりません"}（{record.line_source_type === "user" ? "公式への一対一" : "LINE グループ"}）</p>
+        <p>{record.line_replied_at ? "AIは答えていません。送った人には「役員に伝えて、内容を確認します。」と返しました。" : "AIは答えていません。受け取った内容を役員に伝えています。"}</p></> : null}
+      <p>答え: {record.answer || "まだありません"}</p><p>{record.submitted_to_city ? "行政に提出" : "行政への提出なし"}</p></article>)}
     <h2>要望の一覧</h2>
     {records.results.filter((record) => record.kind === "request").map((record) => <article class="panel"><p>{formatJstDate(record.received_at)}</p><h3>{record.subject}</h3><p>{record.submitted_to_city ? "行政に提出" : "行政への提出なし"}</p></article>)}
     {records.results.length === 0 ? <p>記録はありません。</p> : null}
