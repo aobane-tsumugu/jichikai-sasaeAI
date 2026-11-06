@@ -7,7 +7,7 @@ import type { AdminEnv } from "../env";
 import { getReadings, listOriginals, listJobs } from "../intake/store";
 import { materialChangeText } from "../map/material-change";
 import { createProject, getProjectState, getProjectSummary, listProjects, ProjectInputError } from "./api";
-import { answerQuestion, renameProject } from "./actions";
+import { answerQuestion, renameProject, ROW_REMOVED } from "./actions";
 import { PROJECT_KINDS, PROJECT_KIND_LABEL, TABLE_KEYS, type TableKey, isItemKey, DEADLINE_LABEL, ITEM_SCREEN_LABEL, TABLES, countWord, displayFieldValue, DOCUMENT_KIND_LABEL, SCOPE_LABEL, type RowData } from "./model";
 import { setProjectApi } from "../ai/project-binding";
 import { agentApi } from "./agent-api";
@@ -155,7 +155,7 @@ admin.get("/projects/:projectId", async (c) => {
     {jobs.length === 0 ? <p>まだ資料は入っていません。</p> : null}
     <a class="quiet" href={adminPath(ward, `/projects/${projectId}/map`)}>段取りで、変わった仕事を見る</a>
     <h2>資料から変わったところ</h2>
-    <ul class="rows">{changes.results.map((change) => <li class="panel"><b>{changeTargetLabel(change.kind, change.target)}</b><p>{change.status === "applied" ? "今年の内容に入れました" : change.status === "same" ? "同じでした" : change.status === "conflict" ? "食い違いとして並びました" : change.status === "kept" ? "今の内容を残しました" : change.status === "held" ? "確認待ちです" : change.status === "dropped" ? `取り込めませんでした${change.reason ? `: ${change.reason}` : ""}` : "記録しました"}{change.source_locator ? `（${change.source_locator}）` : ""}</p></li>)}</ul>
+    <ul class="rows">{changes.results.map((change) => <li class="panel"><b>{changeTargetLabel(change.kind, change.target)}</b><p>{change.status === "applied" ? change.reason === ROW_REMOVED ? "外しました" : "今年の内容に入れました" : change.status === "same" ? "同じでした" : change.status === "conflict" ? "食い違いとして並びました" : change.status === "kept" ? "今の内容を残しました" : change.status === "held" ? "確認待ちです" : change.status === "dropped" ? `取り込めませんでした${change.reason ? `: ${change.reason}` : ""}` : "記録しました"}{change.source_locator ? `（${change.source_locator}）` : ""}</p></li>)}</ul>
     {changes.results.length === 0 ? <p>まだ変わったところはありません。</p> : null}
     <h2>今年の内容</h2>
     <p class="lead">今年の内容がない項目には、去年までの資料を参考として並べます。</p>
