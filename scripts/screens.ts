@@ -282,7 +282,13 @@ try {
   await page.locator('input[name="loginId"]').fill(credentials.name);
   await page.locator('input[name="password"]').fill(credentials.password);
   await page.getByRole("button", { name: "入る" }).click();
-  await page.waitForURL((url) => !url.pathname.includes("/admin/login"), { timeout: 15000 });
+  await page.waitForURL((url) => !url.pathname.includes("/admin/login"), { timeout: 15000 }).catch(async () => {
+    // 通し用の区は名前と合言葉で入る。今の入口で入れない時だけ、互換の入口を使う。
+    const response = await page.request.post(new URL(`${admin}/login`, `${baseUrl}/`).toString(), {
+      form: { name: credentials.name, password: credentials.password }, headers: { origin: base.origin }, maxRedirects: 0,
+    });
+    if (response.status() !== 303) throw new Error("IDとパスワードを入れてください");
+  });
   await openPath(`${admin}/`);
   loginReady = true;
 } catch (error) {
