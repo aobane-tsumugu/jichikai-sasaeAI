@@ -4,7 +4,7 @@ import type { DocumentKind } from "../project/model";
 import { getRoster } from "../answers/api";
 import { getPublicContact } from "../settings/store";
 
-interface Finding { kind: "名簿の名前" | "協賛の額" | "個人の連絡先" | "まだ決まっていない所"; value: string; }
+interface Finding { kind: "名簿の名前" | "協賛の額" | "個人の連絡先" | "まだ決まっていないところ"; value: string; }
 interface PrivateRow { person_fields: string | null; data: string; }
 const normalizePhone = (s: string) => s.replace(/[^0-9]/g, "");
 
@@ -16,7 +16,7 @@ export async function checkPublicDraft(db: D1Database, wardId: string, projectId
   else return ["公開する文書の形を読み取れません"];
   const text = [body.text ?? "", ...(body.items ?? []).map((i) => i.content ?? "")].join("\n");
   const found: Finding[] = [];
-  if (text.includes("（確認中）")) found.push({ kind: "まだ決まっていない所", value: "（確認中）" });
+  if (text.includes("（確認中）")) found.push({ kind: "まだ決まっていないところ", value: "（確認中）" });
   const roster = await getRoster(db, wardId);
   for (const entry of roster) if (entry.household.length >= 2 && text.includes(entry.household)) found.push({ kind: "名簿の名前", value: entry.household });
 

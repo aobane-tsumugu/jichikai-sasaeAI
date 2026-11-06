@@ -196,7 +196,7 @@ export const TABLES: Record<TableKey, TableDef> = {
     nameField: "what",
   },
   submissions: {
-    label: "提配ったもの",
+    label: "出したもの",
     fields: {
       what: { label: "何を", def: TEXT },
       to: { label: "どこへ", def: TEXT },

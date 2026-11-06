@@ -36,7 +36,7 @@ it("行事を開き、当番の行を保存しても、主な操作と記録を�
   const path = `/projects/${id}/draft/duty_roster`;
   const draft = await page(path);
   expect(primaryLabels(draft)).toEqual(["保存して配る内容を見る"]);
-  expect(draft).toContain('<button type="submit" class="secondary">この行を保存</button>');
+  expect(draft).toContain('<button type="submit" class="secondary">この行を保存する</button>');
   expect(draft).toContain('form="draft-form" name="after" value="confirm"');
   const state = await getProjectState(env.DB, ward.wardId, id);
   const row = state?.tables.duties[0];

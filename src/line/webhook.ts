@@ -161,7 +161,7 @@ export async function acceptLineWebhook(
           VALUES (?, ?, ?)`).bind(wardId, event.source.groupId, now.toISOString()).run();
         if ((inserted.meta.changes ?? 0) === 0) continue;
         try {
-          await replyLineText(accessToken, event.replyToken, "このグループに貼られた物は全部記録に残ります。", fetcher);
+          await replyLineText(accessToken, event.replyToken, "このグループに貼られたものは全部記録に残ります。", fetcher);
           await db.prepare("UPDATE line_group_notices SET notice_sent_at = ? WHERE ward_id = ? AND group_id = ? AND notice_sent_at IS NULL")
             .bind(now.toISOString(), wardId, event.source.groupId).run();
         } catch (error) {
