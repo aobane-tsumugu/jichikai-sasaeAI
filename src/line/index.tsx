@@ -6,7 +6,7 @@ import { WardBucket } from "../core/storage";
 import { Layout, Notice } from "../core/ui";
 import { CRON } from "../core/cron";
 import { sendOfficerDigest } from "./digest";
-import { listClarifications, processPhotoBatches } from "./clarifications";
+import { completeScreenClarifications, listClarifications, processPhotoBatches } from "./clarifications";
 import type { AdminEnv, AppEnv } from "../env";
 import { getLineAllowance, lineAccessToken, officerGroupId, sendLineTitleAndUrl } from "./api";
 import { markInboxItemUnrelated } from "./intake";
@@ -95,7 +95,7 @@ admin.get("/inbox", async (c) => {
       <a class="quiet" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a>
     </section>
     <h2>役員に届いた問い合わせ</h2>
-    <p>{inquiryNotice(await getDigestSettings(c.env.DB, ward.wardId), Boolean(officerGroupId(c.env, ward.wardId)))}</p>
+    <p>{inquiryNotice(await getDigestSettings(c.env.DB, ward.wardId), Boolean(await officerGroupId(c.env, ward.wardId)))}</p>
     {inquiries.results.length ? <ul class="rows">{inquiries.results.map((q) => <li><a class="row-link" href={adminPath(ward, "/inquiries")}><b>{q.subject}</b><span>{formatJst(q.received_at)}に届きました</span>
       {q.line_source_type ? <span>送った人: {q.line_sender_label || "名前は分かりません"}（{q.line_source_type === "user" ? "公式への一対一" : "LINEグループ"}）</span> : null}
       {q.line_replied_at ? <span>AIは答えていません。送った人には「役員に伝えて、内容を確認します。」と返しました。</span> : null}
@@ -165,7 +165,8 @@ admin.post("/inbox/questions/:clarificationId", async (c) => {
     c.env.DB.prepare("UPDATE line_clarifications SET answer = ?, answered_unknown = ? WHERE ward_id = ? AND clarification_id = ? AND (answer IS NULL OR answer = ?)").bind(value, value === "分からない" ? 1 : 0, ward.wardId, question.id, question.answer),
     c.env.DB.prepare("UPDATE line_photo_batches SET screen_answered_at = ?, answer_reply_token = NULL, answer_reply_at = NULL WHERE ward_id = ? AND batch_id = ?").bind(new Date().toISOString(), ward.wardId, question.batch_id),
   ]);
-  return adminResult(c, "答えを残しました。", 200, back, "ほかの質問を見られます。この答えについて、LINEには書きません。");
+  await completeScreenClarifications(c.env, ward.wardId);
+  return adminResult(c, "答えを残しました。", 200, back, "ほかの質問を見られます。答えがそろうと、LINEにも聞き終わったことを知らせます。");
 });
 
 admin.post("/inbox/city/:jobId", async (c) => {

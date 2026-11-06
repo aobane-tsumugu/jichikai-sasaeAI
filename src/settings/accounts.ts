@@ -252,36 +252,6 @@ export async function removeAccount(
 }
 
 /**
- * 初期化: パスワードを作り直す。古いパスワードは使えなくなり、そのアカウントの端末の記憶も消す
- * （keepDeviceId の端末だけは残す。自分のパスワードを作り直した時に、その場で締め出されないため）。
- */
-export async function resetPassword(
-  db: D1Database,
-  wardId: string,
-  accountId: string,
-  keepDeviceId?: string,
-): Promise<{ ok: true; loginId: string; name: string; password: string } | Failure> {
-  const account = await db
-    .prepare("SELECT login_id, name FROM accounts WHERE ward_id = ? AND account_id = ? AND removed_at IS NULL")
-    .bind(wardId, accountId)
-    .first<{ login_id: string; name: string }>();
-  if (!account) return { ok: false, message: "そのアカウントは見つかりません。" };
-  const password = generatePassword();
-  const salt = generateSalt();
-  await db.batch([
-    db
-      .prepare(
-        "UPDATE accounts SET password_salt = ?, password_hash = ?, password_changed_at = ? WHERE ward_id = ? AND account_id = ?",
-      )
-      .bind(salt, await hashPassword(password, salt), nowIso(), wardId, accountId),
-    db
-      .prepare("DELETE FROM devices WHERE ward_id = ? AND account_id = ? AND device_id <> ?")
-      .bind(wardId, accountId, keepDeviceId ?? ""),
-  ]);
-  return { ok: true, loginId: account.login_id, name: account.name, password };
-}
-
-/**
  * 端末の締め出し: なくした端末の記憶を消す。deviceId を渡せばその一台、渡さなければそのアカウントの全部。
  * exceptDeviceId の端末は残す（自分の使っている端末を残して、ほかを締め出す時）。
  */

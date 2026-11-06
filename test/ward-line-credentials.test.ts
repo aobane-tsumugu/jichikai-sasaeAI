@@ -13,7 +13,7 @@ async function openTestWard() {
   const destination = `U-fictional-${crypto.randomUUID()}`;
   const result = await openWard(env.DB, {
     slug: uniqueSlug("line-ward"), name: "区ごとのLINEの確認（架空）", firstAccountName: "役員（架空）",
-    lineDestination: destination,
+    lineDestination: destination, officialLineUrl: "https://example.invalid/line",
   });
   if (!result.ok) throw new Error("架空の区を開けません");
   return { ...result, destination };
@@ -46,7 +46,7 @@ it("開設した二つの区はそれぞれの鍵で配り、まだ決めてい�
   try {
     for (const [opened, token] of [[first, "fictional-token-first"], [second, "fictional-token-second"], [missing, null]] as const) {
       const root = `/${opened.ward.slug}/admin`;
-      const login = await postForm(realApp, `${root}/login`, { loginId: opened.account.loginId, password: opened.account.password }, undefined, bindings);
+      const login = await postForm(realApp, `${root}/invite/${opened.account.token}/password`, {}, undefined, bindings);
       const cookie = cookieFrom(login, "device");
       expect(cookie).not.toBeNull();
       const project = await createProject(env.DB, opened.ward.wardId, {

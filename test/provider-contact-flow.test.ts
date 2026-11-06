@@ -48,9 +48,10 @@ it("登録なしで問い合わせ、書き足しと写真、提供側の確認�
   expect(await (await get(realApp, "/ops/contacts", cookie, bindings)).text()).toContain(record!.receipt.slice(0, 4));
   const selected = await (await get(realApp, `${ops}?wardId=${owner.ward.wardId}`, cookie, bindings)).text();
   expect(selected).toContain(owner.account.name);
-  expect(selected).toContain('name="person" required');
-  const confirm = { wardId: owner.ward.wardId, accountId: owner.account.accountId, how: sample.how, person: sample.person };
-  expect((await postForm(realApp, `${ops}/invite`, { ...confirm, person: "" }, cookie, bindings)).status).toBe(400);
+  expect(selected).toContain('name="how" required');
+  expect(selected).not.toContain('name="person"');
+  const confirm = { wardId: owner.ward.wardId, accountId: owner.account.accountId, how: sample.how };
+  expect((await postForm(realApp, `${ops}/invite`, { ...confirm, how: "" }, cookie, bindings)).status).toBe(400);
   expect((await postForm(realApp, `${ops}/invite`, { ...confirm, accountId: another.account.accountId }, cookie, bindings)).status).toBe(400);
   const replied = await postForm(realApp, `${ops}/reply`, { body: sample.reply }, cookie, bindings);
   expect(replied.status).toBe(200);
@@ -79,17 +80,18 @@ it("登録なしで問い合わせ、書き足しと写真、提供側の確認�
   expect((await postForm(realApp, `${invitePath}/password`, {}, undefined, bindings)).status).toBe(400);
   const people = await (await get(realApp, `/${owner.ward.slug}/admin/settings/people`, personCookie, bindings)).text();
   expect(people).toContain("SasaeAIが");
-  const audit = await env.DB.prepare("SELECT verified_how, verified_person, target_ward_id, target_account_id FROM provider_contacts WHERE ward_id = ? AND contact_id = ?")
-    .bind(CONTACT_WARD, record!.contact_id).first<{ verified_how: string; verified_person: string; target_ward_id: string; target_account_id: string }>();
-  expect(audit).toMatchObject({ verified_how: sample.how, verified_person: sample.person, target_ward_id: owner.ward.wardId, target_account_id: owner.account.accountId });
+  const audit = await env.DB.prepare("SELECT verified_how, target_ward_id, target_account_id FROM provider_contacts WHERE ward_id = ? AND contact_id = ?")
+    .bind(CONTACT_WARD, record!.contact_id).first<{ verified_how: string; target_ward_id: string; target_account_id: string }>();
+  expect(audit).toMatchObject({ verified_how: sample.how, target_ward_id: owner.ward.wardId, target_account_id: owner.account.accountId });
 
-  const anonymous = await postForm(realApp, "/contact", { ...sample, kind: "usage", reach: "" }, undefined, bindings);
-  expect(anonymous.status).toBe(201);
-  const anonymousHtml = await anonymous.text();
-  expect(anonymousHtml).toContain("この画面を閉じないでください");
-  const anonymousPath = /class="button contact-thread-link" href="([^"]+)"/.exec(anonymousHtml)![1]!;
-  const otherRecord = await env.DB.prepare("SELECT contact_id FROM provider_contacts WHERE ward_id = ? AND reach = ''")
-    .bind(CONTACT_WARD).first<{ contact_id: string }>();
+  expect((await postForm(realApp, "/contact", { ...sample, kind: "usage", reach: "" }, undefined, bindings)).status).toBe(400);
+  const usageReach = `usage-${crypto.randomUUID()}@example.invalid`;
+  const usage = await postForm(realApp, "/contact", { ...sample, kind: "usage", reach: usageReach }, undefined, bindings);
+  expect(usage.status).toBe(201);
+  const usageHtml = await usage.text();
+  const anonymousPath = /class="button contact-thread-link" href="([^"]+)"/.exec(usageHtml)![1]!;
+  const otherRecord = await env.DB.prepare("SELECT contact_id FROM provider_contacts WHERE ward_id = ? AND reach = ?")
+    .bind(CONTACT_WARD, usageReach).first<{ contact_id: string }>();
   const otherOps = `/ops/contacts/${otherRecord!.contact_id}`;
   const otherHtml = await (await get(realApp, otherOps, cookie, bindings)).text();
   expect(otherHtml).not.toContain('name="how"');
@@ -98,10 +100,11 @@ it("登録なしで問い合わせ、書き足しと写真、提供側の確認�
   expect((await postForm(realApp, `${otherOps}/invite`, confirm, cookie, bindings)).status).toBe(400);
   expect((await postForm(realApp, `${otherOps}/close`, {}, cookie, bindings)).status).toBe(200);
 
-  const next = await postForm(realApp, "/contact", { ...sample, kind: "access", reach: "" }, undefined, bindings);
+  const nextReach = `next-${crypto.randomUUID()}@example.invalid`;
+  const next = await postForm(realApp, "/contact", { ...sample, kind: "access", reach: nextReach }, undefined, bindings);
   expect(next.status).toBe(201);
-  const nextRecord = await env.DB.prepare("SELECT contact_id FROM provider_contacts WHERE ward_id = ? AND reach = '' AND closed_at IS NULL")
-    .bind(CONTACT_WARD).first<{ contact_id: string }>();
+  const nextRecord = await env.DB.prepare("SELECT contact_id FROM provider_contacts WHERE ward_id = ? AND reach = ? AND closed_at IS NULL")
+    .bind(CONTACT_WARD, nextReach).first<{ contact_id: string }>();
   const nextOps = `/ops/contacts/${nextRecord!.contact_id}`;
   expect((await postForm(realApp, `${nextOps}/invite`, { ...confirm, accountId: "new", newName: sample.newName }, cookie, bindings)).status).toBe(200);
   const newLink = await env.DB.prepare(`SELECT l.purpose, l.expires_at, l.created_at, l.created_by_provider FROM sign_in_links l JOIN accounts a

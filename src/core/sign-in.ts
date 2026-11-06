@@ -1,6 +1,5 @@
 import { newId, nowIso } from "./ids";
 import { cleanLoginId, cleanName, generateDeviceToken, generatePassword, generateSalt, hashPassword, nameKey, sha256Hex } from "./password";
-import type { Failure } from "../settings/accounts";
 
 export type SignInKind = "password" | "email" | "line";
 export const SIGN_IN_LABEL: Record<SignInKind, string> = { password: "IDとパスワード", email: "メール", line: "LINE" };
@@ -18,11 +17,10 @@ export interface Invitation {
   purpose: "invite" | "reset";
 }
 export const LINK_UNAVAILABLE = "期限が過ぎたか、もう使われました。";
-export const IDENTITY_IN_USE = "別の役員につないであります。";
 
 /** 役員と渡すリンクを一緒に作る。本人が選ぶまで使える入り方を作らない。 */
 export async function createInvitedAccount(db: D1Database, wardId: string,
-  input: { name: string; seatId: string | null; createdBy: string }) {
+  input: { name: string; seatId: string | null; createdBy: string | null; provider?: true }) {
   const name = cleanName(input.name);
   if (!name) return { ok: false as const, message: "名前を入れてください。" };
   if (name.length > 40) return { ok: false as const, message: "名前は40文字までです。" };
@@ -53,15 +51,15 @@ export async function createInvitedAccount(db: D1Database, wardId: string,
         AND NOT EXISTS (SELECT 1 FROM accounts WHERE ward_id = ? AND login_id = ? AND removed_at IS NULL)`)
       .bind(accountId, wardId, loginId, name, nameKey(name), input.seatId, salt, await hashPassword(generatePassword(), salt), stamp, stamp,
         input.createdBy, wardId, nameKey(name), wardId, loginId),
-    db.prepare(`INSERT INTO sign_in_links (link_id, ward_id, account_id, purpose, token_hash, expires_at, created_at, created_by_account_id)
-      SELECT ?, ?, ?, 'invite', ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM accounts WHERE ward_id = ? AND account_id = ?)`)
-      .bind(newId(), wardId, accountId, await sha256Hex(token), expiresAt, stamp, input.createdBy, wardId, accountId),
+    db.prepare(`INSERT INTO sign_in_links (link_id, ward_id, account_id, purpose, token_hash, expires_at, created_at, created_by_account_id, created_by_provider)
+      SELECT ?, ?, ?, 'invite', ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM accounts WHERE ward_id = ? AND account_id = ?)`)
+      .bind(newId(), wardId, accountId, await sha256Hex(token), expiresAt, stamp, input.createdBy, input.provider ? 1 : 0, wardId, accountId),
   ]);
   if (!created?.meta.changes) {
     const duplicate = await db.prepare("SELECT 1 FROM accounts WHERE ward_id = ? AND name_key = ? AND removed_at IS NULL").bind(wardId, nameKey(name)).first();
     return { ok: false as const, message: duplicate ? "同じ名前の役員がもうあります。" : "そのIDはもう使われています。もう一度お試しください。" };
   }
-  return { ok: true as const, accountId, name, token, expiresAt };
+  return { ok: true as const, accountId, loginId, name, token, expiresAt };
 }
 
 export async function listSignInMethods(db: D1Database, wardId: string, accountId: string) {
@@ -72,28 +70,28 @@ export async function listSignInMethods(db: D1Database, wardId: string, accountI
 
 /** 提供側はU12の本人確認を通った所から呼ぶ。nullの作成者を提供側と取り違えない。 */
 export async function createInvitation(db: D1Database, wardId: string, accountId: string,
-  actor: { accountId: string } | { provider: true }) {
+  actor: { accountId: string } | { provider: true }, link?: { id: string; token: string }) {
   const account = await db.prepare(`SELECT name, sign_in_completed_at FROM accounts
     WHERE ward_id = ? AND account_id = ? AND removed_at IS NULL`).bind(wardId, accountId)
     .first<{ name: string; sign_in_completed_at: string | null }>();
   if (!account) return { ok: false as const, message: "その役員は見つかりません。" };
   const reset = account.sign_in_completed_at !== null;
-  const token = generateDeviceToken();
+  const token = link?.token ?? generateDeviceToken();
   const createdAt = nowIso();
-  const linkId = newId();
+  const linkId = link?.id ?? newId();
   const provider = "provider" in actor;
   const expiresAt = new Date(Date.parse(createdAt) + (provider ? 24 : 7 * 24) * 3600_000).toISOString();
   const statements = [
     db.prepare(`UPDATE sign_in_links SET revoked_at = ? WHERE ward_id = ? AND account_id = ?
       AND used_at IS NULL AND revoked_at IS NULL`).bind(createdAt, wardId, accountId),
-    db.prepare(`UPDATE accounts SET sign_in_required = 1 WHERE ward_id = ? AND account_id = ? AND removed_at IS NULL`)
-      .bind(wardId, accountId),
-  ];
-  if (reset) statements.push(
-    db.prepare(`UPDATE sign_in_methods SET removed_at = ? WHERE ward_id = ? AND account_id = ? AND removed_at IS NULL`)
+    // パスワード変更の既存トリガーが動いたあと、パスワードだけを使えなくする。
+    db.prepare("UPDATE accounts SET password_salt = ?, password_hash = ?, password_changed_at = ? WHERE ward_id = ? AND account_id = ? AND removed_at IS NULL")
+      .bind(generateSalt(), await sha256Hex(generateDeviceToken()), createdAt, wardId, accountId),
+    db.prepare("UPDATE sign_in_methods SET removed_at = ? WHERE ward_id = ? AND account_id = ? AND kind = 'password' AND removed_at IS NULL")
       .bind(createdAt, wardId, accountId),
-    db.prepare("DELETE FROM devices WHERE ward_id = ? AND account_id = ?").bind(wardId, accountId),
-  );
+    db.prepare("UPDATE accounts SET sign_in_required = ? WHERE ward_id = ? AND account_id = ? AND removed_at IS NULL")
+      .bind(reset ? 0 : 1, wardId, accountId),
+  ];
   statements.push(db.prepare(`INSERT INTO sign_in_links
     (link_id, ward_id, account_id, purpose, token_hash, expires_at, created_at, created_by_account_id, created_by_provider)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(linkId, wardId, accountId, reset ? "reset" : "invite",
@@ -144,15 +142,7 @@ async function finishMethod(db: D1Database, wardId: string,
       .bind(password.salt, password.hash, stamp, stamp, wardId, accountId, ...guardValues)
     : db.prepare(`UPDATE accounts SET sign_in_required = 0, sign_in_completed_at = COALESCE(sign_in_completed_at, ?)
         WHERE ward_id = ? AND account_id = ? AND ${guard}`).bind(stamp, wardId, accountId, ...guardValues));
-  let results: D1Result[];
-  try {
-    results = await db.batch(statements);
-  } catch (error) {
-    if (method.kind !== "password" && error instanceof Error && /UNIQUE constraint failed: sign_in_methods.kind, sign_in_methods.subject/.test(error.message)) {
-      return { ok: false as const, message: IDENTITY_IN_USE };
-    }
-    throw error;
-  }
+  const results = await db.batch(statements);
   if (!results[0]?.meta.changes) return { ok: false as const, message: LINK_UNAVAILABLE };
   const account = await db.prepare("SELECT login_id, name FROM accounts WHERE ward_id = ? AND account_id = ? AND removed_at IS NULL")
     .bind(wardId, accountId).first<{ login_id: string; name: string }>();
@@ -177,18 +167,12 @@ export async function connectVerifiedSignIn(db: D1Database, wardId: string, gran
   return finishMethod(db, wardId, grant, { kind: identity.kind, subject, email: identity.kind === "email" ? subject : null });
 }
 
-export async function findVerifiedSignIn(db: D1Database, wardId: string,
+export async function findVerifiedSignIns(db: D1Database, wardId: string,
   identity: { kind: "email" | "line"; subject: string }) {
-  return db.prepare(`SELECT a.account_id FROM sign_in_methods m JOIN accounts a ON a.ward_id = m.ward_id AND a.account_id = m.account_id
+  const rows = await db.prepare(`SELECT a.account_id, a.name, a.login_id FROM sign_in_methods m JOIN accounts a ON a.ward_id = m.ward_id AND a.account_id = m.account_id
     WHERE m.ward_id = ? AND m.kind = ? AND m.subject = ? AND m.removed_at IS NULL AND a.removed_at IS NULL AND a.sign_in_required = 0`)
     .bind(wardId, identity.kind, identity.kind === "email" ? identity.subject.trim().toLowerCase() : identity.subject)
-    .first<{ account_id: string }>();
+    .all<{ account_id: string; name: string; login_id: string }>();
+  return rows.results;
 }
 
-export async function removeSignInMethod(db: D1Database, wardId: string, accountId: string, kind: SignInKind): Promise<{ ok: true } | Failure> {
-  const result = await db.prepare(`UPDATE sign_in_methods SET removed_at = ?
-    WHERE ward_id = ? AND account_id = ? AND kind = ? AND removed_at IS NULL
-      AND (SELECT COUNT(*) FROM sign_in_methods WHERE ward_id = ? AND account_id = ? AND removed_at IS NULL) > 1`)
-    .bind(nowIso(), wardId, accountId, kind, wardId, accountId).run();
-  return result.meta.changes > 0 ? { ok: true } : { ok: false, message: "最後の一つは外せません。先に別の入り方を足してください。" };
-}

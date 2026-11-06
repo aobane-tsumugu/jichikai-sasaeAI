@@ -7,7 +7,7 @@ import { saveDocument } from "../src/project/actions";
 import { getMemoRows } from "../src/map/memo";
 import { get, postForm, realApp } from "./helpers";
 
-it("資料のない一年目に運営メモを書き、消す・戻す・足すを試し、閉じた記録を来年の段取りで読む", async () => {
+it("資料のない一年目に運営メモを書き、情報なしのまま残し、行を足し、閉じた記録を来年の段取りで読む", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, { kind: "event", title: fixture.nextYearTitle, year: fixture.eventYear, accountId: account.accountId });
@@ -39,10 +39,11 @@ it("資料のない一年目に運営メモを書き、消す・戻す・足す�
   expect(state?.tables.ledger.find((row) => row.data.what === "警備")?.data.amount).toBeUndefined();
   const withZero = await follow(await postForm(realApp, security, { what: "警備", amount: "0", note: fixture.nextYearChange, contact: fixture.requestedBy, estimate: "0" }, cookie));
   expect(withZero).toContain("0円");
-  expect(await follow(await postForm(realApp, `${security}/remove`, {}, cookie))).toContain("この行事では使わない行にしました");
-  expect(await follow(await postForm(realApp, `${security}/restore`, {}, cookie))).toContain("行を戻しました");
+  expect((await postForm(realApp, `${security}/remove`, {}, cookie)).status).toBe(404);
+  expect((await postForm(realApp, `${security}/restore`, {}, cookie)).status).toBe(404);
+  expect(await read(security)).not.toContain("使わない行");
   expect(await read(security)).toContain(fixture.nextYearChange);
-  // 何も書かない行も足せる。押し間違えても消して戻せる。
+  // 何も書かない行も足せる。あとから同じ行を直せる。
   const add = await read(`${memo}/new`);
   const action = /<form method="post" action="([^"]+\/ledger\/custom[^\"]+)"/.exec(add)?.[1];
   if (!action) throw new Error("メモを足す入口がありません");
@@ -54,7 +55,7 @@ it("資料のない一年目に運営メモを書き、消す・戻す・足す�
   expect((await postForm(realApp, `${root}/close/${project.projectId}/finalize`, { body: fixture.reportText }, cookie)).status).toBe(303);
   const frozen = await read(memo); expect(frozen).toContain(fixture.nextYearChange); expect(frozen).not.toContain("行を足す");
   expect((await postForm(realApp, security, { note: fixture.reportText }, cookie)).status).toBe(409);
-  expect((await postForm(realApp, `${security}/remove`, {}, cookie)).status).toBe(409);
+  expect((await postForm(realApp, `${security}/remove`, {}, cookie)).status).toBe(404);
   const started = await postForm(realApp, `${root}/archive/${project.projectId}/seed`, { title: fixture.nextYearTitle, year: String(fixture.nextYear), eventDay: fixture.eventDay }, cookie);
   expect(started.status).toBe(303);
   const startedPath = started.headers.get("location"); if (!startedPath) throw new Error("来年の行事がありません");

@@ -48,7 +48,7 @@ export async function getMemoRows(db: D1Database, wardId: string, state: Project
     const reference: RowView | null = inherited ? { rowId: row.row_id, table: "ledger", scope: "reference", refYear: row.year, matchKey: row.match_key, data: previous, personFields: Object.keys(previous), source: { kind: row.source_kind, ref: row.source_ref, locator: row.source_locator, year: row.source_year }, confidence: row.confidence, updatedAt: row.updated_at } : null;
     const existing = rows.get(key);
     if (inherited && existing) { existing.reference ??= reference; continue; }
-    rows.set(key, { key, name: nameOf(data), hint: "", data, current: null, reference, removed: true, sponsor: data.memoGroup === "sponsors" });
+    rows.set(key, { key, name: nameOf(data), hint: "", data, current: null, reference, removed: false, sponsor: data.memoGroup === "sponsors" });
   }
   const references = [...state.tables.ledger, ...state.tables.sponsors].filter((r) => r.scope === "reference").sort((a, b) => (b.refYear ?? 0) - (a.refYear ?? 0));
   for (const reference of references) {
@@ -118,15 +118,14 @@ memoAdmin.get("/projects/:projectId/ledger/:rowId", async (c) => {
         {!adding && !row.sponsor ? <details class="fold"><summary>来年のために書いておく</summary><div>{field("contact", "連絡先と、頼んだ人")}{field("requestedOn", "いつ頼んだか")}{field("quantity", "頼んだ内容の量")}{field("estimate", "見積りの額（円）", "number")}{field("payment", "払い方")}{field("thanks", "お礼の仕方")}</div></details> : null}
         <div class="action-bar"><button>保存する</button></div>
       </form>
-      {key !== "new" ? <form method="post" action={adminPath(ward, `${rowPath(id, row.key)}/remove`)}><button class="secondary">この行事では使わない行にする</button></form> : null}
     </>}
     {original ? <p><a class="quiet" href={adminPath(ward, `/intake/originals/${encodeURIComponent(String(original))}?back=${encodeURIComponent(back)}`)}>元の資料を見る</a></p> : null}
     <p><a class="quiet" href={back}>運営メモに戻る</a></p>
   </Layout>);
 });
 
-/** 原本に触れず、同じ運営メモに保存する。消した行も戻せる。 */
-async function writeMemo(db: D1Database, wardId: string, state: ProjectState, row: MemoRow, accountId: string, raw: RowData, removed: boolean): Promise<boolean> {
+/** 原本に触れず、同じ運営メモに保存する。分からない欄は空のまま残す。 */
+async function writeMemo(db: D1Database, wardId: string, state: ProjectState, row: MemoRow, accountId: string, raw: RowData): Promise<boolean> {
   if (state.project.closedAt) return false;
   const cleaned = cleanRowData("ledger", { ...raw, memoKey: row.key, ...(row.sponsor ? { memoGroup: "sponsors" } : {}) });
   if (!cleaned.ok) return false;
@@ -135,15 +134,15 @@ async function writeMemo(db: D1Database, wardId: string, state: ProjectState, ro
   const old = await db.prepare("SELECT row_id FROM project_rows WHERE ward_id = ? AND project_id = ? AND table_key = 'ledger' AND scope = 'current' AND (match_key = ? OR row_id = ?) ORDER BY removed_at IS NULL DESC LIMIT 1")
     .bind(wardId, id, match, row.current?.table === "ledger" ? row.current.rowId : "").first<{ row_id: string }>();
   const source = row.current?.source;
-  const payload = { kind: "row", table: "ledger", data: cleaned.data, before: row.data, removed };
+  const payload = { kind: "row", table: "ledger", data: cleaned.data, before: row.data };
   const payloadHash = await hashOf(payload);
   const guard = "EXISTS (SELECT 1 FROM project_changes WHERE ward_id = ? AND project_id = ? AND change_id = ?)";
   const statement = old
     ? db.prepare(`UPDATE project_rows SET data = ?, match_key = ?, person_fields = ?, change_id = ?, updated_at = ?, removed_at = ?, removed_by_account_id = ? WHERE ward_id = ? AND project_id = ? AND row_id = ? AND ${guard}`)
-      .bind(stableStringify(cleaned.data), match, JSON.stringify(Object.keys(TABLES.ledger.fields)), changeId, now, removed ? now : null, removed ? accountId : null, wardId, id, old.row_id, wardId, id, changeId)
+      .bind(stableStringify(cleaned.data), match, JSON.stringify(Object.keys(TABLES.ledger.fields)), changeId, now, null, null, wardId, id, old.row_id, wardId, id, changeId)
     : db.prepare(`INSERT INTO project_rows (row_id, ward_id, project_id, table_key, scope, match_key, data, person_fields, source_kind, source_ref, source_locator, source_year, confidence, change_id, created_at, updated_at, created_by_account_id, removed_at, removed_by_account_id)
         SELECT ?, ?, ?, 'ledger', 'current', ?, ?, ?, ?, ?, ?, ?, 'high', ?, ?, ?, ?, ?, ? WHERE ${guard}`)
-      .bind(newId(), wardId, id, match, stableStringify(cleaned.data), JSON.stringify(Object.keys(TABLES.ledger.fields)), source?.kind ?? "person", source?.ref ?? `person:${accountId}`, source?.locator ?? null, source?.year ?? null, changeId, now, now, accountId, removed ? now : null, removed ? accountId : null, wardId, id, changeId);
+      .bind(newId(), wardId, id, match, stableStringify(cleaned.data), JSON.stringify(Object.keys(TABLES.ledger.fields)), source?.kind ?? "person", source?.ref ?? `person:${accountId}`, source?.locator ?? null, source?.year ?? null, changeId, now, now, accountId, null, null, wardId, id, changeId);
   const result = await db.batch([
     db.prepare(`INSERT INTO project_changes (change_id, ward_id, project_id, kind, target, status, dedupe_key, payload_hash, payload, result, pack_version, source_kind, source_ref, confidence, state_version_after, created_at, created_by_account_id)
       SELECT ?, ?, ?, 'row', ?, 'applied', ?, ?, ?, ?, 'memo-edit@1', 'person', ?, 'high', ?, ?, ?
@@ -161,7 +160,7 @@ export async function saveLedgerRow(db: D1Database, wardId: string, projectId: s
   if (!state) return false;
   const rows = await getMemoRows(db, wardId, state);
   const row = findRow(rows, state, rowId);
-  return !!row && !row.removed && writeMemo(db, wardId, state, row, accountId, data, false);
+  return !!row && !row.removed && writeMemo(db, wardId, state, row, accountId, data);
 }
 
 memoAdmin.post("/projects/:projectId/ledger/:rowId", async (c) => {
@@ -188,18 +187,8 @@ memoAdmin.post("/projects/:projectId/ledger/:rowId", async (c) => {
     if (!Number.isSafeInteger(amount) || amount < 0) return adminResult(c, "額を保存できませんでした。", 400, back, "額は0以上の整数で入れてください。分からなければ空のままで保存できます。");
     data[name] = amount;
   }
-  if (!await writeMemo(c.env.DB, ward.wardId, state, row, account.accountId, data, false)) return adminResult(c, "メモを保存できませんでした。", 409, back, "行事が閉じているときは開き直せます。メモを開き、もう一度保存してください。");
+  if (!await writeMemo(c.env.DB, ward.wardId, state, row, account.accountId, data)) return adminResult(c, "メモを保存できませんでした。", 409, back, "行事が閉じているときは開き直せます。メモを開き、もう一度保存してください。");
   return c.redirect(`${adminPath(ward, rootPath(id))}?notice=saved&changed=${encodeURIComponent(row.key)}`, 303);
-});
-
-for (const operation of ["remove", "restore"] as const) memoAdmin.post(`/projects/:projectId/ledger/:rowId/${operation}`, async (c) => {
-  const { ward, account } = c.var; const id = c.req.param("projectId"); const key = c.req.param("rowId");
-  const state = await getProjectState(c.env.DB, ward.wardId, id);
-  if (!state) return c.notFound();
-  const row = findRow(await getMemoRows(c.env.DB, ward.wardId, state), state, key);
-  if (!row) return c.notFound();
-  if (!await writeMemo(c.env.DB, ward.wardId, state, row, account.accountId, row.data, operation === "remove")) return adminResult(c, "メモを変えられませんでした。", 409, { href: adminPath(ward, rootPath(id)), label: "運営メモに戻る" }, "行事が閉じているときは開き直せます。運営メモからもう一度操作できます。");
-  return c.redirect(`${adminPath(ward, rootPath(id))}?notice=${operation === "remove" ? "removed" : "restored"}&changed=${encodeURIComponent(row.key)}`, 303);
 });
 
 memoAdmin.get("/projects/:projectId/ledger", async (c) => {
@@ -211,7 +200,7 @@ memoAdmin.get("/projects/:projectId/ledger", async (c) => {
   const root = adminPath(ward, rootPath(id));
   const changedRow = rows.find((row) => row.key === c.req.query("changed"));
   const notice = c.req.query("notice");
-  const result = notice === "saved" ? "メモを残しました" : notice === "removed" ? "この行事では使わない行にしました" : notice === "restored" ? "行を戻しました" : "";
+  const result = notice === "saved" ? "メモを残しました" : "";
   const renderRows = (entries: MemoRow[]) => <ul class="rows">{entries.map((row) => <li><a class="row-link" href={adminPath(ward, rowPath(id, row.key))}>
     <b>{row.name}{row.data.counterpart && row.data.what ? `　${row.data.counterpart}` : ""}</b>
     <span>{typeof row.data.amount === "number" ? yen(row.data.amount) : row.data.counterpart || row.data.note ? "額の情報なし" : "情報なし"}{row.data.date ? `　${formatDateText(String(row.data.date))}` : ""}</span>
@@ -222,11 +211,10 @@ memoAdmin.get("/projects/:projectId/ledger", async (c) => {
     <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>{state.project.title}の段取りへ</a><h1>{state.project.title}の運営メモ</h1>
     <p class="lead">よく要るものを並べました。情報なしの行は、そのままでかまいません。来年の担当の方が見ます。</p>
     <Notice><strong>参考の記録です</strong><p>会計の帳簿や決算の代わりにはなりません。証跡として使わず、税務と法務の判断はしません。領収書の紙は、これまでどおり会計の方で保管してください。</p></Notice>
-    {result ? <><div class="notice done" role="status"><strong>{result}</strong><p>元の資料は変わりません。ほかの行は、そのままでかまいません。</p></div><section class="next"><strong>次は</strong><p>思い出したときに書き直せます。</p><a class="button" href={notice === "removed" ? `${root}#unused` : changedRow ? adminPath(ward, rowPath(id, changedRow.key)) : root}>{notice === "removed" ? "使わない行を戻す" : "メモを開く"}</a></section><p><a class="quiet" href={adminPath(ward, `/projects/${id}/map`)}>段取りに戻る</a></p></> : null}
+    {result ? <><div class="notice done" role="status"><strong>{result}</strong><p>元の資料は変わりません。ほかの行は、そのままでかまいません。</p></div><section class="next"><strong>次は</strong><p>思い出したときに書き直せます。</p><a class="button" href={changedRow ? adminPath(ward, rowPath(id, changedRow.key)) : root}>メモを開く</a></section><p><a class="quiet" href={adminPath(ward, `/projects/${id}/map`)}>段取りに戻る</a></p></> : null}
     {!state.project.closedAt ? <div class="action-links"><a class="button" href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>写真を送る</a></div> : <Notice>この行事は閉じています。記録を読めます。<p><a class="quiet" href={adminPath(ward, `/close/${id}`)}>行事を開き直す画面へ</a></p></Notice>}
     <h2>よく要るもの</h2>{renderRows(active.filter((row) => !row.sponsor))}
     {!state.project.closedAt ? <p><a class="button secondary" href={adminPath(ward, `${rootPath(id)}/new`)}>行を足す</a></p> : null}
     {active.some((row) => row.sponsor) ? <><h2>協賛</h2>{renderRows(active.filter((row) => row.sponsor))}</> : null}
-    {rows.some((row) => row.removed) ? <details class="fold" id="unused" open={notice === "removed"}><summary>この行事では使わない行</summary><div>{rows.filter((row) => row.removed).map((row) => <div><p><b>{row.name}</b></p>{!state.project.closedAt ? <form method="post" action={adminPath(ward, `${rowPath(id, row.key)}/restore`)}><button class="secondary">行を戻す</button></form> : null}</div>)}</div></details> : null}
   </Layout>);
 });

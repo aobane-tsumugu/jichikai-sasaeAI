@@ -72,7 +72,8 @@ describe("区の設定: 役員の席とアカウント", () => {
     expect(await dup.text()).toContain("同じ名前の役員がもうあります");
   });
 
-  it("入り方を作り直すと、古いパスワードも端末も使えない", async () => {
+  // U16: リンクの出し直しはパスワードだけを失効させ、端末の締め出しとは分ける。
+  it("リンクを出し直すと、古いパスワードは使えず、覚えた端末は残る", async () => {
     const { ward, cookie } = await seedAdmin(env.DB);
     const other = await seedAccount(env.DB, ward.wardId, "別の役員");
     const otherCookie = await seedDeviceCookie(env.DB, ward.wardId, other.accountId);
@@ -80,18 +81,31 @@ describe("区の設定: 役員の席とアカウント", () => {
     expect(res.status).toBe(200);
     const invitation = invitationOf(await res.text());
     expect(invitation).toBeTruthy();
+    expect((await postForm(realApp, `/${ward.slug}/admin/login`, { name: other.name, password: other.password })).status).toBe(401);
+    expect((await get(realApp, `/${ward.slug}/admin/`, otherCookie)).status).toBe(200);
     const password = secretOf(await (await postForm(realApp, `${new URL(invitation!).pathname}/password`, {})).text());
+    expect(password).toMatch(/^[a-z0-9]{6}(-[a-z0-9]{6}){3}$/);
     expect(password).not.toBe(other.password);
     expect((await postForm(realApp, `/${ward.slug}/admin/login`, { name: other.name, password: other.password })).status).toBe(401);
     expect((await postForm(realApp, `/${ward.slug}/admin/login`, { name: other.name, password: password! })).status).toBe(303);
-    expect((await get(realApp, `/${ward.slug}/admin/`, otherCookie)).status).toBe(303);
+    expect((await get(realApp, `/${ward.slug}/admin/`, otherCookie)).status).toBe(200);
   });
 
-  it("自分の入り方の作り直しは一覧から受けず、端末を残す", async () => {
+  it("自分のリンクも一覧から出せて、今の端末とほかの端末を残す", async () => {
     const { ward, cookie, account } = await seedAdmin(env.DB);
     const otherDevice = await seedDeviceCookie(env.DB, ward.wardId, account.accountId);
     const res = await postForm(realApp, people(ward.slug, `/accounts/${account.accountId}/reset`), {}, cookie);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
+    const invitation = invitationOf(await res.text());
+    expect(invitation).toBeTruthy();
+    expect((await postForm(realApp, `/${ward.slug}/admin/login`, { name: account.name, password: account.password })).status).toBe(401);
+    expect((await get(realApp, `/${ward.slug}/admin/`, cookie)).status).toBe(200);
+    expect((await get(realApp, `/${ward.slug}/admin/`, otherDevice)).status).toBe(200);
+    const password = secretOf(await (await postForm(realApp, `${new URL(invitation!).pathname}/password`, {})).text());
+    expect(password).toMatch(/^[a-z0-9]{6}(-[a-z0-9]{6}){3}$/);
+    expect(password).not.toBe(account.password);
+    expect((await postForm(realApp, `/${ward.slug}/admin/login`, { name: account.name, password: account.password })).status).toBe(401);
+    expect((await postForm(realApp, `/${ward.slug}/admin/login`, { name: account.name, password: password! })).status).toBe(303);
     expect((await get(realApp, `/${ward.slug}/admin/`, cookie)).status).toBe(200);
     expect((await get(realApp, `/${ward.slug}/admin/`, otherDevice)).status).toBe(200);
   });

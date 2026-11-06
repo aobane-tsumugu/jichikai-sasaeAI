@@ -1,3 +1,4 @@
+import { setSetting } from "../src/settings/store";
 import { env } from "cloudflare:workers";
 import { expect, it } from "vitest";
 import { FIRST_SLICE } from "../fixtures/first-slice";
@@ -17,8 +18,9 @@ it("募集から班を選ばず申し込み、世帯と別に数えて当番の�
   const helpPath = `${base}/help/${project.projectId}`;
   const linePath = `${base}/line`;
   const settings = { contact: "", squads: FIRST_SLICE.district, official_line_url: "https://example.test/official-line" };
+  await setSetting(env.DB, ward.wardId, "official_line_url", settings.official_line_url, null);
   expect((await postForm(realApp, `${base}/admin/settings/info`, settings, cookie)).status).toBe(303);
-  expect(await (await get(realApp, `${base}/admin/settings/info`, cookie)).text()).toContain(settings.official_line_url);
+  expect(await (await get(realApp, `${base}/admin/settings/info`, cookie)).text()).not.toContain('name="official_line_url"');
   await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
     kind: "recruitment", title: FIRST_SLICE.draftTitle, scope: "public", basedOn: project.stateVersion,
     body: JSON.stringify({ text: FIRST_SLICE.draftText, items: [{ key: "helper_slots", content: FIRST_SLICE.helperTime }] }),
@@ -68,12 +70,8 @@ it("募集から班を選ばず申し込み、世帯と別に数えて当番の�
   expect((await postForm(realApp, helpPath, { helper_name: FIRST_SLICE.sheetHelper, helper_times: FIRST_SLICE.helperTime })).status).toBe(400);
   expect(await (await get(realApp, `${base}/`)).text()).not.toContain(`href="${base}/help"`);
   expect((await postForm(realApp, `${base}/admin/settings/info`, { ...settings, official_line_url: "" }, cookie)).status).toBe(303);
-  const homeWithoutLine = await (await get(realApp, `${base}/`)).text();
-  expect(homeWithoutLine).not.toContain(settings.official_line_url);
-  expect(homeWithoutLine).not.toContain(`href="${linePath}"`);
-  const lineWithoutSetting = await get(realApp, linePath);
-  expect(lineWithoutSetting.status).toBe(200);
-  const lineWithoutSettingPage = await lineWithoutSetting.text();
-  expect(lineWithoutSettingPage).not.toContain(`href="${settings.official_line_url}"`);
-  expect(lineWithoutSettingPage).toContain("この区の公式LINEは、まだ用意されていません。");
+  const homeWithLine = await (await get(realApp, `${base}/`)).text();
+  expect(homeWithLine).toContain(`href="${linePath}"`);
+  const lineWithSetting = await (await get(realApp, linePath)).text();
+  expect(lineWithSetting).toContain(`href="${settings.official_line_url}"`);
 });

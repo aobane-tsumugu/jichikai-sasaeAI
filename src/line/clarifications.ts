@@ -4,7 +4,7 @@ import { getClient } from "../ai/deps";
 import { writeClarification, type ClarificationPrompt } from "../ai/clarification";
 import { getReadings } from "../intake/store";
 import { addQuestion } from "../project/api";
-import { lineChannelCredentials, replyLineText, sendLineQuestion } from "./api";
+import { lineChannelCredentials, replyLineText, pushInquiryAnswer, inquiryPushAllowance, sendLineQuestion } from "./api";
 import { photoCheckMessage } from "../intake/photo-check";
 import { sha256Hex } from "../intake/media";
 
@@ -355,8 +355,32 @@ async function resolveRetakes(env: Env, wardId: string, deps: QuestionDeliveryDe
   }
 }
 
+/** 画面で答えがそろったときも、質問を送った場所へ完了を一度書く。 */
+export async function completeScreenClarifications(env: Env, wardId: string, deps: QuestionDeliveryDeps = {}): Promise<void> {
+  const batches = await env.DB.prepare(`SELECT b.batch_id, b.destination, b.source_type, b.source_id FROM line_photo_batches b
+    WHERE b.ward_id = ? AND b.screen_answered_at IS NOT NULL AND b.completed_at IS NULL
+      AND EXISTS (SELECT 1 FROM line_clarifications c WHERE c.ward_id = b.ward_id AND c.batch_id = b.batch_id AND c.sent_at IS NOT NULL)
+      AND NOT EXISTS (SELECT 1 FROM line_clarifications c JOIN jobs j ON j.ward_id = c.ward_id AND j.job_id = c.job_id
+        WHERE c.ward_id = b.ward_id AND c.batch_id = b.batch_id AND c.answer IS NULL AND j.withdrawn_at IS NULL)
+    LIMIT 30`).bind(wardId).all<Pick<Batch, "batch_id" | "destination" | "source_type" | "source_id">>();
+  for (const batch of batches.results) {
+    const credentials = await lineChannelCredentials(env, wardId, batch.destination);
+    if (!credentials?.accessToken) continue;
+    const request = deps.fetch ?? fetch;
+    try {
+      const allowance = await inquiryPushAllowance(credentials.accessToken, [{ type: batch.source_type, id: batch.source_id }], request);
+      if (!allowance?.enough) continue;
+      const claim = await env.DB.prepare("UPDATE line_photo_batches SET completed_at = ? WHERE ward_id = ? AND batch_id = ? AND completed_at IS NULL")
+        .bind((deps.now ?? new Date()).toISOString(), wardId, batch.batch_id).run();
+      if (!claim.meta.changes) continue;
+      await pushInquiryAnswer(credentials.accessToken, batch.source_id, "役員が画面で答えを残しました。聞くことは以上です。ありがとうございます。", crypto.randomUUID(), request);
+    } catch { /* 届いたか分からない完了は重ねて送らない。 */ }
+  }
+}
+
 export async function processPhotoBatches(env: Env, wardId: string, deps: QuestionDeliveryDeps = {}): Promise<void> {
   const now = deps.now ?? new Date();
+  await completeScreenClarifications(env, wardId, deps);
   await resolveRetakes(env, wardId, deps);
   const batches = await env.DB.prepare(`SELECT * FROM line_photo_batches b WHERE b.ward_id = ? AND b.prepared_at IS NULL
     AND NOT EXISTS (SELECT 1 FROM line_photo_items i WHERE i.ward_id = b.ward_id AND i.batch_id = b.batch_id AND i.retake_clarification_id IS NOT NULL)

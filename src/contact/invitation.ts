@@ -2,7 +2,7 @@ import type { Env } from "../env";
 import { newId, nowIso } from "../core/ids";
 import { cleanName, generatePassword, generateSalt, hashPassword, nameKey } from "../core/password";
 import { createInvitation } from "../core/sign-in";
-import { CONTACT_WARD, contactById, grantSecret } from "./store";
+import { CONTACT_WARD, contactById, contactInvitationToken } from "./store";
 
 /** 全員が交代したときも、提供側が確かめた受付からしか足さない。 */
 async function addProviderAccount(db: D1Database, wardId: string, rawName: string) {
@@ -23,11 +23,11 @@ async function addProviderAccount(db: D1Database, wardId: string, rawName: strin
 }
 
 export async function issueContactInvitation(env: Env, id: string, input: {
-  wardId: string; accountId: string; newName: string; how: string; person: string; origin: string;
+  wardId: string; accountId: string; newName: string; how: string; origin: string;
 }) {
   const contact = await contactById(env.DB, id);
   if (!contact || contact.closed_at || contact.kind !== "access") return { ok: false as const, message: "入れない方の、開いている受付で行ってください。" };
-  if (!input.how || !input.person || input.how.length > 1000 || input.person.length > 200) return { ok: false as const, message: "確かめた方法と相手を入れてください。" };
+  if (!input.how.trim() || input.how.length > 1000) return { ok: false as const, message: "どう確かめたかを一行で入れてください。" };
   if (!env.OPS_PASSWORD) return { ok: false as const, message: "提供側の設定を確かめてください。" };
   const ward = await env.DB.prepare("SELECT slug, is_active FROM wards WHERE ward_id = ?").bind(input.wardId).first<{ slug: string; is_active: number }>();
   if (!ward || !ward.is_active) return { ok: false as const, message: "使っている区を選んでください。" };
@@ -49,15 +49,15 @@ export async function issueContactInvitation(env: Env, id: string, input: {
       }
       accountId = added.accountId; newAccount = accountId;
     }
-    const result = await createInvitation(env.DB, input.wardId, accountId, { provider: true });
+    const linkId = newId();
+    const token = await contactInvitationToken(env, id, linkId);
+    const result = await createInvitation(env.DB, input.wardId, accountId, { provider: true }, { id: linkId, token });
     if (!result.ok) throw new Error("入口を作れませんでした");
     issuedLink = result.linkId;
-    const href = new URL(`/${encodeURIComponent(ward.slug)}/admin/invite/${result.token}`, input.origin).href;
-    const secret = await grantSecret(env, href);
     await env.DB.prepare(`UPDATE provider_contacts SET target_ward_id = ?, target_account_id = ?,
-      verified_how = ?, verified_person = ?, verified_by = ?, verified_at = ?, grant_id = ?, grant_secret = ?, grant_expires_at = ?
+      verified_how = ?, verified_by = ?, verified_at = ?, grant_id = ?, grant_expires_at = ?
       WHERE ward_id = ? AND contact_id = ? AND grant_id = ?`)
-      .bind(input.wardId, accountId, input.how, input.person, "SasaeAI 運用", nowIso(), result.linkId, secret, result.expiresAt, CONTACT_WARD, id, claim).run();
+      .bind(input.wardId, accountId, input.how.replace(/[\r\n]+/g, " ").trim(), "SasaeAI 運用", nowIso(), result.linkId, result.expiresAt, CONTACT_WARD, id, claim).run();
     return { ok: true as const, name: result.name, expiresAt: result.expiresAt, linkId: result.linkId };
   } catch (error) {
     // 失敗した入口は残して使わせず、新しい人も入り方を作る前なら戻す。

@@ -13,7 +13,7 @@ const invitePath = (html: string) => {
   return new URL(link!).pathname;
 };
 
-it("役員にリンクを渡し、本人が入り方を作り、足す・外す・戻す・入り直す", async () => {
+it("役員にリンクを渡し、本人が入り方を作り、足す・リンクを出す・入り直す", async () => {
   const owner = await seedAdmin(env.DB);
   const anotherWard = await seedAdmin(env.DB);
   const base = `/${owner.ward.slug}/admin`;
@@ -72,7 +72,7 @@ it("役員にリンクを渡し、本人が入り方を作り、足す・外す�
 
   const remade = await postForm(realApp, `${people}/accounts/${target}/reset`, {}, owner.cookie);
   const remadeHtml = await remade.text();
-  expect(remadeHtml).toContain("リンクを作り直しました");
+  expect(remadeHtml).toContain("入るためのリンクを出しました");
   const current = invitePath(remadeHtml);
   expect(current).not.toBe(first);
   expect((await get(realApp, first)).status).toBe(400);
@@ -92,36 +92,29 @@ it("役員にリンクを渡し、本人が入り方を作り、足す・外す�
   expect(usedHtml).toContain("このリンクは使えません");
   expect((await get(realApp, `${base}/sign-in/done`, cookie!)).status).toBe(200);
   const last = await postForm(realApp, `${base}/sign-in/password/remove`, {}, cookie!);
-  expect(last.status).toBe(400);
-  expect(await last.text()).toContain("最後の一つは外せません");
+  expect(last.status).toBe(404);
 
   const linked = await completeLine({ add: "1" }, cookie!);
   expect(linked.headers.get("location")).toContain("/sign-in/saved?kind=line");
   const duplicate = await completeLine({ add: "1" }, owner.cookie);
-  expect(duplicate.status).toBe(400);
-  expect(await duplicate.text()).toContain("別の役員につないであります");
+  expect(duplicate.status).toBe(303);
   const email = `fictional-${crypto.randomUUID()}@example.invalid`;
   expect((await connectVerifiedSignIn(env.DB, owner.ward.wardId, { accountId: target }, { kind: "email", email })).ok).toBe(true);
   expect(await connectVerifiedSignIn(env.DB, owner.ward.wardId, { accountId: owner.account.accountId }, { kind: "email", email: email.toUpperCase() }))
-    .toMatchObject({ ok: false, message: "別の役員につないであります。" });
+    .toMatchObject({ ok: true });
   expect((await get(realApp, `${base}/sign-in/password/remove`, cookie!)).status).toBe(404);
-  const removed = await postForm(realApp, `${base}/sign-in/password/remove`, {}, cookie!);
-  expect(removed.status).toBe(303);
-  expect(await (await get(realApp, removed.headers.get("location")!, cookie!)).text()).toContain("IDとパスワードをつなぎ直す");
-  expect((await postForm(realApp, `${base}/login`, { loginId: loginId!, password: password! })).status).toBe(401);
+  expect((await postForm(realApp, `${base}/sign-in/password/remove`, {}, cookie!)).status).toBe(404);
   const restored = await postForm(realApp, `${base}/sign-in/password`, {}, cookie!);
   expect(restored.status).toBe(200);
   expect(await restored.text()).toContain("/sign-in/saved?kind=password");
-  expect((await completeLine({})).status).toBe(303);
+  expect((await completeLine({})).status).toBe(200);
 
   const list = await (await get(realApp, people, owner.cookie)).text();
-  expect(list).toContain("入り方を作り直した記録");
-  expect(list).not.toContain(`/accounts/${owner.account.accountId}/reset`);
-  const groupKey = `LINE_${owner.ward.wardId.toUpperCase().replaceAll("-", "_")}_OFFICER_GROUP_ID`;
+  expect(list).toContain("リンクを出した記録");
+  expect(list).toContain(`/accounts/${owner.account.accountId}/reset`);
   const groupId = `fictional-${crypto.randomUUID()}`;
-  const noticeBindings = Object.create(bindings, {
-    [groupKey]: { value: groupId }, LINE_CHANNEL_ACCESS_TOKEN: { value: crypto.randomUUID() },
-  }) as typeof env;
+  const noticeBindings = Object.create(bindings, { LINE_CHANNEL_ACCESS_TOKEN: { value: crypto.randomUUID() } }) as typeof env;
+  await env.DB.prepare("INSERT INTO ward_settings (ward_id, key, value) VALUES (?, 'line.officer_group', ?)").bind(owner.ward.wardId, groupId).run();
   await env.DB.prepare("INSERT INTO line_channels (ward_id, destination, access_token_binding) VALUES (?, ?, 'LINE_CHANNEL_ACCESS_TOKEN')")
     .bind(owner.ward.wardId, crypto.randomUUID()).run();
   const notices: string[] = [];
@@ -142,11 +135,10 @@ it("役員にリンクを渡し、本人が入り方を作り、足す・外す�
   try { reset = await postForm(realApp, `${people}/accounts/${target}/reset`, {}, owner.cookie, noticeBindings); }
   finally { fakeLine.mockRestore(); }
   const resetHtml = await reset.text();
-  expect(resetHtml).toContain("入り方を作り直しました");
-  expect(resetHtml).toContain("役員グループへ知らせました");
-  expect(notices).toHaveLength(1);
-  expect(notices[0]).not.toContain("/invite/");
-  expect((await get(realApp, `${base}/sign-in`, cookie!)).status).toBe(303);
+  expect(resetHtml).toContain("入るためのリンクを出しました");
+  expect(resetHtml).not.toContain("役員グループへ知らせました");
+  expect(notices).toHaveLength(0);
+  expect((await get(realApp, `${base}/sign-in`, cookie!)).status).toBe(200);
   const again = invitePath(resetHtml);
   const lineStart = await postForm(realApp, `${base}/sign-in-connect/line/start`, { invitation: again.split("/").pop()! }, undefined, bindings);
   expect((await get(realApp, again)).status).toBe(200); // 本人確認の開始だけでは消さない。

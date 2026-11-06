@@ -38,7 +38,7 @@ export function officerDigestText(subjects: string[], url: string, includesYeste
 export async function sendOfficerDigest(env: Env, wardId: string, slug: string, now = new Date(), request: typeof fetch = fetch): Promise<void> {
   const settings = await getDigestSettings(env.DB, wardId);
   if (!isOfficerDigestTime(now, settings.send)) return;
-  const groupId = officerGroupId(env, wardId);
+  const groupId = await officerGroupId(env, wardId);
   if (!groupId) return;
   const day = new Date(now.getTime() + 9 * 3600_000).toISOString().slice(0, 10);
   const prior = await env.DB.prepare("SELECT day FROM line_officer_digests WHERE ward_id = ? AND day = ?").bind(wardId, day).first();

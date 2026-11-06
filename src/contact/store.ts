@@ -51,6 +51,7 @@ function receiptNumber() {
   return digits.join("");
 }
 export async function receiveContact(db: D1Database, input: { kind: ContactKind; wardName: string; name: string; reach: string; body: string }) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.reach) || input.reach.length > 200) throw new Error("使えるメールアドレスを入れてください");
   const id = newId(), token = generateDeviceToken(), stamp = nowIso();
   const receipt = receiptNumber();
   await db.batch([
@@ -90,15 +91,10 @@ export async function purgeContactPhotos(env: Env) {
       .bind(CONTACT_WARD, row.message_id).run();
   }
 }
-/** 入るためのリンクの本体は暗号化して受付へ預ける。 */
-export async function grantSecret(env: Env, value: string, decrypt = false) {
+/** 入るためのリンクは受付と発行のIDから再現し、本体を保存しない。 */
+export async function contactInvitationToken(env: Env, contactId: string, linkId: string) {
   if (!env.OPS_PASSWORD) throw new Error("提供側の設定がありません");
-  const key = await crypto.subtle.importKey("raw", await crypto.subtle.digest("SHA-256", new TextEncoder().encode(env.OPS_PASSWORD)), "AES-GCM", false, ["encrypt", "decrypt"]);
-  if (decrypt) {
-    const bytes = Uint8Array.from(atob(value), (ch) => ch.charCodeAt(0));
-    return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: bytes.slice(0, 12) }, key, bytes.slice(12)));
-  }
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const data = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(value)));
-  return btoa(String.fromCharCode(...iv, ...data));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.OPS_PASSWORD), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const bytes = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(JSON.stringify([CONTACT_WARD, contactId, linkId]))));
+  return btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 }
