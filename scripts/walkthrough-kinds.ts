@@ -43,7 +43,7 @@ type Form = ReturnType<typeof readForm>;
 const draftText = (form: Form) => [...form.values].filter(([key]) => key === "text" || key.startsWith("item_")).map(([, value]) => value).filter(Boolean).join("\n");
 
 // 資料に無い決定を、特定の禁止語だけで見落とさない。言い換えもPMの確認へ回す。
-export function checkKindsFacts(text: string, allowed: string[], required: string[]) {
+export function checkKindsFacts(text: string, allowed: string[], required: string[], strict = false) {
   for (const fact of required) assert(compact(text).includes(compact(fact)), "送った決定や未決が下書きにありません（言い換えはPMの確認が必要です）");
   const known = new Set(allowed.flatMap(s => s.split(/[。\n]/)).map(compact));
   // 句点の無い短い行は見出しや項目として扱い、文だけを照合する。
@@ -51,8 +51,8 @@ export function checkKindsFacts(text: string, allowed: string[], required: strin
   for (const sentence of body.split(/[。\n]/).map(compact).filter(Boolean)) {
     const fact = sentence.replace(/^(?:[-・]|\d+[.)、])/, "").replace(/^(?:決めたこと|決定事項|前回の決定|未決|保留|議題|日時|場所)[:：]/, "");
     if (/^(?:議事録|議題の資料|議案の資料|決めたこと|前回の決定|決定事項|未決|保留|決まらなかったこと・残っている質問)$/.test(fact)) continue;
-    // 見出しの付いた文もあるので全文の一致は求めない。決定を述べる文だけ、送った決定を含むかを見る。
-    if (!/決め|決定|決ま|承認|可決|採用/.test(fact) || /決めていない|決まっていない|決まらなかった/.test(fact)) continue;
+    // 下書きの文は見出しが付く事があるので、送った文を含んでいれば通す。資料に無い文は止める。
+    if (strict) { assert(known.has(fact), "資料と照合できない文があります（送っていない決定や言い換えはPMの確認が必要です）"); continue; }
     assert([...known].some((entry) => entry && fact.includes(entry)), "資料と照合できない文があります（送っていない決定や言い換えはPMの確認が必要です）");
   }
 }
@@ -68,7 +68,7 @@ export function checkClosingDecisions(text: string, decision: string) {
 export function checkKindsDecision(text: string, decision: string) {
   // 画面が末尾に添える日付だけを外す。曜日の括弧と、決定文に含まれる括弧を区別する。
   const fact = text.replace(/（\d{1,2}月\d{1,2}日（[日月火水木金土]））\s*$/, "");
-  checkKindsFacts(fact, [decision], [decision]);
+  checkKindsFacts(fact, [decision], [decision], true);
 }
 
 export async function runKindsWalkthrough(options: MeetingOptions, ports: MeetingPorts) {
