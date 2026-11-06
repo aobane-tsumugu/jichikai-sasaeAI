@@ -208,7 +208,7 @@ async function claimPhotoReply(db: D1Database, wardId: string, replyToken: strin
   return true;
 }
 
-/** 一対一の各写真に、質問を返していなければ決まった受領を返す。読み取りは待たない。 */
+/** 一対一の各写真を保存した直後に決まった受領を返す。Replyを使った印を残し、後の質問は通数の枠を通したPushにする。 */
 export async function replyPhotoReceipt(env: Env, wardId: string, jobId: string, deps: QuestionDeliveryDeps = {}): Promise<void> {
   const item = await env.DB.prepare(`SELECT i.receipt_reply_token, b.destination, j.project_id FROM line_photo_items i
     JOIN line_photo_batches b ON b.ward_id = i.ward_id AND b.batch_id = i.batch_id

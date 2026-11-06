@@ -24,12 +24,14 @@ const admin = new Hono<AdminEnv>();
 
 admin.get("/", async (c) => {
   const { ward, account } = c.var;
-  const [projects, lineInbox, pending, inquiries] = await Promise.all([
+  const [projects, lineInbox, pending, inquiries, closed] = await Promise.all([
     listOpenProjects(c.env.DB, ward.wardId), listInboxItems(c.env.DB, ward.wardId),
     c.env.DB.prepare(`SELECT status, COUNT(*) AS count FROM jobs WHERE ward_id = ? AND project_id IS NULL
       AND via = 'admin' AND withdrawn_at IS NULL GROUP BY status`).bind(ward.wardId).all<{ status: string; count: number }>(),
     c.env.DB.prepare("SELECT subject FROM inquiry_records WHERE ward_id = ? AND kind = 'inquiry' AND line_source_type IS NOT NULL")
       .bind(ward.wardId).all<{ subject: string }>(),
+    c.env.DB.prepare("SELECT project_id FROM projects WHERE ward_id = ? AND closed_at IS NOT NULL LIMIT 1")
+      .bind(ward.wardId).first<{ project_id: string }>(),
   ]);
   const inquiryCount = inquiries.results.length;
   const inquiryWords = inquiries.results.map((row) => dateWords(row.subject));
@@ -53,7 +55,13 @@ admin.get("/", async (c) => {
     <li><form method="post" action={adminPath(ward, "/logout")}><button class="quiet">このスマホやパソコンから出る</button></form></li>
   </ul></>;
   return c.html(<AdminPage ward={ward} account={account} title="最初の画面" home>
-    {projects.length === 0 ? sent === 0 ? <>
+    {projects.length === 0 ? sent === 0 ? closed ? <>
+      <h1>去年の記録から始められます</h1>
+      <p class="lead">残っている段取りや報告を読んで、今年の準備を始められます。</p>
+      <div class="action-links"><a class="button" href={adminPath(ward, "/archive")}>記録を読む</a></div>
+      <div class="action-links"><a class="button secondary" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>新しく始める</a></div>
+      {places}
+    </> : <>
       <h1>去年の資料を送ってください</h1>
       <p class="lead">案内の紙でも、Wordでも、写真でも、そのまま送れます。整理はいりません。</p>
       <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>去年の資料を送る</a></div>
