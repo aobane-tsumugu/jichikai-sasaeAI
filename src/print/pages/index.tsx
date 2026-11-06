@@ -150,6 +150,8 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
     ORDER BY r.published_at DESC LIMIT 1`).bind(ward.wardId, projectId, documentId, versionNo).first<PrintData>();
   if (!row) return c.notFound();
   if (kind === "meeting" || kind === "sponsors") return c.redirect(adminPath(ward, `/print/${projectId}/paper/${kind}`), 303);
+  const withAnswer = row.kind === "announcement";
+  if (!withAnswer && (kind === "answer" || kind === "leader")) return c.notFound();
   const baseUrl = c.env.PUBLIC_BASE_URL || new URL(c.req.url).origin;
   const back = adminPath(ward, `/print/${projectId}/${documentId}/${versionNo}`);
   const due = paperDeadline(await getAnswerDeadline(c.env.DB, ward.wardId, projectId) || publishedItem(row.body, "due"));
@@ -197,7 +199,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
       {!squad ? <FieldBox label="班（分からないときは空けてかまいません）" heightMm={10} /> : null}
       <div class="field-box"><p>□ 参加する　　□ 参加しない</p><strong>参加する人数</strong><div class="paper-counts">
         {labels.map((label) => <div class="paper-count"><div>{label}</div><span>人</span></div>)}
-      </div></div>
+      </div><p>いない欄は、空けたままでかまいません。</p></div>
       <div class="field-box" style={standalone ? "min-height:55mm" : "min-height:22mm"}><span class="field-label">手伝える方のお名前と時間帯（書かなくてかまいません）</span>
         {helperSlots ? <p>{helperSlots}</p> : null}
       </div>
@@ -206,17 +208,20 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
     {contact ? <p>連絡先：{contact}</p> : null}
   </div>;
   // 返す案内や時間帯の分も見積もる。文字を縮めず、長ければ回答票を別の紙にする。
-  const onOneSheet = fitsAboveAnswer(row.body, labels.join("") + helperSlots + due + contact + "参加しないときも、答えてください。答えがないときは、欠席として数えます。□参加する□参加しない");
+  const onOneSheet = withAnswer && fitsAboveAnswer(row.body, labels.join("") + helperSlots + due + contact + "参加しないときも、答えてください。答えがないときは、欠席として数えます。□参加する□参加しない。いない欄は、空けたままでかまいません");
   const tables = readPublicationTables(row.tables_snapshot);
   const published = (table: TableKey) => (tables ?? []).filter((entry) => entry.kind === table);
   const footer = (squad = "") => <><span>{ward.name}{squad ? ` ${squad}` : ""}</span><span>{distributed}　紙の番号{paperCode}</span></>;
-  const printTitle = `${row.title} ${kindLabel(kind)}`;
+  const printTitle = `${row.title} ${kind === "announcement" && !withAnswer ? "本文の紙" : kindLabel(kind)}`;
   return c.html(<PrintDocument title={printTitle} back={back} copies={copies}>
-    {kind === "announcement" && onOneSheet ? paperSquads.map((squad) => <Sheet key={squad} footer={footer(squad)}>
+    {kind === "announcement" && !withAnswer ? <Sheet footer={footer()}>
+      <h1>{paperHeading(row.title, row.document_title)}</h1><PaperBody body={row.body} />
+    </Sheet> : null}
+    {kind === "announcement" && withAnswer && onOneSheet ? paperSquads.map((squad) => <Sheet key={squad} footer={footer(squad)}>
       <h1>{paperHeading(row.title, row.document_title)}</h1><PaperBody body={row.body} /><CutLine />
       {answerSheet(squad)}
     </Sheet>) : null}
-    {kind === "announcement" && !onOneSheet ? <>
+    {kind === "announcement" && withAnswer && !onOneSheet ? <>
       <Sheet footer={footer()}>
         <h1>{paperHeading(row.title, row.document_title)}</h1><PaperBody body={row.body} />
       </Sheet>
@@ -266,16 +271,16 @@ async function PrintChooser({ c }: { c: import("hono").Context<AdminEnv> }) {
   const projectId = c.req.param("projectId");
   const documentId = c.req.param("documentId");
   const versionNo = c.req.param("versionNo");
-  const row = await c.env.DB.prepare(`SELECT COALESCE(v.title, d.title) AS title, v.scope FROM documents d JOIN document_versions v
+  const row = await c.env.DB.prepare(`SELECT COALESCE(v.title, d.title) AS title, d.kind, v.scope FROM documents d JOIN document_versions v
     ON v.ward_id = d.ward_id AND v.document_id = d.document_id
     LEFT JOIN publication_records r ON r.ward_id = v.ward_id AND r.version_id = v.version_id
     WHERE v.ward_id = ? AND v.project_id = ? AND v.document_id = ? AND v.version_no = ?
       AND (r.publication_id IS NOT NULL OR (v.scope = 'space' AND v.published_at IS NOT NULL))`)
-    .bind(ward.wardId, projectId, documentId, Number(versionNo)).first<{ title: string; scope: string }>();
+    .bind(ward.wardId, projectId, documentId, Number(versionNo)).first<{ title: string; kind: string; scope: string }>();
   if (!row) return c.notFound();
   return c.html(<AdminPage ward={ward} account={account} title="印刷用ページ" back={{ href: adminPath(ward, `/publish/${projectId}`), label: "配る画面へ戻る" }}>
     <h1>{row.title} 印刷用ページ</h1>
-    <ul class="rows">{(row.scope === "space" ? ["duty"] as const : printKinds).map((kind) => <li key={kind}><a class="row-link" href={adminPath(ward, `/print/${projectId}/${documentId}/${versionNo}/${kind}`)}><b>{kindLabel(kind)}</b>{kind === "poster" ? <span>配った案内の題、日時、場所と、区のページへのQRを大きく出します。印刷や画面の撮影で使えます。</span> : null}</a></li>)}</ul>
+    <ul class="rows">{(row.scope === "space" ? ["duty"] as const : row.kind === "announcement" ? printKinds : ["announcement"] as const).map((kind) => <li key={kind}><a class="row-link" href={adminPath(ward, `/print/${projectId}/${documentId}/${versionNo}/${kind}`)}><b>{kind === "announcement" && row.kind !== "announcement" ? "本文の紙" : kindLabel(kind)}</b>{kind === "poster" ? <span>配った案内の題、日時、場所と、区のページへのQRを大きく出します。印刷や画面の撮影で使えます。</span> : null}</a></li>)}</ul>
   </AdminPage>);
 }
 

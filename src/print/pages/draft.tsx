@@ -15,13 +15,13 @@ export function DraftPaper({ title, projectTitle, body, kind, back, wardName, sq
     <p>参加しないときも、答えてください。答えがないときは、欠席として数えます。</p>
     <FieldBox label="代表者のお名前" heightMm={19} />
     {!squad ? <FieldBox label="班（分からないときは空けてかまいません）" heightMm={10} /> : null}
-    <div class="field-box"><p>□ 参加する　　□ 参加しない</p><strong>参加する人数</strong><div class="paper-counts">{labels.map((label) => <div class="paper-count"><div>{label}</div><span>人</span></div>)}</div></div>
+    <div class="field-box"><p>□ 参加する　　□ 参加しない</p><strong>参加する人数</strong><div class="paper-counts">{labels.map((label) => <div class="paper-count"><div>{label}</div><span>人</span></div>)}</div><p>いない欄は、空けたままでかまいません。</p></div>
     <FieldBox label="手伝える方のお名前と時間帯（書かなくてかまいません）" heightMm={22} />
     {slots ? <p>{slots}</p> : null}
     <p>配るときにQRコードが入ります。</p>
     {paperGive(due, `${squad ? `${squad}の` : ""}班長か役員`).map((line) => <p>{line}</p>)}
   </div>;
-  const onOneSheet = fitsAboveAnswer(body, labels.join("") + slots + due + "下書きです。まだ配っていません。参加しないときも、答えてください。答えがないときは、欠席として数えます。");
+  const onOneSheet = kind === "announcement" && fitsAboveAnswer(body, labels.join("") + slots + due + "下書きです。まだ配っていません。参加しないときも、答えてください。答えがないときは、欠席として数えます。いない欄は、空けたままでかまいません");
   const footer = (squad = "") => <><span>{wardName}{squad ? ` ${squad}` : ""}</span><strong>下書きです</strong></>;
   return <PrintDocument title={`下書き: ${paperHeading(projectTitle, title)}`} back={back}>
     {!answerOnly && kind === "announcement" && !onOneSheet ? <Sheet footer={footer()}><p><strong>下書きです。まだ配っていません。</strong></p><h1>{paperHeading(projectTitle, title)}</h1><PaperBody body={body} /></Sheet> : null}

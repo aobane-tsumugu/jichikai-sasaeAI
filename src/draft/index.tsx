@@ -223,15 +223,16 @@ admin.post("/projects/:projectId/draft/rain-notice", async (c) => {
   if (/\{[^{}]+\}/.test(text)) return c.redirect(`${adminPath(ward, `/projects/${id}/draft/notice`)}?error=rain_template`, 303);
   const state = await getProjectState(c.env.DB, ward.wardId, id);
   if (!state || !state.documents.some((document) => document.kind === "announcement" && document.publishedVersionNo !== null)) return c.notFound();
+  const body = JSON.stringify({ text, items: [{ key: "place", content: place }, { key: "date_time", content: dateTime }] });
   const ok = await saveDocument(c.env.DB, ward.wardId, id, account.accountId, {
     kind: "notice", title: "雨の変更のお知らせ", scope: "public",
-    body: JSON.stringify({ text, items: [] }), basedOn: state.project.stateVersion,
+    body, basedOn: state.project.stateVersion,
   });
   if (!ok) return c.redirect(`${adminPath(ward, `/projects/${id}/draft/notice`)}?error=notice_save_failed`, 303);
   const saved = await latestFields(c, "notice");
   if (!saved) return c.notFound();
   saved.set("lineDelivery", form.get("lineDelivery") === "skip" ? "skip" : "send");
-  const warnings = await checkPublicDraft(c.env.DB, ward.wardId, id, "notice", JSON.stringify({ text, items: [] }));
+  const warnings = await checkPublicDraft(c.env.DB, ward.wardId, id, "notice", body);
   // 混入が見つかった時は既存の確認に出す。見つからなければ、見本の「配る」でそのまま配る。
   if (warnings.length) return openPublish(c, `/publish/${id}/confirm`, saved);
   saved.set("distribution", JSON.stringify({ mode: "district", targets: [] }));
