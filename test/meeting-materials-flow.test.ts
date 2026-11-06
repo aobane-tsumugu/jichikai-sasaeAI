@@ -12,6 +12,48 @@ import { saveAIDraft, saveDocument } from "../src/project/actions";
 import { getDraftPack } from "../src/draft/packs";
 import { get, postForm, realApp } from "./helpers";
 
+it.each(["board_meeting", "general_meeting"] as const)("%sで資料と同じ決定文を残して閉じても、人と議事録の出所を保存する", async (kind) => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const project = await createProject(env.DB, ward.wardId, {
+    kind, title: fixture.draftTitle, year: fixture.eventYear, accountId: account.accountId,
+  });
+  const input = await receive(env, { wardId: ward.wardId, projectId: project.projectId, via: "admin", accountId: account.accountId,
+    parts: [{ kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode(fixture.publicAnnouncement) }] });
+  const originalId = input.received[0]?.originalId;
+  if (!originalId) throw new Error("架空の議事の資料を受け付けられませんでした");
+  expect((await applyChange(env.DB, ward.wardId, project.projectId, {
+    kind: "row", table: "decisions", data: { what: fixture.publicAnnouncement },
+    source: { kind: "original", ref: originalId, locator: fixture.previousLocator, year: fixture.eventYear },
+    confidence: "high", packVersion: "fictional-decision@1",
+  })).status).toBe("applied");
+  const before = await getProjectState(env.DB, ward.wardId, project.projectId);
+  expect(before?.tables.decisions).toHaveLength(1);
+  expect(before?.tables.decisions[0]?.source.kind).toBe("original");
+
+  const body = new URLSearchParams();
+  body.append("body", "");
+  body.append("body", fixture.reportText);
+  body.set("decisions", fixture.publicAnnouncement);
+  const response = await realApp.request(`/${ward.slug}/admin/close/${project.projectId}/finalize`, {
+    method: "POST", headers: { cookie, origin: "http://localhost", "content-type": "application/x-www-form-urlencoded" }, body,
+  }, env);
+  expect(response.status).toBe(303);
+  expect(response.headers.get("location")).not.toContain("error=");
+  const state = await getProjectState(env.DB, ward.wardId, project.projectId);
+  expect(state?.project.closedAt).toBeTruthy();
+  expect(state?.tables.decisions).toHaveLength(1);
+  expect(state?.tables.decisions[0]).toMatchObject({
+    rowId: before?.tables.decisions[0]?.rowId, data: { what: fixture.publicAnnouncement },
+    source: { kind: "person", ref: account.accountId, year: fixture.eventYear }, confidence: "high",
+    personFields: ["what"],
+  });
+  const minutes = await env.DB.prepare(`SELECT version_id FROM document_versions
+    WHERE ward_id = ? AND project_id = ? AND scope = 'staff'`)
+    .bind(ward.wardId, project.projectId).first<{ version_id: string }>();
+  expect(minutes).toBeTruthy();
+  expect(state?.tables.decisions[0]?.source.locator).toBe(`議事録:${minutes?.version_id}`);
+});
+
 // fixturesの架空資料を使う。AIの外部起動と読み取りの応答だけを置き換える。
 it("役員会を2回閉じ、前回の決定と未決、年の決定と運営メモと報告を総会から翌年へ残す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
