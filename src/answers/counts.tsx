@@ -16,7 +16,8 @@ export function parseAnswerCounts(form: Record<string, unknown>): Counts | null 
   const counts = values.map(Number);
   if (counts.some((value) => !Number.isSafeInteger(value) || value < 0 || value > 1000)) return null;
   const peopleCount = counts.reduce((sum, value) => sum + value, 0);
-  if (peopleCount > 1000) return null;
+  // 「参加する」の選択を、人数の入力漏れで「参加しない」に変えない。
+  if (peopleCount > 1000 || (form.attend === "yes" && peopleCount === 0)) return null;
   if (!hasBreakdown && !String(form.people_count ?? "").trim()) return null;
   return hasBreakdown ? { peopleCount, childrenCount: counts[0]!, adultsCount: counts[1]!, seniorsCount: counts[2]! } : { peopleCount };
 }
