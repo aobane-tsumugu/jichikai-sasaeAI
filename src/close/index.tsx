@@ -10,6 +10,9 @@ import type { AdminEnv } from "../env";
 import type { Waitable } from "../intake/types";
 import { startTask } from "../ai/api";
 import { getProjectSummary } from "../project/api";
+import { listAnswers } from "../answers/api";
+import { countMeetingAnswers } from "../answers/meeting-store";
+import { meetingTotalsText } from "../answers/meeting";
 import { saveDocument } from "../project/actions";
 import { MAP_PROGRESS_LABEL, type MapProgress } from "../project/model";
 import { checkPublicDraft } from "../check";
@@ -84,9 +87,10 @@ async function generatedReportText(db: D1Database, wardId: string, projectId: st
  * 閉じる時の報告の指示。案の部品と同じ包み（下書きの形と based_on_state_version の決め）を使う。
  * 形を書かない指示では、AI の下書きが保存の検査で捨てられ、報告が空のまま残った。
  */
-function reportInstruction(contact: string): string {
+function reportInstruction(contact: string, meetingSummary?: string): string {
   const pack = getDraftPack("report");
-  return `${pack.instruction}
+  return `${pack.instruction}${meetingSummary === undefined ? "" : `
+今回は総会です。行事の人数と回答票についての指示は使いません。答えは世帯ごとの出席・委任・欠席です。参加する人数や当日の出席人数に置き換えず、次の集計をそのまま使ってください。${meetingSummary}。総会が成り立つかは判定しません。委任する相手や答えた人の名前は公開の報告に書きません。`}
 閉じるときの実施報告です。住民に向けた公開の報告だけを書きます。役員だけの記録は書かず、役員が自分で書きます。人数や出来事は状態にある今年の事実だけにし、分からないところは空欄のまま役員への質問にします。${contact ? `\n区の公開用の連絡先（問い合わせ先に使う）: ${contact}` : ""}
 対象の文書: ${pack.kind}。範囲: ${pack.scope}。dataにpack_versionを${pack.version}、based_on_state_versionを引いた状態の番号として含めてください。`;
 }
@@ -229,10 +233,13 @@ admin.post("/close/:projectId/prepare", async (c) => {
   const { ward, account } = c.var; const id = c.req.param("projectId");
   if (!(await prepareDrafts(c.env.DB, ward.wardId, id, account.accountId))) return c.notFound();
   const contact = await getPublicContact(c.env.DB, ward.wardId);
+  const project = await getProjectSummary(c.env.DB, ward.wardId, id);
+  const meetingSummary = project?.kind === "general_meeting"
+    ? meetingTotalsText(countMeetingAnswers(await listAnswers(c.env.DB, ward.wardId, id))) : undefined;
   try {
     await Promise.all([
       startTask(c.env, waitableContext(c), { wardId: ward.wardId, projectId: id, task: "report", accountId: account.accountId,
-        instruction: reportInstruction(contact) }),
+        instruction: reportInstruction(contact, meetingSummary) }),
       startTask(c.env, waitableContext(c), { wardId: ward.wardId, projectId: id, task: "map_draft", accountId: account.accountId,
         instruction: "閉じるときの段取りの下書きを状態から作る。元の資料は読まない。状態にある仕事を一つずつ保ち、task_id、period、name、progress（open/started/done）、requested_by、difficulty、next_yearを記録する。時期、進み具合、頼んだ相手、困ったこと、来年変えることは状態にある内容だけを書き、分からない欄は空にして役員への質問にする。仕事を省いたり、過去の参考情報を今年の実績にしたり、内容を補って作らない。write_changeでkind=map_draft、target=map、data={tasks:[...] }を一度書く。" }),
     ]);

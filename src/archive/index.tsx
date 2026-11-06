@@ -12,6 +12,8 @@ import { createProject, getProjectState, getProjectSummary, listProjects, Projec
 import { MAP_PROGRESS_LABEL, PROJECT_KINDS, PROJECT_KIND_LABEL, TABLES, displayFieldValue, type MapProgress, type ProjectKind, type TableKey } from "../project/model";
 import type { RowView } from "../project/types";
 import { listAnswers } from "../answers/api";
+import { countMeetingAnswers } from "../answers/meeting-store";
+import { MeetingCounts, meetingText, meetingTotalsText } from "../answers/meeting";
 import { ArticleBody } from "../publish";
 import { addDays } from "../map/template";
 import { ARCHIVE_RECORD_TYPES, findFragments, searchArchive } from "./search";
@@ -199,6 +201,8 @@ admin.get("/archive/:projectId", async (c) => {
       .bind(ward.wardId, id).first<{ help_offer_count_on_close: number | null }>(),
   ]);
   const labels = documents.results.filter((document) => document.kind === "announcement").at(-1);
+  const meeting = project.kind === "general_meeting";
+  const meetingTotals = countMeetingAnswers(answers);
   const answerLabels = labels ? labelsFromBody(labels.body) : await getAnswerLabels(c.env.DB, ward.wardId);
   const totals = new Map<string, { people: number; helpers: number }>();
   for (const answer of answers) {
@@ -226,19 +230,24 @@ admin.get("/archive/:projectId", async (c) => {
     </div></details>)}
     {!documents.results.length ? <p>配ったものはありません。</p> : null}
 
-    </section><aside><div class="counts record-counts"><div class="count"><b>{answers.length}<small>世帯</small></b><span>答えた</span></div><div class="count"><b>{answers.reduce((sum, answer) => sum + answer.peopleCount, 0)}<small>人</small></b><span>参加すると答えた</span></div></div>
+    </section><aside>{meeting ? <MeetingCounts totals={meetingTotals} className="counts record-counts" /> : <div class="counts record-counts"><div class="count"><b>{answers.length}<small>世帯</small></b><span>答えた</span></div><div class="count"><b>{answers.reduce((sum, answer) => sum + answer.peopleCount, 0)}<small>人</small></b><span>参加すると答えた</span></div></div>}
       <ul class="links"><li class="link-line"><a href="#report">報告を読む</a></li><li class="link-line"><a href="#answers">答えの一覧を読む</a></li><li class="link-line"><a href="#orig">元の資料を読む（{originals.results.length}件）</a></li></ul>
       <details class="hint"><summary>ほかの記録を探す</summary><div><form method="get" action={adminPath(ward, "/archive/search")}><label for="q">探す言葉</label><input id="q" name="q" type="text" minlength={2} required /><button class="secondary">探す</button></form></div></details>
     </aside></div>
     <h2 id="report">報告</h2>{reports.results?.map((report) => <section class="panel"><h3>{report.scope === "public" ? "だれでも読める部分" : "役員だけの部分"}</h3><p style="white-space:pre-wrap">{report.body || "まだ書いていません"}</p></section>)}
     <h2 id="answers">答えの一覧</h2><p>紙、電話、スマホの答えを合わせた数です。</p>
+    {meeting ? <>
+      <p>{meetingTotalsText(meetingTotals)}</p>
+      {[...totals.keys()].map((district) => <p>{district || "班が分からない"}: {meetingTotalsText(countMeetingAnswers(answers.filter((answer) => answer.district === district)))}</p>)}
+    </> : <>
     <p>参加すると答えた人数{answers.reduce((sum, answer) => sum + answer.peopleCount, 0)}人 / 手伝いの申し出{answers.filter((answer) => answer.helperName).length}件</p>
     {answers.some((answer) => answer.childrenCount != null || answer.adultsCount != null || answer.seniorsCount != null) ? <p>参加する人の内訳: {answerLabels.map((label, index) => `${label}${answers.reduce((sum, answer) => sum + ([answer.childrenCount, answer.adultsCount, answer.seniorsCount][index] ?? 0), 0)}人`).join("、")}。内訳のない答えは合計だけに含めています。</p> : null}
     <p>手伝いだけの申し込み（閉じたとき）: {helpCount?.help_offer_count_on_close === null || !helpCount ? "人数の記録がありません" : `${helpCount.help_offer_count_on_close}人`}</p>
     {[...totals].map(([district, total]) => <p>{district || "班が分からない"}: 参加すると答えた人数{total.people}人 / 手伝い{total.helpers}件</p>)}
+    </>}
     {answers.map((answer) => <section class="panel">
-      <h3>{answer.household || answer.helperName || "手伝いの申し出"}</h3><p>{answer.district || "班が分からない"} / 参加{countText(answer, answerLabels)}</p>
-      {answer.helperName ? <p>手伝い: {answer.helperName} / {answer.helperTimes || "時間の記入なし"}</p> : null}
+      <h3>{answer.household || answer.helperName || "手伝いの申し出"}</h3><p>{answer.district || "班が分からない"} / {meeting ? meetingText(answer) : `参加${countText(answer, answerLabels)}`}</p>
+      {!meeting && answer.helperName ? <p>手伝い: {answer.helperName} / {answer.helperTimes || "時間の記入なし"}</p> : null}
       {answer.originalId ? <p class="link-line"><a href={adminPath(ward, `/intake/originals/${answer.originalId}`)}>回答票を読む</a></p> : null}
     </section>)}
     {!answers.length ? <p>答えはありません。</p> : null}

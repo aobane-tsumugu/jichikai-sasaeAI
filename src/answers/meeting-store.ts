@@ -1,6 +1,19 @@
 import { newId, nowIso } from "../core/ids";
-import type { AnswerInput } from "./api";
+import type { AnswerInput, AnswerRow } from "./api";
 import { isMeetingStatus } from "./meeting";
+
+export interface MeetingTotals { answered: number; attend: number; proxy: number; absent: number; }
+
+/** 答えの画面と同じく、読み取れた出席・委任・欠席だけを一件ずつ数える。 */
+export function countMeetingAnswers(answers: readonly Pick<AnswerRow, "meetingStatus">[]): MeetingTotals {
+  const totals: MeetingTotals = { answered: 0, attend: 0, proxy: 0, absent: 0 };
+  for (const answer of answers) {
+    if (!isMeetingStatus(answer.meetingStatus)) continue;
+    totals.answered++;
+    totals[answer.meetingStatus]++;
+  }
+  return totals;
+}
 
 /** 総会も既存の答えの表へ入れる。Webの再送と同じ紙の読み直しで二度数えない。 */
 export async function saveMeetingAnswer(db: D1Database, wardId: string, input: AnswerInput, options: { answerId?: string; submissionId?: string } = {}): Promise<string | null> {
