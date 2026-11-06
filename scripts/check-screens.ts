@@ -287,7 +287,7 @@ async function check(options: Options): Promise<{ results: Result[]; project: st
         const consoleErrors: string[] = [];
         try {
           view = await context.newPage();
-          view.on("console", (message) => { if (message.type() === "error") consoleErrors.push(errorHead(message.text(), "console.error")); });
+          view.on("console", (message) => { if (message.type() === "error" && !message.text().includes("ERR_BLOCKED_BY_CLIENT")) consoleErrors.push(errorHead(message.text(), "console.error")); });
           view.on("pageerror", (error) => { consoleErrors.push(errorHead(error.message, "pageerror")); });
           view.on("response", (response) => {
             if (response.status() >= 400) httpErrors.add(`HTTP ${response.status()}（${response.request().resourceType()}）`);

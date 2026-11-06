@@ -235,16 +235,20 @@ else {
     if (!archive.response.ok || archive.html.includes("閉じた行事はまだありません")) {
       skip(4, "全文索引と記録に聞く", "区の記録に閉じた行事がありません");
     } else {
-      const firstLink = [...archive.html.matchAll(/href="([^"]*\/archive\/[^"/?#]+)"/g)]
+      const links = [...archive.html.matchAll(/href="([^"]*\/archive\/[^"/?#]+)"/g)]
         .map(match => match[1] ?? "")
-        .find(link => !/\/archive\/(?:map|search)$/.test(link));
-      if (!firstLink) throw new Error("閉じた記録を開けません");
-      const recordPage = await get(unescapeHtml(firstLink));
-      // 記録の段取りはrecord-splitの中のpanelに、仕事の名前と時期を並べている。
-      const mapHtml = /<div\b[^>]*class="record-split"[^>]*>\s*<section>\s*<h2\b[^>]*>段取り<\/h2>([\s\S]*?)(?=<h2\b)/.exec(recordPage.html)?.[1] ?? "";
-      const taskNames = [...mapHtml.matchAll(/<section\b[^>]*class="panel"[^>]*>\s*<h3\b[^>]*>([\s\S]*?)<\/h3>/g)]
-        .map((match) => unescapeHtml((match[1] ?? "").replace(/<[^>]*>/g, "")).trim());
-      const term = taskNames.find((name) => name.length >= 2) ?? "";
+        .filter(link => !/\/archive\/(?:map|search)$/.test(link));
+      if (!links.length) throw new Error("閉じた記録を開けません");
+      // 記録の段取りはrecord-splitの中のpanelに、仕事の名前と時期を並べている。段取りの無い記録もある。
+      let term = "";
+      for (const link of links.slice(0, 40)) {
+        const recordPage = await get(unescapeHtml(link));
+        const mapHtml = /<div\b[^>]*class="record-split"[^>]*>\s*<section>\s*<h2\b[^>]*>段取り<\/h2>([\s\S]*?)(?=<h2\b)/.exec(recordPage.html)?.[1] ?? "";
+        const taskNames = [...mapHtml.matchAll(/<section\b[^>]*class="panel"[^>]*>\s*<h3\b[^>]*>([\s\S]*?)<\/h3>/g)]
+          .map((match) => unescapeHtml((match[1] ?? "").replace(/<[^>]*>/g, "")).trim());
+        term = taskNames.find((name) => name.length >= 2) ?? "";
+        if (term) break;
+      }
       if (!term) throw new Error("検索語を記録から選べません");
       const search = await get(admin + "/archive/search?q=" + encodeURIComponent(term));
       if (!search.response.ok || !search.html.includes("見つかった記録") || search.html.includes("見つかりませんでした")) throw new Error("全文検索で記録が見つかりません");
@@ -334,7 +338,8 @@ if (projectId) {
         html => /読めませんでした|読み取りが遅れています/.test(state(html)));
     }
     const path = admin + "/projects/" + projectId + "/draft/duty_roster";
-    const page = await get(path);
+    // 「行事に入れました」の後に AI が行を入れるので、行が見えるまで待つ。
+    const page = await waitPage(path, html => html.includes("架空確認担当"));
     const fixture = [...page.html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/gi)].find(form => form[0].includes("/draft/duty-row/") && form[0].includes("架空確認担当"))?.[0];
     if (!page.response.ok || !fixture) throw new Error("架空資料の当番の行が見えません");
     const form = readForm(fixture, "/draft/duty-row/");

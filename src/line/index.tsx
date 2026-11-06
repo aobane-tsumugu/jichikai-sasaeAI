@@ -127,7 +127,7 @@ admin.get("/inbox/questions", async (c) => {
       <p class="link-line"><a href={adminPath(ward, `/intake/originals/${question.original_id}`)}>元の資料を見る</a></p>
       <p>{question.sent_at ? "写真が届いた場所で聞きました。答えがなくても、そのままでかまいません。" : "まだ公式LINEでは聞いていません。"}</p>
       {question.answer ? <p class="preserve-lines">届いた答え: {question.answer}</p> : null}
-      {question.project_id ? <a href={adminPath(ward, `/projects/${question.project_id}/questions`)}>行事の質問を見る</a> : <p>どの行事か分からないものは、届いたものから入れ直せます。</p>}
+      {question.project_id ? <p class="link-line"><a href={adminPath(ward, `/projects/${question.project_id}/questions`)}>行事の質問を見る</a></p> : <p>どの行事か分からないものは、届いたものから入れ直せます。</p>}
     </section>)}
     {!questions.length ? <p>質問はありません。</p> : null}
   </Layout>);
