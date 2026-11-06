@@ -170,8 +170,8 @@ export async function getSpaceMaterials(db: D1Database, wardId: string, projectI
     db.prepare("SELECT title FROM projects WHERE ward_id = ? AND project_id = ?").bind(wardId, projectId).first<{ title: string }>(),
     latestSpaceTables(db, wardId, projectId),
     district === null
-      ? db.prepare("SELECT district, household, people_count FROM project_answers WHERE ward_id = ? AND project_id = ? ORDER BY district, household").bind(wardId, projectId).all<{ district: string; household: string; people_count: number }>()
-      : db.prepare("SELECT district, household, people_count FROM project_answers WHERE ward_id = ? AND project_id = ? AND district = ? ORDER BY household").bind(wardId, projectId, district).all<{ district: string; household: string; people_count: number }>(),
+      ? db.prepare("SELECT district, household, people_count, children_count, adults_count, seniors_count FROM project_answers WHERE ward_id = ? AND project_id = ? ORDER BY district, household").bind(wardId, projectId).all<{ district: string; household: string; people_count: number; children_count: number | null; adults_count: number | null; seniors_count: number | null }>()
+      : db.prepare("SELECT district, household, people_count, children_count, adults_count, seniors_count FROM project_answers WHERE ward_id = ? AND project_id = ? AND district = ? ORDER BY household").bind(wardId, projectId, district).all<{ district: string; household: string; people_count: number; children_count: number | null; adults_count: number | null; seniors_count: number | null }>(),
     db.prepare(
       `SELECT d.document_id, d.kind, v.body FROM documents d JOIN document_versions v
        ON v.ward_id = d.ward_id AND v.project_id = d.project_id AND v.document_id = d.document_id AND v.version_no =

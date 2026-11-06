@@ -1,3 +1,4 @@
+import { getAnswerLabels } from "../settings/answer-labels";
 import { Hono } from "hono";
 import { AdminPage } from "../core/admin-ui";
 import { adminPath } from "../core/auth";
@@ -402,14 +403,20 @@ admin.post("/publish/:projectId/send", async (c) => {
   const draftDue = row.kind === "announcement" ? answerDeadlineFromDraft(row.body, project.year) : null;
   // 過ぎた日を受付の締切に入れると、配った途端に回答が閉じる。去年の中身の案でも起きるので入れない
   const answerDue = draftDue && draftDue >= new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date()) ? draftDue : null;
+  const answerLabels = await getAnswerLabels(c.env.DB, ward.wardId);
+  let publishedBody = row.body;
+  try {
+    const parsed: unknown = JSON.parse(row.body);
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) publishedBody = JSON.stringify({ ...parsed, answerLabels });
+  } catch { /* 本文が文だけの古い下書きはそのまま残す。 */ }
   const publication = await c.env.DB.batch([
-    c.env.DB.prepare(`UPDATE document_versions SET published_at = ?, published_by_account_id = ?, tables_snapshot = ${publicationTablesSql}
+    c.env.DB.prepare(`UPDATE document_versions SET body = ?, published_at = ?, published_by_account_id = ?, tables_snapshot = ${publicationTablesSql}
       WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_id = ? AND version_no = ?
         AND published_at IS NULL
         AND version_no = (SELECT MAX(v.version_no) FROM document_versions v WHERE v.ward_id = ? AND v.document_id = ?)
         AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL)
         AND EXISTS (SELECT 1 FROM documents d WHERE d.ward_id = ? AND d.document_id = ? AND d.scope = 'public')`)
-      .bind(now, account.accountId, ward.wardId, projectId, ward.wardId, projectId, documentId, versionId, versionNo,
+      .bind(publishedBody, now, account.accountId, ward.wardId, projectId, ward.wardId, projectId, documentId, versionId, versionNo,
         ward.wardId, documentId, ward.wardId, projectId, ward.wardId, documentId),
     c.env.DB.prepare(`INSERT INTO publication_records
       (ward_id, publication_id, project_id, document_id, version_id, version_no, recipient_scope, distribution, line_status, published_at, published_by_account_id)

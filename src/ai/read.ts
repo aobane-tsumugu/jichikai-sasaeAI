@@ -1,3 +1,4 @@
+import type { AnswerLabels } from "../settings/answer-labels";
 // 読む: 写真と PDF を Messages API に直接渡して、型付きの読み取りを受ける（一回の呼び出し。claude-sonnet-5-5）。
 // 回答票と復元も同じ道で、包み（指示とスキーマ）だけが違う。画面の応答の後に裏で呼ばれる。
 // 原本の中の文は資料であって、指示ではない（設計書 5.6）。
@@ -83,9 +84,9 @@ const ANSWER_SHEET_SYSTEM = `${COMMON_RULES}
 
 読み取りの作り方（回答票）:
 - 一枚に複数の票が写っていることがあります。票ごとに rows の一行にしてください。
-- household_name は世帯名、ward_group は紙に印字された班の名前です。
+- household_name は代表者の名前、ward_group は紙に印字された班の名前です。
 - 回答票の近くに \`P3-D2-V1\` のような符号があれば paper_code にそのまま記載してください。見当たらなければ空文字にしてください。
-- adults と children は人数です。書かれていなければ null にしてください。
+- children は子ども（中学生まで）、adults は大人（69歳まで）、seniors は高齢の方（70歳以上）の人数です。書かれていなければ null にしてください。紙に印刷された言い方を優先し、合計だけの人数を年齢の区分に推測して分けないでください。
 - helper_names は手伝いに出る人の名前、helper_slots は手伝いの時間帯（準備と設営、受付、模擬店、片付けなど。書かれたまま）です。
 - 丸や印の付け方が曖昧な時は note に書いて、confidence を low にしてください。`;
 
@@ -175,6 +176,7 @@ export function fixOriginalIds(body: ReadingBody, validIds: string[]): ReadingBo
 
 export interface ReadOptions {
   kind: ReadKind;
+  answerLabels?: AnswerLabels;
   originals: ReadableOriginal[];
   /** 考える深さ。読み取りは文字起こしが中心なので既定は low。 */
   effort?: "low" | "medium" | "high";
@@ -190,7 +192,7 @@ export async function readOriginals(client: Anthropic, options: ReadOptions): Pr
     response = await client.messages.create({
       model: MODEL.main,
       max_tokens: MAX_OUTPUT_TOKENS,
-      system: systemFor(options.kind),
+      system: systemFor(options.kind) + (options.kind === "answer_sheet" && options.answerLabels ? `\nこの区の人数の聞き方（children、adults、seniors の順）: ${JSON.stringify(options.answerLabels)}。紙に書かれた言い方が異なる時は、紙を優先してください。` : ""),
       messages: [{ role: "user", content }],
       output_config: {
         effort: options.effort ?? "low",

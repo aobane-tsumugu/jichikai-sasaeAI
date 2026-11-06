@@ -4,6 +4,7 @@ export interface HelpOpportunity {
   projectId: string;
   title: string;
   body: string;
+  publishedAt: string;
 }
 
 export interface HelpOffer {
@@ -18,7 +19,7 @@ function todayInJapan(): string {
 
 /** 配った募集だけを読む。名簿と、まだ配っていない案は参照しない。 */
 export async function listHelpOpportunities(db: D1Database, wardId: string, projectId?: string): Promise<HelpOpportunity[]> {
-  const result = await db.prepare(`SELECT p.project_id AS projectId, p.title, v.body
+  const result = await db.prepare(`SELECT p.project_id AS projectId, p.title, v.body, r.published_at AS publishedAt
     FROM projects p JOIN documents d ON d.ward_id = p.ward_id AND d.project_id = p.project_id
     JOIN publication_records r ON r.ward_id = d.ward_id AND r.project_id = d.project_id AND r.document_id = d.document_id
     JOIN document_versions v ON v.ward_id = r.ward_id AND v.version_id = r.version_id

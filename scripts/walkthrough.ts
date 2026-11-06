@@ -274,9 +274,9 @@ async function runFull() {
   if (!printPath || !(await get(printPath)).response.ok) throw new Error("印刷用ページを開けません");
   publicPublished = true;
   const answer = await post(wardPath + "/answer/" + project, {
-    household: "架空 小林", district: "1班", people_count: "2", helper_name: "架空 小林さと", helper_times: "受付 10:30-12:00"
+    household: "架空 小林", district: "1班", children_count: "0", adults_count: "2", seniors_count: "0", helper_name: "架空 小林さと", helper_times: "受付 10:30-12:00"
   });
-  if (answer.status !== 200 || !(await answer.text()).includes("回答を受け付けました")) throw new Error("架空の回答を送れません");
+  if (answer.status !== 200 || !(await answer.text()).includes("答えを受け付けました")) throw new Error("架空の回答を送れません");
   record("3", "通過", "公開ページ、印刷用ページ、架空の回答。公式 LINE は送信なし。", start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";

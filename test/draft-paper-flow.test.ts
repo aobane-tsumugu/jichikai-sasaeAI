@@ -182,7 +182,7 @@ it("資料から当番の案を行にし、役員が直して紙と空間へ配�
     expect(longPaper.match(/class="sheet(?: dense)?"/g)).toHaveLength(2);
     const answerPaper = await (await get(realApp, `${printRoot}/answer`, cookie)).text();
     expect(answerPaper.match(/class="sheet(?: dense)?"/g)).toHaveLength(1);
-    expect(answerPaper).toContain("世帯名");
+    expect(answerPaper).toContain("代表者のお名前");
     const leaderPaper = await (await postForm(realApp, `${printRoot}/leader`, {}, cookie)).text();
     expect(leaderPaper.match(/class="sheet(?: dense)?"/g)).toHaveLength(1);
     expect(leaderPaper).toContain("班長へのお知らせ");

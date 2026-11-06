@@ -196,6 +196,7 @@ if (projectId && publicLive) {
     if (!original) throw new Error("確認できる回答行がありません");
     sheetOriginal = original;
     const rowForm = readForm(page.html, "/answers/" + projectId + "/sheet/" + original + "/row/0");
+    if (!["children_count", "adults_count", "seniors_count"].every(name => name in rowForm.fields)) throw new Error("人数の内訳の欄がありません");
     const confirmed = await post(rowForm.action, rowForm.fields);
     if (confirmed.status !== 303) throw new Error("回答行を確定できません");
     const totals = await get(answerPath);

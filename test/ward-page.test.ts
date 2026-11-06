@@ -100,7 +100,7 @@ describe("役員の仕事と活動の紹介", () => {
     expect((await postForm(realApp, `${closePage}/activity`, form, cookie)).status).toBe(303);
     const html = await (await get(realApp, `/${ward.slug}/work/${project.projectId}`)).text();
     expect(html).toContain("会場の予約と案内を役員が受け持ちました（架空）。");
-    expect(html).toContain("記録にある仕事 1 件");
+    expect(html).toContain("仕事の記録から作りました");
     expect(html).toContain(chosen!.name);
     expect(html).not.toContain(skipped!.name);
     // 案内を載せていない行事なので、案内のページへのリンクは出さない。

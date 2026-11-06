@@ -36,8 +36,8 @@ it("入力の誤りから戻って行事を開き、住民も書き直して答�
   expect(failed.status).toBe(400);
   expect(failed.headers.get("content-type")).toContain("text/html");
   const errorPage = await failed.text();
-  expect(errorPage).toContain("ブラウザの戻るボタンで戻り");
-  expect(errorPage).toContain(`href="${answerPath}"`);
+  expect(errorPage).toContain("お名前が入っていません");
+  expect(errorPage).toContain(`action="${answerPath}"`);
   expect(errorPage).toContain(`<strong>${ward.name}</strong>`);
   expect(await listAnswers(env.DB, ward.wardId, projectId)).toHaveLength(0);
 
@@ -46,7 +46,7 @@ it("入力の誤りから戻って行事を開き、住民も書き直して答�
     household: FIRST_SLICE.firstHousehold, district: FIRST_SLICE.district, people_count: "2",
   });
   expect(sent.status).toBe(200);
-  expect(await sent.text()).toContain("回答を受け付けました");
+  expect(await sent.text()).toContain("答えを受け付けました");
   expect(await listAnswers(env.DB, ward.wardId, projectId)).toMatchObject([
     { household: FIRST_SLICE.firstHousehold, district: FIRST_SLICE.district, peopleCount: 2, source: "web" },
   ]);

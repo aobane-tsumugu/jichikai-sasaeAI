@@ -80,7 +80,7 @@ it("案内の締切を受付に使い、回答を直して消し、手で延ば�
   await publish("10 月 9 日（金）まで");
   expect(await getAnswerDeadline(env.DB, ward.wardId, project.projectId)).toBe("2026-10-09");
   vi.setSystemTime(new Date("2026-10-10T03:00:00Z"));
-  expect(await (await get(realApp, publicPath)).text()).toContain("回答の受付は終わりました。");
+  expect(await (await get(realApp, publicPath)).text()).toContain("答えの受付は終わりました");
   const webInput = { ...input, district: FIRST_SLICE.district };
   expect((await postForm(realApp, publicPath, webInput)).status).toBe(400);
 
