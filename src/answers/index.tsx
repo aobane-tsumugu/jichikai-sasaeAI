@@ -107,7 +107,7 @@ admin.get("/answers/roster", async (c) => {
           <p class="help-text">Excelのファイル（.xlsx）と、.csvのファイルを読めます。先頭の行の見出しから、代表者のお名前と班の列を見つけます。見つからないときだけ、列を選んでもらいます。</p></div>
         <input type="hidden" name="text" value="" /><p id="send-status" class="notice" role="status"></p>
         <p>読み込むと、今の名簿は消えます。間違えたときは、正しい名簿をもう一度読み込むか、紙の名簿を撮り直して読み取ると、入れ替わります。</p>
-        <div class="action-links"><button id="send-button" type="submit">名簿を読み込む</button></div>
+        <div class="action-bar"><button id="send-button" type="submit">名簿を読み込む</button></div>
       </form><script dangerouslySetInnerHTML={{ __html: SEND_SCRIPT }} />
       <form class="panel" method="post" action={`${root}/photo`} enctype="multipart/form-data">
         <h2>紙の名簿しかないとき</h2><p>見出しのない紙でも読めます。名簿を写真に撮って送ってください。AIが表に読み取ります。</p>

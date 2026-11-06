@@ -66,6 +66,6 @@ it("資料のない一年目に案内を手で保存し、出欠の入口と当�
   expect(paperPage).toContain(FIRST_SLICE.publicDayText);
   expect(paperPage).toContain(FIRST_SLICE.previousPlace);
   expect(paperPage).toContain("当番はまだありません。");
-  expect(paperPage).toContain("配置はまだありません。");
+  expect(paperPage).not.toContain("配置はまだありません。");
   expect(paperPage).toContain("変わったこと、メモ");
 });
