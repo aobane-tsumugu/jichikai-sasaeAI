@@ -327,8 +327,8 @@ async function confirmPublication(c: Context<AdminEnv>) {
       {draft.stale_since_version !== null ? <Notice>新しいものが入っています。ここに表示した内容で配れます。直すときは下書きに戻ってください。</Notice> : null}
       {warnings.filter((warning) => !warning.startsWith("まだ決まっていないところ")).map((warning) => <PublicWarning finding={warning} />)}
       {draft.body.includes(PENDING) ? <div class="notice warn"><strong>まだ決めていないところがあります</strong><p>「（確認中）」のところは、紙とページから外して配ります。入れるときは下書きを直してください。</p><a class="quiet" href={adminPath(ward, `/projects/${projectId}/draft/${draft.kind}`)}>下書きを直す</a></div> : null}
-      <div class="compare"><section class="compare-paper"><b>紙{copies ? `（${recipientScope === "all_households" ? "全戸" : "加入世帯"}に${copies}部）` : ""}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} />{tablesPreview}{publicScope && draft.kind === "announcement" ? <p class="answer-slip-preview"><b>回答票</b>　切り取って班長か役員に渡します。代表者のお名前、人数、手伝いの欄があります。</p> : null}</div></section>
-        <section><b>{publicScope ? "区のページ" : "実行委員と班長のページ"}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} />{tablesPreview}{publicScope && draft.kind === "announcement" ? <p class="muted">この下に「出欠を答える」のボタンが出ます。</p> : null}</div></section></div>
+      <div class="compare"><section class="compare-paper"><b>紙{copies ? `（${recipientScope === "all_households" ? "全戸" : "加入世帯"}に${copies}部）` : ""}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} kind={draft.kind} />{tablesPreview}{publicScope && draft.kind === "announcement" ? <p class="answer-slip-preview"><b>回答票</b>　切り取って班長か役員に渡します。代表者のお名前、人数、手伝いの欄があります。</p> : null}</div></section>
+        <section><b>{publicScope ? "区のページ" : "実行委員と班長のページ"}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} kind={draft.kind} />{tablesPreview}{publicScope && draft.kind === "announcement" ? <p class="muted">この下に「出欠を答える」のボタンが出ます。</p> : null}</div></section></div>
       <p class="compare-link"><a class="quiet" href={printHref}>紙の見え方を見る</a></p><p class="muted">{publicScope ? "配ったあとも、区のページからは下げられます。" : "実行委員と班長に配ります。区のページには載りません。"}</p>
       <div class="action-bar"><button type="submit">{sendLabel}</button><a class="button secondary" href={editHref}>下書きに戻る</a></div>
     </form></div>
@@ -453,7 +453,7 @@ admin.post("/publish/:projectId/lower/:publicationId", async (c) => {
 });
 
 /** 読む人に見せる段落。文を正とし、項目は文に書かれていない物だけ見出しを付けて足す。 */
-export function articleParagraphs(body: string, title?: { project: string; document: string }): string[] {
+export function articleParagraphs(body: string, title?: { project: string; document: string }, kind?: string): string[] {
   let parsed: unknown;
   try { parsed = JSON.parse(body) as unknown; } catch { parsed = body; }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return collectText(parsed);
@@ -462,6 +462,8 @@ export function articleParagraphs(body: string, title?: { project: string; docum
   const pending = withoutPending(text);
   const readable = title ? withoutTitleLine(pending, title.project, title.document) : pending;
   const paragraphs = readable.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
+  // 知らせは本文が正。変更前の場所を項目から足し戻すと、新旧が並ぶ。
+  if (kind === "notice" && paragraphs.length) return paragraphs;
   const missing = items.flatMap((item: unknown) => {
     const { key, content } = (item ?? {}) as { key?: unknown; content?: unknown };
     if (typeof key !== "string" || typeof content !== "string" || content.trim() === PENDING || writtenInText(key, content, readable)) return [];
@@ -470,8 +472,8 @@ export function articleParagraphs(body: string, title?: { project: string; docum
   return [...paragraphs, ...(missing.length ? [missing.join("\n")] : [])];
 }
 
-export function ArticleBody({ body, title }: { body: string; title?: { project: string; document: string } }) {
-  return <div>{articleParagraphs(body, title).map((text, index) => <p key={index} style="white-space:pre-wrap">{text}</p>)}</div>;
+export function ArticleBody({ body, title, kind }: { body: string; title?: { project: string; document: string }; kind?: string }) {
+  return <div>{articleParagraphs(body, title, kind).map((text, index) => <p key={index} style="white-space:pre-wrap">{text}</p>)}</div>;
 }
 
 interface DistributionTarget { district: string; copies: number; household?: string; }

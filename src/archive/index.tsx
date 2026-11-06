@@ -224,7 +224,7 @@ admin.get("/archive/:projectId", async (c) => {
     <h2>配ったもの</h2>
     {documents.results.map((document) => <details class="fold"><summary>{document.title}</summary><div>
       <p>{formatJstDate(document.published_at)} / {document.scope === "public" ? "だれでも読める" : document.scope === "space" ? "実行委員と班長向け" : "役員向け"}{document.unpublished_at ? " / 区のページから下げました" : ""}</p>
-      <ArticleBody body={document.body} />
+      <ArticleBody body={document.body} kind={document.kind} />
       {document.scope === "space" && (document.kind === "duty_roster" || document.kind === "procedure") ? <>
         <h4>配ったときの当番表と配置図</h4>
         <RecordedPublicationTables raw={document.tables_snapshot} />
