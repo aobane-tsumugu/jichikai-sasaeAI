@@ -27,6 +27,7 @@ it("総会の決定文に足された決定は、括弧の中でも照合で止�
   }
 });
 
+// 複数の仕事の受付・MCP・配布・記録を順に通すため、この通し試験だけ上限を延ばす。
 it("U51: 架空の役員会2回、当番の名簿変更と免除、市の依頼、総会への一年の決定を本体の経路で通す", async () => {
   const setup = await prepareKindsRuntime(env);
   const options = { base: "http://localhost", ward: setup.ward.slug, name: setup.account.name, password: setup.account.password };
@@ -97,4 +98,4 @@ it("U51: 架空の役員会2回、当番の名簿変更と免除、市の依頼�
     await Promise.allSettled(pending);
     setClientFactory(null); setPipelineDeps(null);
   }
-});
+}, 30_000);

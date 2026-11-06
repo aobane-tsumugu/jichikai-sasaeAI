@@ -93,7 +93,7 @@ it("U29: 一対一とグループの作業連絡を残し、出欠だけ数え�
   setClientFactory(() => ai);
   vi.stubGlobal("fetch", fakeLine);
   try {
-    expect(MATCH_PACK_VERSION).toBe("match@4");
+    expect(MATCH_PACK_VERSION).toBe("match@5");
     for (const group of [false, true]) {
       const suffix = group ? fixture.dutyTitle : fixture.draftTitle;
       const initialCalls = matchCalls;

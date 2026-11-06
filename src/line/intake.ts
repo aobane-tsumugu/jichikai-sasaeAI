@@ -168,13 +168,14 @@ export function createLineIntakePorts(
         senderLabel: item.senderDisplayName || item.senderId,
         officialAddressed: item.officialAddressed,
       })))(wardId, original);
-      if (original.officialAddressed && result.intent === "inquiry") return { disposition: "unmatched", reason: result.reason, inquiry: true };
-      if (result.choice === MATCH_UNRELATED) return { disposition: original.kind === "text" ? "unrelated" : "unmatched", reason: result.reason };
-      if (result.choice === MATCH_NEW) return { disposition: "unmatched", reason: result.reason };
+      if (result.choice === MATCH_UNRELATED) return { disposition: original.kind === "text" ? "unrelated" : "unmatched", reason: result.reason, inquiry: false };
+      // 出欠の答えは、一対一でも問い合わせに回さず数える。
+      if (original.officialAddressed && result.attendanceAnswer !== true && result.intent === "inquiry") return { disposition: "unmatched", reason: result.reason, inquiry: true };
+      if (result.choice === MATCH_NEW) return { disposition: "unmatched", reason: result.reason, inquiry: false };
       const project = open.find((candidate) => candidate.projectId === result.choice);
       return project
-        ? { disposition: "matched", projectId: project.projectId, projectName: project.title, reason: result.reason, attendanceAnswer: result.attendanceAnswer === true }
-        : { disposition: "unmatched", reason: result.reason };
+        ? { disposition: "matched", projectId: project.projectId, projectName: project.title, reason: result.reason, inquiry: false, attendanceAnswer: result.attendanceAnswer === true }
+        : { disposition: "unmatched", reason: result.reason, inquiry: false };
     },
   };
 }

@@ -6,6 +6,7 @@ const sources = Object.fromEntries(Object.entries(import.meta.glob<string>("../s
   .map(([file, text]) => [file.slice(3), text]));
 const migrations = import.meta.glob<string>("../migrations/**/*.sql", { eager: true, query: "?raw", import: "default" });
 
+// 全ソースの構文木と型の参照を二回組み立てるため、通常の単体試験より長い上限にする。
 it("全SQLとR2を検査し、架空の絞り漏れを足すと失敗する", () => {
   const result = checkWardScope(sources, migrations);
   expect(result.prepared).toBeGreaterThan(0);
@@ -42,4 +43,4 @@ it("全SQLとR2を検査し、架空の絞り漏れを足すと失敗する", ()
   const found = changed.issues.filter((issue) => issue.file === "src/ward-scope-fictional.ts");
   expect(found.some((issue) => issue.sql?.startsWith("SELECT") && issue.message.includes("ward_id"))).toBe(true);
   expect(found.filter((issue) => issue.message.includes("WardBucket"))).toHaveLength(2);
-});
+}, 30_000);

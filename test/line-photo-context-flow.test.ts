@@ -3,6 +3,7 @@ import { env } from "cloudflare:workers";
 import { expect, it, vi } from "vitest";
 import { FIRST_SLICE as fixture } from "../fixtures/first-slice";
 import { setClientFactory } from "../src/ai/deps";
+import { setWorkersRoute } from "../src/ai/session";
 import { MATCH_UNRELATED, matchProject } from "../src/ai/match";
 import type { Reading } from "../src/ai/schema";
 import { seedAdmin } from "../src/core/testing";
@@ -21,9 +22,12 @@ import { createProject } from "../src/project/api";
 
 import { get, postForm, realApp, withEnv } from "./helpers";
 
+// 写真の受付から後続の文、質問、回答票までD1とR2を順に通す試験。
 it("L-258: 写真をまとめて前後で当て、迷えば待ち、AIが止まっても受ける", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
+  // 後続の文をつなぐ処理も本体を使い、AIの通信はMessagesの偽物で完結させる。
+  await setWorkersRoute(env.DB, ward.wardId, true);
   const now = new Date("2026-11-06T01:00:00Z");
   const today = "2026-11-06";
   const first = await createProject(env.DB, ward.wardId, { kind: "event", title: fixture.draftTitle, year: 2026, eventDay: today, accountId: account.accountId });
@@ -40,10 +44,17 @@ it("L-258: 写真をまとめて前後で当て、迷えば待ち、AIが止ま�
   let matchCalls = 0;
   let textMatchCalls = 0;
   let readCalls = 0;
-  const ai = new Anthropic({ apiKey: "fictional-photo-api-key", maxRetries: 0, fetch: async (_url, init) => {
-    const request = JSON.parse(String(init?.body)) as { system: string; model: string; messages: Array<{ content: string | Array<{ type: string; text?: string }> }> };
+  let connectCalls = 0;
+  const ai = new Anthropic({ apiKey: "fictional-photo-api-key", maxRetries: 0, fetch: async (url, init) => {
+    if (!String(url).endsWith("/v1/messages")) throw new Error("架空のMessages以外への通信です");
+    const request = JSON.parse(String(init?.body)) as { system: string; model: string; tools?: Array<{ name: string }>; messages: Array<{ content: string | Array<{ type: string; text?: string }> }> };
     let result: unknown;
-    if (request.system.includes("写真の文字")) result = { readability: "readable", paperKind: "photo", reason: "other" };
+    if (request.tools) {
+      const prompt = request.messages[0]?.content;
+      if (typeof prompt !== "string" || !/^仕事: connect$/m.test(prompt)) throw new Error("架空の接続の指示がありません");
+      connectCalls++;
+      result = { text: "架空の文の接続を終えました。" };
+    } else if (request.system.includes("写真の文字")) result = { readability: "readable", paperKind: "photo", reason: "other" };
     else if (request.system.includes("どのプロジェクトの物かを選ぶ")) {
       const prompt = request.messages[0]?.content;
       if (typeof prompt !== "string") throw new Error("当てる資料がありません");
@@ -244,10 +255,15 @@ it("L-258: 写真をまとめて前後で当て、迷えば待ち、AIが止ま�
     expect(await env.DB.prepare("SELECT 1 FROM line_photo_context_texts WHERE ward_id = ?").bind(ward.wardId).first()).toBeNull();
     expect(await env.DB.prepare("SELECT 1 FROM line_inbox_items WHERE ward_id = ?").bind(other.ward.wardId).first()).toBeNull();
     await Promise.all(pending);
+    expect(connectCalls).toBeGreaterThan(0);
+    expect(await env.DB.prepare(`SELECT j.status FROM line_inbox_items i JOIN jobs j
+      ON j.ward_id = i.ward_id AND j.job_id = i.job_id WHERE i.ward_id = ? AND i.event_id = ?`)
+      .bind(ward.wardId, followEvent).first()).toEqual({ status: "done" });
   } finally {
+    await Promise.allSettled(pending);
     setPipelineDeps(null);
     setClientFactory(null);
     vi.unstubAllGlobals();
     vi.useRealTimers();
   }
-});
+}, 30_000);

@@ -21,6 +21,7 @@ const cases: { kind: ProjectKind; title: string; first: DocumentKind; scope: Sco
   { kind: "request", title: "街灯の修理の要望（架空）", first: "procedure", scope: "staff", distributed: "report", task: "submit", public: false },
 ];
 
+// 6種類の受付から配布まで実際のD1、R2と画面を通すため、この試験だけ30秒まで待つ。
 it("六つの種類の架空資料から適切な下書きに進み、出欠が要る案内だけに入口を出し、配った仕事を済みにする", async () => {
   const { ward, cookie } = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
@@ -137,4 +138,4 @@ it("六つの種類の架空資料から適切な下書きに進み、出欠が�
     setPipelineDeps(null);
     setClientFactory(null);
   }
-});
+}, 30_000);

@@ -10,6 +10,7 @@ import { setSetting } from "../src/settings/store";
 import { lookupPaperCode, lookupPrintQr, printQrUrl, projectPaperQrUrl, qrSvg } from "../src/print/qr";
 import { get, postForm, realApp } from "./helpers";
 
+// 80行の登録から配布、閉じた記録まで実際のD1と画面を通すため、この試験だけ30秒まで待つ。
 it("配る前の記入用紙から、班長の紙、閉じたあとの本文と答えと報告へつながる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
@@ -100,4 +101,4 @@ it("配る前の記入用紙から、班長の紙、閉じたあとの本文と�
     ON d.ward_id = r.ward_id AND d.document_id = r.document_id WHERE r.ward_id = ? AND r.project_id = ? AND d.kind = 'report'`)
     .bind(ward.wardId, project.projectId).first<{ line_status: string }>();
   expect(report?.line_status).toBe("not_sent");
-});
+}, 30_000);

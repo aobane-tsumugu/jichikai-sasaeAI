@@ -38,7 +38,7 @@ it("U38: 署名した架空の文をローカルのWorkersへ送り、D1と原�
   };
   const intake = createLineIntakePorts(runtime, ctx, async (_wardId, original) => ({
     choice: original.text === "おはようございます。" ? MATCH_UNRELATED : project.projectId,
-    reason: "架空のAIの判断です。", intent: "material", attendanceAnswer: /参加します|行きます|参加しません/.test(original.text ?? ""),
+    reason: "架空のAIの判断です。", intent: /何時からですか/.test(original.text ?? "") ? "inquiry" : "material", attendanceAnswer: /参加します|行きます|参加しません/.test(original.text ?? ""),
     usage: { input_tokens: 1, output_tokens: 1 },
   }));
   const hooks = new Hono<AppEnv>();
