@@ -11,6 +11,8 @@ import { Layout, ProviderContact, WardStopped } from "./ui";
 import { resolveWard } from "./ward";
 import { contactRoutes } from "../contact/pages";
 import { purgeContactPhotos } from "../contact/store";
+import { publicMetadata, seoRoutes } from "../seo";
+import { baseUrl } from "./ward";
 
 /**
  * 経路の組み立て。
@@ -47,8 +49,9 @@ export function createApp(bundles: Bundle[]) {
   });
 
   app.get("/robots.txt", (c) =>
-    c.text("User-agent: *\nDisallow: /ops/\nDisallow: /contact/\nDisallow: /*/admin/\n"),
+    c.text(`User-agent: *\nDisallow: /ops/\nDisallow: /contact/\nDisallow: /*/admin/\nSitemap: ${baseUrl(c.env, c.req.url)}/sitemap.xml\n`),
   );
+  app.route("/", seoRoutes);
 
   const hooks = new Hono<AppEnv>();
   hooks.use("/line", async (c, next) => {
@@ -78,6 +81,7 @@ export function createApp(bundles: Bundle[]) {
 
   const ward = new Hono<WardEnv>();
   ward.use("*", resolveWard);
+  ward.use("*", publicMetadata);
   ward.use("*", async (c, next) => {
     const reading = ["GET", "HEAD", "OPTIONS"].includes(c.req.method);
     const officer = /^\/[^/]+\/admin(?:\/|$)/.test(c.req.path);

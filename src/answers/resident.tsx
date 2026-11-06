@@ -17,7 +17,7 @@ export async function residentContext(db: D1Database, wardId: string, projectId:
     db.prepare(`SELECT d.document_id AS documentId, d.kind, COALESCE(v.title, d.title) AS title, v.body, r.published_at AS publishedAt
       FROM publication_records r JOIN documents d ON d.ward_id = r.ward_id AND d.document_id = r.document_id
       JOIN document_versions v ON v.ward_id = r.ward_id AND v.version_id = r.version_id
-      WHERE r.ward_id = ? AND r.project_id = ? AND r.unpublished_at IS NULL
+      WHERE r.ward_id = ? AND r.project_id = ? AND v.scope = 'public' AND r.unpublished_at IS NULL
         AND NOT EXISTS (SELECT 1 FROM publication_records newer WHERE newer.ward_id = r.ward_id
           AND newer.document_id = r.document_id AND newer.version_no > r.version_no)
       ORDER BY r.published_at DESC, r.version_no DESC`).bind(wardId, projectId).all<ResidentDocument>(),
