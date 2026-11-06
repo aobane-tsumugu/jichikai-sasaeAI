@@ -1,5 +1,40 @@
 import { ITEM_LABEL, isItemKey, type ItemKey } from "./model";
 
+/** 下書きで、分からない項目に入れておく印。配る紙とページには出さない。 */
+export const PENDING = "（確認中）";
+
+/** 配る本文から、まだ決まっていない所を外す。見出しと印だけの段は見出しごと、文の中なら文ごと外す。 */
+export function withoutPending(text: string): string {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const kept: string[] = [];
+  lines.forEach((line, index) => {
+    if (!line.includes(PENDING)) { kept.push(line); return; }
+    if (line.trim() === PENDING) {
+      const nextLine = lines[index + 1]?.trim();
+      while (kept.length && !kept[kept.length - 1]!.trim()) kept.pop();
+      const heading = kept[kept.length - 1]?.trim() ?? "";
+      if (!nextLine && heading && heading.length <= 30 && !/[。！？]$/.test(heading)) kept.pop();
+      return;
+    }
+    const rest = line.split(/(?<=。)/).filter((sentence) => !sentence.includes(PENDING)).join("");
+    if (rest.trim()) kept.push(rest);
+  });
+  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+const bigrams = (value: string) => {
+  const plain = value.replace(/[\s　、。・：:，,（）()「」『』■]/g, "");
+  return Array.from({ length: Math.max(plain.length - 1, 0) }, (_, index) => plain.slice(index, index + 2));
+};
+
+/** 本文に書いてある項目か。紙とページで同じ決まりにする。要約の項目は言い換えがあるので、文字の重なりも見る。 */
+export function writtenInText(key: string, content: string, text: string): boolean {
+  const value = content.trim();
+  if (!value || (isItemKey(key) && text.includes(ITEM_LABEL[key])) || text.includes(value.slice(0, 10))) return true;
+  const pairs = bigrams(value);
+  return pairs.length > 0 && pairs.filter((pair) => text.includes(pair)).length / pairs.length >= 0.6;
+}
+
 export interface DocumentBody {
   text: string;
   items: { key: ItemKey; content: string; source?: string }[];
@@ -38,7 +73,7 @@ export function reconcileDocumentBody(previous: DocumentBody, next: DocumentBody
     if (!item.content.trim() || item.content === old?.content) continue;
     // 共通の文字は項目の見出しがある箇所だけを直す。確認中の欄も同じ形で埋める。
     const aliases: Partial<Record<ItemKey, string[]>> = {
-      rain_plan: ["雨天時"], content: ["内容"], public_contact: ["問い合わせ先"],
+      date_time: ["いつ"], place: ["どこで"], rain_plan: ["雨天時"], content: ["内容"], public_contact: ["問い合わせ先", "連絡先"],
     };
     const labels = [ITEM_LABEL[item.key], ...(aliases[item.key] ?? [])]
       .map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");

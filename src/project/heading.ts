@@ -13,6 +13,21 @@ export function documentTitle(projectKind: ProjectKind, documentKind: DocumentKi
   return projectKind === "event" ? DOCUMENT_KIND_LABEL[documentKind] : TITLES[projectKind][documentKind];
 }
 
+/** 本文の最初の行が見出しと同じ時は true。見出しの直下に同じ題を二度出さない。 */
+function isTitleLine(line: string, projectTitle: string, documentTitle: string): boolean {
+  const plain = (value: string) => value.replace(/[\s　■]/g, "");
+  const text = plain(line);
+  const title = plain(documentTitle);
+  if (!text || text.length > 60 || !text.endsWith(title)) return text === plain(projectTitle) && !!text;
+  const rest = text.slice(0, text.length - title.length).replace(/(?:のご|の|ご)$/, "");
+  return !rest || plain(projectTitle).includes(rest);
+}
+
+export function withoutTitleLine(text: string, projectTitle: string, documentTitle: string): string {
+  const [first = "", ...rest] = text.replace(/\r\n/g, "\n").trimStart().split("\n");
+  return isTitleLine(first, projectTitle, documentTitle) ? rest.join("\n").trimStart() : text;
+}
+
 /** 紙や LINE の題だけでも何の話か分かるよう、文書の題に行事名が無ければ添える。 */
 export function paperHeading(projectTitle: string, documentTitle: string): string {
   return documentTitle.includes(projectTitle) ? documentTitle : `${projectTitle} ${documentTitle}`;

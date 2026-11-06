@@ -53,7 +53,7 @@ it("資料のない一年目に案内を手で保存し、出欠の入口と当�
   const confirmPage = await confirmation.text();
   expect(confirmPage).toContain(`この下に「出欠を答える」のボタンが出ます。`);
   expect(confirmPage).toContain("まだ決めていないところがあります");
-  expect(confirmPage).toContain("このまま配れます。");
+  expect(confirmPage).toContain("紙とページから外して配ります。");
   expect(confirmPage).toContain("下書きに戻る");
   const sent = await postForm(realApp, `${root}/publish/${id}/send`, fields, cookie);
   expect(sent.status).toBe(303);

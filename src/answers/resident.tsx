@@ -1,3 +1,4 @@
+import { PENDING } from "../project/document-body";
 import { formatDateText, formatJstDate } from "../core/time";
 import { getPublicContact } from "../settings/store";
 import { getAnswerLabels, type AnswerLabels } from "../settings/answer-labels";
@@ -46,7 +47,7 @@ export function publishedItem(body: string, key: string): string {
     const parsed: unknown = JSON.parse(body);
     if (typeof parsed !== "object" || parsed === null || !("items" in parsed) || !Array.isArray(parsed.items)) return "";
     const item: unknown = parsed.items.find((value: unknown) => typeof value === "object" && value !== null && "key" in value && value.key === key);
-    return typeof item === "object" && item !== null && "content" in item && typeof item.content === "string" ? item.content : "";
+    return typeof item === "object" && item !== null && "content" in item && typeof item.content === "string" && item.content.trim() !== PENDING ? item.content : "";
   } catch { return ""; }
 }
 

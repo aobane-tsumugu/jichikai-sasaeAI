@@ -16,8 +16,8 @@ import { checkPublicDraft } from "./check";
 import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, ITEM_SCREEN_LABEL, isItemKey, type DocumentKind } from "../project/model";
 import { applyChange } from "../project/apply";
 import { recordPublishedItems } from "../project/actions";
-import { paperHeading } from "../project/heading";
-import { documentBodyCheckMessage } from "../project/document-body";
+import { paperHeading, withoutTitleLine } from "../project/heading";
+import { documentBodyCheckMessage, PENDING, withoutPending, writtenInText } from "../project/document-body";
 import { MaterialsTable } from "../space/materials";
 import { currentPublicationTables, publicationTablesDiffer, publicationTablesSql } from "../space/publication-tables";
 
@@ -325,10 +325,10 @@ async function confirmPublication(c: Context<AdminEnv>) {
       {lineDelivery === "send" && remaining !== null && friends !== null && remaining < friends ? <Notice>今月、公式LINEで送れる通数が足りません。区のページに載せて、紙を配れます。</Notice> : null}
       {draft.published_at ? <Notice>配ったときから表が変わっています。ここに出ている今の表で配り直します。</Notice> : null}
       {draft.stale_since_version !== null ? <Notice>新しいものが入っています。ここに表示した内容で配れます。直すときは下書きに戻ってください。</Notice> : null}
-      {warnings.map((warning) => <PublicWarning finding={warning} />)}
-      {draft.body.includes("（確認中）") ? <div class="notice warn"><strong>まだ決まっていないところがあります</strong><p>「（確認中）」のまま配ると、その文字が読む人に見えます。このまま配ることもできます。</p><a class="quiet" href={adminPath(ward, `/projects/${projectId}/draft/${draft.kind}`)}>下書きを直す</a></div> : null}
-      <div class="compare"><section class="compare-paper"><b>紙{copies ? `（${recipientScope === "all_households" ? "全戸" : "加入世帯"}に${copies}部）` : ""}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} />{tablesPreview}{publicScope && draft.kind === "announcement" ? <p class="answer-slip-preview"><b>回答票</b>　切り取って班長か役員に渡します。代表者のお名前、人数、手伝いの欄があります。</p> : null}</div></section>
-        <section><b>{publicScope ? "区のページ" : "実行委員と班長のページ"}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} />{tablesPreview}{publicScope && draft.kind === "announcement" ? <p class="muted">この下に「出欠を答える」のボタンが出ます。</p> : null}</div></section></div>
+      {warnings.filter((warning) => !warning.startsWith("まだ決まっていないところ")).map((warning) => <PublicWarning finding={warning} />)}
+      {draft.body.includes(PENDING) ? <div class="notice warn"><strong>まだ決めていないところがあります</strong><p>「（確認中）」のところは、紙とページから外して配ります。入れるときは下書きを直してください。</p><a class="quiet" href={adminPath(ward, `/projects/${projectId}/draft/${draft.kind}`)}>下書きを直す</a></div> : null}
+      <div class="compare"><section class="compare-paper"><b>紙{copies ? `（${recipientScope === "all_households" ? "全戸" : "加入世帯"}に${copies}部）` : ""}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} />{tablesPreview}{publicScope && draft.kind === "announcement" ? <p class="answer-slip-preview"><b>回答票</b>　切り取って班長か役員に渡します。代表者のお名前、人数、手伝いの欄があります。</p> : null}</div></section>
+        <section><b>{publicScope ? "区のページ" : "実行委員と班長のページ"}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} />{tablesPreview}{publicScope && draft.kind === "announcement" ? <p class="muted">この下に「出欠を答える」のボタンが出ます。</p> : null}</div></section></div>
       <p class="compare-link"><a class="quiet" href={printHref}>紙の見え方を見る</a></p><p class="muted">{publicScope ? "配ったあとも、区のページからは下げられます。" : "実行委員と班長に配ります。区のページには載りません。"}</p>
       <div class="action-bar"><button type="submit">{sendLabel}</button><a class="button secondary" href={editHref}>下書きに戻る</a></div>
     </form></div>
@@ -453,23 +453,25 @@ admin.post("/publish/:projectId/lower/:publicationId", async (c) => {
 });
 
 /** 読む人に見せる段落。文を正とし、項目は文に書かれていない物だけ見出しを付けて足す。 */
-export function articleParagraphs(body: string): string[] {
+export function articleParagraphs(body: string, title?: { project: string; document: string }): string[] {
   let parsed: unknown;
   try { parsed = JSON.parse(body) as unknown; } catch { parsed = body; }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return collectText(parsed);
   const { text, items } = parsed as { text?: unknown; items?: unknown };
   if (typeof text !== "string" || !Array.isArray(items)) return collectText(parsed);
-  const paragraphs = text.replace(/\r\n/g, "\n").split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
+  const pending = withoutPending(text);
+  const readable = title ? withoutTitleLine(pending, title.project, title.document) : pending;
+  const paragraphs = readable.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
   const missing = items.flatMap((item: unknown) => {
     const { key, content } = (item ?? {}) as { key?: unknown; content?: unknown };
-    if (typeof key !== "string" || typeof content !== "string" || !content.trim() || text.includes(content.trim().slice(0, 10)) || (isItemKey(key) && text.includes(ITEM_LABEL[key]))) return [];
+    if (typeof key !== "string" || typeof content !== "string" || content.trim() === PENDING || writtenInText(key, content, readable)) return [];
     return [`${isItemKey(key) ? ITEM_SCREEN_LABEL[key] : key}: ${content.trim()}`];
   });
   return [...paragraphs, ...(missing.length ? [missing.join("\n")] : [])];
 }
 
-export function ArticleBody({ body }: { body: string }) {
-  return <div>{articleParagraphs(body).map((text, index) => <p key={index} style="white-space:pre-wrap">{text}</p>)}</div>;
+export function ArticleBody({ body, title }: { body: string; title?: { project: string; document: string } }) {
+  return <div>{articleParagraphs(body, title).map((text, index) => <p key={index} style="white-space:pre-wrap">{text}</p>)}</div>;
 }
 
 interface DistributionTarget { district: string; copies: number; household?: string; }
