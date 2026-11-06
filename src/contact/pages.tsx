@@ -133,9 +133,9 @@ contactRoutes.post("/", async (c) => {
   const mailed = await mailNotice(c.env, { reach, receipt: received.receipt }, new URL(href, c.req.url).href);
   return contactReceipt(c, received.token, received.receipt, mailed, true);
 });
-contactRoutes.get("/:token", async (c) => {
-  const contact = await contactByToken(c.env.DB, c.req.param("token"));
-  if (!contact) return c.html(<ContactPage title="見つかりません"><h1>見つかりません</h1><p>受け付けたときのリンクを確かめてください。</p><a class="quiet" href="/contact">問い合わせのフォームへ戻る</a></ContactPage>, 404);
+type ThreadRetry = { body: string; message: string; status: 400 | 403 | 429; photo: boolean };
+
+async function threadPage(c: Context<AppEnv>, contact: Contact, retry?: ThreadRetry) {
   let invitation: string | null = null;
   if (contact.grant_id && contact.target_ward_id && contact.grant_expires_at! > new Date().toISOString()) {
     const active = await c.env.DB.prepare("SELECT token_hash FROM sign_in_links WHERE ward_id = ? AND link_id = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?")
@@ -148,31 +148,40 @@ contactRoutes.get("/:token", async (c) => {
   }
   const href = c.req.path;
   return c.html(<ContactPage title="問い合わせのやりとり"><h1>問い合わせのやりとり</h1><p class="lead">受付番号{receiptLabel(contact.receipt)} {contact.closed_at ? "受付は閉じています" : "返事をここで読めます"}</p>
-    {c.req.query("sent") === "1" ? <Notice>書き足した内容を送りました。下のボタンで返事を確かめられます。</Notice> : null}
+    {retry ? <Notice error>{retry.message} 書いた内容は下に残っています。{retry.photo ? "写真は選び直してください。" : ""}</Notice> : null}
+    {!retry && c.req.query("sent") === "1" ? <Notice>書き足した内容を送りました。下のボタンで返事を確かめられます。</Notice> : null}
     {!contactBindings(c.env).CONTACT_MAIL ? <Notice>メールをまだ送れないため、この画面を閉じないでください。「返事を確かめる」で返事を読めます。</Notice> : null}
     <Conversation contact={contact} entries={await messages(c.env.DB, contact.contact_id)} photoBase={`${href}/photos`} />
     {invitation ? <section class="next"><strong>本人と確かめました</strong><p>入り方を選んでください。一度だけ、24時間使えます。</p><a class="button" href={invitation}>入り方を選ぶ</a></section> : null}
     <a class="button secondary" href={href}>返事を確かめる</a>
     {!contact.closed_at ? <form method="post" action={href} enctype="multipart/form-data">
-      <label for="more">書き足す</label><textarea id="more" name="body" maxlength={5000} rows={5} />
+      <label for="more">書き足す</label><textarea id="more" name="body" maxlength={5000} rows={5}>{retry?.body}</textarea>
       <label for="photo">写真を送る</label><input id="photo" name="photo" type="file" accept="image/jpeg,image/png,image/webp" />
       <p>写真は頼まれたときに送ってください。受付を閉じて30日で消えます。</p>
       <Turnstile sitekey={sitekey(c.env)} /><div class="action-bar"><button>送る</button></div>
     </form> : <p>この問い合わせの対応は終わりました。</p>}
     <a class="quiet" href="/contact">問い合わせのフォームへ戻る</a>
-  </ContactPage>);
+  </ContactPage>, retry?.status ?? 200);
+}
+
+contactRoutes.get("/:token", async (c) => {
+  const contact = await contactByToken(c.env.DB, c.req.param("token"));
+  if (!contact) return c.html(<ContactPage title="見つかりません"><h1>見つかりません</h1><p>受け付けたときのリンクを確かめてください。</p><a class="quiet" href="/contact">問い合わせのフォームへ戻る</a></ContactPage>, 404);
+  return threadPage(c, contact);
 });
 contactRoutes.post("/:token", async (c) => {
   const contact = await contactByToken(c.env.DB, c.req.param("token"));
   if (!contact || contact.closed_at) return c.html(<ContactError message="この受付には書き足せません。" href={c.req.path} />, 400);
   const form = await c.req.parseBody();
-  const body = typeof form.body === "string" ? form.body.trim() : "";
+  const input = typeof form.body === "string" ? form.body : "";
+  const body = input.trim();
   const photo = form.photo instanceof File && form.photo.size > 0 ? form.photo : undefined;
+  const retry = (message: string, status: ThreadRetry["status"]) => threadPage(c, contact, { body: input, message, status, photo: !!photo });
   if ((!body && !photo) || body.length > 5000 || (photo && (photo.size > 7 * 1024 * 1024 || !["image/jpeg", "image/png", "image/webp"].includes(photo.type)))) {
-    return c.html(<ContactError message="書き足す内容か、7MBまでの写真を入れてください。" href={c.req.path} />, 400);
+    return retry("書き足す内容か、7MBまでの写真を入れてください。", 400);
   }
-  if (!await allowSend(c.env.DB, `thread:${contact.contact_id}`)) return c.html(<ContactError message="続けて送られたため、送っていません。10分ほどおいてください。" href={c.req.path} />, 429);
-  if (!await verified(c, form)) return c.html(<ContactError message="送信の確認ができませんでした。もう一度画面を開いてください。" href={c.req.path} />, 403);
+  if (!await allowSend(c.env.DB, `thread:${contact.contact_id}`)) return retry("続けて送られたため、送っていません。10分ほどおいてください。", 429);
+  if (!await verified(c, form)) return retry("送信の確認ができませんでした。下の送信の確認をやり直して、もう一度送ってください。", 403);
   await appendMessage(c.env, contact, "person", body, photo);
   return c.redirect(`${c.req.path}?sent=1`, 303);
 });
