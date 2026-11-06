@@ -11,6 +11,7 @@ import { ArticleBody } from "../publish";
 import { listHelpOpportunities } from "../answers/help";
 import { paperHeading } from "../project/heading";
 import { PUBLIC_PRIVACY_NOTICE } from "../settings/keys";
+import { activityFacts } from "./activity";
 
 interface PublicProject {
   project_id: string;
@@ -27,7 +28,7 @@ interface PublicProject {
 
 interface PublicActivity { project_id: string; title: string; published_at: string; published_body: string; }
 interface ActivityTask { taskId: string; name: string; period: string; }
-interface ActivityBody { introduction: string; membershipBurden: string; membershipBenefit: string; tasks: ActivityTask[]; }
+interface ActivityBody { introduction: string; membershipBurden: string; membershipBenefit: string; tasks: ActivityTask[]; facts?: string[]; }
 
 function parseActivity(raw: string): ActivityBody | null {
   try {
@@ -37,7 +38,8 @@ function parseActivity(raw: string): ActivityBody | null {
     if (typeof body.introduction !== "string" || typeof body.membershipBurden !== "string" || typeof body.membershipBenefit !== "string" || !Array.isArray(body.tasks)) return null;
     const tasks = body.tasks.filter((task): task is ActivityTask => typeof task === "object" && task !== null &&
       typeof task.taskId === "string" && typeof task.name === "string" && typeof task.period === "string");
-    return { introduction: body.introduction, membershipBurden: body.membershipBurden, membershipBenefit: body.membershipBenefit, tasks };
+    const facts = Array.isArray(body.facts) && body.facts.every((fact) => typeof fact === "string") ? body.facts : undefined;
+    return { introduction: body.introduction, membershipBurden: body.membershipBurden, membershipBenefit: body.membershipBenefit, tasks, facts };
   } catch { return null; }
 }
 
@@ -146,23 +148,32 @@ pub.get("/work/:projectId", async (c) => {
   if (!activity) return c.notFound();
   const body = parseActivity(activity.published_body);
   if (!body) return c.notFound();
-  const listed = body.tasks;
+  const { tasks: listed, facts } = body.facts ? { tasks: body.tasks, facts: body.facts }
+    : await activityFacts(c.env.DB, c.var.ward.wardId, projectId, body.tasks);
   const opportunities = await listHelpOpportunities(c.env.DB, c.var.ward.wardId);
+  const lineUrl = await getOfficialLineUrl(c.env.DB, c.var.ward.wardId);
   // 案内を一度も載せていない行事では、案内のページが無いのでリンクを出さない。
   const notices = await c.env.DB.prepare("SELECT 1 AS found FROM publication_records WHERE ward_id = ? AND project_id = ? AND unpublished_at IS NULL LIMIT 1")
     .bind(c.var.ward.wardId, projectId).first<{ found: number }>();
   return c.html(<Layout title={`${activity.title}の活動`} siteName={c.var.ward.name}>
     <p class="link-line"><a href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のページへ</a></p>
     <h1>{activity.title}で役員がしたこと</h1>
-    <p class="lead">自治会の仕事を知っていただくために、役員が書きました。</p>
+    <p class="lead">役員の仕事の記録から、関わり方を考えるためにご覧ください。</p>
     {body.introduction ? <p style="white-space:pre-wrap">{body.introduction}</p> : null}
     <h2>どんな仕事があったか</h2>
     <p>仕事の記録から作りました。</p>
-    {listed.length ? <ul>{listed.map((task) => <li>{formatDateText(task.period) || "時期の記録なし"}　{task.name}</li>)}</ul> : <p>紹介する仕事はありません。</p>}
+    {listed.length ? <ul>{listed.map((task) => <li>{task.name}{task.period ? `（${task.period}）` : ""}</li>)}</ul> : null}
+    {facts.length ? <ul>{facts.map((fact) => <li>{fact}</li>)}</ul> : null}
+    {!listed.length && !facts.length ? <p>紹介する仕事はありません。</p> : null}
     <h2>加入すると担うこと</h2><p style="white-space:pre-wrap">{body.membershipBurden || "この項目の説明はありません。"}</p>
     <h2>加入すると得られること</h2><p style="white-space:pre-wrap">{body.membershipBenefit || "この項目の説明はありません。"}</p>
     <h2>関わり方は選べます</h2><p>読むだけでも、一回だけ手伝うだけでもかまいません。</p>
     {opportunities.length ? <p class="link-line"><a href={`/${c.var.ward.slug}/help`}>手伝いを申し込む</a></p> : null}
+    <h2>来年の案内をご覧ください</h2>
+    <p>来年の案内も区のページで読めます。名前や世帯の登録はいりません。</p>
+    <p class="link-line"><a href={`/${c.var.ward.slug}/`}>区のページで案内を見る</a></p>
+    {lineUrl ? <><p>公式LINEを友だちに追加すると、新しい案内が届きます。追加は、してもしなくてもかまいません。</p>
+      <p class="link-line"><a href={`/${c.var.ward.slug}/line`}>公式LINEで案内を受け取る</a></p></> : null}
     {notices ? <p class="link-line"><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>この行事の案内を見る</a></p> : null}
   </Layout>);
 });

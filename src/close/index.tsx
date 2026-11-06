@@ -15,6 +15,7 @@ import { MAP_PROGRESS_LABEL, type MapProgress } from "../project/model";
 import { checkPublicDraft } from "../check";
 import { getDraftPack } from "../draft/packs";
 import { getPublicContact } from "../settings/store";
+import { activityFacts } from "../ward/activity";
 
 interface CloseTask { task_id: string; name: string; period_start: string | null; period_end: string | null; progress: MapProgress; }
 interface CloseEntry extends CloseTask { period: string; requested_by: string; difficulty: string; next_year: string; }
@@ -128,6 +129,7 @@ admin.get("/close/:projectId", async (c) => {
     .bind(ward.wardId, project.year, project.kind, ward.wardId, id).first<{ published_body: string }>() : null;
   const previousActivity = parseActivityBody(previous?.published_body);
   const activity = savedActivity ?? { introduction: report("public"), membershipBurden: previousActivity?.membershipBurden ?? "", membershipBenefit: previousActivity?.membershipBenefit ?? "", tasks: tasks.results.filter((task) => task.progress === "done").map((task) => ({ taskId: task.task_id, name: task.name, period: task.period })) };
+  const recordedActivity = activityView ? await activityFacts(c.env.DB, ward.wardId, id, activity.tasks) : null;
   const warnings = !project.closedAt && !activityView ? await checkPublicDraft(c.env.DB, ward.wardId, id, "report", { text: report("public"), items: [] }) : [];
   const title = activityView ? "役員の仕事を紹介する" : `${project.title}を${project.closedAt ? "閉じました" : "閉じる"}`;
   return c.html(<AdminPage ward={ward} account={c.var.account} title={title}
@@ -139,6 +141,11 @@ admin.get("/close/:projectId", async (c) => {
         <div class="field"><label for="activity-intro">この行事で役員がしたこと</label><textarea id="activity-intro" name="introduction" rows={6} maxlength={5000}>{activity.introduction}</textarea></div>
         <div class="field"><label for="activity-burden">加入すると担うこと</label><textarea id="activity-burden" name="membershipBurden" rows={4} maxlength={3000}>{activity.membershipBurden}</textarea><p class="help-text">載せるときに必要です。あとで書いてもかまいません。</p></div>
         <div class="field"><label for="activity-benefit">加入すると得られること</label><textarea id="activity-benefit" name="membershipBenefit" rows={4} maxlength={3000}>{activity.membershipBenefit}</textarea><p class="help-text">載せるときに必要です。あとで書いてもかまいません。</p></div>
+        {recordedActivity && (recordedActivity.tasks.length || recordedActivity.facts.length) ? <section>
+          <h2>どんな仕事があったか</h2><p>記録から作りました。紹介といっしょに区のページに載ります。</p>
+          <ul>{recordedActivity.tasks.map((task) => <li>{task.name}{task.period ? `（${task.period}）` : ""}</li>)}
+            {recordedActivity.facts.map((fact) => <li>{fact}</li>)}</ul>
+        </section> : null}
         <details class="fold"><summary>載せる仕事を選ぶ</summary><div>{tasks.results.length ? <div class="choice">{tasks.results.map((task) => {
           const saved = activity.tasks.find((entry) => entry.taskId === task.task_id);
           return <label><input type="checkbox" name="taskId" value={task.task_id} checked={!!saved} /> {saved?.name ?? task.name}（{formatDateText(saved?.period ?? task.period) || "時期未定"}）
@@ -188,11 +195,13 @@ admin.post("/close/:projectId/activity", async (c) => {
   const rows = await c.env.DB.prepare("SELECT task_id, name, period FROM project_close_map WHERE ward_id = ? AND project_id = ? ORDER BY period, task_id")
     .bind(ward.wardId, projectId).all<{ task_id: string; name: string; period: string }>();
   const selectedIds = new Set(form.getAll("taskId").map(String));
-  const includedTasks = rows.results.filter((row) => selectedIds.has(row.task_id)).map((row) => ({
+  const selectedTasks = rows.results.filter((row) => selectedIds.has(row.task_id)).map((row) => ({
     taskId: row.task_id,
     name: String(form.get(`activityName_${row.task_id}`) ?? row.name).trim().slice(0, 120),
     period: String(form.get(`activityPeriod_${row.task_id}`) ?? row.period).trim().slice(0, 80),
   }));
+  const recordedActivity = await activityFacts(c.env.DB, ward.wardId, projectId, selectedTasks);
+  const includedTasks = recordedActivity.tasks;
   const introduction = String(form.get("introduction") ?? "").trim().slice(0, 5000);
   const membershipBurden = String(form.get("membershipBurden") ?? "").trim().slice(0, 3000);
   const membershipBenefit = String(form.get("membershipBenefit") ?? "").trim().slice(0, 3000);
@@ -202,7 +211,8 @@ admin.post("/close/:projectId/activity", async (c) => {
     const warnings = await checkPublicDraft(c.env.DB, ward.wardId, projectId, "report", { text, items: [] });
     if (warnings.length) return c.redirect(`${adminPath(ward, `/close/${projectId}`)}?view=activity&error=activity_private`, 303);
   }
-  const body = JSON.stringify({ introduction, membershipBurden, membershipBenefit, tasks: includedTasks });
+  // 載せたあとに開き直して記録を直しても、読んで配った紹介は変えない。
+  const body = JSON.stringify({ introduction, membershipBurden, membershipBenefit, tasks: includedTasks, facts: recordedActivity.facts });
   const now = nowIso();
   await c.env.DB.prepare(`INSERT INTO project_activity_pages (ward_id, project_id, draft_body, published_body, published_at, updated_at, updated_by_account_id)
     VALUES (?, ?, ?, ?, ?, ?, ?)
