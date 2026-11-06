@@ -84,13 +84,12 @@ admin.get("/print/:projectId/paper/:kind", async (c) => {
       code: await makeProjectPaperCode(c.env.DB, ward.wardId, project.project_id),
       url: projectPaperQrUrl(baseUrl, ward.slug, project.project_id),
     })));
-    return c.html(<PrintDocument title="役員会の記入欄" back={adminPath(ward, `/print/${id}`)}>{papers.map((paper) => <Sheet footer={<>{ward.name} 役員会の記入欄</>}>
-      <h1>{paper.title}</h1><h2>役員会の記入欄</h2>
-      <p>決まったことを書き、紙の番号と一緒に撮って送ってください。</p>
-      <PaperField label="決めたこと" heightMm={42} code={paper.code} text={paper.url} />
-      <PaperField label="日時・場所・変更" heightMm={42} code={paper.code} text={paper.url} />
-      <PaperField label="次にすること" heightMm={42} code={paper.code} text={paper.url} />
-      <p>書いた紙は、役員の画面の「送る」から、紙の番号といっしょに撮って送ってください。</p>
+    return c.html(<PrintDocument title="役員会の記入欄" back={adminPath(ward, `/print/${id}`)}>{papers.map((paper) => <Sheet footer={<><span>{ward.name} 役員会の記入欄</span><span>{paperDate(new Date().toISOString()).replace("に配りました", "に印刷しました")}　紙の番号{paper.code}</span></>}>
+      <h1>{paper.title} 役員会の記入欄</h1>
+      <p>役員会や電話で決まったことを、この紙に書いてください。書いたら、紙の番号が写るように撮って、役員の画面の「書いた紙を撮って送る」から送ってください。きれいに書かなくてかまいません。</p>
+      <PaperField label="決めたこと" heightMm={66} code={paper.code} text={paper.url} />
+      <PaperField label="日時・場所・変更" heightMm={66} code={paper.code} text={paper.url} />
+      <PaperField label="次にすること" heightMm={66} code={paper.code} text={paper.url} />
     </Sheet>)}</PrintDocument>);
   }
   const code = await makeProjectPaperCode(c.env.DB, ward.wardId, id);
@@ -104,13 +103,11 @@ admin.get("/print/:projectId/paper/:kind", async (c) => {
     rows.push({ ...entry, data: { name: entry.data.name ?? "", lastYearAmount: entry.data.amount ?? entry.data.lastYearAmount ?? "" } });
   }
   return c.html(<PrintDocument title={`${state.project.title}協賛先の一覧`} back={adminPath(ward, `/print/${id}`)}>
-    <Sheet footer={<>{ward.name} 協賛先の一覧{code}</>}>
-      <h1>{state.project.title} 協賛先の一覧</h1>
+    <Sheet footer={<><span>{ward.name} 協賛先の一覧</span><span>{paperDate(new Date().toISOString()).replace("に配りました", "に印刷しました")}　紙の番号{code}</span></>}>
+      <div class="paper-header"><div><h1>{state.project.title} 協賛先の一覧</h1>
       <p>電話しながら、返事と額を書いてください。書いたら、紙の番号と一緒に撮って、役員の画面から送ってください。去年の額は、今年の返事ではありません。</p>
-      <p>紙の番号: {code}</p>
-      <PrintQr text={url} sizeMm={26} />
+      </div><div class="paper-identity"><PrintQr text={url} sizeMm={24} /><span>紙の番号{code}</span></div></div>
       <RowsTable table="sponsors" rows={rows} paperCode={code} />
-      {Array.from({ length: 3 }, (_, index) => <FieldBox key={index} label={`協賛先・返事・額・メモ　${code ?? ""}`} heightMm={22} />)}
       <p>返事は、出す、出さない、待ちのどれかを書きます。一番下の空いた行には、一覧にない協賛先を書けます。</p>
     </Sheet>
   </PrintDocument>);
@@ -242,15 +239,14 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
       {contact ? <><h2>なくしたとき、分からないときは</h2><p>{contact}</p></> : null}
     </Sheet>) : null}
     {kind === "duty" ? <Sheet footer={<><span>{ward.name} 当番表と配置図</span><span>{distributed}　紙の番号{paperCode}</span></>}>
-      <h1>{row.title} 当番表と配置図</h1>
+      <div class="paper-header"><div><h1>{row.title} 当番表と配置図</h1>
       <p>{[publishedItem(row.body, "date_time"), publishedItem(row.body, "place"), publishedItem(row.body, "rain_plan")].filter(Boolean).join("。")}</p>
-      <p>紙の番号: {paperCode}</p><PrintQr text={named()} sizeMm={32} />
+      </div><div class="paper-identity"><PrintQr text={named()} sizeMm={26} /><span>紙の番号{paperCode}</span></div></div>
       {tables === null ? <p>配ったときの表の記録がありません。表を確かめて配り直してください。</p> : <>
         <RowsTable table="duties" rows={published("duties")} paperCode={paperCode} />
         <RowsTable table="layout" rows={published("layout")} paperCode={paperCode} />
       </>}
-      {Array.from({ length: 3 }, (_, index) => <FieldBox key={index} label={"変わったこと、メモ　" + (paperCode ?? "")} heightMm={22} />)}
-      <p>当日書いて、紙の番号と一緒に撮って送れます。</p>
+      <div class="field-box" style="min-height:30mm">変わったこと、メモ　<span>（当日書いて、紙の番号と一緒に撮って送れます）</span></div>
       {contact ? <p>分からないときは　{contact}</p> : null}
     </Sheet> : null}
   </PrintDocument>);
@@ -313,26 +309,21 @@ export function fitsAboveAnswer(body: string, answerText: string): boolean {
   return bodyLines(body) + Math.ceil(answerText.length / 32) <= 18;
 }
 
-/** 表に出す列（どれかの行に値がある列）。 */
-function shownFields(table: TableKey, rows: Pick<RowView, "data">[]) {
-  return Object.entries(TABLES[table].fields).filter(([key]) => rows.some((entry) => entry.data[key] !== undefined && entry.data[key] !== ""));
-}
-
 /** 今年の中身の表を紙に並べる。空なら何も出さない。 */
-function RowsTable({ table, rows, paperCode }: { table: TableKey; rows: Pick<RowView, "data">[]; paperCode?: string | null }) {
+function RowsTable({ table, rows }: { table: TableKey; rows: Pick<RowView, "data">[]; paperCode?: string | null }) {
   if (!rows.length && table !== "sponsors") return <><h2>{TABLES[table].label}</h2><p>{TABLES[table].label}はまだありません。</p></>;
-  const fields = table === "sponsors" ? Object.entries(TABLES.sponsors.fields) : shownFields(table, rows);
+  const fields = Object.entries(TABLES[table].fields);
   return <>
     <h2>{TABLES[table].label}</h2>
-    <table><thead>{paperCode ? <tr><th colspan={fields.length}>紙の番号: {paperCode}</th></tr> : null}<tr>{fields.map(([, field]) => <th>{field.label}</th>)}</tr></thead>
-      <tbody>{rows.map((entry) => <tr style={table === "sponsors" ? "height:18mm" : undefined}>{fields.map(([key]) => <td>{table === "sponsors" && key === "reply" ? ({ yes: "出す", no: "出さない", pending: "待ち" }[String(entry.data[key])] ?? displayFieldValue(table, key, entry.data[key])) : displayFieldValue(table, key, entry.data[key])}</td>)}</tr>)}</tbody></table>
+    <table class={`paper-table paper-${table}`}><thead><tr>{fields.map(([key, field]) => <th>{table === "sponsors" && key === "ask" ? "お願いした日" : field.label}</th>)}</tr></thead>
+      <tbody>{rows.map((entry) => <tr>{fields.map(([key]) => <td>{table === "sponsors" && key === "reply" ? ({ yes: "出す", no: "出さない", pending: "待ち" }[String(entry.data[key])] ?? displayFieldValue(table, key, entry.data[key])) : displayFieldValue(table, key, entry.data[key])}</td>)}</tr>)}{table === "sponsors" ? Array.from({ length: 2 }, (_, index) => <tr key={`blank-${index}`}>{fields.map(() => <td></td>)}</tr>) : null}</tbody></table>
   </>;
 }
 
 function PaperField({ label, heightMm, code, text }: { label: string; heightMm: number; code: string | null; text: string }) {
   return <div class="meeting-field" style="display:flex;align-items:flex-start;gap:3mm;margin:2mm 0">
     <FieldBox label={label} heightMm={heightMm} code={code ?? undefined} />
-    <PrintQr text={text} sizeMm={18} />
+    <PrintQr text={text} sizeMm={24} />
   </div>;
 }
 

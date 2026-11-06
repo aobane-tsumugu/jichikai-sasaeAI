@@ -243,17 +243,17 @@ async function renderSpace(c: Context<WardEnv>, direct: string | null) {
   return c.html(<Layout title={leader ? "班長のページ" : "実行委員のページ"} siteName={`${c.var.ward.name} ${project.title}`} noindex>
     <div class="space-page"><h1>{leader ? `${credential.district ?? ""}の班長さんへ` : "実行委員のページ"}</h1>
     <p class="lead">{leader ? `このページでは、${credential.district ?? ""}の答えを見て、預かった回答票を写真で送れます。` : `${project.title}の準備のために、役員から配られたものを見て、手元の紙の写真を送るページです。住民には見えません。`}{leader && deadline ? `答えの締切は${formatJstDate(deadline)}です。` : ""}</p>
-    <a class="button" href={`${base}?send=${leader ? "answer" : "paper"}`}>{leader ? "回答票を撮って送る" : "手元の紙を撮って送る"}</a>
+    <div class="split"><aside><div class="action-links"><a class="button" href={`${base}?send=${leader ? "answer" : "paper"}`}>{leader ? "回答票を撮って送る" : "手元の紙を撮って送る"}</a></div>
     {!leader ? <p>回答票、当番表、当日の紙のどれでもかまいません。写真かPDFを送れます。送った紙は、役員に届きます。</p> : null}
-    <h2>当番表</h2><p>配ったときの当番表です。役員が配り直すまで変わりません。</p>
+    </aside><section><h2>当番表</h2><p class="muted">配ったときの当番表です。役員が配り直すまで変わりません。</p>
     {data.tablesRecorded ? <><MaterialsTable table="duties" items={data.items} /><h2>配置図</h2><MaterialsTable table="layout" items={data.items} /></> : <p>{data.tablesPublished ? "配ったときの表の記録がありません。役員に聞いてください。" : "まだ配っていません。"}</p>}
     {data.documents.length ? data.documents.map((doc) => <section><h2>{doc.title}</h2><p>役員が実行委員と班長に配った文書です。直している途中の文書は出ません。</p><details class="fold"><summary>{doc.title}を読む</summary><div>{articleParagraphs(doc.body).map((text) => <p class="preserve-lines">{text}</p>)}</div></details></section>) : <><h2>配られたもの</h2><p>まだ配っていません。</p></>}
     <h2>案内</h2>{publications.length ? publications.map((doc) => <p><a class="quiet" href={`/${c.var.ward.slug}/p/${projectId}`}>{doc.title}（区のページ）</a></p>) : <p>まだ配っていません。</p>}
     <h2>出欠</h2><div class="counts space-counts"><div class="count"><b>{new Set(data.attendance.map((row) => JSON.stringify([row.district, row.household]))).size}<small>世帯</small></b><span>{householdCount ? `${householdCount}世帯のうち` : "答えた"}</span></div><div class="count"><b>{data.attendance.reduce((sum, row) => sum + row.people_count, 0)}<small>人</small></b><span>参加する</span></div></div><p class="muted">紙で答えた世帯も、回答票を送ると数に入ります。</p>
     {data.attendance.length ? <details class="fold"><summary>答えた世帯の一覧（{new Set(data.attendance.map((row) => JSON.stringify([row.district, row.household]))).size}世帯）</summary><div><table class="stack"><thead><tr>{!leader ? <th>班</th> : null}<th>代表者</th><th class="num">人数</th></tr></thead><tbody>{data.attendance.map((row) => <tr>{!leader ? <td data-label="班">{row.district || "班が分からない"}</td> : null}<td data-label="代表者">{row.household}</td><td data-label="人数" class="num">{countText({ peopleCount: row.people_count, childrenCount: row.children_count, adultsCount: row.adults_count, seniorsCount: row.seniors_count }, labels)}</td></tr>)}</tbody></table></div></details> : <p>答えはまだありません。</p>}
-    {leader ? <p class="muted">名前が出た世帯の回答票は、捨ててかまいません。捨てにくいときは、ついでのときに役員に渡してください。</p> : <><h2>協賛先</h2><p>額と、お願いした内容は、このページには出ません。</p>{data.tablesRecorded ? <details class="fold"><summary>協賛先の一覧を開く</summary><div><MaterialsTable table="sponsors" items={data.items} /></div></details> : <p>まだ配っていません。</p>}</>}
+    {leader ? <p class="muted">名前が出た世帯の回答票は、捨ててかまいません。捨てにくいときは、ついでのときに役員に渡してください。</p> : <><h2>協賛先</h2><p>{data.tablesRecorded ? `${data.items.filter((item) => item.kind === "sponsors").length}軒のうち、${data.items.filter((item) => item.kind === "sponsors" && ["yes", "no"].includes(String(item.data.reply))).length}軒から返事がありました。` : ""}額と、お願いした内容は、このページには出ません。</p>{data.tablesRecorded ? <details class="fold"><summary>協賛先の一覧を開く（{data.items.filter((item) => item.kind === "sponsors").length}軒）</summary><div><MaterialsTable table="sponsors" items={data.items} /></div></details> : <p>まだ配っていません。</p>}</>}
     {!leader ? <><h2>写真と届いたもの</h2>{data.originals.length ? data.originals.map((file) => <p><a class="quiet" href={`${base}/file/${encodeURIComponent(file.original_id)}`}>{file.filename}</a></p>) : <p>まだありません。</p>}</> : null}
-    <h2>連絡先</h2><p class="preserve-lines">{contact || "役員に聞いてください。"}</p></div>
+    <h2>連絡先</h2><p class="preserve-lines">{contact || "役員に聞いてください。"}</p></section></div></div>
   </Layout>);
 }
 

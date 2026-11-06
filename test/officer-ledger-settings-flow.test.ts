@@ -137,7 +137,7 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
   for (const kind of DOCUMENT_KINDS) {
     const draftPath = `${root}/projects/${id}/draft/${kind}`;
     const draft = await read(draftPath);
-    expect(draft).toContain("新しいものが入りました");
+    expect(draft).toContain("新しい資料が届きました");
     expect(draft).toContain(`action="${draftPath}/save"`);
     expect(draft).toContain(fixture.publicAnnouncement);
     expect(draft).toContain("前の下書きに戻す");

@@ -7,7 +7,7 @@ import type { AdminEnv } from "../env";
 import { getReadings, listOriginals, listJobs } from "../intake/store";
 import { createProject, getProjectState, getProjectSummary, listProjects, ProjectInputError } from "./api";
 import { answerQuestion, renameProject } from "./actions";
-import { PROJECT_KINDS, PROJECT_KIND_LABEL, TABLE_KEYS, type TableKey, isItemKey, DEADLINE_LABEL, ITEM_LABEL, TABLES, displayFieldValue, DOCUMENT_KIND_LABEL, SCOPE_LABEL, CONFIDENCE_LABEL, type RowData } from "./model";
+import { PROJECT_KINDS, PROJECT_KIND_LABEL, TABLE_KEYS, type TableKey, isItemKey, DEADLINE_LABEL, ITEM_LABEL, TABLES, displayFieldValue, DOCUMENT_KIND_LABEL, SCOPE_LABEL, type RowData } from "./model";
 import { setProjectApi } from "../ai/project-binding";
 import { agentApi } from "./agent-api";
 import { MAP_TEMPLATES } from "../map/template";
@@ -143,40 +143,40 @@ admin.get("/projects/:projectId", async (c) => {
     </nav>
     <p>{PROJECT_KIND_LABEL[project.kind]} / {project.year}年</p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
-    <details><summary>名前を直す</summary><form method="post" action={adminPath(ward, `/projects/${projectId}/title`)}><label for="title">名前</label><input id="title" name="title" value={project.title} maxlength={100} required /> <button class="secondary">名前を保存する</button></form></details>
-    <p class="link-line"><a href={adminPath(ward, `/projects/${projectId}/questions`)}>質問{state.questions.length ? `が${state.questions.length}つあります` : "はありません"}</a></p>
-    <p>答えなくても配れます。</p>
+    <details class="fold"><summary>名前を直す</summary><form method="post" action={adminPath(ward, `/projects/${projectId}/title`)}><label for="title">名前</label><input id="title" name="title" value={project.title} maxlength={100} required /> <button class="secondary">名前を保存する</button></form></details>
+    <ul class="rows"><li><a class="row-link" href={adminPath(ward, `/projects/${projectId}/questions`)}><b>質問{state.questions.length ? `が${state.questions.length}つあります` : "はありません"}</b><span>答えなくても配れます。</span></a></li></ul>
     <h2 id="materials">届いた資料</h2>
     {await Promise.all(jobs.map(async (job) => {
       const originals = await listOriginals(c.env.DB, ward.wardId, job.job_id);
       const readings = await getReadings(c.env.DB, ward.wardId, job.job_id);
-      return <section class="panel"><h3>{job.first_filename || "一行の文"}</h3><p>{job.status === "done" ? "読み終わりました" : job.status === "failed" ? "読めませんでした" : "読み取りを進めています"}</p>
-        {originals.map((original) => { const target = adminPath(ward, `/intake/originals/${original.original_id}`); const related = readings.filter((r) => "fields" in r.body ? r.body.fields.some((f) => f.original_id === original.original_id) || r.body.text_blocks.some((b) => b.original_id === original.original_id) : r.body.rows.some((row) => row.original_id === original.original_id)); return <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:1rem;align-items:start;margin:1rem 0">
-          <div class="material-links"><a href={target} target="_blank">元の資料を開く: {original.filename || "一行の文"}</a>{original.kind === "text" ? <p style="white-space:pre-wrap">{readings.filter((r) => r.source === "direct").flatMap((r) => "text_blocks" in r.body ? r.body.text_blocks.filter((block) => block.original_id === original.original_id).map((block) => block.text) : []).join("\n")}</p> : null}{original.media_type.startsWith("image/") ? <a href={target} target="_blank"><img src={target} alt="入った元の写真" loading="lazy" style="display:block;width:100%;height:auto;margin-top:.5rem" /></a> : null}
+      return <section class="panel"><b>{job.first_filename || "一行の文"}</b><p class="muted">{job.status === "done" ? "読み終わりました" : job.status === "failed" ? "読めませんでした" : "読み取りを進めています"}</p>
+        {originals.map((original) => { const target = adminPath(ward, `/intake/originals/${original.original_id}`); const related = readings.filter((r) => "fields" in r.body ? r.body.fields.some((f) => f.original_id === original.original_id) || r.body.text_blocks.some((b) => b.original_id === original.original_id) : r.body.rows.some((row) => row.original_id === original.original_id)); return <div>
+          <div class="material-links"><a class="quiet" href={target}>元の資料を見る{originals.length > 1 ? `（${originals.indexOf(original) + 1}枚目）` : ""}</a>{original.kind === "text" ? <p style="white-space:pre-wrap">{readings.filter((r) => r.source === "direct").flatMap((r) => "text_blocks" in r.body ? r.body.text_blocks.filter((block) => block.original_id === original.original_id).map((block) => block.text) : []).join("\n")}</p> : null}
             {!project.closedAt && !original.withdrawn_at && unknownOriginalIds.has(original.original_id) ? <form method="post" action={adminPath(ward, `/projects/${projectId}/materials/${original.original_id}/this-year`)}>
-              <p><button type="submit" class="secondary">この資料は今年のもの</button> <Hint text={`${project.year}年の資料として中身を入れ直します。今年の中身と違うところは、上書きせず質問に並びます。質問に答えなくても配れます。`} /></p>
+              <p class="muted">年が書かれていません。去年のものなら、そのままで大丈夫です。</p><p><button type="submit" class="secondary">この資料は今年のもの</button> <Hint text={`${project.year}年の資料として中身を入れ直します。今年の中身と違うところは、上書きせず質問に並びます。質問に答えなくても配れます。`} /></p>
             </form> : null}
           </div>
-          <div>{related.map((r) => <details><summary>読み取った内容</summary><p>{r.body.summary}</p>
-            {"fields" in r.body ? <>{r.body.fields.filter((f) => f.original_id === original.original_id).map((f) => <p><a href={target} target="_blank">{f.name}: {f.value}</a>（写真全体・{f.locator} / 確かさ{CONFIDENCE_LABEL[f.confidence]}）</p>)}{r.body.text_blocks.filter((b) => b.original_id === original.original_id).map((b) => <p><a href={target} target="_blank">{b.text}</a>（写真全体・{b.locator}）</p>)}</> : r.body.rows.filter((row) => row.original_id === original.original_id).map((row) => <p><a href={target} target="_blank">{row.household_name} / {row.ward_group}</a>（写真全体・{row.locator}）</p>)}
-          </details>)}</div>
+          <div>{related.map((r) => <details class="hint"><summary>読み取った内容</summary><div><p>{r.body.summary}</p>
+            {"fields" in r.body ? <>{r.body.fields.filter((f) => f.original_id === original.original_id).map((f) => <p>{f.name}: {f.value}（{f.locator}。{f.confidence === "high" ? "はっきり読めました" : f.confidence === "medium" ? "少し読みにくい字でした" : "読みにくい字でした"}）</p>)}{r.body.text_blocks.filter((b) => b.original_id === original.original_id).map((b) => <p>{b.text}（{b.locator}）</p>)}</> : r.body.rows.filter((row) => row.original_id === original.original_id).map((row) => <p>{row.household_name} / {row.ward_group}（{row.locator}）</p>)}
+          </div></details>)}</div>
         </div>; })}
-        <p class="link-line"><a href={adminPath(ward, `/projects/${projectId}/map`)}>段取りで、変わった仕事を見る</a></p>
+        {job.status === "failed" ? <form method="post" action={adminPath(ward, `/intake/${job.job_id}/retry`)}><button class="secondary">もう一度読む</button></form> : null}
       </section>;
     }))}
     {jobs.length === 0 ? <p>まだ資料は入っていません。</p> : null}
+    <a class="quiet" href={adminPath(ward, `/projects/${projectId}/map`)}>段取りで、変わった仕事を見る</a>
     <h2>資料から変わったところ</h2>
-    {changes.results.map((change) => <p>{changeTargetLabel(change.kind, change.target)} — {change.status === "applied" ? "中身に入りました" : change.status === "same" ? "同じものでした" : change.status === "conflict" ? "食い違いとして並びました" : change.status === "kept" ? "今の中身を残しました" : change.status === "held" ? "確認待ちです" : change.status === "dropped" ? `取り込めませんでした${change.reason ? `: ${change.reason}` : ""}` : "記録しました"}{change.source_locator ? `（${change.source_locator}）` : ""}</p>)}
+    <ul class="rows">{changes.results.map((change) => <li class="panel"><b>{changeTargetLabel(change.kind, change.target)}</b><p>{change.status === "applied" ? "中身に入りました" : change.status === "same" ? "同じものでした" : change.status === "conflict" ? "食い違いとして並びました" : change.status === "kept" ? "今の中身を残しました" : change.status === "held" ? "確認待ちです" : change.status === "dropped" ? `取り込めませんでした${change.reason ? `: ${change.reason}` : ""}` : "記録しました"}{change.source_locator ? `（${change.source_locator}）` : ""}</p></li>)}</ul>
     {changes.results.length === 0 ? <p>まだ変わったところはありません。</p> : null}
     <h2>今年の中身</h2>
     <p>今年の中身がない項目には、去年までの資料を参考として並べます。</p>
-    {state.items.map((item) => <section class="panel"><strong>{item.label}</strong><p>{item.current?.content ?? "まだ入っていません"}</p>{item.references.map((v) => <p>参考（{v.refYear === null ? "年不明" : `${v.refYear}年`}）: {v.content}</p>)}</section>)}
+    <dl class="facts">{state.items.map((item) => <><dt>{item.label}</dt><dd>{item.current?.content ?? "まだ入っていません"}{item.references.map((v) => <span class="muted block">参考（{v.refYear === null ? "年不明" : `${v.refYear}年`}）: {v.content}</span>)}</dd></>)}</dl>
     <h2 id="ledger">運営メモ</h2>
     <p>何を頼み、どこに、いくらかけたかを残す、来年のための参考の記録です。段取りの「運営メモ」から書いたり、元の資料を見たりできます。</p>
     <div class="action-links"><a class="button secondary" href={adminPath(ward, `/projects/${projectId}/ledger`)}>運営メモを開く</a></div>
 
     <h2>文書</h2>
-    {state.documents.map((d) => <p>{DOCUMENT_KIND_LABEL[d.kind]} / {SCOPE_LABEL[d.scope]}{d.stale ? " / 新しい資料が入っています" : ""}</p>)}
+    <ul class="rows">{state.documents.map((d) => <li class="panel"><b>{DOCUMENT_KIND_LABEL[d.kind]}</b><p class="muted">{d.scope === "public" ? "だれでも読める" : SCOPE_LABEL[d.scope]}{d.stale ? "　新しい資料が入っています" : ""}</p></li>)}</ul>
     <a class="quiet" href={adminPath(ward, `/projects/${projectId}/draft`)}>下書きの一覧を開く</a>
   </Layout>);
 });
