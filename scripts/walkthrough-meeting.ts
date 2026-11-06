@@ -224,7 +224,7 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
       assert(page.includes(`<h1>${projectTitle} 総会の招集</h1>`), "公開のページに総会の見出しがありません");
       assert(!page.includes("答えがないときは、欠席として数えます"), "総会の公開のページに行事の文があります");
       assert(/<title>[^<]*総会の招集/.test(page), "公開のページの題が総会の招集ではありません");
-      const article = [...page.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article>/gi)].find(a => /<h2>くわしい案内<\/h2>/.test(a[1] ?? ""))?.[1];
+      const article = [...page.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article>/gi)].find(a => /<h2>総会の招集<\/h2>/.test(a[1] ?? ""))?.[1];
       assert(article && visible(article).includes(visible(form.values.get("text") ?? "")), "公開のページに招集の本文がありません");
       return "AIの招集の題、住民向けの文、日時・場所・議案を確認して配りました。公式LINEは送信していません。";
     }],
