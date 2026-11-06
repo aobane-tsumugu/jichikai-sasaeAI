@@ -20,7 +20,7 @@ import { getJob, listJobs, listOriginals } from "../intake/store";
 import { pendingMaterialGroups } from "../intake/groups";
 import { adminPath } from "../core/auth";
 import { formatJst } from "../core/time";
-import { rememberPhotoSource } from "./photo-context";
+import { rememberPhotoSource, purgePhotoTexts } from "./photo-context";
 import { STATUS_LABEL } from "../intake/pages";
 
 interface InboxRow {
@@ -262,6 +262,10 @@ export const line: Bundle = {
     const wards = await env.DB.prepare(`SELECT DISTINCT l.ward_id, w.slug FROM line_channels l JOIN wards w ON w.ward_id = l.ward_id
       WHERE w.ward_id = l.ward_id AND w.is_active = 1`).all<{ ward_id: string; slug: string }>();
     const now = new Date();
+    // 接続を外した区でも、一時的な文の期限を延ばさない。
+    const contextWards = await env.DB.prepare("SELECT DISTINCT ward_id FROM line_photo_context_texts WHERE ward_id IS NOT NULL")
+      .all<{ ward_id: string }>();
+    for (const ward of contextWards.results) await purgePhotoTexts(env.DB, ward.ward_id, now);
     for (const ward of wards.results) {
       try {
         await sendOfficerDigest(env, ward.ward_id, ward.slug, now);

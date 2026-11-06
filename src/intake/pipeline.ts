@@ -10,7 +10,7 @@ import { newId, nowIso } from "../core/ids";
 import type { Env } from "../env";
 import { createAnthropic, MODEL } from "../ai/anthropic";
 import { dispatchProject } from "../ai/session";
-import { matchProject, MATCH_NEW, MATCH_MULTIPLE, MATCH_UNRELATED } from "../ai/match";
+import { matchProject, MATCH_NEW, MATCH_MULTIPLE, MATCH_UNRELATED, MATCH_UNCERTAIN, MATCH_PACK_VERSION } from "../ai/match";
 import { projectApi } from "../ai/project-binding";
 import { suggestProjects, SUGGEST_PACK_VERSION } from "../ai/suggest";
 import { fixOriginalIds, ReadError, readOriginals, type ReadableOriginal } from "../ai/read";
@@ -35,7 +35,7 @@ import {
 } from "./store";
 import type { Waitable } from "./types";
 import { attachClarificationQuestions, processPhotoBatches } from "../line/clarifications";
-import { photoContextProject } from "../line/photo-context";
+import { clearPhotoTexts, photoContextProject, photoMatchCandidates, PHOTO_AFTER_MS, type PhotoBatchContext } from "../line/photo-context";
 import { completePhotoMaterial } from "./material";
 
 export interface PipelineDeps {
@@ -203,7 +203,13 @@ async function connectReadJob(env: Env, wardId: string, jobId: string, projectId
 }
 
 async function assignReadJob(env: Env, wardId: string, jobId: string, projectId: string, reason: string, ai = false): Promise<void> {
-  if (!(await setJobProject(env.DB, wardId, jobId, projectId))) return;
+  if (ai) {
+    // AIを待つ間に人や紙の符号で決まった当て先は上書きしない。
+    const placed = await env.DB.prepare(`UPDATE jobs SET project_id = ?, updated_at = ?
+      WHERE ward_id = ? AND job_id = ? AND project_id IS NULL AND status = 'read' AND withdrawn_at IS NULL`)
+      .bind(projectId, nowIso(), wardId, jobId).run();
+    if (!placed.meta.changes) return;
+  } else if (!(await setJobProject(env.DB, wardId, jobId, projectId))) return;
   await env.DB.prepare("UPDATE jobs SET ai_matched_at = ?, ai_match_reason = ? WHERE ward_id = ? AND job_id = ? AND project_id = ?")
     .bind(ai ? nowIso() : null, reason, wardId, jobId, projectId).run();
   await env.DB.prepare(`UPDATE line_inbox_items SET disposition = 'matched', matched_project_id = ?,
@@ -211,7 +217,9 @@ async function assignReadJob(env: Env, wardId: string, jobId: string, projectId:
     WHERE ward_id = ? AND job_id = ?`).bind(projectId, wardId, projectId, reason, wardId, jobId).run();
   const job = await getJob(env.DB, wardId, jobId);
   if (job?.read_kind === "answer_sheet") await saveAnswerSheetRows(env.DB, wardId, projectId, jobId, job.account_id);
-  else await connectReadJob(env, wardId, jobId, projectId);
+  else await connectReadJob(env, wardId, jobId, projectId).catch((error) => {
+    console.error("繋げるの起動に失敗しました", wardId, error instanceof Error ? error.name : "unknown");
+  });
 }
 
 async function saveAnswerSheetRows(
@@ -228,12 +236,15 @@ async function saveAnswerSheetRows(
     const household = row.household_name.trim();
     const district = row.ward_group.trim();
     if (!household) return;
+    // 不明な人数は0人の答えにしない。読み取りは残り、既存の直しの画面に出る。
+    if (!row.not_attending && (row.adults === null || row.children === null || row.seniors === null ||
+      (row.adults ?? 0) + (row.children ?? 0) + (row.seniors ?? 0) === 0)) return;
     await addAnswer(db, wardId, {
       projectId,
       household,
       district,
-      peopleCount: (row.adults ?? 0) + (row.children ?? 0) + (row.seniors ?? 0),
-      childrenCount: row.children, adultsCount: row.adults, seniorsCount: row.seniors,
+      peopleCount: row.not_attending ? 0 : (row.adults ?? 0) + (row.children ?? 0) + (row.seniors ?? 0),
+      childrenCount: row.not_attending ? 0 : row.children, adultsCount: row.not_attending ? 0 : row.adults, seniorsCount: row.not_attending ? 0 : row.seniors,
       helperName: row.helper_names.join("、"),
       helperTimes: row.helper_slots.join("、"),
       source: "sheet",
@@ -276,23 +287,20 @@ async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, 
     if (routes.every(Boolean) || routes.some(Boolean)) return;
   }
   const hasPhoto = (await listOriginals(env.DB, wardId, jobId)).some((original) => !original.withdrawn_at && original.media_type.startsWith("image/"));
-  if (hasPhoto) {
-    const context = await photoContextProject(env.DB, wardId, jobId);
-    if (context && candidates.some((candidate) => candidate.id === context.id)) {
-      await assignReadJob(env, wardId, jobId, context.id, context.reason);
-      return;
-    }
+  if (hasPhoto && current.via !== "admin") {
+    await matchLinePhotoBatch(env, wardId, jobId, client);
+    return;
   }
-  // 紙の符号や状況で決まらない場合だけ、中身から候補を選ぶ。
+  // 紙の符号で決まらない場合は、読みから候補を選ぶ。
   const suggested = new Set(readings.flatMap((row) => "fields" in row.body ? (row.body.project_suggestions ?? []).map((s) => `${s.kind}:${s.title}`) : []));
   if (suggested.size > 1) return;
   const summary = readings.map((reading) => "summary" in reading.body ? reading.body.summary : "").filter(Boolean).join("\n").slice(0, 2000);
   if (!summary || candidates.length === 0) return;
-  const result = await matchProject(client, { candidates, summary });
+  const result = await matchProject(client, { candidates: hasPhoto ? await photoMatchCandidates(env.DB, wardId) : candidates, summary, photo: hasPhoto });
   const selected = candidates.find((candidate) => candidate.id === result.choice);
   if (selected) {
     await assignReadJob(env, wardId, jobId, selected.id, result.reason, true);
-  } else if (result.choice === MATCH_NEW || result.choice === MATCH_MULTIPLE || result.choice === MATCH_UNRELATED) {
+  } else if ([MATCH_NEW, MATCH_MULTIPLE, MATCH_UNRELATED, MATCH_UNCERTAIN].includes(result.choice)) {
     await env.DB.prepare("UPDATE jobs SET ai_match_reason = ? WHERE ward_id = ? AND job_id = ? AND project_id IS NULL")
       .bind(result.reason, wardId, jobId).run();
   }
@@ -313,6 +321,83 @@ async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, 
       await env.DB.prepare("UPDATE line_inbox_items SET match_reason = ? WHERE ward_id = ? AND job_id = ?")
         .bind(result.reason, wardId, jobId).run();
     }
+  }
+}
+
+/** 同時に届いた写真全体で一回当てる。10分後の文で決まらなければ既存の質問へ進む。 */
+async function matchLinePhotoBatch(env: Env, wardId: string, jobId: string, client: Anthropic, now = new Date()): Promise<void> {
+  const batch = await env.DB.prepare(`SELECT b.* FROM line_photo_batches b JOIN line_photo_items i
+    ON i.ward_id = b.ward_id AND i.batch_id = b.batch_id WHERE b.ward_id = ? AND i.job_id = ?`)
+    .bind(wardId, jobId).first<PhotoBatchContext & { expected_count: number | null }>();
+  if (!batch || batch.match_finished_at) return;
+  const items = await env.DB.prepare(`SELECT j.job_id, j.project_id, j.read_at FROM line_photo_items i
+    JOIN jobs j ON j.ward_id = i.ward_id AND j.job_id = i.job_id
+    WHERE i.ward_id = ? AND i.batch_id = ? AND j.withdrawn_at IS NULL ORDER BY i.image_index, j.created_at, i.job_id`)
+    .bind(wardId, batch.batch_id).all<{ job_id: string; project_id: string | null; read_at: string | null }>();
+  if (!items.results.length || items.results.some((item) => !item.read_at)) return;
+  if (batch.expected_count !== null && items.results.length < batch.expected_count) return;
+  if (batch.expected_count === null && now.getTime() - Date.parse(batch.last_received_at) < 5000) return;
+  const final = now.getTime() >= Date.parse(batch.last_received_at) + PHOTO_AFTER_MS;
+  if (batch.match_attempted_at && !final) return;
+  const claim = await env.DB.prepare(`UPDATE line_photo_batches SET match_claimed_until = ?
+    WHERE ward_id = ? AND batch_id = ? AND match_finished_at IS NULL
+    AND (? = 1 OR match_attempted_at IS NULL)
+    AND (match_claimed_until IS NULL OR match_claimed_until < ?)`)
+    .bind(new Date(now.getTime() + 90_000).toISOString(), wardId, batch.batch_id, final ? 1 : 0, now.toISOString()).run();
+  if (!claim.meta.changes) return;
+  let resolved = items.results.every((item) => item.project_id);
+  let reason = resolved ? "紙や答えから当て先が分かりました。" : batch.match_reason ?? "当て先を確認できませんでした。";
+  try {
+    if (!resolved) {
+      const candidates = await photoMatchCandidates(env.DB, wardId);
+      const context = await photoContextProject(env.DB, wardId, batch, now);
+      // 文が増えていなければ同じ判断を繰り返さない。AI障害からの再試行は残す。
+      if (batch.match_attempted_at && reason !== "当て先を確認できませんでした。" &&
+        !context.after.some((text) => text.at > batch.match_attempted_at!)) return;
+      const summaries = await Promise.all(items.results.map(async (item) => ({
+        summary: (await getReadings(env.DB, wardId, item.job_id)).map((reading) => reading.body.summary).join("\n") || "文字のない写真",
+        projectId: item.project_id,
+      })));
+      const result = await matchProject(client, { candidates, summary: JSON.stringify(summaries),
+        photoContext: context });
+      reason = result.reason;
+      const chosen = result.confident && candidates.find((candidate) => candidate.id === result.choice);
+      if (chosen) {
+        for (const item of items.results.filter((item) => !item.project_id)) {
+          await assignReadJob(env, wardId, item.job_id, chosen.id, result.reason, true);
+        }
+        resolved = true;
+      }
+    }
+  } catch (error) {
+    // 受け取った写真と読みはそのまま。AIの障害で受付や質問を止めない。
+    console.error("写真の当て先を確認できませんでした", wardId, error instanceof Error ? error.name : "unknown");
+  } finally {
+    for (const item of items.results.filter((item) => !item.project_id)) {
+      await env.DB.prepare("UPDATE jobs SET ai_match_reason = ? WHERE ward_id = ? AND job_id = ? AND project_id IS NULL")
+        .bind(reason, wardId, item.job_id).run();
+      await env.DB.prepare("UPDATE line_inbox_items SET match_reason = ? WHERE ward_id = ? AND job_id = ? AND disposition = 'unmatched'")
+        .bind(reason, wardId, item.job_id).run();
+    }
+    await env.DB.prepare(`UPDATE line_photo_batches SET match_attempted_at = ?, match_finished_at = ?,
+      match_claimed_until = NULL, match_reason = ?, match_pack_version = ? WHERE ward_id = ? AND batch_id = ?`)
+      .bind(now.toISOString(), resolved || final ? now.toISOString() : null, reason, MATCH_PACK_VERSION, wardId, batch.batch_id).run();
+    if (resolved || final) await clearPhotoTexts(env.DB, wardId, batch);
+  }
+}
+
+/** 五分ごとの既存処理から、読み終えた写真の待ち時間とAI障害を拾う。 */
+export async function matchPendingLinePhotos(env: Env, wardId: string, now = new Date()): Promise<void> {
+  const batches = await env.DB.prepare(`SELECT (SELECT i.job_id FROM line_photo_items i WHERE i.ward_id = b.ward_id
+    AND i.batch_id = b.batch_id ORDER BY i.image_index, i.job_id LIMIT 1) AS job_id
+    FROM line_photo_batches b WHERE b.ward_id = ? AND b.match_finished_at IS NULL AND b.prepared_at IS NULL
+    AND (b.match_attempted_at IS NULL OR b.last_received_at <= ?)
+    AND NOT EXISTS (SELECT 1 FROM line_photo_items i JOIN jobs j ON j.ward_id = i.ward_id AND j.job_id = i.job_id
+      WHERE i.ward_id = b.ward_id AND i.batch_id = b.batch_id AND j.withdrawn_at IS NULL AND j.read_at IS NULL)
+    ORDER BY b.created_at LIMIT 30`).bind(wardId, new Date(now.getTime() - PHOTO_AFTER_MS).toISOString()).all<{ job_id: string | null }>();
+  for (const batch of batches.results) if (batch.job_id) {
+    const client = (defaultDeps?.createClient ?? ((e: Env) => createAnthropic(e, { maxRetries: 0, timeoutMs: 5000 })))(env);
+    await matchLinePhotoBatch(env, wardId, batch.job_id, client, now);
   }
 }
 
