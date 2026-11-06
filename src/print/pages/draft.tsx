@@ -30,10 +30,10 @@ export function DraftPaper({ title, projectTitle, body, kind, back, wardName, sq
     : labels.join("") + slots + due + "下書きです。まだ配っていません。参加しないときも、答えてください。答えがないときは、欠席として数えます。いない欄は、空けたままでかまいません");
   const footer = (squad = "") => <><span>{wardName}{squad ? ` ${squad}` : ""}</span><strong>下書きです</strong></>;
   return <PrintDocument title={`下書き: ${paperHeading(projectTitle, title)}`} back={back}>
-    {!answerOnly && kind === "announcement" && !onOneSheet ? <Sheet footer={footer()}><p><strong>下書きです。まだ配っていません。</strong></p><h1>{paperHeading(projectTitle, title)}</h1><PaperBody body={body} /></Sheet> : null}
+    {!answerOnly && kind === "announcement" && !onOneSheet ? <Sheet footer={footer()}><p><strong>下書きです。まだ配っていません。</strong></p><h1>{paperHeading(projectTitle, title)}</h1><PaperBody body={body} project={projectTitle} title={title} /></Sheet> : null}
     {(kind === "announcement" ? squads.length ? squads : [""] : [""]).map((squad) => <Sheet footer={footer(squad)}>
       <p><strong>下書きです。まだ配っていません。</strong></p>
-      {!answerOnly && (kind !== "announcement" || onOneSheet) ? <><h1>{paperHeading(projectTitle, title)}</h1><PaperBody body={body} /></> : null}
+      {!answerOnly && (kind !== "announcement" || onOneSheet) ? <><h1>{paperHeading(projectTitle, title)}</h1><PaperBody body={body} project={projectTitle} title={title} /></> : null}
       {!answerOnly && tables !== undefined ? tables === null ? <p>配ったときの表の記録がありません。</p> : <>
         <RowsTable table="duties" rows={tables.filter((entry) => entry.kind === "duties")} />
         <RowsTable table="layout" rows={tables.filter((entry) => entry.kind === "layout")} />

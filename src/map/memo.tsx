@@ -15,6 +15,8 @@ export const memoAdmin = new Hono<AdminEnv>();
 const rootPath = (id: string) => `/projects/${id}/ledger`;
 const rowPath = (id: string, key: string) => `${rootPath(id)}/${encodeURIComponent(key)}`;
 const yen = (amount: number) => `${amount.toLocaleString("ja-JP")}円`;
+/** 一覧では去年のメモの頭だけを出す。全文は行を開くと読める。 */
+const shortNote = (note: string) => (note.length > 30 ? `${note.slice(0, 30)}…` : note);
 const nameOf = (data: RowData) => String(data.what || data.counterpart || "メモ");
 const keyOf = (row: RowView) => String(row.data.memoKey || (row.table === "sponsors" ? `sponsor:${row.matchKey}` : `legacy:${row.matchKey}`));
 const customKey = (key: string) => /^custom:[0-9a-f-]{36}$/.test(key);
@@ -30,9 +32,17 @@ const dataOf = (row: RowView): RowData => row.table === "sponsors"
 export async function getMemoRows(db: D1Database, wardId: string, state: ProjectState): Promise<MemoRow[]> {
   const id = state.project.projectId;
   const rows = new Map<string, MemoRow>();
+  // 同じ「何に」の行は年が違っても一行に読む。協賛は費用と分けて、協賛の節だけに出す。
+  const sameName = (name: string, sponsor: boolean) => [...rows.values()].find((row) => row.sponsor === sponsor && normalizeKey(row.name) === normalizeKey(name));
   for (const row of [...state.tables.sponsors, ...state.tables.ledger].filter((r) => r.scope === "current")) {
     const key = keyOf(row); const data = dataOf(row);
-    rows.set(key, { key, name: row.table === "sponsors" ? String(data.counterpart || "協賛") : nameOf(data), hint: "", data, current: row, reference: null, removed: false, sponsor: row.table === "sponsors" || data.memoGroup === "sponsors" });
+    const income = row.table === "ledger" && data.direction === "income";
+    const sponsorRow = income ? sameName(String(data.counterpart || data.what || ""), true) : undefined;
+    if (sponsorRow) {
+      if (typeof sponsorRow.data.amount !== "number" && typeof data.amount === "number") sponsorRow.data = { ...sponsorRow.data, amount: data.amount };
+      continue;
+    }
+    rows.set(key, { key, name: row.table === "sponsors" ? String(data.counterpart || "協賛") : nameOf(data), hint: "", data, current: row, reference: null, removed: false, sponsor: row.table === "sponsors" || data.memoGroup === "sponsors" || income });
   }
   const hidden = await db.prepare(`SELECT r.row_id, r.project_id, r.data, r.match_key, origin.year,
     r.source_kind, r.source_ref, r.source_locator, r.source_year, r.confidence, r.updated_at FROM projects p
@@ -46,18 +56,19 @@ export async function getMemoRows(db: D1Database, wardId: string, state: Project
     const inherited = row.project_id !== id;
     const data: RowData = inherited ? { memoKey: key, what: previous.what || previous.counterpart || "メモ", ...(previous.memoGroup ? { memoGroup: previous.memoGroup } : {}) } : previous;
     const reference: RowView | null = inherited ? { rowId: row.row_id, table: "ledger", scope: "reference", refYear: row.year, matchKey: row.match_key, data: previous, personFields: Object.keys(previous), source: { kind: row.source_kind, ref: row.source_ref, locator: row.source_locator, year: row.source_year }, confidence: row.confidence, updatedAt: row.updated_at } : null;
-    const existing = rows.get(key);
+    const existing = rows.get(key) ?? (inherited ? sameName(nameOf(data), data.memoGroup === "sponsors") : undefined);
     if (inherited && existing) { existing.reference ??= reference; continue; }
     rows.set(key, { key, name: nameOf(data), hint: "", data, current: null, reference, removed: false, sponsor: data.memoGroup === "sponsors" });
   }
   const references = [...state.tables.ledger, ...state.tables.sponsors].filter((r) => r.scope === "reference").sort((a, b) => (b.refYear ?? 0) - (a.refYear ?? 0));
   for (const reference of references) {
-    const key = keyOf(reference); const existing = rows.get(key);
+    const key = keyOf(reference); const previous = dataOf(reference);
+    const sponsorReference = reference.table === "sponsors" || previous.memoGroup === "sponsors" || previous.direction === "income";
+    const existing = rows.get(key) ?? sameName(String(sponsorReference ? previous.counterpart || previous.what || "" : previous.what || previous.counterpart || ""), sponsorReference);
     if (existing) { existing.reference ??= reference; continue; }
-    const previous = dataOf(reference);
     // 去年の額や日付を今年の値にしない。
     const data: RowData = { memoKey: key, what: previous.what || (reference.table === "sponsors" ? "協賛" : previous.counterpart) || "メモ" };
-    if (reference.table === "sponsors" || previous.memoGroup === "sponsors") data.memoGroup = "sponsors";
+    if (sponsorReference) data.memoGroup = "sponsors";
     rows.set(key, { key, name: reference.table === "sponsors" ? String(previous.counterpart || "協賛") : nameOf(data), hint: "", data, current: null, reference, removed: false, sponsor: data.memoGroup === "sponsors" });
   }
   for (const template of MEMO_TEMPLATES[state.project.kind]) {
@@ -209,7 +220,7 @@ memoAdmin.get("/projects/:projectId/ledger", async (c) => {
     <b>{row.name}{row.data.counterpart && row.data.what ? `　${row.data.counterpart}` : ""}</b>
     <span>{typeof row.data.amount === "number" ? yen(row.data.amount) : row.data.counterpart || row.data.note ? "額の情報なし" : "情報なし"}{row.data.date ? `　${formatDateText(String(row.data.date))}` : ""}</span>
     {row.data.note ? <span>メモ: {row.data.note}</span> : row.hint ? <span>{row.hint}</span> : null}
-    {row.reference ? <span>{row.reference.refYear ? `${row.reference.refYear}年` : "過去"}の額: {typeof row.reference.data.amount === "number" ? yen(row.reference.data.amount) : "情報なし"}{row.reference.data.note ? `　メモ: ${row.reference.data.note}` : ""}</span> : null}
+    {row.reference ? <span>{row.reference.refYear ? `${row.reference.refYear}年` : "過去"}の額: {typeof row.reference.data.amount === "number" ? yen(row.reference.data.amount) : "情報なし"}{row.reference.data.note ? `　メモ: ${shortNote(String(row.reference.data.note))}` : ""}</span> : null}
   </a></li>)}</ul>;
   return c.html(<Layout title="運営メモ" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {state.project.title}の段取りへ</a><h1>{state.project.title}の運営メモ</h1>

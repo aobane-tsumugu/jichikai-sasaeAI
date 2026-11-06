@@ -232,10 +232,10 @@ pub.get("/p/:projectId", async (c) => {
         <h2>{event && latest.kind === "announcement" ? changes ? `${date(latest)}に配った案内` : "くわしい案内" : title}</h2>
         {latest.kind === "announcement" && changes ? <p>変わったところは、上のお知らせのとおりです。</p> : null}
         <p>載せた日: {date(latest)}</p>
-        <ArticleBody body={latest.body} />
+        <ArticleBody body={latest.body} title={{ project: latest.title, document: latest.document_title }} />
         {earlier.map((older) => <details>
           <summary>変更前の{event ? "案内" : publicDocumentTitle(older)}（{date(older)}に載せたもの）</summary>
-          <ArticleBody body={older.body} />
+          <ArticleBody body={older.body} title={{ project: older.title, document: older.document_title }} />
         </details>)}
       </article>;
     };

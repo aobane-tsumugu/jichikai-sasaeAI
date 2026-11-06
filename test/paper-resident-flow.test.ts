@@ -60,7 +60,7 @@ it("資料も班もない一年目に案内を配り、紙だけで返す相手�
       expect(html).not.toContain("までに、");
       expect(html).not.toContain("連絡先：");
       expect(html).toContain("2026年9月10日に配りました");
-      expect(html).toContain("紙の番号P");
+      expect(html).toContain("紙の番号 P");
       expect(html).toContain(`href="${first}"`);
       expect(html).not.toContain("dense");
     }
@@ -87,7 +87,7 @@ it("資料も班もない一年目に案内を配り、紙だけで返す相手�
     for (const path of ["announcement", "answer"]) {
       const html = await read(`${long}/${path}`);
       expect(html).toContain(`10月24日（日）までに、${FIRST_SLICE.district}の班長か役員に渡してください。`);
-      expect(html).toContain(`連絡先：${FIRST_SLICE.firstOfficer}`);
+      expect(html).toContain(`分からないときは　${FIRST_SLICE.firstOfficer}`);
       for (const label of DEFAULT_ANSWER_LABELS) expect(html).toContain(label);
       expect(html.match(/class="sheet"/g)).toHaveLength(path === "announcement" ? 2 : 1);
     }
@@ -96,7 +96,7 @@ it("資料も班もない一年目に案内を配り、紙だけで返す相手�
     expect(poster).toContain(FIRST_SLICE.firstOfficer);
     expect(poster).toContain("2026年9月10日に配りました");
     const pack = getDraftPack("announcement");
-    expect(pack.version).toBe("draft-announcement@8");
+    expect(pack.version).toBe("draft-announcement@9");
     expect(pack.instruction).toContain("班長か役員に渡してください");
     expect(pack.instruction).toContain("ない時間帯、締切、連絡先を作らないでください");
   } finally {

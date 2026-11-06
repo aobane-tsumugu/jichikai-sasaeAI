@@ -30,7 +30,9 @@ function questionTitle(question: QuestionView): { heading: string; body: string 
 /** 一覧に出す一行。読めなかった所は何が読めなかったかを、ほかは見出しを出す。 */
 export function questionShort(question: QuestionView): string {
   const { heading, body } = questionTitle(question);
-  return question.kind === "unreadable" && heading === "読めなかったところがあります" ? body : heading;
+  if (question.kind !== "unreadable" || heading !== "読めなかったところがあります") return heading;
+  const sentence = body.split("。")[0]!.trim();
+  return sentence.length > 40 ? `${sentence.slice(0, 40)}…` : sentence;
 }
 
 export const questionPages = new Hono<AdminEnv>();

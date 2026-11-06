@@ -112,9 +112,9 @@ admin.get("/inbox", async (c) => {
     {nothing ? <><div class="notice" role="status"><strong>届いたものはありません</strong><p>公式LINEや、QRコードのない紙で届いたものが、ここに入ります。</p></div><section class="next"><strong>次は</strong><p>手元の資料を送れます。</p><a class="button" href={adminPath(ward, "/intake")}>資料を送る</a></section></> : <>
     <p class="lead">AIが読んで、行事に入れました。違うときだけ直してください。分けなくてもかまいません。</p>
     {groups.length || readingJobs.length || unmatched.length ? <section class="panel"><h2>どの行事か分からないもの</h2>
-      {groups.map((group) => { const jobIds = [...new Set(group.materials.map((m) => m.jobId))]; return <article><p><b>{group.title || group.materials[0]?.original.filename || "届いた資料"}</b></p>
+      {groups.map((group, groupIndex) => { const jobIds = [...new Set(group.materials.map((m) => m.jobId))]; return <article><p><b>{group.title || group.materials[0]?.original.filename || "届いた資料"}</b></p>
         <p class="muted">{group.title ? `${group.title}の資料のようです。` : "何の資料か分からないものです。そのままでかまいません。"}{group.materials.length > 1 ? `${group.materials.length}件あります。` : ""}</p>
-        <form method="post" action={adminPath(ward, "/intake/start")}><input type="hidden" name="group" value={group.key} /><div class="action-links"><button>{group.kind === "city_request" ? "市からの依頼として始める" : group.title ? `${group.title}を始める` : "このまま進める"}</button>
+        <form method="post" action={adminPath(ward, "/intake/start")}><input type="hidden" name="group" value={group.key} /><div class="action-links"><button class={groupIndex ? "secondary" : undefined}>{group.kind === "city_request" ? "市からの依頼として始める" : group.title ? `${group.title}を始める` : "このまま進める"}</button>
           {jobIds.map((id) => { const item = items.find((i) => i.job_id === id); return <a class="button secondary" href={item ? itemPick(item.item_id) : jobPick(id)}>{jobIds.length > 1 ? `${group.materials.find((m) => m.jobId === id)?.original.filename || "届いた資料"}を進めている行事に入れる` : "進めている行事に入れる"}</a>; })}</div></form>
       </article>; })}
       {readingJobs.map((j) => <p class="link-line"><a href={adminPath(ward, "/intake/received")}>{j.first_filename || "撮った写真"}: {STATUS_LABEL[j.status]}</a></p>)}

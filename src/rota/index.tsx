@@ -20,20 +20,20 @@ export async function rotaPanel(db: D1Database, ward: WardInfo, projectId: strin
     <p>{comparison?.hasPreviousTable === false ? "去年の表がないため、班と世帯を名簿の順で並べます。名簿の順です。時間帯や担当は下の当番表で直せます。" : "去年の順番を保ち、免除の期間に当たる人と今の名簿にない人を担当から外します。班や団体で書かれた担当はそのまま残します。"}</p>
     {comparison ? <>
       {comparison.hasPreviousTable !== false ? <>
-      <p>{comparison.year}年の{comparison.sourceTitle}と比べています。</p>
-      {!comparison.hasOldRoster ? <p>去年の名簿は残っていません。転入・転出は断定せず、当番表にある名前と比べています。</p> : null}
-      <h3>{comparison.hasOldRoster ? "名簿に加わった世帯" : "去年の表にない世帯"}</h3>
-      <p>{comparison.added.join("、") || "ありません。"}</p>
-      <h3>{comparison.hasOldRoster ? "名簿から外れた世帯" : "今の名簿にない担当"}</h3><p>{comparison.removed.join("、") || "ありません。"}</p>
-      <h3>担当を外したところ</h3>{comparison.entries.filter((entry) => entry.explanation).map((entry) => <p>{entry.data.slot} {entry.data.task}: {entry.explanation}</p>)}
-      <h3>去年の決めたこと</h3><p>{comparison.ruleRecords.join(" / ") || "記録はありません。順番のルールは作っていません。"}</p>
+      <p class="muted">{comparison.year}年の{comparison.sourceTitle}と比べています。{!comparison.hasOldRoster ? "去年の名簿は残っていません。当番表にある名前と比べています。" : ""}</p>
+      <dl class="facts">
+        <dt>{comparison.hasOldRoster ? "名簿に加わった世帯" : "去年の表にない世帯"}</dt><dd>{comparison.added.join("、") || "ありません。"}</dd>
+        <dt>{comparison.hasOldRoster ? "名簿から外れた世帯" : "今の名簿にない担当"}</dt><dd>{comparison.removed.join("、") || "ありません。"}</dd>
+        <dt>担当を外したところ</dt><dd>{comparison.entries.some((entry) => entry.explanation) ? comparison.entries.filter((entry) => entry.explanation).map((entry) => <div>{entry.data.slot} {entry.data.task}: {entry.explanation}</div>) : "ありません。"}</dd>
+        <dt>去年の決めたこと</dt><dd>{comparison.ruleRecords.join(" / ") || "記録はありません。順番のルールは作っていません。"}</dd>
+      </dl>
       </> : <p>順番のルールは作っていません。免除の期間に当たる人は担当から外します。</p>}
-      <form method="post" action={`${root}/start`}><button>{preparation ? "今の名簿と免除を下書きに反映する" : comparison.hasPreviousTable === false ? "名簿から下書きを作る" : "去年の表と名簿から下書きを作る"}</button></form>
-      <p>役員が直した行はそのまま残します。保存しただけでは配られません。</p>
+      <form method="post" action={`${root}/start`}><div class="action-links"><button class="secondary">{preparation ? "今の名簿と免除を下書きに反映する" : comparison.hasPreviousTable === false ? "名簿から下書きを作る" : "去年の表と名簿から下書きを作る"}</button></div></form>
+      <p class="muted">役員が直した行はそのまま残します。保存しただけでは配られません。</p>
     </> : <section class="next"><strong>次は</strong><p>去年の表も今の名簿もまだありません。手元の当番表を写真やファイルで送れます。</p>
       <a class="button" href={adminPath(ward, `/intake?project=${encodeURIComponent(projectId)}#send-form`)}>当番表を送る</a></section>}
-    <div class="action-links"><a class="button secondary" href={adminPath(ward, "/rota/exemptions")}>免除を記録する</a>
-      <a class="button secondary" href={adminPath(ward, "/rota/history")}>世帯ごとの当番と役を読む</a></div>
+    <ul class="links"><li><a href={adminPath(ward, "/rota/exemptions")}>免除を記録する</a></li>
+      <li><a href={adminPath(ward, "/rota/history")}>世帯ごとの当番と役を読む</a></li></ul>
   </section>;
 }
 
@@ -81,7 +81,7 @@ admin.get("/rota/exemptions", async (c) => {
   const action = c.req.query("action");
   const result = action === "withdraw" ? "免除を取り消しました。" : action === "restore" ? "取り消した免除を戻しました。" : "免除の記録を保存しました。";
   return c.html(<Layout title="当番の免除" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, "/rota/history")}>世帯ごとの当番と役へ</a>
+    <a class="back" href={adminPath(ward, "/rota/history")}>← 世帯ごとの当番と役へ</a>
     <h1>当番の免除</h1><p class="lead">役員が決めた免除の理由と期間を書きます。ここに書いたことは役員だけが読みます。</p>
     {c.req.query("saved") ? <>
       <Notice>{result}</Notice><section class="next"><strong>次は</strong><p>当番表で「今の名簿と免除を下書きに反映する」を押すと、まだ直していない担当に反映できます。</p>
@@ -91,16 +91,16 @@ admin.get("/rota/exemptions", async (c) => {
     </> : null}
     <ErrorNotice code={c.req.query("error")} messages={{ input: "代表者のお名前、理由、始めと終わりの日を確かめて、もう一度保存してください。" }} />
     {entries.length ? <form class="panel" method="post" action={root}>
-      <label for="household">代表者のお名前と班</label><select id="household" name="household" required>{entries.map((entry) => <option value={JSON.stringify(entry)}>{householdLabel(entry)}</option>)}</select>
-      <label for="reason">免除の理由</label><input id="reason" name="reason" maxlength={200} required />
-      <label for="starts">始めの日</label><input id="starts" type="date" name="starts_on" required />
-      <label for="ends">終わりの日</label><input id="ends" type="date" name="ends_on" required />
-      <p><button>免除を記録する</button></p>
+      <div class="field"><label for="household">代表者のお名前と班</label><select id="household" name="household" required>{entries.map((entry) => <option value={JSON.stringify(entry)}>{householdLabel(entry)}</option>)}</select></div>
+      <div class="field"><label for="reason">免除の理由</label><input id="reason" name="reason" maxlength={200} required /></div>
+      <div class="field"><label for="starts">始めの日</label><input id="starts" type="date" name="starts_on" required /></div>
+      <div class="field"><label for="ends">終わりの日</label><input id="ends" type="date" name="ends_on" required /></div>
+      <div class="action-links"><button>免除を記録する</button></div>
     </form> : <section class={c.req.query("saved") ? "panel" : "next"}><strong>{c.req.query("saved") ? "名簿がまだありません" : "次は"}</strong><p>今の名簿に、班とお名前で区別できる世帯がありません。名簿を入れるか直すと、免除を書けます。</p>
       <a class="button" href={adminPath(ward, "/answers/roster")}>名簿を入れる・直す</a></section>}
-    <p>書き間違えたものは取り消して、書き直せます。理由や期間は当番表や紙には載りません。</p>
+    <p class="muted">書き間違えたものは取り消して、書き直せます。理由や期間は当番表や紙には載りません。</p>
     {records.map((record) => <section class="panel"><h2>{householdLabel(record)}</h2><p>{record.reason}</p>
-      <p>{rotaDate(record.starts_on)}から{rotaDate(record.ends_on)}まで</p>
+      <p class="muted">{rotaDate(record.starts_on)}から{rotaDate(record.ends_on)}まで{record.withdrawn_at ? "　取り消しました" : ""}</p>
       <form method="post" action={`${root}/${record.exemption_id}/${record.withdrawn_at ? "restore" : "withdraw"}`}>
         <button class="secondary">{record.withdrawn_at ? "取り消した免除を戻す" : "この免除を取り消す"}</button></form>
     </section>)}
@@ -129,19 +129,19 @@ admin.get("/rota/history", async (c) => {
   const { ward } = c.var;
   const households = await householdHistory(c.env.DB, ward.wardId);
   return c.html(<Layout title="世帯ごとの当番と役" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, "/")}>最初の画面へ</a><h1>世帯ごとの当番と役</h1>
+    <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a><h1>世帯ごとの当番と役</h1>
     <p class="lead">閉じた当番や行事の担当、役員の交代と免除を、今ある記録から読みます。</p>
-    <p>名前だけでは世帯を特定できない記録は分けて表示します。書かれていない出席や過去の交代は推測しません。</p>
-    <a class="button secondary" href={adminPath(ward, "/rota/exemptions")}>免除を記録する</a>
+    <p class="muted">名前だけでは世帯を特定できない記録は分けて表示します。書かれていない出席や過去の交代は推測しません。</p>
+    <div class="action-links"><a class="button secondary" href={adminPath(ward, "/rota/exemptions")}>免除を記録する</a></div>
     {!households.length ? <section class="next"><strong>次は</strong><p>当番と役の記録はまだありません。名簿を入れると、世帯ごとに読めます。</p>
       <a class="button" href={adminPath(ward, "/answers/roster")}>名簿を入れる</a></section> : null}
-    {households.map((household) => <section class="panel"><h2>{householdLabel(household)}</h2>
+    {households.map((household) => <details class="fold"><summary>{householdLabel(household)}{household.records.length + household.exemptions.length ? `（${household.records.length + household.exemptions.length}件）` : ""}</summary><div>
       {household.records.length === 0 && household.exemptions.length === 0 ? <p>当番と役の記録はまだありません。</p> : null}
-      {household.records.map((record) => <article><h3>{record.what}</h3><p>{record.who} / {record.when}</p><p>{record.detail}</p>
-        {record.projectId ? <a class="button secondary" href={adminPath(ward, `/${record.closed ? "archive" : "projects"}/${record.projectId}`)}>元の記録を読む</a> : null}</article>)}
+      {household.records.map((record) => <article><h3>{record.what}</h3><p class="muted">{record.who} / {record.when}</p><p>{record.detail}</p>
+        {record.projectId ? <p><a class="quiet" href={adminPath(ward, `/${record.closed ? "archive" : "projects"}/${record.projectId}`)}>元の記録を読む</a></p> : null}</article>)}
       {household.exemptions.map((record) => <article><h3>当番の免除{record.withdrawn_at ? "（取り消し）" : ""}</h3>
         <p>{rotaDate(record.starts_on)}から{rotaDate(record.ends_on)}まで / {record.reason}</p></article>)}
-    </section>)}
+    </div></details>)}
   </Layout>);
 });
 

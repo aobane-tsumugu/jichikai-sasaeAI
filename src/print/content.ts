@@ -1,4 +1,5 @@
 import { formatDateText } from "../core/time";
+import { PENDING } from "../project/document-body";
 
 /** 現在の下書きではなく、印刷する内容から項目を読む。 */
 export function publishedItem(body: string, key: string): string | null {
@@ -6,7 +7,7 @@ export function publishedItem(body: string, key: string): string | null {
   try { parsed = JSON.parse(body); } catch { return null; }
   if (!parsed || typeof parsed !== "object" || !("items" in parsed) || !Array.isArray(parsed.items)) return null;
   for (const item of parsed.items) {
-    if (item && typeof item === "object" && item.key === key && typeof item.content === "string" && item.content.trim()) return item.content.trim();
+    if (item && typeof item === "object" && item.key === key && typeof item.content === "string" && item.content.trim() && item.content.trim() !== PENDING) return item.content.trim();
   }
   return null;
 }
@@ -40,6 +41,7 @@ export function paperHelperSlots(raw: string): string {
 /** 締切が日付でなく文の時（「10/9まで（班長の紙で）」）は、文を分けて言い回しを崩さない。 */
 export function paperGive(due: string, whom: string): string[] {
   if (!due) return [`${whom}に渡してください。`];
+  if (due.endsWith("まで")) return [`${due}に、${whom}に渡してください。`];
   return due.includes("まで") ? [`締切: ${due}`, `${whom}に渡してください。`] : [`${due}までに、${whom}に渡してください。`];
 }
 

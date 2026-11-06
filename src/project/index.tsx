@@ -63,13 +63,13 @@ admin.get("/projects", async (c) => {
     <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a>
     <h1>新しく始める</h1><p class="lead">去年の記録があれば、そこから始められます。ないときは、種類を選ぶと、ふつうの仕事の並びを用意します。</p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
-    {seeds.length ? <><h2>去年の記録から始める</h2><ul class="rows">{seeds.map((project) => <li><a class="row-link" href={adminPath(ward, `/archive/${project.projectId}`)}><b>{project.year}年 {project.title}</b></a></li>)}</ul></> : null}
+    {seeds.length ? <><h2>去年の記録から始める</h2><ul class="rows">{[...seeds].sort((a, b) => b.year - a.year).slice(0, 3).map((project) => <li><a class="row-link" href={adminPath(ward, `/archive/${project.projectId}`)}><b>{project.year}年 {project.title}</b></a></li>)}</ul>{seeds.length > 3 ? <p><a class="quiet" href={adminPath(ward, "/archive")}>ほかの記録から始める</a></p> : null}</> : null}
     <form method="post" action={adminPath(ward, "/projects")}>
       <fieldset><legend>種類</legend><div class="choice">{PROJECT_KINDS.map((kind, index) => <label><input type="radio" name="kind" value={kind} checked={index === 0} required /> {PROJECT_KIND_LABEL[kind]}</label>)}</div></fieldset>
       <div class="field"><label for="title">名前（あとで直せます）</label><input id="title" name="title" maxlength={100} placeholder="秋の収穫祭" /></div>
       <div class="field"><label for="eventDay">行事の日（分かれば）</label><input id="eventDay" name="eventDay" type="date" /><p class="help-text">入れると、仕事の時期を置きます。</p></div>
       <input type="hidden" name="year" value={new Date().getFullYear()} />
-      <div class="action-links"><button type="submit">始める</button></div>
+      <div class="action-bar page-action"><button type="submit">始める</button></div>
     </form>
   </Layout>);
 });
@@ -140,15 +140,16 @@ admin.get("/projects/:projectId", async (c) => {
     {await Promise.all(jobs.map(async (job) => {
       const originals = await listOriginals(c.env.DB, ward.wardId, job.job_id);
       const readings = await getReadings(c.env.DB, ward.wardId, job.job_id);
+      const yearOriginals = originals.filter((original) => !project.closedAt && !original.withdrawn_at && unknownOriginalIds.has(original.original_id));
       return <section class="panel"><b>{job.first_filename || "書いたこと"}</b><p class="muted">{job.status === "done" ? originals.some((original) => materialChangeText(state, original.original_id)) ? "読み終わりました。今年の内容に入れました" : "読み終わりました" : job.status === "failed" ? "読めませんでした" : "読み取りを進めています"}</p>
         <div class="material-links">{originals.map((original, index) => <a class="quiet" href={adminPath(ward, `/intake/originals/${original.original_id}`)}>元の資料を見る{originals.length > 1 ? `（${index + 1}枚目）` : ""}</a>)}</div>
-        {originals.filter((original) => original.kind === "text").map((original) => <p style="white-space:pre-wrap">{readings.filter((r) => r.source === "direct").flatMap((r) => "text_blocks" in r.body ? r.body.text_blocks.filter((block) => block.original_id === original.original_id).map((block) => block.text) : []).join("\n")}</p>)}
         {readings.length ? <details class="hint"><summary>読み取った内容</summary><div>{readings.map((r) => <><p>{r.body.summary}</p>
           {"fields" in r.body ? <>{r.body.fields.map((f) => <p>{f.name}: {f.value}（{f.locator}。{f.confidence === "high" ? "はっきり読めました" : f.confidence === "medium" ? "少し読みにくい字でした" : "読みにくい字でした"}）</p>)}{r.body.text_blocks.map((b) => <p>{b.text}（{b.locator}）</p>)}</> : r.body.rows.map((row) => <p>{row.household_name} / {row.ward_group}（{row.locator}）</p>)}
         </>)}</div></details> : null}
-        {originals.filter((original) => !project.closedAt && !original.withdrawn_at && unknownOriginalIds.has(original.original_id)).map((original) => <form method="post" action={adminPath(ward, `/projects/${projectId}/materials/${original.original_id}/this-year`)}>
+        {yearOriginals.length ? <form method="post" action={adminPath(ward, `/projects/${projectId}/materials/${yearOriginals[0]!.original_id}/this-year`)}>
+          {yearOriginals.slice(1).map((original) => <input type="hidden" name="also" value={original.original_id} />)}
           <p class="muted">年が書かれていません。去年のものなら、そのままで大丈夫です。</p><button type="submit" class="secondary">この資料は今年のもの</button><Hint text={`${project.year}年の資料として内容を入れ直します。今年の内容と違うところは、上書きせず質問に並びます。質問に答えなくても配れます。`} />
-        </form>)}
+        </form> : null}
         {job.status === "failed" ? <form method="post" action={adminPath(ward, `/intake/${job.job_id}/retry`)}><button class="secondary">もう一度読む</button></form> : null}
       </section>;
     }))}
@@ -160,11 +161,11 @@ admin.get("/projects/:projectId", async (c) => {
     <h2>今年の内容</h2>
     <p class="lead">今年の内容がない項目には、去年までの資料を参考として並べます。</p>
     <dl class="facts">{state.items.map((item) => <><dt>{ITEM_SCREEN_LABEL[item.key]}</dt><dd>{item.current?.content ?? "まだ入っていません"}{item.references.map((v) => <span class="muted block">参考（{v.refYear === null ? "年不明" : `${v.refYear}年`}）: {v.content}</span>)}</dd></>)}</dl>
+    <h2>実行委員名簿</h2><ul class="links"><li><a href={adminPath(ward, `/projects/${projectId}/committee`)}>実行委員名簿を見て直す</a></li></ul>
     <h2 id="ledger">運営メモ</h2>
     <p>何に、どこに、いくらかけたか、来年のためのメモです。領収書や見積りの写真からも入ります。</p>
     <ul class="links"><li><a href={adminPath(ward, `/projects/${projectId}/ledger`)}>運営メモを開く</a></li></ul>
 
-    <h2>実行委員名簿</h2><ul class="links"><li><a href={adminPath(ward, `/projects/${projectId}/committee`)}>実行委員名簿を見て直す</a></li></ul>
     <h2>文書</h2>
     <ul class="rows">{state.documents.map((d) => <li class="panel"><b>{DOCUMENT_KIND_LABEL[d.kind]}</b><p class="muted">{d.scope === "public" ? "だれでも読める" : SCOPE_LABEL[d.scope]}{d.stale ? "　新しい資料が入っています" : ""}</p></li>)}</ul>
     <ul class="links"><li><a href={adminPath(ward, `/projects/${projectId}/draft`)}>下書きの一覧を開く</a></li></ul>
@@ -175,7 +176,12 @@ admin.post("/projects/:projectId/title", async (c) => { const { ward } = c.var; 
 admin.post("/projects/:projectId/materials/:originalId/this-year", async (c) => {
   const { ward, account } = c.var;
   const projectId = c.req.param("projectId");
-  const ok = await markMaterialThisYear(c.env.DB, ward.wardId, projectId, c.req.param("originalId"), account.accountId);
+  // 一件の資料に写真が何枚あっても、押すのは一度で済むようにする。
+  const form = await c.req.formData();
+  let ok = true;
+  for (const originalId of [c.req.param("originalId"), ...form.getAll("also").map(String)]) {
+    ok = await markMaterialThisYear(c.env.DB, ward.wardId, projectId, originalId, account.accountId) && ok;
+  }
   const path = adminPath(ward, `/projects/${projectId}`);
   return c.redirect(ok ? `${path}#materials` : `${path}?error=material_failed`, 303);
 });
