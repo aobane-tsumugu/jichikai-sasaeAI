@@ -69,7 +69,7 @@ admin.get("/projects", async (c) => {
     {projects.length === 0 ? <p>まだ行事はありません。</p> : null}
     {seeds.length ? <section class="panel">
       <h2>去年の段取りから開く</h2>
-      <ul>{seeds.map((project) => <li><a href={adminPath(ward, `/archive/${project.projectId}`)}>{project.year}年{project.title} の段取りから開く</a></li>)}</ul>
+      <ul>{seeds.map((project) => <li class="link-line"><a href={adminPath(ward, `/archive/${project.projectId}`)}>{project.year}年{project.title} の段取りから開く</a></li>)}</ul>
     </section> : null}
     <h2>行事を開く</h2>
     <form method="post" action={adminPath(ward, "/projects")}>
@@ -77,7 +77,7 @@ admin.get("/projects", async (c) => {
       <label for="title">題（あとで直せます）</label><input id="title" name="title" maxlength={100} placeholder="秋の収穫祭" />
       <label for="eventDay">行事の日（分かれば。段取りの時期に使います）</label><input id="eventDay" name="eventDay" type="date" />
       <input type="hidden" name="year" value={new Date().getFullYear()} />
-      <p><button type="submit">開く</button></p><p class="help-text">選んだ仕事の段取りを用意します。</p>
+      <p class="action-bar page-action"><button type="submit">開く</button></p><p class="help-text">選んだ仕事の段取りを用意します。</p>
     </form>
   </Layout>);
 });
@@ -109,7 +109,7 @@ admin.get("/projects/today", async (c) => {
     <a class="back" href={adminPath(ward, "/")}>最初の画面へ</a><h1>今やること</h1><p class="lead">締切の近い順に並べています。どれから始めてもかまいません。押すと、その仕事の画面が開きます。</p>
     {[true, false].map((dated) => <section><h2>{dated ? "締切のあるもの" : "締切のないもの"}</h2><ul class="rows">{entries.filter((entry) => Boolean(entry.date) === dated).map((entry) => <li><a class="row-link" href={adminPath(ward, entry.href)}><b>{entry.project}　{entry.label}</b><span>{entry.date ? `${formatJstDate(entry.date)}　${daysRemaining(entry.date)}` : entry.detail}</span></a></li>)}</ul>{!entries.some((entry) => Boolean(entry.date) === dated) ? <p>{dated ? "締切のあるものはありません。" : "締切のないものはありません。"}</p> : null}</section>)}
     {entries.length === 0 ? <p>今、確認する項目はありません。</p> : null}
-    <p><a href={adminPath(ward, "/")}>役員画面へ</a></p>
+    <p class="link-line"><a href={adminPath(ward, "/")}>役員画面へ</a></p>
   </Layout>);
 });
 
@@ -149,14 +149,14 @@ admin.get("/projects/:projectId", async (c) => {
     <p>{PROJECT_KIND_LABEL[project.kind]} / {project.year}年</p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     <details><summary>題を直す</summary><form method="post" action={adminPath(ward, `/projects/${projectId}/title`)}><label for="title">題</label><input id="title" name="title" value={project.title} maxlength={100} required /> <button class="secondary">保存</button></form></details>
-    <p><a href={adminPath(ward, `/projects/${projectId}/questions`)}>質問{state.questions.length ? `が${state.questions.length}つあります` : "はありません"}</a></p>
+    <p class="link-line"><a href={adminPath(ward, `/projects/${projectId}/questions`)}>質問{state.questions.length ? `が${state.questions.length}つあります` : "はありません"}</a></p>
     <h2 id="materials">資料とその影響</h2>
     {await Promise.all(jobs.map(async (job) => {
       const originals = await listOriginals(c.env.DB, ward.wardId, job.job_id);
       const readings = await getReadings(c.env.DB, ward.wardId, job.job_id);
       return <section class="panel" id="materials"><h3>{job.first_filename || "一行の文"}</h3><p>{job.status === "done" ? "反映しました" : job.status === "failed" ? "読めませんでした" : "処理中または確認中"}</p>
         {originals.map((original) => { const target = adminPath(ward, `/intake/originals/${original.original_id}`); const related = readings.filter((r) => "fields" in r.body ? r.body.fields.some((f) => f.original_id === original.original_id) || r.body.text_blocks.some((b) => b.original_id === original.original_id) : r.body.rows.some((row) => row.original_id === original.original_id)); return <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:1rem;align-items:start;margin:1rem 0">
-          <div><a href={target} target="_blank">元の資料を開く: {original.filename || "一行の文"}</a>{original.kind === "text" ? <p style="white-space:pre-wrap">{readings.filter((r) => r.source === "direct").flatMap((r) => "text_blocks" in r.body ? r.body.text_blocks.filter((block) => block.original_id === original.original_id).map((block) => block.text) : []).join("\n")}</p> : null}{original.media_type.startsWith("image/") ? <a href={target} target="_blank"><img src={target} alt="入った元の写真" loading="lazy" style="display:block;width:100%;height:auto;margin-top:.5rem" /></a> : null}
+          <div class="material-links"><a href={target} target="_blank">元の資料を開く: {original.filename || "一行の文"}</a>{original.kind === "text" ? <p style="white-space:pre-wrap">{readings.filter((r) => r.source === "direct").flatMap((r) => "text_blocks" in r.body ? r.body.text_blocks.filter((block) => block.original_id === original.original_id).map((block) => block.text) : []).join("\n")}</p> : null}{original.media_type.startsWith("image/") ? <a href={target} target="_blank"><img src={target} alt="入った元の写真" loading="lazy" style="display:block;width:100%;height:auto;margin-top:.5rem" /></a> : null}
             {!project.closedAt && !original.withdrawn_at && unknownOriginalIds.has(original.original_id) ? <form method="post" action={adminPath(ward, `/projects/${projectId}/materials/${original.original_id}/this-year`)}>
               <p><button type="submit" class="secondary">この資料は今年のもの</button> <Hint text={`${project.year}年の資料として中身を入れ直します。今年の中身と違うところは、上書きせず質問に並びます。質問に答えなくても配れます。`} /></p>
             </form> : null}
@@ -165,7 +165,7 @@ admin.get("/projects/:projectId", async (c) => {
             {"fields" in r.body ? <>{r.body.fields.filter((f) => f.original_id === original.original_id).map((f) => <p><a href={target} target="_blank">{f.name}: {f.value}</a>（写真全体・{f.locator} / 確かさ{CONFIDENCE_LABEL[f.confidence]}）</p>)}{r.body.text_blocks.filter((b) => b.original_id === original.original_id).map((b) => <p><a href={target} target="_blank">{b.text}</a>（写真全体・{b.locator}）</p>)}</> : r.body.rows.filter((row) => row.original_id === original.original_id).map((row) => <p><a href={target} target="_blank">{row.household_name} / {row.ward_group}</a>（写真全体・{row.locator}）</p>)}
           </details>)}</div>
         </div>; })}
-        <p><a href={adminPath(ward, `/projects/${projectId}/map`)}>段取りで影響を見る</a></p>
+        <p class="link-line"><a href={adminPath(ward, `/projects/${projectId}/map`)}>段取りで影響を見る</a></p>
       </section>;
     }))}
     {jobs.length === 0 ? <p>まだ資料は入っていません。</p> : null}
@@ -177,7 +177,7 @@ admin.get("/projects/:projectId", async (c) => {
     <h2 id="ledger">収支</h2>
     <p>領収書の写真や、協賛の返事から読み取った収入と支出を見られます。相手の名前を押すと、読み違いを直せます。</p>
     <div class="action-links"><a class="button secondary" href={adminPath(ward, `/projects/${projectId}/ledger`)}>{project.title}の収支を見る</a><a class="button secondary" href={adminPath(ward, "/ledger")}>年の集計と予算を見る</a></div>
-    {ledgerRows.length === 0 ? <p>収支の記録はまだありません。領収書の写真を送ると、ここに入ります。</p> : <table class="stack"><thead><tr><th>相手</th><th>収入か支出</th><th>額</th><th>日付</th><th>メモ</th></tr></thead><tbody>{ledgerRows.map((row) => <tr><td data-label="相手"><a href={adminPath(ward, `/projects/${projectId}/ledger/${row.rowId}`)}>{row.data.counterpart}</a></td><td data-label="収入か支出">{displayFieldValue("ledger", "direction", row.data.direction)}</td><td data-label="額">{typeof row.data.amount === "number" ? displayFieldValue("ledger", "amount", row.data.amount) : "確かめ中"}</td><td data-label="日付">{displayFieldValue("ledger", "date", row.data.date)}</td><td data-label="メモ">{row.data.note}</td></tr>)}</tbody></table>}
+    {ledgerRows.length === 0 ? <p>収支の記録はまだありません。領収書の写真を送ると、ここに入ります。</p> : <table class="stack"><thead><tr><th>相手</th><th>収入か支出</th><th>額</th><th>日付</th><th>メモ</th></tr></thead><tbody>{ledgerRows.map((row) => <tr><td class="link-line" data-label="相手"><a href={adminPath(ward, `/projects/${projectId}/ledger/${row.rowId}`)}>{row.data.counterpart}</a></td><td data-label="収入か支出">{displayFieldValue("ledger", "direction", row.data.direction)}</td><td data-label="額">{typeof row.data.amount === "number" ? displayFieldValue("ledger", "amount", row.data.amount) : "確かめ中"}</td><td data-label="日付">{displayFieldValue("ledger", "date", row.data.date)}</td><td data-label="メモ">{row.data.note}</td></tr>)}</tbody></table>}
     <h2>届いたものと文書</h2>
     {state.documents.map((d) => <p>{DOCUMENT_KIND_LABEL[d.kind]} / {SCOPE_LABEL[d.scope]}{d.stale ? " / 新しい資料が入っています" : ""}</p>)}
   </Layout>);

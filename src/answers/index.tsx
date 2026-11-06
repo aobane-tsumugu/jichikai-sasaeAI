@@ -64,7 +64,7 @@ admin.get("/answers", async (c) => {
   return c.html(
     <Layout title="答え" siteName={c.var.ward.name} noindex adminHomeHref={adminPath(c.var.ward.slug, "/")}>
       <h1>答え</h1><p class="lead">答えを見る行事を選んでください。Web、電話、回答票で受けた内容を同じ一覧で見られます。</p>
-      <p><a href={`/${c.var.ward.slug}/`} aria-label="区のページ">区のページ</a></p>
+      <p class="link-line"><a href={`/${c.var.ward.slug}/`} aria-label="区のページ">区のページ</a></p>
       <p><a class="button" href={adminPath(c.var.ward.slug, "/answers/roster")}>名簿を入れる</a></p>
       <h2>答えを確認する</h2>
       {rows.results.length === 0 ? <p class="panel">行事はまだありません。</p> : (
@@ -371,7 +371,7 @@ admin.get("/answers/:projectId/:answerId/edit", async (c) => {
   const back = adminPath(ward.slug, `/answers/${encodeURIComponent(projectId)}`);
   const endpoint = `${back}/${encodeURIComponent(answer.answerId)}`;
   return c.html(<Layout title="答えを直す・消す" siteName={ward.name} noindex adminHomeHref={adminPath(ward.slug, "/")}>
-    <p><a href={`${back}?view=list`}>答えの一覧へ戻る</a></p>
+    <p class="link-line"><a href={`${back}?view=list`}>答えの一覧へ戻る</a></p>
     <h1>{answer.household}の答えを直す</h1><p class="lead">直したいところを書き換えて、保存してください。保存する前に戻ると、元のままです。</p>
     {project.closed_at ? <p class="notice">この行事は閉じています。答えを直すときは<a href={adminPath(ward.slug, `/close/${encodeURIComponent(projectId)}`)}>「もう一度開く」の画面へ進んでください</a>。</p> : <>
       <form method="post" action={`${endpoint}/edit`} class="panel">
@@ -381,7 +381,7 @@ admin.get("/answers/:projectId/:answerId/edit", async (c) => {
         <label for="edit-helper">手伝う人の名前（書かなくてかまいません）</label><input id="edit-helper" name="helper_name" type="text" value={answer.helperName ?? ""} maxLength={240} />
         <label for="edit-times">手伝える時間帯（書かなくてかまいません）</label><input id="edit-times" name="helper_times" type="text" value={answer.helperTimes ?? ""} maxLength={240} />
         <div class="action-bar"><button type="submit">直した答えを保存する</button></div>
-        <p><a href={`${back}?view=list`}>保存せずに戻る</a></p>
+        <p class="link-line"><a href={`${back}?view=list`}>保存せずに戻る</a></p>
       </form>
       <details class="fold"><summary>この答えを消す</summary><div><p>この一件を、一覧と数から消します。消したあとに入れ直すときは、「電話や紙の答えを手で入れる」を使ってください。</p><form method="post" action={`${endpoint}/delete`}><button type="submit" class="danger">この答えを消す</button></form></div></details>
     </>}
@@ -497,7 +497,7 @@ pub.get("/help/:projectId", async (c) => {
   const choices = helpTimeChoices(opportunity.body);
   const newer = context.documents.find((document) => (document.kind === "notice" || document.kind === "announcement") && document.publishedAt > opportunity.publishedAt);
   return c.html(<Layout title={`${opportunity.title}を一回だけ手伝う`} siteName={c.var.ward.name}>
-    <p><a href={`/${c.var.ward.slug}/`}>お知らせの一覧へ</a></p>
+    <p class="link-line"><a href={`/${c.var.ward.slug}/`}>お知らせの一覧へ</a></p>
     <h1>{opportunity.title}で手伝える時間帯を教えてください</h1>
     <p class="lead">自治会に入っていなくても申し込めます。お名前と手伝える時間帯を教えてください。</p>
     {newer ? <p class="notice">この募集のあとに、新しいお知らせを載せました。<a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>新しいお知らせを読んでください</a>。</p> : null}
@@ -531,7 +531,7 @@ pub.post("/help/:projectId", async (c) => {
     <h1>申し込みを受け付けました</h1><p>ありがとうございました。この画面は閉じてかまいません。</p>
     <dl><dt>お名前</dt><dd>{name}</dd><dt>時間帯</dt><dd>{times}</dd></dl>
     <section class="notice"><h2>次は</h2><EventDetails item={context.item} /><p>手伝える時間帯: {times}</p><p>変更は区のページに載せます。</p></section>
-    <p><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>案内を読む</a></p>
+    <p class="link-line"><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>案内を読む</a></p>
     <h2>都合が悪くなったときは</h2><p>間違えたときも、下の連絡先へお知らせください。</p><ResidentContact contact={context.contact} />
   </Layout>);
 });
@@ -554,7 +554,7 @@ function AnswerForm({ wardName, slug, projectId, title, squads, labels, selected
   const counts = parseAnswerCounts(values);
   const district = typeof values.district === "string" ? values.district : selected;
   return <Layout title={`${title}の出欠を教えてください`} siteName={wardName}>
-    <p><a href={`/${slug}/p/${encodeURIComponent(projectId)}`}>{title}の案内へ</a></p>
+    <p class="link-line"><a href={`/${slug}/p/${encodeURIComponent(projectId)}`}>{title}の案内へ</a></p>
     <h1>{title}の出欠を教えてください</h1><p class="lead">参加するかどうかを教えてください。答えがないときは、欠席として数えます。登録はいりません。</p>
     {error ? <Notice error>{error} 入れた人数は残っています。</Notice> : null}
     <form method="post" action={`/${slug}/answer/${encodeURIComponent(projectId)}${selected ? `?s=${encodeURIComponent(selected)}` : ""}`}>
@@ -607,7 +607,7 @@ pub.post("/answer/:projectId", async (c) => {
     <dl><dt>代表者</dt><dd>{household}</dd><dt>班</dt><dd>{district || "班が分からない"}</dd><dt>{counts!.peopleCount === 0 ? "答え" : "人数"}</dt><dd>{countText(counts!, context.labels)}</dd></dl>
     {counts!.peopleCount > 0 ? <section class="notice"><h2>次は</h2><EventDetails item={context.item} /><p>変更は案内で確かめられます。</p></section> : null}
     <h2>間違えたときは</h2><p>もう一度送らず、下の連絡先にお知らせください。役員が直します。</p><ResidentContact contact={context.contact} />
-    <p><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>案内へ戻る</a></p>
+    <p class="link-line"><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>案内へ戻る</a></p>
   </Layout>);
 });
 

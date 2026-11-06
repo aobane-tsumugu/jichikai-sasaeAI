@@ -75,13 +75,13 @@ admin.get("/inbox", async (c) => {
       {groups.map((group) => <article><p><b>{group.title || group.materials[0]?.original.filename || "届いた資料"}</b></p>
         <p class="muted">{group.title ? `${group.title}の資料のようです。` : "何の資料か分からないものです。そのままでかまいません。"}{group.materials.length}件</p>
         <form method="post" action={adminPath(ward, "/intake/start")}><input type="hidden" name="group" value={group.key} /><button>{group.kind === "city_request" ? "市からの依頼として始める" : group.title ? `${group.title}を始める` : "このまま進める"}</button></form>
-        {group.materials.map((m) => <p><a href={adminPath(ward, `/intake/originals/${m.original.original_id}`)}>元の資料を見る: {m.original.filename || "届いた文"}</a></p>)}
+        {group.materials.map((m) => <p class="link-line"><a href={adminPath(ward, `/intake/originals/${m.original.original_id}`)}>元の資料を見る: {m.original.filename || "届いた文"}</a></p>)}
         {[...new Set(group.materials.map((m) => m.jobId))].map((id) => {
           const item = items.find((i) => i.job_id === id);
           return picker(adminPath(ward, item ? `/inbox/${item.item_id}` : `/inbox/city/${id}`), `pick-${id}`);
         })}
       </article>)}
-      {adminJobs.filter((j) => !j.project_id && j.status !== "read").map((j) => <p><a href={adminPath(ward, "/intake/received")}>{j.first_filename || "撮った写真"}: {STATUS_LABEL[j.status]}</a></p>)}
+      {adminJobs.filter((j) => !j.project_id && j.status !== "read").map((j) => <p class="link-line"><a href={adminPath(ward, "/intake/received")}>{j.first_filename || "撮った写真"}: {STATUS_LABEL[j.status]}</a></p>)}
       {lineRows.filter(({ item }) => item.disposition === "unmatched" && !groups.some((g) => g.materials.some((m) => m.jobId === item.job_id))).map(({ item, job }) => <article>
         <p><b>{item.original_text || "届いた写真"}</b></p><p class="muted">{job ? STATUS_LABEL[job.status] : "どの行事か分かりませんでした"}</p>
         <a href={adminPath(ward, `/inbox/${item.item_id}/original`)}>元の資料を見る</a>
@@ -96,18 +96,18 @@ admin.get("/inbox", async (c) => {
       {q.line_source_type ? <span>送った人: {q.line_sender_label || "名前は分かりません"}（{q.line_source_type === "user" ? "公式への一対一" : "LINEグループ"}）</span> : null}
       {q.line_replied_at ? <span>AIは答えていません。送った人には「役員に伝えて、内容を確認します。」と返しました。</span> : null}
       {q.answer ? <span>{q.answer}</span> : null}</a></li>)}</ul> : <p class="muted">問い合わせはありません。</p>}
-    <p><a href={adminPath(ward, "/inbox/questions")}>送った資料についての質問を見る</a></p>
+    <p class="link-line"><a href={adminPath(ward, "/inbox/questions")}>送った資料についての質問を見る</a></p>
     <h2>行事に入れたもの</h2><ul class="rows">
       {await Promise.all(adminJobs.filter((j) => j.project_id).map(async (j) => {
         const originals = await listOriginals(db, ward.wardId, j.job_id);
         const project = projects.results.find((p) => p.project_id === j.project_id);
         return <li class="panel"><b>{j.first_filename || "届いた文"}</b><p class="muted">{project?.name ?? "行事"}に入れました</p>
-          {originals.map((o) => <p><a href={adminPath(ward, `/intake/originals/${o.original_id}`)}>元の資料を見る: {o.filename || "届いた文"}</a></p>)}
+          {originals.map((o) => <p class="link-line"><a href={adminPath(ward, `/intake/originals/${o.original_id}`)}>元の資料を見る: {o.filename || "届いた文"}</a></p>)}
           {picker(adminPath(ward, `/inbox/city/${j.job_id}`), `pick-${j.job_id}`, j.project_id)}
         </li>;
       }))}
       {lineRows.filter(({ item }) => item.disposition === "matched").map(({ item, job }) => <li class="panel"><b>{item.original_text || "届いた写真"}</b><p class="muted">{item.sender_display_name || "役員"}がLINEで送りました。{item.matched_project_name ? `${item.matched_project_name}に入れました` : job ? STATUS_LABEL[job.status] : "どの行事か分かりませんでした"}</p>
-        <p><a href={adminPath(ward, `/inbox/${item.item_id}/original`)}>元の資料を見る</a></p>
+        <p class="link-line"><a href={adminPath(ward, `/inbox/${item.item_id}/original`)}>元の資料を見る</a></p>
         {picker(adminPath(ward, `/inbox/${item.item_id}`), `pick-${item.item_id}`, job?.project_id)}
       </li>)}
     </ul>
@@ -124,7 +124,7 @@ admin.get("/inbox/questions", async (c) => {
     <a class="back" href={adminPath(ward, "/inbox")}>届いたものへ</a>
     <h1>送った資料についての質問</h1><p class="lead">読めないところなどを残しています。分かるものだけ答えられます。答えがなくても仕事は進められます。</p>
     {questions.map((question) => <section class="panel"><h2>{question.text}</h2>
-      <p><a href={adminPath(ward, `/intake/originals/${question.original_id}`)}>元の資料を見る</a></p>
+      <p class="link-line"><a href={adminPath(ward, `/intake/originals/${question.original_id}`)}>元の資料を見る</a></p>
       <p>{question.sent_at ? "写真が届いた場所で聞きました。答えがなくても、そのままでかまいません。" : "まだ公式LINEでは聞いていません。"}</p>
       {question.answer ? <p class="preserve-lines">届いた答え: {question.answer}</p> : null}
       {question.project_id ? <a href={adminPath(ward, `/projects/${question.project_id}/questions`)}>行事の質問を見る</a> : <p>どの行事か分からないものは、届いたものから入れ直せます。</p>}

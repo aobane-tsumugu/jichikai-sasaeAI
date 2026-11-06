@@ -40,11 +40,11 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
           <textarea id={`body-${t.id}`} name="body" rows={5} required maxlength={LIMITS.templateBody}>
             {t.body}
           </textarea>
-          <div class="action-bar">
-            <button type="submit">保存する</button>{" "}
+          <div class="action-links">
+            <button type="submit" class="secondary">保存する</button>{" "}
             <button
               type="submit"
-              class="danger"
+              class="secondary danger"
               formaction={base(c, `/${t.id}/remove`)}
               formnovalidate
               onclick="return confirm('この決まった知らせの文を消します。')"
@@ -59,7 +59,7 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
         <input id="new-name" name="name" type="text" required maxlength={LIMITS.templateName} />
         <label for="new-body">本文</label>
         <textarea id="new-body" name="body" rows={5} required maxlength={LIMITS.templateBody}></textarea>
-        <p>
+        <p class="action-bar page-action">
           <button type="submit">足す</button>
         </p>
       </form>

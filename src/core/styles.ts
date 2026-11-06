@@ -28,6 +28,9 @@ body {
   line-break: strict; word-break: auto-phrase; text-wrap: pretty;
 }
 a { color: var(--accent); text-underline-offset: .2em; }
+/* 一行で置いたリンクだけ押す面を広げ、文章の中のリンクは変えない。 */
+.link-line > a, :is(h2, h3) > a, .material-links > a { display: inline-flex; align-items: center; min-height: var(--tap); }
+.material-links > a { display: flex; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 p { margin: 0 0 var(--space-3); }
 h1, h2, h3 { line-height: 1.45; text-wrap: balance; }
@@ -75,6 +78,9 @@ button.danger:active, a.button.danger:active { background: var(--danger); border
 
 /* ActionBar */
 .action-bar { position: sticky; bottom: 0; z-index: 1; display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-5) calc(var(--page-gutter) * -1) calc(var(--space-7) * -1); padding: var(--space-3) var(--page-gutter) calc(var(--space-3) + env(safe-area-inset-bottom)); border-top: 2px solid var(--fg); background: var(--panel); }
+/* フォーム自体が一画面目より下にある場合も、操作を下に見せる。 */
+.action-bar.page-action { position: fixed; right: 0; left: 0; width: 100%; max-width: var(--width-text); margin: 0 auto; }
+main:has(.page-action) { padding-bottom: calc(var(--space-7) + 7rem + env(safe-area-inset-bottom)); }
 
 /* Notice */
 .notice { margin: var(--space-4) 0; padding: var(--space-3) var(--space-4); border: 2px solid var(--accent); border-radius: var(--radius); background: var(--info-bg); color: var(--fg); }
@@ -214,7 +220,7 @@ details.fold > div { padding: 0 var(--space-3) var(--space-3); }
 .map-today span { position: absolute; top: -1.7rem; left: 1px; padding: 0 var(--space-1); background: var(--fg); color: var(--panel); font-size: var(--text-note); font-weight: 700; line-height: 1.6; white-space: nowrap; transform: translateX(-50%); }
 
 /* Table。狭い幅では行を縦に並べ、横に動かさない */
-table { width: 100%; margin: var(--space-3) 0; border-collapse: collapse; }
+table { width: 100%; margin: var(--space-3) 0; border-collapse: collapse; font-size: 1rem; }
 th { padding: var(--space-2) var(--space-3); background: var(--sunk); text-align: left; }
 td { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--line); vertical-align: top; }
 .num { text-align: right; font-variant-numeric: tabular-nums; }

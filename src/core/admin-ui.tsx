@@ -22,7 +22,7 @@ export const AdminPage: FC<
     noindex
   >
     {back ? (
-      <p>
+      <p class="link-line">
         <a href={back.href}>{back.label}</a>
       </p>
     ) : null}
