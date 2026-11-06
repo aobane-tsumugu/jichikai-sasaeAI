@@ -14,6 +14,10 @@ if (!ward || !baseArg || (!onlyPublic && !arg("--creds"))) {
   console.error("使い方: npm run walkthrough -- --base <URL> --ward <区のURL名> --creds <資格情報ファイル> [--only-public]");
   process.exit(2);
 }
+if (ward === "demoku") {
+  console.error("クロード区では通し確認を実行しません。確認用の区を指定してください。");
+  process.exit(2);
+}
 const base = new URL(baseArg).toString().replace(/\/$/, "");
 const origin = new URL(base).origin;
 const wardPath = "/" + encodeURIComponent(ward);
