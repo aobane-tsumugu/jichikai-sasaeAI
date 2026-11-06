@@ -45,7 +45,7 @@ it.each(["event", "general_meeting"] as const)("%s: 同じ班の同名2世帯を
     expect(await listUnansweredByDistrict(env.DB, ward.wardId, project.projectId)).toEqual([
       { district: "1班", households: Array.from({ length: count }, () => household) },
     ]);
-    const expected = kind === "general_meeting" ? `まだ答えていない世帯は${count}世帯です。` : `1班（${count}世帯）`;
+    const expected = kind === "general_meeting" ? `まだ答えていない世帯 ${count}世帯` : `1班（${count}世帯）`;
     expect(await (await get(realApp, admin, cookie)).text()).toContain(expected);
     if (count === 1) expect(await (await get(realApp, `${admin}&print=1`, cookie)).text()).toContain(expected);
   };
