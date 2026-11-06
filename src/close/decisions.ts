@@ -48,7 +48,8 @@ export async function meetingDecisionStatements(db: D1Database, wardId: string, 
   }
   for (const [key, what] of submitted) {
     const previous = existing.find((row) => normalizeKey(String(row.data.what ?? "")) === key);
-    if (previous && previous.source.kind !== "ai_proposal" && previous.data.what === what) continue;
+    // 同じ文でも、資料から拾った内容は閉じる操作で人が残した記録にする。
+    if (previous?.source.kind === "person" && previous.data.what === what) continue;
     const on = previous?.data.decidedOn ?? project.deadlines.board_meeting_day ?? project.deadlines.event_day;
     const data = { what, ...(on ? { decidedOn: on } : {}) };
     if (previous) {

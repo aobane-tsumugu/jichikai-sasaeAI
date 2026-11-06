@@ -18,6 +18,7 @@
     "walkthrough": "node scripts/walkthrough.ts",
     "walkthrough-rest": "node scripts/walkthrough-rest.ts",
     "walkthrough-meeting": "node scripts/walkthrough-meeting.ts",
+    "walkthrough-kinds": "node scripts/walkthrough-kinds.ts",
     "screens": "node scripts/screens.ts",
     "check-screens": "node scripts/check-screens.ts",
     "line-sim": "node scripts/line-sim.ts"
