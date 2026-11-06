@@ -89,6 +89,7 @@ function readForm(html: string, match: string, sectionTitle?: string) {
       const attrs2 = input[1] ?? "";
       const name = /\bname="([^"]*)"/i.exec(attrs2)?.[1];
       const type = /\btype="([^"]*)"/i.exec(attrs2)?.[1];
+      if (type === "radio" && !/\bchecked(?:\s|=|$)/i.test(attrs2)) continue;
       if (name && type !== "file" && type !== "submit" && type !== "checkbox") fields[name] = unescapeHtml(/\bvalue="([^"]*)"/i.exec(attrs2)?.[1] ?? "");
     }
     for (const field of body.matchAll(/<textarea\b([^>]*)>([\s\S]*?)<\/textarea>/gi)) {
@@ -176,7 +177,7 @@ if (adminLoggedIn) {
     record(1, "新しいプロジェクトと案内", "通過", "手書きの案内を保存し、公式 LINE を送らない選択で配布", distributed.status, start);
   } catch (error) { fail(1, "新しいプロジェクトと案内", error, start); }
 } else {
-  for (const [number, title] of [[2,"回答票"],[3,"今やることと区の地図"],[5,"実態の一枚"],[6,"言葉で案を直す"],[7,"当番表の編集"],[8,"対象者への配布"],[10,"予備の列"],[11,"行政の依頼と帳簿"],[12,"原本を消す"],[13,"引渡し"]] as const) skip(number, title, "役員画面に入れず、前提のプロジェクトがありません");
+  for (const [number, title] of [[2,"回答票"],[3,"今やることと区の地図"],[5,"実態の一枚"],[6,"言葉で下書きを直す"],[7,"当番表の編集"],[8,"対象者への配布"],[10,"予備の列"],[11,"行政の依頼と帳簿"],[12,"原本を消す"],[13,"引渡し"]] as const) skip(number, title, "役員画面に入れず、前提のプロジェクトがありません");
 }
 
 // 2. 架空の回答票を読み取り、役員が確認して確定する。
@@ -293,12 +294,12 @@ if (projectId) {
     const form = readForm(before.html, "/draft/announcement/start");
     form.fields.instruction = "本文に『集合場所は" + FIRST_SLICE.previousPlace + "です』を一文加えてください。";
     const queued = await post(form.action, form.fields);
-    if (queued.status !== 303) throw new Error("案の修正を頼めません");
+    if (queued.status !== 303) throw new Error("下書きの修正を頼めません");
     const after = await waitPage(path, html => /data-ai-status="done"/.test(html) && /<textarea[^>]*name="text"[^>]*>([\s\S]*?)<\/textarea>/i.exec(html)?.[1] !== oldText, html => /data-ai-status="(?:failed|attention)"/.test(html));
-    if (!after.html.includes(FIRST_SLICE.previousPlace)) throw new Error("指示した一文を含む案になっていません");
-    record(6, "言葉で案を直す", "通過", "一文の指示後に案の変化を確認", after.response.status, start);
-  } catch (error) { fail(6, "言葉で案を直す", error, start); }
-} else skip(6, "言葉で案を直す", "プロジェクトを開けませんでした");
+    if (!after.html.includes(FIRST_SLICE.previousPlace)) throw new Error("指示した一文を含む下書きになっていません");
+    record(6, "言葉で下書きを直す", "通過", "一文の指示後に下書きの変化を確認", after.response.status, start);
+  } catch (error) { fail(6, "言葉で下書きを直す", error, start); }
+} else skip(6, "言葉で下書きを直す", "プロジェクトを開けませんでした");
 
 // 7. 当番表の一行があれば編集して保存する。
 if (projectId) {

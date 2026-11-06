@@ -77,8 +77,8 @@ describe("秋の収穫祭の最初の一片", () => {
     expect(mapPage.status).toBe(200);
     const materialPath = `/${ward.slug}/admin/intake?project=${encodeURIComponent(projectId as string)}#send-form`;
     expect(mapHtml).toContain(`href="${materialPath}"`);
-    expect(mapHtml).toContain(`/admin/projects/${projectId}/draft`);
-    expect(mapHtml).toContain(`/admin/answers?project=${encodeURIComponent(projectId as string)}`);
+    expect(mapHtml).toContain(`/admin/projects/${projectId}/map/`);
+    expect(mapHtml).toContain(`/admin/answers/${encodeURIComponent(projectId as string)}`);
     expect(mapHtml).toContain(`/admin/projects/${projectId}#ledger`);
     // 地図から送る画面を開き、送り先を選び直さずに材料を送れる。
     const materialPage = await get(realApp, materialPath, cookie);

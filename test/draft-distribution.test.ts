@@ -46,7 +46,7 @@ it("去年から案を作り、新しい資料が入っても全戸に配り、�
     const draftHtml = await (await get(realApp, `${root}/projects/${project.projectId}/draft/announcement`, cookie)).text();
     expect(draftHtml).toContain(`value="${FIRST_SLICE.previousPlace}"`);
     expect(draftHtml).toContain(`value="${FIRST_SLICE.publicDayText}"`);
-    expect(draftHtml).toContain(`${FIRST_SLICE.sourceYear}年の資料から案に入れました。`);
+    expect(draftHtml).toContain("元の資料を見る");
     expect(await (await get(realApp, `${root}/projects/${project.projectId}`, cookie)).text()).not.toContain("混入を確かめる");
     expect((await get(realApp, `${root}/projects/${project.projectId}/check`, cookie)).status).toBe(404);
 
