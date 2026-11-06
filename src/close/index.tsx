@@ -95,8 +95,8 @@ admin.get("/close/:projectId", async (c) => {
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
   if (!project) return c.notFound();
   if (!project.closedAt && !(await prepareDrafts(c.env.DB, ward.wardId, id, c.var.account.accountId))) return c.notFound();
-  if (c.req.query("reopened")) return c.html(<AdminPage ward={ward} account={c.var.account} title="開き直しました">
-    <h1>開き直しました</h1><p class="lead">報告と段取りを直せます。</p><section class="next"><strong>次は</strong><p>段取りから仕事を続けられます。</p><a class="button" href={adminPath(ward, `/projects/${id}/map`)}>段取りへ</a></section><a class="quiet" href={adminPath(ward, `/close/${id}`)}>閉じる画面に戻る</a>
+  if (c.req.query("reopened")) return c.html(<AdminPage ward={ward} account={c.var.account} title="もう一度開きました">
+    <h1>もう一度開きました</h1><p class="lead">報告と段取りを直せます。</p><section class="next"><strong>次は</strong><p>段取りから仕事を続けられます。</p><a class="button" href={adminPath(ward, `/projects/${id}/map`)}>段取りへ</a></section><a class="quiet" href={adminPath(ward, `/close/${id}`)}>閉じる画面に戻る</a>
   </AdminPage>);
   const [tasks, reports, status, generatedReport, activityPage] = await Promise.all([
     c.env.DB.prepare("SELECT task_id, name, period, progress, requested_by, difficulty, next_year FROM project_close_map WHERE ward_id = ? AND project_id = ? ORDER BY period, task_id")
@@ -156,12 +156,14 @@ admin.get("/close/:projectId", async (c) => {
       <p class="lead">報告と、来年への一言を残します。閉じたあとももう一度開けます。</p>
       <div class="notice warn"><strong>閉じると消えるものがあります</strong><p>手伝いだけの申し込みの名前と時間帯は消えます。もう一度開いても戻りません。</p></div>
       {status.results.map((job) => <p>{job.task === "report" ? "報告" : "段取り"}: {job.status === "done" ? (job.task === "report" && !report("public") ? "下書きを書けませんでした。下の欄に直接書けます" : "できました") : job.status === "failed" ? "止まりました。下の欄に直接書けます" : "準備中"}</p>)}
+      {status.results.some((job) => job.status !== "done" && job.status !== "failed") ? <p class="muted">作っています。画面を閉じても続きます。少しあとに、もう一度開いてください。</p> : null}
       {!report("public") && !status.results.some((job) => job.task === "report" && job.status !== "failed") ? <form method="post" action={`${root}/prepare`}><button class="secondary">報告と段取りの下書きを作る</button><p class="muted">AIが止まっていても、下の欄に直接書けます。</p></form> : null}
       <form method="post" action={`${root}/finalize`}>
-        <div class="field"><label for="report-public">住民への報告</label><p class="help-text">{report("public") ? "下書きです。直してかまいません。" : "ここに直接書けます。"}閉じると区のページに載ります。</p><textarea id="report-public" name="body" rows={7} maxlength={12000}>{report("public")}</textarea></div>
+        <div class="field"><label for="report-public">住民への報告</label><p class="help-text">{report("public") ? "AIが書いた下書きです。直してかまいません。" : "ここに直接書けます。"}閉じると区のページに載ります。</p><textarea id="report-public" name="body" rows={7} maxlength={12000}>{report("public")}</textarea></div>
         {warnings.length ? <div class="notice warn"><strong>報告の中に見つかったもの</strong><ul>{warnings.map((warning) => <li>{warning}</li>)}</ul><p>書き直せます。このまま閉じることもできます。</p></div> : null}
         <div class="field"><label for="report-staff">役員だけの記録（書かなくてかまいません）</label><p class="help-text">区のページには載りません。</p><textarea id="report-staff" name="body" rows={4} maxlength={12000}>{report("staff")}</textarea></div>
-        <h2>来年への一言（書かなくてかまいません）</h2><p class="muted">仕事ごとに、頼んだ人、困ったこと、来年変えることを残せます。来年の段取りに出ます。</p>
+        <h2>来年への一言（書かなくてかまいません）</h2><p class="muted">仕事ごとに、頼んだ人、困ったこと、来年変えることを残せます。来年の段取りに出ます。運営メモに書いたことも、そのまま残ります。ここで書き直さなくてかまいません。</p>
+        <a class="quiet" href={adminPath(ward, `/projects/${id}/ledger`)}>運営メモを見る</a>
         {tasks.results.length ? tasks.results.map((task) => <details class="fold" id={`task-${task.task_id}`}><summary>{task.name}</summary><div>
           <input type="hidden" name="taskId" value={task.task_id} />
           <input type="hidden" name="period" value={task.period} /><input type="hidden" name="name" value={task.name} /><input type="hidden" name="progress" value={task.progress} />

@@ -59,6 +59,6 @@ export function ReceptionClosed({ closed, due }: { closed: boolean; due: string 
   </section>;
 }
 
-export function EventDetails({ item }: { item: (key: string) => string }) {
-  return <dl>{[["date_time", "いつ"], ["place", "どこで"], ["rain_plan", "雨のとき"]].map(([key, label]) => item(key!) ? <><dt>{label}</dt><dd>{formatDateText(item(key!))}</dd></> : null)}</dl>;
+export function EventDetails({ item, due }: { item: (key: string) => string; due?: string | null }) {
+  return <dl class="facts">{[["date_time", "いつ"], ["place", "どこで"], ["rain_plan", "雨のとき"]].map(([key, label]) => item(key!) ? <><dt>{label}</dt><dd>{formatDateText(item(key!))}</dd></> : null)}{due ? <><dt>答えの締切</dt><dd>{formatJstDate(due)}まで</dd></> : null}</dl>;
 }

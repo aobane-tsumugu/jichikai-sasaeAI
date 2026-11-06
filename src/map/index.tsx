@@ -51,7 +51,7 @@ admin.get("/projects/:projectId/map", async (c) => {
       <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
       {notice === "event_day" ? <Notice><p>行事の日を変えました。済んでいない仕事の時期を置き直しました。案内の文は変わりません。</p><p>段取りの仕事を押して、時期を確かめてください。戻すときは、下の「行事の日を直す」からもう一度入れ直せます。</p><a class="quiet" href="#event-day">行事の日を直す</a></Notice> : null}
       {notice === "removed" ? <Notice>仕事を外しました。下の「外した仕事」から戻せます。</Notice> : notice === "restored" ? <Notice>仕事を戻しました。仕事を押すと直せます。</Notice> : notice === "added" ? <Notice>仕事を足しました。仕事を押すと直せます。</Notice> : null}
-      {project.closedAt ? <Notice>この行事は閉じました。直すときは「報告と閉じる」から「開き直す」を押してください。</Notice> : <>
+      {project.closedAt ? <Notice>この行事は閉じました。直すときは「報告を書いて閉じる」から「もう一度開く」を押してください。</Notice> : <>
         <section class="next"><strong>次は</strong>
           <p>{first && questions.length ? `質問が${questions.length}つあります。答えると、案内の下書きが整います。答えなくても進められます。` : next ? next.periodEnd ? `${shortDate(next.periodEnd)}までの仕事です。` : "時期はあとから直せます。" : "段取りの仕事は全部済みました。"}</p>
           <a class="button" href={adminPath(ward, first && questions.length ? `/projects/${id}/questions` : next ? taskUrl(next) : `/close/${id}`)}>{first && questions.length ? "質問に答える" : next?.name ?? "報告を書いて閉じる"}</a>
@@ -78,7 +78,7 @@ admin.get("/projects/:projectId/map", async (c) => {
       </section><aside>
         <ul class="rows"><li><a class="row-link" href={adminPath(ward, `/projects/${id}/questions`)}><b>{questions.length ? `質問が${questions.length}つあります` : "質問はありません"}</b><span>答えなくても配れます。</span></a></li></ul>
         <h2>最近届いた資料</h2>
-        {materials.results.length ? <ul class="rows">{materials.results.slice(0, 3).map((material) => <li><a class="row-link" href={adminPath(ward, `/intake/originals/${material.original_id}`)}><b>{material.filename || "一行の文"}</b><span>{tasks.filter((task) => task.progressSource?.kind === "original" && task.progressSource.ref === material.original_id).map((task) => `「${task.name}」を${task.progress === "done" ? "済み" : "進行中"}にしました`).join("。") || (material.status === "done" ? "読み終わりました。届いた資料で中身を見られます" : material.status === "failed" ? "読めませんでした。届いた資料から読み直せます" : "読み取りを進めています")}</span></a></li>)}</ul> : <p>資料はまだ届いていません。</p>}
+        {materials.results.length ? <ul class="rows">{materials.results.slice(0, 3).map((material) => <li><a class="row-link" href={adminPath(ward, `/intake/originals/${material.original_id}`)}><b>{material.filename || "書いたこと"}</b><span>{tasks.filter((task) => task.progressSource?.kind === "original" && task.progressSource.ref === material.original_id).map((task) => `「${task.name}」を${task.progress === "done" ? "済み" : "進行中"}にしました`).join("。") || (material.status === "done" ? "読み終わりました。届いた資料で中身を見られます" : material.status === "failed" ? "読めませんでした。届いた資料から読み直せます" : "読み取りを進めています")}</span></a></li>)}</ul> : <p>資料はまだ届いていません。</p>}
         {!project.closedAt ? <details class="fold" id="event-day" open={c.req.query("error") === "invalid_input"}><summary>行事の日を直す</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/map/event-day`)}>
           <div class="field"><label for="event-day-input">行事の日</label><input id="event-day-input" name="event_day" type="date" value={day ?? ""} required /></div>
           <p>済んでいない仕事の時期も動きます。案内の文は変わりません。もう一度入れ直せば戻せます。</p><button class="secondary">行事の日を保存する</button>
@@ -87,7 +87,7 @@ admin.get("/projects/:projectId/map", async (c) => {
           <form method="post" action={adminPath(ward, `/projects/${id}/map/add`)}><div class="field"><label for="new-task">足す仕事の名前</label><input id="new-task" name="name" maxlength={100} required /></div><button class="secondary">足す</button></form>
           {removed.results.length ? <><p><b>外した仕事</b></p>{removed.results.map((task) => <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.task_id}/restore`)}><p>{task.name}</p><button class="secondary">この仕事を戻す</button></form>)}</> : null}
         </div></details> : null}
-        <p><a class="quiet" href={adminPath(ward, `/projects/${id}`)}>届いた資料と今年の中身</a></p>
+        <p><a class="quiet" href={adminPath(ward, `/projects/${id}`)}>届いた資料と今年の内容</a></p>
         <p><a class="quiet" href={adminPath(ward, `/print/${id}`)}>紙を印刷する</a></p>
         <p><a class="quiet" href={adminPath(ward, `/answers/${id}`)}>答えを見る</a></p>
         <p><a class="quiet" href={adminPath(ward, `/space/${id}`)}>実行委員と班長のページ</a></p>
@@ -124,7 +124,7 @@ admin.get("/projects/:projectId/map/:taskId", async (c) => {
     {c.req.query("notice") === "saved" ? <section class="next"><strong>直した内容を保存しました</strong><p>段取りに入りました。時期や担当はあとから直せます。</p><a class="button" href={adminPath(ward, `/projects/${id}/map`)}>段取りへ</a></section> : null}
     {draft && destinations[0] === "draft" ? <div class="notice" role="status"><strong>下書きができています</strong><p>{state.questions.length ? `質問が${state.questions.length}つ残っていますが、このまま配れます。` : "直して保存しても、まだ配られません。"}</p></div> : null}
     <div class="action-links">{destinations.map((destination, index) => <a class={index ? "button secondary" : "button"} href={adminPath(ward, targetPath[destination](id, task.taskKey))}>{labels[destination]}</a>)}</div>
-    <h2>この仕事に届いた資料</h2><p><a class="quiet" href={adminPath(ward, `/projects/${id}#materials`)}>この行事に届いた資料を見る</a></p>
+    <h2>届いた資料</h2><p><a class="quiet" href={adminPath(ward, `/projects/${id}#materials`)}>この行事に届いた資料を見る</a></p>
     {history.results.filter((entry) => entry.task_key === task.taskKey && [entry.requested_by, entry.difficulty, entry.next_year].some((value) => value.trim())).map((entry) => <><h2>去年の記録</h2><dl class="facts">
       {entry.requested_by ? <><dt>頼んだ人</dt><dd>{entry.requested_by}</dd></> : null}{entry.difficulty ? <><dt>困ったこと</dt><dd>{entry.difficulty}</dd></> : null}{entry.next_year ? <><dt>来年は</dt><dd>{entry.next_year}</dd></> : null}
     </dl></>)}
@@ -138,7 +138,7 @@ admin.get("/projects/:projectId/map/:taskId", async (c) => {
         <button class="secondary">直した内容を保存する</button>
       </form></div></details>
       <details class="fold"><summary>この仕事を段取りから外す</summary><div><p>外しても、段取りの「外した仕事を戻す」から戻せます。</p><form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}/remove`)}><button class="secondary">外す</button></form></div></details>
-    </> : <Notice>この行事は閉じました。開き直すと時期や担当を直せます。</Notice>}
+    </> : <Notice>この行事は閉じました。もう一度開くと時期や担当を直せます。</Notice>}
   </Layout>);
 });
 

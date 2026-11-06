@@ -41,14 +41,14 @@ export const STATUS_LABEL: Record<JobStatus, string> = {
 };
 
 const ERROR_MESSAGE: Record<ReceiveError["code"], (filename: string) => string> = {
-  empty: () => "送るものを選ぶか、一行の文を書いてください。",
+  empty: () => "送るものを選ぶか、書いたことを入れてください。",
   too_many: () => "一度に送れるのは30までです。分けて送ってください。",
   too_large: (f) => `${f ? `「${f}」` : "送ったもの"}が大きすぎます。小さくして送ってください。`,
   unsupported: (f) =>
     `${f ? `「${f}」` : "送ったもの"}は読めない形式です。写真、PDF、Word（.docx）、Excel（.xlsx）、文字のファイルを送ってください。`,
   needs_expansion: (f) =>
     `${f ? `「${f}」` : "WordやExcel"}は、この画面を開き直してから、ブラウザで送ってください（ブラウザが中身を開いて送ります）。`,
-  bad_text: () => "一行の文が長すぎます。2万文字までです。",
+  bad_text: () => "書いたことが長すぎます。2万文字までです。",
   no_project: () => "その行事には送れません。行事を選び直してください。",
 };
 
@@ -68,7 +68,7 @@ async function jobTitle(db: D1Database, wardId: string, job: JobListItem): Promi
     const text = readings.filter((r) => r.source === "direct")
       .flatMap((r) => "text_blocks" in r.body ? r.body.text_blocks.map((block) => block.text) : [])
       .join(" ").trim();
-    return text ? `${text.slice(0, 40)}${text.length > 40 ? "…" : ""}` : "一行の文";
+    return text ? `${text.slice(0, 40)}${text.length > 40 ? "…" : ""}` : "書いたこと";
   }
   const name = job.first_filename || (job.first_kind === "photo" ? "撮った写真" : "ファイル");
   return job.original_count > 1 ? `${name}ほか${job.original_count - 1}件` : name;
@@ -129,8 +129,21 @@ intakeAdmin.get("/intake/received", async (c) => {
   const jobs = (await listJobs(c.env.DB, ward.wardId, { projectId, limit: 100 })).filter((job) => !job.withdrawn_at && (projectId || Date.parse(job.created_at) > sentSince));
   const slow = jobs.find((job) => job.status === "attention" || ((job.status === "received" || job.status === "reading") && Date.now() - Date.parse(job.created_at) > 90_000));
   const readHref = adminPath(ward, "/intake/read");
+  const backLabel = project && back === adminPath(ward, `/projects/${project.projectId}/map`) ? `← ${project.title}の段取りへ` : "← 前の画面へ";
+  if (c.req.query("n") === "withdrawn") return c.html(<Layout title="送るのを取り消しました" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <a class="back" href={back}>{backLabel}</a><h1>送るのを取り消しました</h1>
+    <div class="notice done" role="status"><strong>資料は入っていません</strong><p>段取りと下書きは変わりません。</p></div>
+    <section class="next"><strong>次は</strong><p>送り直すときは、もう一度送ってください。</p><a class="button" href={sendHref}>資料を送る</a></section>
+  </Layout>);
+  if (c.req.query("n") === "same") return c.html(<Layout title="同じ資料でした" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <a class="back" href={back}>{backLabel}</a><h1>同じ資料でした</h1>
+    <div class="notice" role="status"><strong>前に送ったものと同じでした</strong><p>二度は入れていません。</p></div>
+    <section class="next"><strong>次は</strong><p>このまま進められます。</p><a class="button" href={back}>{backLabel.replace("← ", "")}</a></section>
+    <h2>違う資料のときは</h2><p>もう一度送ってください。</p><a class="quiet" href={sendHref}>資料を送る</a>
+  </Layout>);
   return c.html(<Layout title="受け取りました" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>受け取りました</h1>
+    {c.req.query("n") === "retry" ? <div class="notice done" role="status"><strong>もう一度読みます</strong><p>読み終わると、段取りと下書きに入ります。</p></div> : null}
     {project ? <><div class="notice done"><strong>{project.title}に資料を預かりました</strong><p>画面を閉じてもかまいません。AIが読み続けます。読み終わると、段取りと下書きに入ります。</p></div><section class="next"><strong>次は</strong><p>読み終わるのを待たずに、段取りを見られます。</p><a class="button" href={adminPath(ward, `/projects/${project.projectId}/map`)}>段取りへ</a></section>{slow ? <Notice>読み取りが遅れています。送った資料は預かっています。送り直す必要はありません。</Notice> : null}</> : slow ? <>
       <div class="notice warn"><strong>読み取りが遅れています</strong><p>送った資料は預かっています。こちらで対応しているので、送り直す必要はありません。下書きを自分で書いて配ることもできます。</p></div>
       <section class="next"><strong>次は</strong><p>読み終わるのを待たずに、案内の下書きを書けます。</p>
@@ -139,8 +152,6 @@ intakeAdmin.get("/intake/received", async (c) => {
       </section>
     </> : <><p class="lead">画面を閉じてもかまいません。AIが読み続けます。</p>
       <section class="next"><strong>次は</strong><p>読み終わった分から、段取りを作れます。</p><a class="button" href={readHref}>読み終わったものを見る</a></section></>}
-    {c.req.query("n") === "withdrawn" ? <Notice>送るのを取り消しました。</Notice> : null}
-    {c.req.query("n") === "retry" ? <Notice>もう一度読みます。</Notice> : null}
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     <h2>送ったもの</h2><ul class="rows">{await Promise.all(jobs.map(async (job) => <li class="panel">
       <b>{await jobTitle(c.env.DB, ward.wardId, job)}</b><p class="muted">{STATUS_LABEL[job.status]}</p>
@@ -286,8 +297,10 @@ intakeAdmin.post("/intake", async (c) => {
     const back = returnPath(c, c.req.query("back"), adminPath(ward, projectId ? `/projects/${projectId}/map` : "/"));
     params.set("back", back);
     const receivedPath = `${adminPath(ward, "/intake/received")}?${params}`;
-    if (!wantsJson) return c.redirect(receivedPath, 303);
-    const nextPage = { redirectTo: receivedPath };
+    params.set("n", "same");
+    const samePath = `${adminPath(ward, "/intake/received")}?${params}`;
+    if (!wantsJson) return c.redirect(outcome.jobId ? receivedPath : samePath, 303);
+    const nextPage = { redirectTo: outcome.jobId ? receivedPath : samePath };
     if (!outcome.jobId) {
       return reply(true, "同じものでした。", { jobId: null, duplicates: outcome.duplicates.length, ...nextPage });
     }
