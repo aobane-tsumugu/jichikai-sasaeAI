@@ -33,7 +33,7 @@ export const MAP_TEMPLATES: Record<string, readonly TemplateTask[]> = {
     { key: "notice", name: "招集を配る", start: -21, end: -14, opens: ["draft"] },
     { key: "answers", name: "出欠を集める", start: -14, end: -3, opens: ["answers"] },
     { key: "day", name: "当日", start: 0, end: 0, opens: ["materials"] },
-    { key: "minutes", name: "議事録をまとめる", start: 1, end: 14, opens: ["draft"] },
+    { key: "minutes", name: "議事録をまとめる", start: 1, end: 14, opens: ["materials"] },
   ],
   city_request: [
     { key: "read", name: "通知を読む", start: -30, end: -25, opens: ["materials"] },

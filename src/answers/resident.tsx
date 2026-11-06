@@ -27,7 +27,8 @@ export async function residentContext(db: D1Database, wardId: string, projectId:
   const announcement = documents.find((document) => document.kind === "announcement");
   const labels: AnswerLabels = announcement ? labelsFromBody(announcement.body) : await getAnswerLabels(db, wardId);
   const eventDocuments = [
-    ...documents.filter((document) => document.kind === "announcement" || document.kind === "notice"),
+    ...documents.filter((document) => document.kind === "notice"),
+    ...documents.filter((document) => document.kind === "announcement"),
     ...documents.filter((document) => document.kind === "recruitment"),
   ];
   const item = (key: string) => {

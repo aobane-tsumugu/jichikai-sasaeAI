@@ -276,6 +276,8 @@ async function confirmPublication(c: Context<AdminEnv>) {
   const distribution = distributionFromForm(form, roster, recipientScope === "all_households");
   if (!distribution) return c.html(<AdminPage ward={ward} account={account} title="部数を確かめてください"><h1>部数を確かめてください</h1><p>加入世帯に配る部数は名簿の世帯数までです。全戸に配るときは「全戸」を選んでください。</p><a class="button" href={adminPath(ward, `/publish/${projectId}/confirm?documentId=${draft.document_id}`)}>配る内容に戻る</a></AdminPage>, 400);
   const rain = draft.kind === "notice" && draft.title.includes("雨");
+  const draftDue = draft.kind === "announcement" ? answerDeadlineFromDraft(draft.body, project.year) : null;
+  const pastDue = draftDue && draftDue < new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date());
   const lineDelivery = !publicScope || !canSendLine(draft.kind) || form.get("lineDelivery") === "skip" ? "skip" : "send";
   const warnings = publicScope ? await checkPublicDraft(c.env.DB, ward.wardId, projectId, draft.kind as DocumentKind, draft.body) : [];
   let friends: number | null = null;
@@ -296,6 +298,7 @@ async function confirmPublication(c: Context<AdminEnv>) {
   c.header("Cache-Control", "no-store");
   return c.html(<AdminPage ward={ward} account={account} title="配る内容を見る" back={{ href: editHref, label: "下書きへ" }}>
     <div class="publish-confirm"><h1>次の内容で配ります</h1><p class="lead">まだ配っていません。読んで、よければ「配る」を押してください。LINEで送った知らせは取り消せません。</p>
+    {pastDue ? <Notice>本文の締切は過ぎているため、このまま配ると答えの受付が続きますが、締切は配ったあとに変えられます。</Notice> : null}
     {documentBodyCheckMessage(c.req.query("check_body")) ? <Notice>{documentBodyCheckMessage(c.req.query("check_body"))}</Notice> : null}
     <dl class="facts"><dt>{publicScope ? "区のページ" : "実行委員と班長のページ"}</dt><dd>載ります</dd>{publicScope ? <><dt>公式LINE</dt><dd>{lineDelivery === "skip" ? "今回は公式LINEに送りません。" : lineNotice || (friends === null ? "題とページを送ります" : `友だち${friends}人に届きます`)}</dd></> : null}{!rain ? <><dt>紙</dt><dd>{copies ? `${copies}部を印刷できます` : "印刷して配れます"}</dd></> : null}</dl>
     <form method="post" action={adminPath(ward, `/publish/${projectId}/${publicScope ? "send" : "space"}`)}>

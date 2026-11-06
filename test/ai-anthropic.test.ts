@@ -244,8 +244,10 @@ describe("読むの呼び出し", () => {
     const result = await readOriginals(client, { kind: "answer_sheet", originals: [original("o1", "image/png")] });
     const req = requests[0] as { system: string; output_config: { format: { schema: { required: string[] } } } };
     expect(req.system).toContain("回答票");
+    expect(req.system).toContain("空欄だと確認できるときは0");
+    expect(req.system).toContain("人数の文字や記入欄が読めないとき、欄がないときはnull");
     expect(req.output_config.format.schema.required).toContain("rows");
-    expect(result.packVersion).toBe("read-answer-sheet@5");
+    expect(result.packVersion).toBe("read-answer-sheet@6");
   });
 });
 

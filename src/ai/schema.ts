@@ -7,7 +7,7 @@
 /** 包みの版。どの版で読んだかを readings に残し、直した後に古い版で読んだ物を選んで読み直せるようにする。 */
 export const READ_PACK_VERSION = {
   general: "read-general@4",
-  answer_sheet: "read-answer-sheet@5",
+  answer_sheet: "read-answer-sheet@6",
   restore: "read-restore@4",
   /** モデルを通さない読み取り（Word、Excel、文字） */
   direct: "read-direct@2",
@@ -113,8 +113,10 @@ export interface AnswerSheetRow {
   not_attending?: boolean;
   /** 紙に印字された班名 */
   ward_group: string;
+  /** 確認できる空欄は0、判読できない人数はnull。 */
   adults: number | null;
   children: number | null;
+  /** 古い読み取りには欄が無い。現在は空欄0と判読不能nullを分ける。 */
   seniors?: number | null;
   helper_names: string[];
   /** 手伝いの時間帯（準備と設営、受付、模擬店、片付けなど。書かれたまま） */

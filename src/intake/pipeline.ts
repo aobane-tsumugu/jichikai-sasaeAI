@@ -236,15 +236,15 @@ async function saveAnswerSheetRows(
     const household = row.household_name.trim();
     const district = row.ward_group.trim();
     if (!household) return;
-    // 不明な人数は0人の答えにしない。読み取りは残り、既存の直しの画面に出る。
-    if (!row.not_attending && (row.adults === null || row.children === null || row.seniors === null ||
-      (row.adults ?? 0) + (row.children ?? 0) + (row.seniors ?? 0) === 0)) return;
+    // 空欄と分かる人数は読み取りで0になる。不明な人数を補って一部だけ数えない。
+    // 古い読み取りに高齢の方の欄自体が無い場合（undefined）は、従来どおり扱う。
+    if (!row.not_attending && (row.adults == null || row.children == null || row.seniors === null)) return;
     await addAnswer(db, wardId, {
       projectId,
       household,
       district,
       peopleCount: row.not_attending ? 0 : (row.adults ?? 0) + (row.children ?? 0) + (row.seniors ?? 0),
-      childrenCount: row.not_attending ? 0 : row.children, adultsCount: row.not_attending ? 0 : row.adults, seniorsCount: row.not_attending ? 0 : row.seniors,
+      childrenCount: row.not_attending ? 0 : row.children ?? 0, adultsCount: row.not_attending ? 0 : row.adults ?? 0, seniorsCount: row.not_attending ? 0 : row.seniors ?? 0,
       helperName: row.helper_names.join("、"),
       helperTimes: row.helper_slots.join("、"),
       source: "sheet",
