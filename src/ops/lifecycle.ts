@@ -1,3 +1,4 @@
+import { WARD_TABLE_POLICY } from "../archive/snapshot";
 import { CRON } from "../core/cron";
 import { newId, nowIso } from "../core/ids";
 import { WardBucket } from "../core/storage";
@@ -5,28 +6,8 @@ import type { Env } from "../env";
 import { createAnthropic } from "../ai/anthropic";
 import { deleteSession } from "../ai/complete";
 
-const EXPORT_TABLES = [
-  "wards", "seats", "accounts", "devices", "ward_settings", "ops_ward_limits", "ward_ai",
-  "jobs", "originals", "readings", "job_runs", "job_tool_calls", "paper_reading_slices",
-  "projects", "project_deadlines", "project_changes", "project_item_values", "project_rows", "documents",
-  "document_versions", "project_questions", "project_map_tasks", "publication_records", "project_activity_pages",
-  "inquiry_records", "city_request_details", "ward_annual_budgets",
-  "ward_roster_entries", "ward_roster_settings", "project_answers", "project_spaces", "project_space_invites",
-  "project_space_members", "line_channels", "line_webhook_receipts", "line_inbox_items", "line_unrelated_daily_counts",
-  "project_close_map", "project_close_reports", "archive_search_entries",
-] as const;
-
-const WARD_DELETE_TABLES = [
-  "archive_search_entries", "project_activity_pages", "project_close_reports", "project_close_map",
-  "inquiry_records", "city_request_details", "ward_annual_budgets",
-  "project_answers", "project_space_members", "project_space_invites", "project_spaces",
-  "ward_roster_entries", "ward_roster_settings", "line_inbox_items",
-  "line_webhook_receipts", "line_channels", "line_unrelated_daily_counts", "line_group_notices", "publication_records",
-  "document_versions", "documents", "project_questions", "project_rows", "project_item_values",
-  "project_map_tasks", "project_changes", "project_deadlines", "projects", "paper_reading_slices",
-  "job_tool_calls", "job_runs", "readings", "originals", "jobs", "ward_ai",
-  "ops_ward_limits", "ward_ai_route_flags", "devices", "ward_settings",
-] as const;
+const EXPORT_TABLES = WARD_TABLE_POLICY.filter((entry) => entry.export === true);
+const WARD_DELETE_TABLES = WARD_TABLE_POLICY.filter((entry) => entry.deletion === true).map((entry) => entry.table).reverse();
 
 interface QueueRow {
   queue_id: string;
@@ -144,9 +125,10 @@ export async function exportWard(env: Env, wardId: string): Promise<{ body: stri
     .bind(wardId).first<{ ward_id: string; slug: string; name: string; created_at: string; is_active: number }>();
   if (!ward) throw new Error("区が見つかりません");
   const tables: Record<string, unknown[]> = {};
-  for (const table of EXPORT_TABLES) {
+  for (const { table, omitExportColumns } of EXPORT_TABLES) {
     const rows = await env.DB.prepare(`SELECT * FROM ${table} WHERE ward_id = ?`).bind(wardId).all<Record<string, unknown>>();
-    tables[table] = rows.results;
+    tables[table] = rows.results.map((row) => Object.fromEntries(
+      Object.entries(row).filter(([column]) => !omitExportColumns?.includes(column))));
   }
   const objects: Array<{ key: string; mediaType: string; base64: string }> = [];
   const bucket = new WardBucket(env.ORIGINALS, wardId);
@@ -154,6 +136,8 @@ export async function exportWard(env: Env, wardId: string): Promise<{ body: stri
   do {
     const page = await bucket.list("", { limit: 1000, cursor });
     for (const listed of page.keys) {
+      // 復旧用の写しには認証情報があるため、区へ渡す原本には含めない。
+      if (listed.key.startsWith("snapshots/")) continue;
       const object = await bucket.get(listed.key);
       if (!object) continue;
       const bytes = new Uint8Array(await object.arrayBuffer());
@@ -249,7 +233,7 @@ function eraseSnapshotJob(snapshot: unknown, wardId: string, jobId: string, orig
   }
   remove("jobs", (row) => row.job_id === jobId);
   remove("originals", (row) => row.job_id === jobId || (typeof row.original_id === "string" && originalIds.has(row.original_id)));
-  for (const table of ["readings", "job_runs", "job_tool_calls"]) remove(table, (row) => row.job_id === jobId);
+  for (const table of ["readings", "job_runs", "job_tool_calls", "intake_photo_checks", "line_photo_items", "line_clarifications", "line_clarification_answers"]) remove(table, (row) => row.job_id === jobId);
   remove("paper_reading_slices", (row) => row.job_id === jobId || row.source_job_id === jobId);
   for (const table of ["project_item_values", "project_rows", "project_changes"]) {
     remove(table, (row) => typeof row.source_ref === "string" && originalIds.has(row.source_ref));
@@ -409,14 +393,13 @@ async function eraseProject(env: Env, item: QueueRow): Promise<void> {
   ]);
 }
 
-async function eraseWardData(env: Env, wardId: string): Promise<void> {
+async function eraseWardData(env: Env, wardId: string, deletedAt: string): Promise<void> {
   const statements = WARD_DELETE_TABLES.map((table) => env.DB.prepare(`DELETE FROM ${table} WHERE ward_id = ?`).bind(wardId));
   statements.unshift(env.DB.prepare("UPDATE projects SET seed_project_id = NULL WHERE ward_id = ?").bind(wardId));
   statements.unshift(env.DB.prepare("UPDATE accounts SET created_by_account_id = NULL, removed_by_account_id = NULL WHERE ward_id = ?").bind(wardId));
-  statements.push(env.DB.prepare("DELETE FROM login_attempts WHERE ward_id = ?").bind(wardId));
-  statements.push(env.DB.prepare("DELETE FROM accounts WHERE ward_id = ?").bind(wardId));
-  statements.push(env.DB.prepare("DELETE FROM seats WHERE ward_id = ?").bind(wardId));
-  statements.push(env.DB.prepare("DELETE FROM wards WHERE ward_id = ?").bind(wardId));
+  // 処理待ちを消したのに消去の記録が残らない状態にしない。
+  statements.push(env.DB.prepare("INSERT INTO ops_deletion_marks (mark_id, ward_id, scope, deleted_at) VALUES (?, ?, 'ward', ?)")
+    .bind(newId(), wardId, deletedAt));
   await env.DB.batch(statements);
 }
 
@@ -472,13 +455,7 @@ async function finishDeletion(env: Env, item: QueueRow): Promise<void> {
       .bind(next, item.queue_id, item.ward_id).run();
     return;
   }
-  await eraseWardData(env, item.ward_id);
-  await env.DB.batch([
-    env.DB.prepare("DELETE FROM ops_deletion_queue WHERE queue_id = ? AND ward_id = ?")
-      .bind(item.queue_id, item.ward_id),
-    env.DB.prepare("INSERT INTO ops_deletion_marks (mark_id, ward_id, scope, deleted_at) VALUES (?, ?, 'ward', ?)")
-      .bind(newId(), item.ward_id, at),
-  ]);
+  await eraseWardData(env, item.ward_id, at);
 }
 
 export async function runDeletionCron(event: ScheduledController, env: Env): Promise<void> {

@@ -15,6 +15,33 @@ const SELF_REFERENCES = {
   projects: { key: "project_id", columns: ["seed_project_id"] },
 };
 
+// 写しの項目順によらず、外部キーの親を先に戻す。
+const TABLE_PARENTS = {
+  accounts: ["seats"],
+  devices: ["accounts"], sign_in_methods: ["accounts"], sign_in_links: ["accounts"],
+  ward_settings: ["accounts"], projects: ["accounts"], jobs: ["accounts"],
+  originals: ["jobs"], readings: ["jobs", "projects"], job_runs: ["jobs"], job_tool_calls: ["jobs"],
+  paper_reading_slices: ["jobs"], intake_photo_checks: ["originals", "jobs"],
+  project_deadlines: ["projects", "accounts"], project_changes: ["projects", "accounts"],
+  project_item_values: ["projects", "project_changes", "accounts"],
+  project_rows: ["projects", "project_changes", "accounts"],
+  documents: ["projects"], document_versions: ["documents", "projects", "accounts"],
+  project_questions: ["projects", "project_changes", "accounts"],
+  project_map_tasks: ["projects", "project_changes", "seats"],
+  publication_records: ["document_versions", "documents", "projects", "accounts"],
+  project_activity_pages: ["projects", "accounts"], inquiry_records: ["accounts"],
+  city_request_details: ["projects", "accounts"], ward_annual_budgets: ["accounts"],
+  project_answers: ["projects", "accounts"], project_help_offers: ["projects"],
+  project_spaces: ["projects", "accounts"], project_space_invites: ["projects", "accounts"],
+  project_space_members: ["projects"], line_photo_items: ["line_photo_batches", "jobs"],
+  line_clarifications: ["line_photo_batches", "jobs", "originals", "project_questions"],
+  line_clarification_answers: ["line_clarifications", "jobs"], line_photo_sources: ["projects"],
+  project_close_map: ["projects", "project_map_tasks", "accounts"],
+  project_close_reports: ["projects", "accounts"],
+  // 読み取りを入れると索引も自動でできるので、写しの索引はそのあとに置き直す。
+  archive_search_entries: ["projects", "readings"],
+};
+
 const [inputPath, outputPath] = process.argv.slice(2);
 if (!inputPath || !outputPath) {
   console.error("使い方: node scripts/snapshot-to-sql.mjs <写し.json> <復元.sql>");
@@ -27,16 +54,20 @@ if (!inputPath || !outputPath) {
   const statements = [];
   const referenceUpdates = [];
   const tables = new Map();
-  for (const [table, rows] of Object.entries(snapshot.tables)) {
-    // 日次の写しでは、変更の記録が、それを指す項目と表の行よりあとにある。
-    if ((table === "project_item_values" || table === "project_rows") && Object.hasOwn(snapshot.tables, "project_changes")) {
-      tables.set("project_changes", snapshot.tables.project_changes);
-    }
-    tables.set(table, rows);
+  function addTable(table) {
+    if (tables.has(table) || !Object.hasOwn(snapshot.tables, table)) return;
+    if (table !== "wards") addTable("wards");
+    for (const parent of Object.hasOwn(TABLE_PARENTS, table) ? TABLE_PARENTS[table] : []) addTable(parent);
+    tables.set(table, snapshot.tables[table]);
   }
+  for (const table of Object.keys(snapshot.tables)) addTable(table);
   for (const [table, rows] of tables) {
     if (!/^[a-z_][a-z0-9_]*$/.test(table)) throw new Error("表の名前が不正です。");
     if (!Array.isArray(rows)) throw new Error(`表 ${table} の内容が配列ではありません。`);
+    // アカウントと読み取りのINSERTで自動作成された行を、写しの内容に置き直す。
+    if (table === "sign_in_methods" || table === "archive_search_entries") {
+      statements.push(`DELETE FROM "${table}" WHERE "ward_id" = ${sqlValue(snapshot.wardId, table)};`);
+    }
     for (const row of rows) {
       if (typeof row !== "object" || row === null || row.ward_id !== snapshot.wardId) throw new Error(`表 ${table} に別の区の行があります。`);
       const columns = Object.keys(row);
@@ -53,8 +84,12 @@ if (!inputPath || !outputPath) {
         const assignments = delayed.map((column) => `"${column}" = ${sqlValue(row[column], table)}`);
         referenceUpdates.push(`UPDATE "${table}" SET ${assignments.join(", ")} WHERE "ward_id" = ${sqlValue(snapshot.wardId, table)} AND "${selfReference.key}" = ${sqlValue(row[selfReference.key], table)};`);
       }
+      // アカウント追加時に自動で入る時刻より、写しに残る時刻を優先する。
+      if (table === "accounts" && Object.hasOwn(row, "sign_in_completed_at")) {
+        referenceUpdates.push(`UPDATE "accounts" SET "sign_in_completed_at" = ${sqlValue(row.sign_in_completed_at, table)} WHERE "ward_id" = ${sqlValue(snapshot.wardId, table)} AND "account_id" = ${sqlValue(row.account_id, table)};`);
+      }
     }
   }
   writeFileSync(outputPath, `${[...statements, ...referenceUpdates].join("\n")}\n`, { encoding: "utf8" });
-  console.log(`${statements.length}件のINSERT文と${referenceUpdates.length}件の参照を戻すUPDATE文を出力しました。空のD1にだけ実行してください。`);
+  console.log(`${statements.length}件の復元用の文と${referenceUpdates.length}件の参照などを戻すUPDATE文を出力しました。空のD1にだけ実行してください。`);
 }

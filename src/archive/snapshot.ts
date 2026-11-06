@@ -2,16 +2,75 @@ import { CRON } from "../core/cron";
 import { WardBucket } from "../core/storage";
 import type { Env } from "../env";
 
-// 正本と運営上必要な記録だけを写す。AI の読み、実行計測、検索用索引、照合用の一時表は再作成できるため含めない。
-const SNAPSHOT_TABLES = [
-  "wards", "seats", "accounts", "devices", "ward_settings", "ops_ward_limits", "ward_ai",
-  "jobs", "originals", "projects", "project_deadlines", "project_item_values", "project_rows",
-  "project_changes", "job_runs", "job_tool_calls",
-  "documents", "document_versions", "project_questions", "project_map_tasks", "publication_records", "project_activity_pages",
-  "inquiry_records", "city_request_details", "ward_annual_budgets",
-  "ward_roster_entries", "ward_roster_settings", "project_answers", "project_spaces", "project_space_invites", "project_space_members",
-  "line_channels", "line_inbox_items", "line_unrelated_daily_counts", "project_close_map", "project_close_reports",
-] as const;
+/** 区の記録の扱い。文字列は一覧から外す理由。並びは外部キーの親から子。 */
+export interface WardTablePolicy {
+  table: string;
+  snapshot: true | string;
+  export: true | string;
+  // 認証に使う値を区への書き出しから除く。復旧用の写しには保つ。
+  omitExportColumns?: readonly string[];
+  deletion: true | string | { cascade: string };
+}
+
+export const WARD_TABLE_POLICY: readonly WardTablePolicy[] = [
+  { table: "wards", snapshot: true, export: true, deletion: true },
+  { table: "seats", snapshot: true, export: true, deletion: true },
+  { table: "accounts", snapshot: true, export: true, deletion: true, omitExportColumns: ["password_salt", "password_hash"] },
+  { table: "devices", snapshot: true, export: "端末の認証情報なので区へ渡さない。", deletion: true },
+  { table: "sign_in_methods", snapshot: true, export: true, deletion: { cascade: "accounts" }, omitExportColumns: ["subject", "email"] },
+  { table: "sign_in_links", snapshot: true, export: "一度だけ使える入口の認証情報なので区へ渡さない。", deletion: true },
+  { table: "login_attempts", snapshot: true, export: "認証の試行記録なので区へ渡さない。", deletion: true },
+  { table: "ward_settings", snapshot: true, export: true, deletion: true },
+  { table: "ops_ward_limits", snapshot: true, export: true, deletion: true },
+  { table: "ward_ai", snapshot: true, export: "提供側のAI接続と認証の設定なので区へ渡さない。", deletion: true },
+  { table: "ward_ai_route_flags", snapshot: true, export: true, deletion: true },
+  { table: "projects", snapshot: true, export: true, deletion: true },
+  { table: "jobs", snapshot: true, export: true, deletion: true, omitExportColumns: ["ticket_hash"] },
+  { table: "originals", snapshot: true, export: true, deletion: true },
+  { table: "readings", snapshot: true, export: true, deletion: true },
+  { table: "job_runs", snapshot: true, export: true, deletion: true },
+  { table: "job_tool_calls", snapshot: true, export: true, deletion: true },
+  { table: "paper_reading_slices", snapshot: true, export: true, deletion: true },
+  { table: "intake_photo_checks", snapshot: true, export: true, deletion: { cascade: "originals" } },
+  { table: "project_deadlines", snapshot: true, export: true, deletion: true },
+  { table: "project_changes", snapshot: true, export: true, deletion: true },
+  { table: "project_item_values", snapshot: true, export: true, deletion: true },
+  { table: "project_rows", snapshot: true, export: true, deletion: true },
+  { table: "documents", snapshot: true, export: true, deletion: true },
+  { table: "document_versions", snapshot: true, export: true, deletion: true },
+  { table: "project_questions", snapshot: true, export: true, deletion: true },
+  { table: "project_map_tasks", snapshot: true, export: true, deletion: true },
+  { table: "publication_records", snapshot: true, export: true, deletion: true },
+  { table: "project_activity_pages", snapshot: true, export: true, deletion: true },
+  { table: "inquiry_records", snapshot: true, export: true, deletion: true },
+  { table: "city_request_details", snapshot: true, export: true, deletion: true },
+  { table: "ward_annual_budgets", snapshot: true, export: true, deletion: true },
+  { table: "ward_roster_entries", snapshot: true, export: true, deletion: true },
+  { table: "ward_roster_settings", snapshot: true, export: true, deletion: true },
+  { table: "project_answers", snapshot: true, export: true, deletion: true },
+  { table: "project_help_offers", snapshot: true, export: true, deletion: { cascade: "projects" } },
+  { table: "project_spaces", snapshot: true, export: true, deletion: true, omitExportColumns: ["passphrase_salt", "passphrase_hash"] },
+  { table: "project_space_invites", snapshot: true, export: true, deletion: true, omitExportColumns: ["token_hash"] },
+  { table: "project_space_members", snapshot: true, export: true, deletion: true, omitExportColumns: ["token_hash"] },
+  { table: "line_channels", snapshot: true, export: true, deletion: true },
+  { table: "line_webhook_receipts", snapshot: true, export: true, deletion: true },
+  { table: "line_inbox_items", snapshot: true, export: true, deletion: true },
+  { table: "line_unrelated_daily_counts", snapshot: true, export: true, deletion: true },
+  { table: "line_group_notices", snapshot: true, export: true, deletion: true },
+  { table: "line_officer_digests", snapshot: true, export: true, deletion: { cascade: "wards" } },
+  { table: "line_photo_batches", snapshot: true, export: "reply_tokenとanswer_reply_tokenを持つ一時の表なので区へ渡さない。", deletion: true },
+  { table: "line_photo_items", snapshot: true, export: "quote_tokenとreceipt_reply_tokenを持つ一時の表なので区へ渡さない。", deletion: { cascade: "line_photo_batches" } },
+  { table: "line_clarifications", snapshot: true, export: true, deletion: { cascade: "originals" } },
+  { table: "line_clarification_answers", snapshot: true, export: true, deletion: { cascade: "line_clarifications" } },
+  { table: "line_photo_sources", snapshot: true, export: true, deletion: { cascade: "projects" } },
+  { table: "project_close_map", snapshot: true, export: true, deletion: true },
+  { table: "project_close_reports", snapshot: true, export: true, deletion: true },
+  { table: "archive_search_entries", snapshot: true, export: true, deletion: true },
+  { table: "ops_deletion_queue", snapshot: true, export: "提供側で続ける消去の処理待ちなので区へ渡さない。", deletion: true },
+  { table: "ops_deletion_marks", snapshot: true, export: true, deletion: "消去の記録なので残す。" },
+];
+
+export const SNAPSHOT_TABLES = WARD_TABLE_POLICY.filter((entry) => entry.snapshot === true).map((entry) => entry.table);
 
 export async function writeDailyWardSnapshots(env: Env, now = new Date()): Promise<number> {
   const wards = await env.DB.prepare("SELECT ward_id FROM wards WHERE ward_id IS NOT NULL ORDER BY ward_id").all<{ ward_id: string }>();
