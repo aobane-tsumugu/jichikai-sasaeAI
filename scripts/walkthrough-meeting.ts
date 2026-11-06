@@ -160,7 +160,7 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
       form.append("part", new Blob([text], { type: "text/plain" }), filename);
       form.append("part_kind", "file");
     }
-    const filenames = options.files ? KIND_FILES[group].map(path => path.split("/").at(-1)!) : [filename];
+    const filenames = options.files ? [KIND_FILES[group][0]!.split("/").at(-1)!] : [filename];
     const sent = await req(admin + "/intake", { method: "POST", headers: { accept: "application/json" }, body: form });
     const result = await sent.json() as { ok?: boolean; jobId?: string };
     assert(sent.ok && result.ok && result.jobId, "架空の資料を受け付けられません");
