@@ -6,16 +6,17 @@ import { getProjectState } from "./state";
 import { reconcileDocumentBody, type DocumentBody } from "./document-body";
 import { addDays, MAP_TEMPLATES } from "../map/template";
 
-/** 当番表の行を役員が画面で直す。行の鍵を変えても同じ行を保ち、変更履歴と古い案の印を残す。 */
-export async function saveDutyRow(
-  db: D1Database, wardId: string, projectId: string, rowId: string, accountId: string, raw: unknown,
+/** 配る資料の行を役員が画面で直す。行の鍵を変えても同じ行を保ち、変更履歴と古い案の印を残す。 */
+async function saveMaterialRow(
+  db: D1Database, wardId: string, projectId: string, rowId: string, accountId: string, raw: unknown, table: "duties" | "committee",
 ): Promise<boolean> {
-  const cleaned = cleanRowData("duties", raw);
+  const packVersion = table === "duties" ? "duty-roster-edit@1" : "committee-edit@1";
+  const cleaned = cleanRowData(table, raw);
   if (!cleaned.ok) return false;
   const [project, existing, freshDocuments] = await Promise.all([
     db.prepare("SELECT state_version, closed_at FROM projects WHERE ward_id = ? AND project_id = ?")
       .bind(wardId, projectId).first<{ state_version: number; closed_at: string | null }>(),
-    db.prepare("SELECT data FROM project_rows WHERE ward_id = ? AND project_id = ? AND row_id = ? AND table_key = 'duties' AND scope = 'current' AND removed_at IS NULL")
+    db.prepare(`SELECT data FROM project_rows WHERE ward_id = ? AND project_id = ? AND row_id = ? AND table_key = '${table}' AND scope = 'current' AND removed_at IS NULL`)
       .bind(wardId, projectId, rowId).first<{ data: string }>(),
     db.prepare(`SELECT kind FROM documents WHERE ward_id = ? AND project_id = ?
       AND kind IN ('duty_roster', 'procedure', 'report') AND stale_since_version IS NULL`)
@@ -25,33 +26,33 @@ export async function saveDutyRow(
   let before: RowData;
   try { before = JSON.parse(existing.data) as RowData; } catch { return false; }
   if (stableStringify(before) === stableStringify(cleaned.data)) return true;
-  const matchKey = rowMatchKey("duties", cleaned.data);
+  const matchKey = rowMatchKey(table, cleaned.data);
   const duplicate = await db.prepare(`SELECT 1 AS found FROM project_rows
-    WHERE ward_id = ? AND project_id = ? AND table_key = 'duties' AND scope = 'current' AND match_key = ? AND row_id <> ? AND removed_at IS NULL`)
+    WHERE ward_id = ? AND project_id = ? AND table_key = '${table}' AND scope = 'current' AND match_key = ? AND row_id <> ? AND removed_at IS NULL`)
     .bind(wardId, projectId, matchKey, rowId).first();
   if (duplicate) return false;
 
   const changeId = newId();
   const requestId = newId();
   const source = { kind: "person", accountId };
-  const change = { kind: "row", table: "duties", data: cleaned.data, source, confidence: "high", packVersion: "duty-roster-edit@1", requestId };
+  const change = { kind: "row", table, data: cleaned.data, source, confidence: "high", packVersion, requestId };
   const payload = stableStringify(change);
   const payloadHash = await hashOf(change);
   const now = nowIso();
   const nextStateVersion = project.state_version + 1;
-  const dedupeKey = `manual-duty:${changeId}`;
+  const dedupeKey = `manual-${table}:${changeId}`;
   const staleKinds = freshDocuments.results.map((row) => row.kind);
   const result = JSON.stringify({ status: "applied", changeId, staleDocuments: staleKinds, questionIds: [] });
   const statements = [
     db.prepare(`INSERT INTO project_changes (change_id, ward_id, project_id, kind, target, status, dedupe_key, payload_hash,
       payload, result, pack_version, source_kind, source_ref, confidence, state_version_after, created_at, created_by_account_id)
-      SELECT ?, ?, ?, 'row', ?, 'applied', ?, ?, ?, ?, 'duty-roster-edit@1', 'person', ?, 'high', ?, ?, ?
+      SELECT ?, ?, ?, 'row', ?, 'applied', ?, ?, ?, ?, '${packVersion}', 'person', ?, 'high', ?, ?, ?
       WHERE EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND state_version = ? AND closed_at IS NULL)`)
-      .bind(changeId, wardId, projectId, `duties:${matchKey}`, dedupeKey, payloadHash, payload, result, `person:${requestId}`,
+      .bind(changeId, wardId, projectId, `${table}:${matchKey}`, dedupeKey, payloadHash, payload, result, `person:${requestId}`,
         nextStateVersion, now, accountId, wardId, projectId, project.state_version),
     db.prepare(`UPDATE project_rows SET match_key = ?, data = ?, person_fields = ?, source_kind = 'person', source_ref = ?,
       source_locator = NULL, source_year = NULL, confidence = 'high', change_id = ?, updated_at = ?
-      WHERE ward_id = ? AND project_id = ? AND row_id = ? AND table_key = 'duties' AND scope = 'current' AND removed_at IS NULL
+      WHERE ward_id = ? AND project_id = ? AND row_id = ? AND table_key = '${table}' AND scope = 'current' AND removed_at IS NULL
         AND EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND state_version = ? AND closed_at IS NULL)`)
       .bind(matchKey, stableStringify(cleaned.data), stableStringify(Object.keys(cleaned.data).sort()), `person:${requestId}`, changeId, now,
         wardId, projectId, rowId, wardId, projectId, project.state_version),
@@ -69,6 +70,14 @@ export async function saveDutyRow(
     const results = await db.batch(statements);
     return results[0]?.meta.changes === 1 && results[1]?.meta.changes === 1 && results[2]?.meta.changes === 1;
   } catch { return false; }
+}
+
+export function saveDutyRow(db: D1Database, wardId: string, projectId: string, rowId: string, accountId: string, raw: unknown) {
+  return saveMaterialRow(db, wardId, projectId, rowId, accountId, raw, "duties");
+}
+
+export function saveCommitteeRow(db: D1Database, wardId: string, projectId: string, rowId: string, accountId: string, raw: unknown) {
+  return saveMaterialRow(db, wardId, projectId, rowId, accountId, raw, "committee");
 }
 
 export async function renameProject(db: D1Database, wardId: string, projectId: string, title: string): Promise<boolean> {

@@ -1,7 +1,7 @@
 import type { RowData } from "../project/model";
 
 export interface PublishedTableRow {
-  kind: "duties" | "layout" | "sponsors";
+  kind: "duties" | "layout" | "sponsors" | "committee";
   data: RowData;
 }
 
@@ -9,7 +9,7 @@ export interface PublishedTableRow {
 export const publicationTablesSql = `(SELECT json_group_array(json_object('kind', table_key, 'data', json(data)))
   FROM (SELECT table_key, data FROM project_rows
     WHERE ward_id = ? AND project_id = ? AND scope = 'current' AND removed_at IS NULL
-      AND table_key IN ('duties', 'layout', 'sponsors') ORDER BY table_key, created_at, row_id))`;
+      AND table_key IN ('duties', 'layout', 'sponsors', 'committee') ORDER BY table_key, created_at, row_id))`;
 
 /** NULL は保存を始める前の配布。今の表で補わない。 */
 export function readPublicationTables(raw: string | null): PublishedTableRow[] | null {
