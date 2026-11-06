@@ -2,18 +2,17 @@ import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
 import { ErrorNotice, Layout, Notice } from "../core/ui";
-import { formatJstDate } from "../core/time";
+import { formatJstDate, periodText, shortDate } from "../core/time";
 import type { AdminEnv } from "../env";
 import { getProjectState } from "../project/api";
 import { addMapTask, removeMapTask, restoreMapTask, setEventDay, setMapTask } from "../project/actions";
-import { MAP_PROGRESS_LABEL, type DocumentKind } from "../project/model";
+import { MAP_PROGRESS_LABEL, countWord, type DocumentKind } from "../project/model";
 import { materialChangeText } from "./material-change";
 import { nextMapTask, mapCalendar } from "./next";
 import { opensOf, type MapOpens } from "./template";
 
 const ERROR_MESSAGES = { invalid_input: "入力を確認してください" };
 const admin = new Hono<AdminEnv>();
-const shortDate = (date: string) => `${Number(date.slice(5, 7))}月${Number(date.slice(8, 10))}日`;
 export function taskDraftKind(taskKey: string | null): DocumentKind {
   return taskKey === "duty_roster" ? "duty_roster" : taskKey === "report" ? "report" : taskKey === "minutes" ? "procedure" : "announcement";
 }
@@ -54,7 +53,7 @@ admin.get("/projects/:projectId/map", async (c) => {
       {notice === "removed" ? <Notice>仕事を外しました。下の「外した仕事」から戻せます。</Notice> : notice === "restored" ? <Notice>仕事を戻しました。仕事を押すと直せます。</Notice> : notice === "added" ? <Notice>仕事を足しました。仕事を押すと直せます。</Notice> : null}
       {project.closedAt ? <Notice>この行事は閉じました。直すときは「報告を書いて閉じる」から「もう一度開く」を押してください。</Notice> : <>
         <section class="next"><strong>次は</strong>
-          <p>{first && questions.length ? `質問が${questions.length}つあります。答えると、案内の下書きが整います。答えなくても進められます。` : next ? next.periodEnd ? `${shortDate(next.periodEnd)}までの仕事です。` : "時期はあとから直せます。" : "段取りの仕事は全部済みました。"}</p>
+          <p>{first && questions.length ? `質問が${countWord(questions.length)}あります。答えると、案内の下書きが整います。答えなくても進められます。` : next ? next.periodEnd ? `${shortDate(next.periodEnd)}までの仕事です。` : "時期はあとから直せます。" : "段取りの仕事は全部済みました。"}</p>
           <a class="button" href={adminPath(ward, first && questions.length ? `/projects/${id}/questions` : next ? taskUrl(next) : `/close/${id}`)}>{first && questions.length ? "質問に答える" : next?.name ?? "報告を書いて閉じる"}</a>
           {tasks.some((task) => task.taskId === c.req.query("changed") && task.taskKey === "announcement" && task.progress === "done") ? <a class="quiet" href={adminPath(ward, `/print/${id}`)}>案内の紙を印刷する</a> : null}
         </section>
@@ -70,24 +69,24 @@ admin.get("/projects/:projectId/map", async (c) => {
             const just = task.taskId === c.req.query("changed") && task.progress === "done";
             const owner = seats.results.find((seat) => seat.seat_id === task.seatId)?.title;
             return <li><a class={`map-row${task.progress === "done" ? " done" : current ? " now" : ""}${just ? " just" : ""}`} href={adminPath(ward, taskUrl(task))}>
-              <span class="map-name"><b>{task.name}</b><small>{task.progress === "done" ? "済み" : task.periodStart && task.periodStart === task.periodEnd ? formatJstDate(task.periodStart) : current ? task.periodEnd ? `${shortDate(task.periodEnd)}まで` : MAP_PROGRESS_LABEL[task.progress] : task.periodStart ? `${shortDate(task.periodStart)}から${task.periodEnd ? shortDate(task.periodEnd) : ""}` : "時期はまだ決まっていません"}{owner ? `　${owner}` : ""}</small>{just ? <small class="map-just">いま済みにしました</small> : null}</span>
+              <span class="map-name"><b>{task.name}</b><small>{task.progress === "done" ? "済み" : task.periodStart && task.periodStart === task.periodEnd ? formatJstDate(task.periodStart) : current ? task.periodEnd ? `${shortDate(task.periodEnd)}まで` : MAP_PROGRESS_LABEL[task.progress] : task.periodStart ? task.periodEnd ? periodText(task.periodStart, task.periodEnd) : `${shortDate(task.periodStart)}から` : "時期はまだ決まっていません"}{owner ? `　${owner}` : ""}</small>{just ? <small class="map-just">いま済みにしました</small> : null}</span>
               <span class="map-track">{task.periodStart || task.periodEnd ? <i style={`--from:${calendar.position(task.periodStart ?? task.periodEnd ?? calendar.first) * 100}%;--to:${calendar.position(task.periodEnd ?? task.periodStart ?? calendar.last) * 100}%`} /> : null}</span>
             </a></li>;
           })}</ol>
           {today >= calendar.first && today <= calendar.last ? <div class="map-today"><span>今日</span></div> : null}
         </div> : <p>仕事はまだありません。下の「仕事を足す、外した仕事を戻す」から足せます。</p>}
       </section><aside>
-        <ul class="rows"><li><a class="row-link" href={adminPath(ward, `/projects/${id}/questions`)}><b>{questions.length ? `質問が${questions.length}つあります` : "質問はありません"}</b><span>答えなくても配れます。</span></a></li></ul>
+        <ul class="rows"><li><a class="row-link" href={adminPath(ward, `/projects/${id}/questions`)}><b>{questions.length ? `質問が${countWord(questions.length)}あります` : "質問はありません"}</b><span>答えなくても配れます。</span></a></li></ul>
         <h2>最近届いた資料</h2>
-        {materials.results.length ? <ul class="rows">{materials.results.slice(0, 3).map((material) => <li><a class="row-link" href={adminPath(ward, `/intake/originals/${material.original_id}`)}><b>{material.filename || "書いたこと"}</b><span>{materialChangeText(state, material.original_id) || (material.status === "done" ? "読み終わりました。届いた資料で中身を見られます" : material.status === "failed" ? "読めませんでした。届いた資料から読み直せます" : "読み取りを進めています")}</span></a></li>)}</ul> : <p>資料はまだ届いていません。</p>}
-        {!project.closedAt ? <details class="fold" id="event-day" open={c.req.query("error") === "invalid_input"}><summary>行事の日を直す</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/map/event-day`)}>
-          <div class="field"><label for="event-day-input">行事の日</label><input id="event-day-input" name="event_day" type="date" value={day ?? ""} required /></div>
-          <p>済んでいない仕事の時期も動きます。案内の文は変わりません。もう一度入れ直せば戻せます。</p><button class="secondary">行事の日を保存する</button>
-        </form></div></details> : null}
+        {materials.results.length ? <ul class="rows">{materials.results.slice(0, 3).map((material) => <li><a class="row-link" href={adminPath(ward, `/intake/originals/${material.original_id}`)}><b>{material.filename || "書いたこと"}</b><span>{materialChangeText(state, material.original_id) || (material.status === "done" ? "読み終わりました。届いた資料で内容を見られます" : material.status === "failed" ? "読めませんでした。届いた資料から読み直せます" : "読み取りを進めています")}</span></a></li>)}</ul> : <p>資料はまだ届いていません。</p>}
         {!project.closedAt ? <details class="fold"><summary>仕事を足す、外した仕事を戻す</summary><div>
           <form method="post" action={adminPath(ward, `/projects/${id}/map/add`)}><div class="field"><label for="new-task">足す仕事の名前</label><input id="new-task" name="name" maxlength={100} required /></div><button class="secondary">足す</button></form>
           {removed.results.length ? <><p><b>外した仕事</b></p>{removed.results.map((task) => <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.task_id}/restore`)}><p>{task.name}</p><button class="secondary">この仕事を戻す</button></form>)}</> : null}
         </div></details> : null}
+        {!project.closedAt ? <details class="fold" id="event-day" open={c.req.query("error") === "invalid_input"}><summary>行事の日を直す</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/map/event-day`)}>
+          <div class="field"><label for="event-day-input">行事の日</label><input id="event-day-input" name="event_day" type="date" value={day ?? ""} required /></div>
+          <p>済んでいない仕事の時期も動きます。案内の文は変わりません。</p><button class="secondary">行事の日を保存する</button>
+        </form></div></details> : null}
         <p><a class="quiet" href={adminPath(ward, `/projects/${id}`)}>届いた資料と今年の内容</a></p>
         <p><a class="quiet" href={adminPath(ward, `/print/${id}`)}>紙を印刷する</a></p>
         <p><a class="quiet" href={adminPath(ward, `/answers/${id}`)}>答えを見る</a></p>
@@ -123,7 +122,7 @@ admin.get("/projects/:projectId/map/:taskId", async (c) => {
     <h1>{task.name}</h1><p class="lead">{task.periodStart && task.periodEnd && task.periodStart !== task.periodEnd ? `${formatJstDate(task.periodStart)}から${formatJstDate(task.periodEnd)}まで。` : task.periodEnd ? `${formatJstDate(task.periodEnd)}まで。` : "時期はまだ決まっていません。"}{owner ? `担当は${owner}です。` : "担当はあとから直せます。"}</p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     {c.req.query("notice") === "saved" ? <section class="next"><strong>直した内容を保存しました</strong><p>段取りに入りました。時期や担当はあとから直せます。</p><a class="button" href={adminPath(ward, `/projects/${id}/map`)}>段取りへ</a></section> : null}
-    {draft && destinations[0] === "draft" ? <div class="notice" role="status"><strong>下書きができています</strong><p>{state.questions.length ? `質問が${state.questions.length}つ残っていますが、このまま配れます。` : "直して保存しても、まだ配られません。"}</p></div> : null}
+    {draft && destinations[0] === "draft" ? <div class="notice" role="status"><strong>下書きができています</strong><p>{state.questions.length ? `質問が${countWord(state.questions.length)}残っていますが、このまま配れます。` : "直して保存しても、まだ配られません。"}</p></div> : null}
     <div class="action-links">{destinations.map((destination, index) => <a class={index ? "button secondary" : "button"} href={adminPath(ward, targetPath[destination](id, task.taskKey))}>{labels[destination]}</a>)}</div>
     <h2>届いた資料</h2><p><a class="quiet" href={adminPath(ward, `/projects/${id}#materials`)}>この行事に届いた資料を見る</a></p>
     {history.results.filter((entry) => entry.task_key === task.taskKey && [entry.requested_by, entry.difficulty, entry.next_year].some((value) => value.trim())).map((entry) => <><h2>去年の記録</h2><dl class="facts">

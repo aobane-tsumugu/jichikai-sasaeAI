@@ -41,17 +41,19 @@ async function renderAdminSpace(c: Context<AdminEnv>, passphrase?: string) {
     {opened ? <>
       <div class="notice done" role="status"><strong>開いています</strong><p>紙の案内を配ると、班長は班長への一枚のQRコードから入れます。</p></div>
       <section class="next"><strong>次は</strong>{published ? <><p>班長への一枚を印刷して、案内といっしょに渡してください。</p><a class="button" href={adminPath(ward.slug, `/print/${projectId}/${published.document_id}/${published.version_no}/leader`)}>班長への一枚を印刷する</a></> : <><p>案内を配ると、班長への一枚を印刷できます。</p><a class="button" href={adminPath(ward.slug, `/publish/${projectId}`)}>配る内容を見る</a></>}</section>
-      <h2>実行委員に伝えること</h2>{passphrase ? <dl class="facts"><dt>合言葉</dt><dd>{passphrase}</dd></dl> : <p>合言葉は開くときに表示します。分からないときは、下の「合言葉を変える」から作り直せます。</p>}
-      <p class="muted">この合言葉と入口を、LINEや電話で実行委員に伝えてください。</p><a class="quiet" href={`/${encodeURIComponent(ward.slug)}/space/${encodeURIComponent(projectId)}`}>実行委員のページの入口</a>
-      <p>入口のQRコードです。スマホで読み取ると、合言葉を入れる画面が開きます。</p><div class="qrbox" dangerouslySetInnerHTML={{ __html: qrSvg(`${new URL(c.req.url).origin}/${encodeURIComponent(ward.slug)}/space/${encodeURIComponent(projectId)}`) }} />
-      <details class="fold"><summary>一人用の入口を作る</summary><div><p>合言葉を使わずに入れる入口です。一度だけ使えます。</p><form method="post" action={`${base}/invite`}><input type="hidden" name="role" value="member" /><button class="secondary" type="submit">入口を作る</button></form></div></details>
+      <h2>実行委員に伝えること</h2>
+      <dl class="facts">{passphrase ? <><dt>合言葉</dt><dd>{passphrase}</dd></> : null}<dt>入口のアドレス</dt><dd><span class="secret"><a href={`/${encodeURIComponent(ward.slug)}/space/${encodeURIComponent(projectId)}`}>{`${new URL(c.req.url).origin}/${encodeURIComponent(ward.slug)}/space/${encodeURIComponent(projectId)}`}</a></span></dd></dl>
+      {!passphrase ? <p>合言葉は開くときに表示します。分からないときは、下の「合言葉を変える」から作り直せます。</p> : null}
+      <section class="panel" style="display: flex; gap: 1rem; align-items: center"><div class="qrbox" style="flex: none; width: 112px; height: 112px" dangerouslySetInnerHTML={{ __html: qrSvg(`${new URL(c.req.url).origin}/${encodeURIComponent(ward.slug)}/space/${encodeURIComponent(projectId)}`) }} /><p style="margin: 0">入口のQRコードです。スマホで読み取ると、合言葉を入れる画面が開きます。</p></section>
+      <p class="muted">この合言葉と入口を、LINEや電話で実行委員に伝えてください。</p>
+      <form method="post" action={`${base}/invite`}><input type="hidden" name="role" value="member" /><div class="action-links"><button class="secondary" type="submit">一人用の入口を作る</button></div><p class="muted">合言葉を使わずに入れる入口です。一度だけ使えます。</p></form>
       <details class="fold"><summary>合言葉を変える</summary><div><form method="post" action={`${base}/open`}><label for="passphrase">新しい合言葉</label><input id="passphrase" name="passphrase" type="text" value={makePassphrase()} minlength={6} maxlength={120} required autocomplete="off" /><button class="secondary" type="submit">変えてもう一度開く</button><p class="muted">今の合言葉と、作った入口は使えなくなります。合言葉を変えると、配った班長への一枚も作り直しです。</p></form></div></details>
       <details class="fold"><summary>このページを閉じる</summary><div><p>実行委員と班長が開けなくなります。役員はあとでもう一度開けます。</p><form method="post" action={`${base}/close`}><button class="secondary" type="submit">閉じる</button></form></div></details>
+      <p>間違えたときは、このページを閉じられます。閉じたあとも、もう一度開けます。</p>
     </> : <>
       <Notice>{project.closed_at ? "この行事は閉じています。" : space?.closed_at ? "閉じています。もう一度開けます。" : "まだ開いていません。"}</Notice>
       {!project.closed_at ? <form method="post" action={`${base}/open`}><label for="passphrase">合言葉</label><input id="passphrase" name="passphrase" type="text" value={makePassphrase()} minlength={6} maxlength={120} required autocomplete="off" /><p>この合言葉を使えます。書き換えることもできます。</p><button type="submit">開く</button></form> : null}
     </>}
-    <p>間違えたときは、このページを閉じられます。閉じたあとも、もう一度開けます。</p>
   </AdminPage>);
 }
 admin.get("/space/:projectId", (c) => renderAdminSpace(c));
@@ -146,7 +148,7 @@ pub.get("/space/:projectId/file/:originalId", async (c) => {
   c.header("Cache-Control", "private, no-store");
   const fileUrl = `/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/file/${encodeURIComponent(c.req.param("originalId"))}`;
   if (c.req.query("raw") !== "1") return c.html(<Layout title={file.filename} siteName={await spaceSiteName(c)} noindex>
-    <a class="back" href={`/${c.var.ward.slug}/space/${projectId}`}>実行委員のページへ</a><h1>{file.filename}</h1>
+    <a class="back" href={`/${c.var.ward.slug}/space/${projectId}`}>← 実行委員のページへ</a><h1>{file.filename}</h1>
     <p class="lead">実行委員と班長のページから送られた写真です。役員と、このページに入った人だけが見られます。</p>
     {file.media_type.startsWith("image/") ? <img class="space-photo" src={`${fileUrl}?raw=1`} alt={file.filename} /> : <p>PDFのときは、PDFが開きます。</p>}
     <a class="button" href={`${fileUrl}?raw=1`}>{file.media_type.startsWith("image/") ? "写真を大きく開く" : "PDFを開く"}</a><a class="quiet" href={`/${c.var.ward.slug}/space/${projectId}`}>実行委員のページへ戻る</a>

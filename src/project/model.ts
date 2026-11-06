@@ -88,6 +88,9 @@ export const ITEM_SCREEN_LABEL: Record<ItemKey, string> = {
   ...ITEM_LABEL, date_time: "いつ", place: "どこで", due: "答えの締切", public_contact: "連絡先",
 };
 
+/** 画面で数を読む言葉。10 以上は「件」にする。 */
+export const countWord = (count: number) => `${count}${count > 0 && count < 10 ? "つ" : "件"}`;
+
 /** プロジェクトの種類ごとに使う項目。画面に空の項目を並べる時と、AI に空の項目を見せる時の範囲。 */
 export const ITEMS_BY_KIND: Record<ProjectKind, readonly ItemKey[]> = {
   event: ITEM_KEYS,

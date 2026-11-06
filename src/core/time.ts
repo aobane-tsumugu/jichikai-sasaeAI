@@ -7,6 +7,14 @@ const jst = new Intl.DateTimeFormat("ja-JP", {
   hour12: false,
 });
 
+/** 月と日だけの短い日付。例 9月24日 */
+export const shortDate = (date: string) => `${Number(date.slice(5, 7))}月${Number(date.slice(8, 10))}日`;
+
+/** 仕事の時期。同じ月なら終わりの月を省く。例 9月9日から24日 */
+export function periodText(start: string, end: string): string {
+  return `${shortDate(start)}から${start.slice(0, 7) === end.slice(0, 7) ? `${Number(end.slice(8, 10))}日` : shortDate(end)}`;
+}
+
 /** 画面に出す日時（日本時間）。例 11月5日 13:04 */
 export function formatJst(iso: string): string {
   const date = new Date(iso);

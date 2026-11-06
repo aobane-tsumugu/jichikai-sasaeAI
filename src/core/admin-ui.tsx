@@ -12,13 +12,15 @@ export const AdminPage: FC<
     title: string;
     /** 上に出す「戻る」のリンク。 */
     back?: { href: string; label: string };
+    /** 最初の画面のとき。 */
+    home?: boolean;
   }>
-> = ({ ward, account, title, back, children }) => (
+> = ({ ward, title, back, home, children }) => (
   <Layout
     title={`${title} ${ward.name}`}
     siteName={ward.name}
     adminHomeHref={adminPath(ward, "/")}
-    headerRight={<span>{account.name} さん</span>}
+    atHome={home}
     noindex
   >
     {back ? <a class="back" href={back.href}>{back.label.startsWith("←") ? back.label : `← ${back.label}`}</a> : null}

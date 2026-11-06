@@ -18,6 +18,7 @@ import {
   DOCUMENT_KINDS,
   DOCUMENT_KIND_LABEL,
   ITEM_LABEL,
+  ITEM_SCREEN_LABEL,
   ITEMS_BY_KIND,
   TABLES,
   cleanRowData,
@@ -362,7 +363,7 @@ function supersedeValueStatement(ctx: Ctx, valueId: string): D1PreparedStatement
 
 async function planItem(ctx: Ctx, n: Normalized, change: ItemChange): Promise<Plan> {
   const content = change.value.trim();
-  const label = ITEM_LABEL[change.itemKey];
+  const label = ITEM_SCREEN_LABEL[change.itemKey];
   const placement = placeSource(n.source, ctx.project.year);
   const active = await ctx.db
     .prepare(
@@ -384,7 +385,7 @@ async function planItem(ctx: Ctx, n: Normalized, change: ItemChange): Promise<Pl
       ? change.maybeThisYear === true && current && !sameText(current.content, content)
         ? [{
             kind: "conflict",
-            text: `「${label}」が食い違っています。今は「${quote(current.content)}」です。年の書いていない資料には「${quote(content)}」とあります。どちらにしますか。`,
+            text: `「${label}」が食い違っています。今は「${quote(current.content)}」です。年の書かれていない資料には「${quote(content)}」とあります。どちらにしますか。`,
             target: change.itemKey,
             detail: { itemKey: change.itemKey, options: [current.content, content], currentValueId: current.value_id, changeId: ctx.changeId },
             suffix: "conflict",

@@ -116,7 +116,7 @@ it("段取りの最近届いた資料に、その資料から入った項目を�
     VALUES ('value-map', ?, ?, 'place', 'current', '架空の公民館', 'original', 'original-map', 'high', ?)`).bind(ward.wardId, project.projectId, now).run();
   const page = await (await get(realApp, `/${ward.slug}/admin/projects/${project.projectId}/map`, cookie)).text();
   expect(page).toContain("どこでを入れました");
-  expect(page).not.toContain("読み終わりました。届いた資料で中身を見られます");
+  expect(page).not.toContain("読み終わりました。届いた資料で内容を見られます");
 });
 
 it("実行委員向けの下書きも、配る前に本文と表を確かめる", async () => {

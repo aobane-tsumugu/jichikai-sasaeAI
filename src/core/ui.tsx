@@ -13,10 +13,12 @@ export const Layout: FC<
     adminHomeHref?: string;
     /** 見出しの右に出す補助のリンク。 */
     headerRight?: Child;
+    /** 最初の画面では「最初の画面」のリンクを出さない。 */
+    atHome?: boolean;
     /** 検索に載せない画面（役員画面、運用の画面）。 */
     noindex?: boolean;
   }>
-> = ({ title, siteName, headerRight, adminHomeHref, noindex, children }) => (
+> = ({ title, siteName, headerRight, adminHomeHref, atHome, noindex, children }) => (
   <html lang="ja">
     <head>
       <meta charset="utf-8" />
@@ -29,7 +31,7 @@ export const Layout: FC<
       <header class="site">
         <div>
           <strong>{siteName ?? "SasaeAI"}{adminHomeHref ? " 役員の画面" : ""}</strong>
-          <span>{adminHomeHref ? <><a href={adminHomeHref}>最初の画面</a>{" "}</> : null}{headerRight}</span>
+          <span>{adminHomeHref && !atHome ? <><a href={adminHomeHref}>最初の画面</a>{" "}</> : null}{headerRight}</span>
         </div>
       </header>
       <main>{children}</main>

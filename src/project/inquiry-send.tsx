@@ -85,7 +85,7 @@ export async function sendInquiry(c: Context<AdminEnv>, record: InquiryRow, grou
     const count = reason ? pending.length : failed.length;
     const unit = pending.filter(([id]) => reason || failed.includes(id)).some(([, rows]) => rows[0]!.line_source_type !== "user") ? "か所" : "人";
     return c.html(<Layout title="返事を送れませんでした" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-      <a class="back" href={path}>問い合わせへ</a><h1>返事を送れませんでした</h1>
+      <a class="back" href={path}>← 問い合わせへ</a><h1>返事を送れませんでした</h1>
       <div class="notice warn"><strong>{message}</strong><p>送れた返事と、まだ送れていない文は残しています。</p></div>
       <h2>書いた返事</h2><p class="preserve-lines">{answer}</p>
       <section class="next"><strong>次は</strong>{count && !reason.includes("電話や直接") ? <><p>まだ送れていない{count}{unit}にだけ、もう一度送れます。</p>

@@ -4,7 +4,6 @@ import { adminPath } from "../core/auth";
 import { formatJst } from "../core/time";
 import { Notice } from "../core/ui";
 import { createInvitation, createInvitedAccount } from "../core/sign-in";
-import { mySignInPath } from "./sign-in";
 import { renderSVG } from "uqr";
 import type { AdminEnv } from "../env";
 import {
@@ -58,26 +57,26 @@ const PeoplePage = (props: { c: Context<AdminEnv>; view: View; notice?: string; 
   // 下の層から来た誤りの文も、この画面の言葉にそろえる。
   const words = (value: string) => value.replaceAll("アカウント", "役員").replaceAll("席", "役職").replaceAll("締め出", "入れないように");
   return <AdminPage ward={ward} account={me} title="役員の一覧" back={{ href: adminPath(ward, "/settings"), label: "区の設定へ" }}>
-    <h1>役員の一覧</h1><p class="lead">役員を足したり、入れなくなった人のリンクを出したりします。役職があるかないかで、できることは変わりません。</p>
+    <h1>役員の一覧</h1><p class="lead">役員を足したり、入れなくなった人にリンクを出したりします。役職があるかないかで、できることは変わりません。</p>
     {props.notice ? <><Notice>{words(props.notice)}</Notice><section class="next"><strong>次は</strong><p>ほかに直すものがなければ、最初の画面へ戻ってください。</p><a class="button" href={adminPath(ward, "/")}>最初の画面へ</a></section><p>間違えたときは、この画面でもう一度直せます。外した役員や役職は、下の欄から足せます。</p></> : null}
     {props.error ? <Notice error>{words(props.error)}入力した内容を確かめて、もう一度操作してください。</Notice> : null}
-    <div class="action-links"><a class="button" href="#add">役員を足す</a><a class="button secondary" href={mySignInPath(ward)}>自分の入り方へ</a></div>
+    <div class="action-links"><a class="button" href="#add">役員を足す</a></div>
     <h2>役員（{accounts.length}人）</h2>
     {accounts.map((a) => { const mine = a.accountId === me.accountId; return <section class="panel">
-      <h3>{a.name}{mine ? "（あなた）" : ""}</h3><p class="muted">{seats.find((seat) => seat.seatId === a.seatId)?.title ?? "役職なし"}　ID{a.loginId}　{entered.has(a.accountId) ? `スマホやパソコン${a.devices.length}台` : "まだ入っていません"}</p>
+      <h3>{a.name}{mine ? "（あなた）" : ""}</h3><p class="muted">{seats.find((seat) => seat.seatId === a.seatId)?.title ?? "役職なし"}　ID {a.loginId}　{entered.has(a.accountId) ? `スマホやパソコン ${a.devices.length}台` : "まだ入っていません"}</p>
       <details class="fold"><summary>この人の設定を直す</summary><div>
         <h3>IDと役職</h3><form method="post" action={base(`/accounts/${a.accountId}/login-id`)}>
           <label for={`login-id-${a.accountId}`}>ID</label><input id={`login-id-${a.accountId}`} name="loginId" type="text" required maxlength={40} value={a.loginId} autocapitalize="none" spellcheck={false} /><p class="help-text">半角の英数字で入れてください。前後の空白は取り除きます。</p><button class="secondary">IDを変える</button>
         </form>
         <form method="post" action={base(`/accounts/${a.accountId}/seat`)}><SeatSelect seats={seats} selected={a.seatId} label="役職" /><button class="secondary">役職を変える</button></form>
-        <h3>端末（{a.devices.length}台）</h3>
-        {a.devices.length === 0 ? <p class="muted">入ったことのある端末はありません。</p> : null}
-        {a.devices.map((d) => <section><p><b>{d.label || "名前の分からない端末"}</b>　最後に使った日{formatJst(d.lastSeenAt)}{d.deviceId === deviceId ? "（いま使っている端末）" : ""}</p>
-          {d.deviceId !== deviceId ? <form method="post" action={base(`/accounts/${a.accountId}/devices/${d.deviceId}/lockout`)}><button class="secondary">この端末で入れないようにする</button></form> : null}</section>)}
-        {a.devices.some((d) => d.deviceId !== deviceId) ? <form method="post" action={base(`/accounts/${a.accountId}/lockout`)}><button class="secondary">{mine ? "いま使っている端末以外を、全部入れないようにする" : "この役員の端末を全部入れないようにする"}</button></form> : null}
+        <h3>スマホやパソコン（{a.devices.length}台）</h3>
+        {a.devices.length === 0 ? <p class="muted">入ったことのあるスマホやパソコンはありません。</p> : null}
+        {a.devices.map((d) => <section><p><b>{d.label || "名前の分からないスマホやパソコン"}</b>　最後に使った日 {formatJst(d.lastSeenAt)}{d.deviceId === deviceId ? "（いま使っているスマホやパソコン）" : ""}</p>
+          {d.deviceId !== deviceId ? <form method="post" action={base(`/accounts/${a.accountId}/devices/${d.deviceId}/lockout`)}><button class="secondary">このスマホやパソコンを入れないようにする</button></form> : null}</section>)}
+        {a.devices.some((d) => d.deviceId !== deviceId) ? <form method="post" action={base(`/accounts/${a.accountId}/lockout`)}><button class="secondary">{mine ? "いま使っているスマホやパソコン以外を、全部入れないようにする" : "この役員のスマホやパソコンを全部入れないようにする"}</button></form> : null}
         <p class="muted">入れなくなったスマホやパソコンでも、もう一度、その人の入り方で入れば入れます。</p>
         <h3>入り方</h3>
-        <p>前のリンクとパスワードは使えなくなります。LINEとメールのつなぎ、覚えたスマホやパソコンはそのままです。</p>
+        <p>入れなくなったときは、本人に渡すリンクを出します。前のリンクとパスワードは使えなくなります。LINEとメールのつなぎ、覚えたスマホやパソコンはそのままです。</p>
         <form method="post" action={base(`/accounts/${a.accountId}/reset`)}><button class="secondary">入るためのリンクを出す</button></form>
         <h3>役員から外す</h3><p>この人は入れなくなり、使っているスマホやパソコンからも出されます。同じ人をもう一度足すと、新しいリンクを渡します。最後の一人は外せません。</p>
         <form method="post" action={base(`/accounts/${a.accountId}/remove`)}><button class="secondary">役員から外す</button></form>
@@ -89,9 +88,9 @@ const PeoplePage = (props: { c: Context<AdminEnv>; view: View; notice?: string; 
       <SeatSelect seats={seats} selected={null} label="役職（なくてもかまいません）" /><div class="action-links"><button class="secondary">この内容で役員を足す</button></div>
     </form>
     <details class="fold"><summary>役職を足す、外す</summary><div>
-      <p>役職は「会長」「書記」のような役の名前です。なくても使えます。外すと、その役職の人は役職なしになります。役員としては残ります。</p>
+      <p>役職は「会長」「書記」のような名札です。なくても使えます。外すと、その役職の人は役職なしになります。役員としては残ります。</p>
       {seats.map((seat) => <section><p><b>{seat.title}</b>　{accounts.filter((a) => a.seatId === seat.seatId).map((a) => a.name).join("、") || "だれもいません"}</p><form method="post" action={base(`/seats/${seat.seatId}/remove`)}><button class="secondary">この役職を外す</button></form></section>)}
-      <form method="post" action={base("/seats")}><label for="seat-title">足す役職の名前（例会長、書記）</label><input id="seat-title" name="title" required maxlength={40} /><button class="secondary">役職を足す</button></form>
+      <form method="post" action={base("/seats")}><label for="seat-title">足す役職の名前（例 会長、書記）</label><input id="seat-title" name="title" required maxlength={40} /><button class="secondary">役職を足す</button></form>
     </div></details>
   </AdminPage>;
 };

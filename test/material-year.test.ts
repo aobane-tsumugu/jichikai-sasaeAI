@@ -72,7 +72,7 @@ it("年不明は参考に留まり、印のある食い違いだけを質問、�
   });
   const question = current.questions.find((q) => q.target === "place");
   if (!question) throw new Error("場所の質問がありません");
-  expect(question.text).toBe(`「場所」が食い違っています。今は「${FIRST_SLICE.previousPlace}」です。年の書いていない資料には「${FIRST_SLICE.rainAnnouncement}」とあります。どちらにしますか。`);
+  expect(question.text).toBe(`「どこで」が食い違っています。今は「${FIRST_SLICE.previousPlace}」です。年の書かれていない資料には「${FIRST_SLICE.rainAnnouncement}」とあります。どちらにしますか。`);
   expect(question.options).toEqual([FIRST_SLICE.previousPlace, FIRST_SLICE.rainAnnouncement]);
   expect((await write({ kind: "item", target: "place", data: { value: FIRST_SLICE.rainAnnouncement }, maybe_this_year: true })).duplicate).toBe(true);
   expect((await state()).questions).toHaveLength(2);
@@ -109,7 +109,7 @@ it("この資料は今年のもので項目と表を入れ直し、違う中身�
   const action = `${root}/materials/${originalId}/this-year`;
   expect(page).toContain(`action="${action}"`);
   expect(page).toContain("この資料は今年のもの</button>");
-  expect(page).toContain("今年の中身と違うところは、上書きせず質問に並びます。");
+  expect(page).toContain("今年の内容と違うところは、上書きせず質問に並びます。");
   expect((await postForm(realApp, action, {}, cookie)).status).toBe(303);
   current = await state();
   expect(current.items.find((item) => item.key === "content")?.current).toMatchObject({

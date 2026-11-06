@@ -183,8 +183,8 @@ admin.get("/publish/:projectId", async (c) => {
       const previous = allRecords.find((record) => record.document_id === draft.document_id && !record.unpublished_at);
       const tablesChanged = draft.scope === "space" && (draft.kind === "duty_roster" || draft.kind === "procedure") &&
         (!!previous || !!draft.published_at) && publicationTablesDiffer(previous?.tables_snapshot ?? null, currentTables);
-      return <section class="panel" key={draft.document_id}>
-        {index === 1 ? <h2>ほかに配れるもの</h2> : null}<h2>{paperHeading(project.title, draft.title)}</h2>
+      return <>{index === 1 ? <h2>ほかに配れるもの</h2> : null}<section class="panel" key={draft.document_id}>
+        <h2>{paperHeading(project.title, draft.title)}</h2>
         <p>{draft.published_at ? "すでに配っています。" : "下書きがあります"}</p>
         {draft === primary ? <dl class="facts"><dt>区のページ</dt><dd>載せます</dd><dt>公式LINE</dt><dd>{canSendLine(draft.kind) ? "題とページを送ります" : "今回は送りません"}</dd><dt>紙</dt><dd>{copies ? `加入世帯に${copies}部` : "印刷して配れます"}</dd></dl> : null}
         {draft.stale_since_version !== null ? <Notice>新しいものが入っています。下書きを直すか、このまま配れます。</Notice> : null}
@@ -197,7 +197,7 @@ admin.get("/publish/:projectId", async (c) => {
           <button class={index === 0 ? "" : "secondary"} type="submit">配る内容を見る</button><p class="muted">押しても、まだ配られません。</p>{!canSendLine(draft.kind) ? <p>公式LINEには送らず、区のページに載せます。</p> : null}
         </form> : null}
         <a class="quiet" href={adminPath(ward, `/projects/${projectId}/draft/${draft.kind}`)}>下書きを直す</a>
-      </section>;
+      </section></>;
     })}
     <h2>これまでに配ったもの</h2>{!allRecords.length ? <p>まだありません。</p> : allRecords.map((record) => <section class="panel">
       <p>{formatJst(record.published_at)}に配りました。</p>{record.scope === "space" ? <p>実行委員と班長に配りました。</p> : <>
@@ -309,15 +309,15 @@ async function confirmPublication(c: Context<AdminEnv>) {
       <input type="hidden" name="documentId" value={draft.document_id} /><input type="hidden" name="versionId" value={draft.version_id} /><input type="hidden" name="versionNo" value={draft.version_no} />
       {publicScope && !rain ? <details class="fold"><summary>配る相手や部数を変える</summary><div>
         <input type="hidden" name="targetMode" value="district" />
-        <fieldset><legend>紙を配る相手</legend><select name="recipientScope"><option value="member_households" selected={recipientScope === "member_households"}>加入世帯</option><option value="all_households" selected={recipientScope === "all_households"}>全戸（加入していない世帯も）</option></select></fieldset>
+        <fieldset><legend>紙を配る相手</legend><div class="choice"><label><input type="radio" name="recipientScope" value="member_households" checked={recipientScope === "member_households"} /> 加入世帯</label><label><input type="radio" name="recipientScope" value="all_households" checked={recipientScope === "all_households"} /> 全戸（加入していない世帯も）</label></div></fieldset>
         <fieldset><legend>班ごとの部数</legend><div class="qty">{[...new Set(roster.map((row) => row.district))].map((district, index) => {
           const target = distribution.targets.find((row) => row.district === district);
           return <label><input type="checkbox" name="district" value={district} checked={Boolean(target)} />{district}<input type="number" name={`copies_${index}`} min="1" value={target?.copies ?? roster.filter((row) => row.district === district).length} /><span>部</span></label>;
         })}</div>{!roster.length ? <label>全戸に配るときの部数<input type="number" name="allCopies" min="1" value={distribution.targets[0]?.copies} /></label> : null}</fieldset>
         {roster.length ? <details class="fold"><summary>世帯を選ぶ</summary><p>加入世帯の一部に配るときは、世帯に印を付けてください。</p>{householdChoices(roster).map(({ district, household, count }) => <label><input type="checkbox" name="household" value={JSON.stringify([district, household])} checked={distribution.mode === "household" && distribution.targets.some((target) => target.district === district && target.household === household)} />{district} / {household}{count > 1 ? `（${count}部）` : ""}</label>)}</details> : null}
-        {canSendLine(draft.kind) ? <fieldset><legend>公式LINE</legend><select name="lineDelivery"><option value="send" selected={lineDelivery === "send"}>題とページを送る</option><option value="skip" selected={lineDelivery === "skip"}>今回は送らない</option></select></fieldset> : <input type="hidden" name="lineDelivery" value="skip" />}
+        {canSendLine(draft.kind) ? <fieldset><legend>公式LINE</legend><div class="choice"><label><input type="radio" name="lineDelivery" value="send" checked={lineDelivery === "send"} /> 題とページを送る</label><label><input type="radio" name="lineDelivery" value="skip" checked={lineDelivery === "skip"} /> 今回は送らない</label></div>{remaining !== null ? <p class="muted">送ったあと、今月はあと{Math.max(remaining - (friends ?? 0), 0)}通です。</p> : null}</fieldset> : <input type="hidden" name="lineDelivery" value="skip" />}
       </div></details> : <><input type="hidden" name="distribution" value={JSON.stringify({ mode: "district", targets: [] })} /><input type="hidden" name="lineDelivery" value={lineDelivery} /></>}
-      {lineDelivery === "send" && remaining !== null ? <p class="muted">今月、公式LINEで送れるのはあと{remaining}通です。送れなかったときも、区のページに載せて紙を配れます。</p> : null}
+      {lineDelivery === "send" && remaining !== null && friends !== null && remaining < friends ? <Notice>今月、公式LINEで送れる通数が足りません。区のページに載せて、紙を配れます。</Notice> : null}
       {draft.published_at ? <Notice>配ったときから表が変わっています。ここに出ている今の表で配り直します。</Notice> : null}
       {draft.stale_since_version !== null ? <Notice>新しいものが入っています。ここに表示した内容で配れます。直すときは下書きに戻ってください。</Notice> : null}
       {warnings.map((warning) => <PublicWarning finding={warning} />)}

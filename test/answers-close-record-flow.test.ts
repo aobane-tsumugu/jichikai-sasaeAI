@@ -24,7 +24,7 @@ it("資料なしで答えを入れ、一度で閉じ、紹介と記録から翌�
     return response.text();
   };
   expect((await getProjectState(env.DB, ward.wardId, project.projectId))?.questions).toHaveLength(0);
-  expect(await read(answers)).toContain("名簿はまだありません");
+  expect(await read(answers)).toContain("まだ答えはありません");
   expect(await read(`${answers}?view=list`)).toContain("答えはまだありません");
   expect(await read(`${answers}?view=helpers`)).toContain("まだ申し込みはありません");
   const send = await read(`${answers}?view=send`);
