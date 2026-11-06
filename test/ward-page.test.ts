@@ -94,8 +94,6 @@ describe("役員の仕事と活動の紹介", () => {
       action: "publish", introduction: "会場の予約と案内を役員が受け持ちました（架空）。", membershipBurden: "年に一度の当番があります（架空）。",
       membershipBenefit: "行事の案内が早く届きます（架空）。", taskId: chosen!.task_id,
     };
-    // 閉じる前は載せられない。
-    expect((await postForm(realApp, `${closePage}/activity`, form, cookie)).status).toBe(400);
     await env.DB.prepare("UPDATE projects SET closed_at = ? WHERE ward_id = ? AND project_id = ?").bind("2026-11-01T00:00:00.000Z", ward.wardId, project.projectId).run();
     expect((await postForm(realApp, `${closePage}/activity`, form, cookie)).status).toBe(303);
     const html = await (await get(realApp, `/${ward.slug}/work/${project.projectId}`)).text();

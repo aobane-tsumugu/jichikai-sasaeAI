@@ -9,7 +9,7 @@ import { newId, nowIso } from "../core/ids";
 import type { AdminEnv } from "../env";
 import type { Waitable } from "../intake/types";
 import { startTask } from "../ai/api";
-import { getProjectSummary } from "../project/api";
+import { getProjectSummary, listProjects } from "../project/api";
 import { listAnswers } from "../answers/api";
 import { countMeetingAnswers } from "../answers/meeting-store";
 import { meetingTotalsText } from "../answers/meeting";
@@ -32,7 +32,7 @@ type CloseEdit = Pick<CloseEntry, "period" | "name" | "progress" | "requested_by
 interface ActivityTaskEdit { taskId: string; name: string; period: string; }
 interface ActivityBody { introduction: string; membershipBurden: string; membershipBenefit: string; tasks: ActivityTaskEdit[]; }
 const ERROR_MESSAGES: Readonly<Record<string, string>> = {
-  "activity_input": "活動の紹介、加入で担うこと、得られることを入力してください",
+  "activity_input": "紹介、加入すると担うこと、得られることのどれかを書いてください。全部を書く必要はありません。",
   "activity_private": "公開に出せない情報が含まれる可能性があります。文章と仕事の一覧を見直してください",
   "answers_closed": "この行事は閉じました。答えを直すときは「もう一度開く」を押してください。",
   "map_closed": "この行事は閉じました。段取りを直すときは「もう一度開く」を押してください。",
@@ -131,6 +131,15 @@ ${contact && pack.scope === "public" ? `区の公開用の連絡先（問い合�
 対象の文書: ${pack.kind}。範囲: ${pack.scope}。dataにpack_versionを${pack.version}、based_on_state_versionを引いた状態の番号として含めてください。`;
 }
 
+admin.get("/close/activity", async (c) => {
+  const { ward, account } = c.var;
+  const projects = await listProjects(c.env.DB, ward.wardId, { includeClosed: true });
+  return c.html(<AdminPage ward={ward} account={account} title="区の説明" back={{ href: adminPath(ward, "/settings"), label: "区の設定へ" }}>
+    <h1>区の説明</h1><p class="lead">説明を載せたい行事などを選んでください。終わる前でも、書けるところから載せられます。</p>
+    {projects.length ? <ul class="rows">{projects.map((project) => <li><a class="row-link" href={`${adminPath(ward, `/close/${project.projectId}`)}?view=activity`}><b>{project.title}</b><span>{project.year}年の説明を書く・直す</span></a></li>)}</ul> : <p>行事などの準備を始めると、ここから説明を書けます。説明は書かなくてもかまいません。</p>}
+  </AdminPage>);
+});
+
 admin.get("/close/:projectId", async (c) => {
   const { ward } = c.var; const id = c.req.param("projectId");
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
@@ -165,11 +174,12 @@ admin.get("/close/:projectId", async (c) => {
   const reportPhotos = !internalReport && project.kind === "event" ? await listPublicPhotos(c.env, ward.wardId, id) : [];
   const root = adminPath(ward, `/close/${id}`);
   const activityView = c.req.query("view") === "activity";
-  if (activityView && (c.req.query("activity") === "saved" || c.req.query("activity") === "published")) {
+  if (activityView && ["saved", "published", "unpublished"].includes(c.req.query("activity") ?? "")) {
     const published = c.req.query("activity") === "published";
-    const message = published ? "区のページに載せました" : "紹介の下書きを保存しました";
-    return c.html(<AdminPage ward={ward} account={c.var.account} title={message} back={{ href: root, label: "← 閉じた画面へ" }}>
-      <h1>{message}</h1>{!published ? <p class="lead">直した内容は、まだ区のページに載せていません。</p> : null}<section class="next"><strong>次は</strong><p>{published ? "載せた紹介を読めます。" : "下書きを直して、区のページに載せられます。"}</p><a class="button" href={published ? `/${ward.slug}/work/${encodeURIComponent(id)}` : `${root}?view=activity`}>{published ? "区のページで見る" : "紹介の下書きを直す"}</a></section><a class="quiet" href={`${root}?view=activity`}>紹介を直す</a>
+    const lowered = c.req.query("activity") === "unpublished";
+    const message = published ? "区のページに載せました" : lowered ? "区のページから下げました" : "説明の下書きを保存しました";
+    return c.html(<AdminPage ward={ward} account={c.var.account} title={message} back={{ href: adminPath(ward, "/close/activity"), label: "区の説明へ" }}>
+      <h1>{message}</h1><p class="lead">{published ? "書いた項目を区のページで読めます。" : lowered ? "下書きは残っています。間違えて下げたときは、もう一度載せられます。" : "直した内容は、まだ区のページに載せていません。"}</p><section class="next"><strong>次は</strong><p>{published ? "載せた説明を読めます。" : "下書きを直して、区のページに載せられます。"}</p><a class="button" href={published ? `/${ward.slug}/work/${encodeURIComponent(id)}` : `${root}?view=activity`}>{published ? "区のページで見る" : "説明の下書きを直す"}</a></section>{published ? <a class="quiet" href={`${root}?view=activity`}>説明を直す・下げる</a> : null}
     </AdminPage>);
   }
   const savedActivity = parseActivityBody(activityPage?.draft_body);
@@ -183,18 +193,18 @@ admin.get("/close/:projectId", async (c) => {
   const activity = savedActivity ?? { introduction: report("public"), membershipBurden: previousActivity?.membershipBurden ?? "", membershipBenefit: previousActivity?.membershipBenefit ?? "", tasks: tasks.results.filter((task) => task.progress === "done").map((task) => ({ taskId: task.task_id, name: task.name, period: task.period })) };
   const recordedActivity = activityView ? await activityFacts(c.env.DB, ward.wardId, id, activity.tasks) : null;
   const warnings = !project.closedAt && !activityView && !internalReport ? await checkPublicDraft(c.env.DB, ward.wardId, id, "report", { text: report("public"), items: [] }) : [];
-  const title = activityView ? "役員の仕事を紹介する" : `${project.title}を${project.closedAt ? "閉じました" : "閉じる"}`;
+  const title = activityView ? `${project.title}と自治会の説明` : `${project.title}を${project.closedAt ? "閉じました" : "閉じる"}`;
   return c.html(<AdminPage ward={ward} account={c.var.account} title={title}
-    back={activityView ? { href: root, label: "← 閉じた画面へ" } : !project.closedAt ? { href: adminPath(ward, `/projects/${id}/map`), label: `← ${project.title}の段取りへ` } : undefined}>
+    back={activityView ? { href: adminPath(ward, "/close/activity"), label: "区の説明へ" } : !project.closedAt ? { href: adminPath(ward, `/projects/${id}/map`), label: `← ${project.title}の段取りへ` } : undefined}>
     <h1>{title}</h1><ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     {activityView ? <>
-      <p class="lead">報告と段取りから下書きを作りました。直してから区のページに載せてください。</p>
+      <p class="lead">書けるところだけ書いて、区のページに載せられます。説明を書かなくても、案内や募集を配れます。</p>
       <form id="activity-form" method="post" action={`${root}/activity`}>
         <div class="field"><label for="activity-intro">この行事で役員がしたこと</label><textarea id="activity-intro" name="introduction" rows={6} maxlength={5000}>{activity.introduction}</textarea></div>
-        <div class="field"><label for="activity-burden">加入すると担うこと</label><textarea id="activity-burden" name="membershipBurden" rows={4} maxlength={3000}>{activity.membershipBurden}</textarea><p class="help-text">載せるときに必要です。あとで書いてもかまいません。</p></div>
-        <div class="field"><label for="activity-benefit">加入すると得られること</label><textarea id="activity-benefit" name="membershipBenefit" rows={4} maxlength={3000}>{activity.membershipBenefit}</textarea><p class="help-text">載せるときに必要です。あとで書いてもかまいません。</p></div>
+        <div class="field"><label for="activity-burden">加入すると担うこと</label><textarea id="activity-burden" name="membershipBurden" rows={4} maxlength={3000}>{activity.membershipBurden}</textarea><p class="help-text">書かなくてもかまいません。書いていない項目は出ません。</p></div>
+        <div class="field"><label for="activity-benefit">加入すると得られること</label><textarea id="activity-benefit" name="membershipBenefit" rows={4} maxlength={3000}>{activity.membershipBenefit}</textarea><p class="help-text">区で決まっていることを書いてください。測っていない効果は書きません。分からなければ空のままでかまいません。</p></div>
         {recordedActivity && (recordedActivity.tasks.length || recordedActivity.facts.length) ? <section>
-          <h2>どんな仕事があったか</h2><p>記録から作りました。紹介といっしょに区のページに載ります。</p>
+          <h2>どんな仕事があったか</h2><p>記録から作りました。紹介を書いたときに、いっしょに区のページに載ります。</p>
           <ul>{recordedActivity.tasks.map((task) => <li>{task.name}{task.period ? `（${task.period}）` : ""}</li>)}
             {recordedActivity.facts.map((fact) => <li>{fact}</li>)}</ul>
         </section> : null}
@@ -203,8 +213,9 @@ admin.get("/close/:projectId", async (c) => {
           return <label><input type="checkbox" name="taskId" value={task.task_id} checked={!!saved} /> {saved?.name ?? task.name}（{formatDateText(saved?.period ?? task.period) || "時期未定"}）
             <input type="hidden" name={`activityName_${task.task_id}`} value={saved?.name ?? task.name} /><input type="hidden" name={`activityPeriod_${task.task_id}`} value={saved?.period ?? task.period} /></label>;
         })}</div> : <p>残っている仕事はありません。</p>}</div></details>
-        <div class="action-bar">{project.closedAt ? <button name="action" value="publish">区のページに載せる</button> : <p>行事を閉じると、区のページに載せられます。</p>}<button class="secondary" name="action" value="save">保存だけする</button></div>
+        <div class="action-bar"><button name="action" value="publish">区のページに載せる</button><button class="secondary" name="action" value="save">保存だけする</button></div>
       </form>
+      {activityPage?.published_at ? <form method="post" action={`${root}/activity`}><p>下げても下書きは残り、もう一度載せられます。</p><button class="secondary" name="action" value="unpublish">区のページから下げる</button></form> : null}
     </> : project.closedAt ? <>
       <div class="notice done"><strong>{minutes ? "会議を閉じて、議事録を役員の記録に残しました" : internalReport ? `${pack.title}を役員の記録に残しました` : "記録に残しました"}</strong><p>{!internalReport ? report("public").trim() ? "報告を区のページに載せました。" : "住民への報告は書かれていません。" : ""}実行委員と班長のページと、答えの受付は終わりました。</p></div>
       <section class="next"><strong>次は</strong><p>{internalReport ? `残した${pack.title}を読めます。` : "自治会に入っていない人や、これから役員になるかもしれない人に、どんな仕事だったかを伝えられます。急ぎません。"}</p><a class="button" href={internalReport ? `${adminPath(ward, `/archive/${id}`)}#report` : `${root}?view=activity`}>{internalReport ? `${pack.title}を読む` : "紹介の下書きを直す"}</a></section>
@@ -248,8 +259,13 @@ admin.post("/close/:projectId/activity", async (c) => {
   const project = await getProjectSummary(c.env.DB, ward.wardId, projectId);
   if (!project) return c.notFound();
   const action = String(form.get("action") ?? "save");
+  if (action === "unpublish") {
+    await c.env.DB.prepare(`UPDATE project_activity_pages SET published_body = NULL, published_at = NULL,
+      updated_at = ?, updated_by_account_id = ? WHERE ward_id = ? AND project_id = ?`)
+      .bind(nowIso(), account.accountId, ward.wardId, projectId).run();
+    return c.redirect(`${adminPath(ward, `/close/${projectId}`)}?view=activity&activity=unpublished`, 303);
+  }
   if (action !== "save" && action !== "publish") return c.notFound();
-  if (action === "publish" && !project.closedAt) return adminResult(c, "行事を閉じてから載せられます。", 400, { href: adminPath(c.var.ward, `/close/${encodeURIComponent(c.req.param("projectId"))}`), label: "報告と閉じる画面に戻る" }, "報告と行事の内容を確かめて、もう一度操作してください。");
   const rows = await c.env.DB.prepare(`SELECT m.task_id, m.name, m.period FROM project_close_map m
     LEFT JOIN project_map_tasks t ON t.ward_id = m.ward_id AND t.task_id = m.task_id
     WHERE m.ward_id = ? AND m.project_id = ? ORDER BY t.sort_order, m.task_id`)
@@ -265,7 +281,7 @@ admin.post("/close/:projectId/activity", async (c) => {
   const introduction = String(form.get("introduction") ?? "").trim().slice(0, 5000);
   const membershipBurden = String(form.get("membershipBurden") ?? "").trim().slice(0, 3000);
   const membershipBenefit = String(form.get("membershipBenefit") ?? "").trim().slice(0, 3000);
-  if (action === "publish" && (!introduction || !membershipBurden || !membershipBenefit)) return c.redirect(`${adminPath(ward, `/close/${projectId}`)}?view=activity&error=activity_input`, 303);
+  if (action === "publish" && !introduction && !membershipBurden && !membershipBenefit) return c.redirect(`${adminPath(ward, `/close/${projectId}`)}?view=activity&error=activity_input`, 303);
   if (action === "publish") {
     const text = [introduction, membershipBurden, membershipBenefit, ...includedTasks.flatMap((task) => [task.period, task.name])].join("\n");
     const warnings = await checkPublicDraft(c.env.DB, ward.wardId, projectId, "report", { text, items: [] });

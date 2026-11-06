@@ -132,6 +132,12 @@ pub.get("/", async (c) => {
     if (!kept || pastRank(item) < pastRank(kept)) pastByProject.set(item.project_id, item);
   }
   const past = [...pastByProject.values()];
+  const descriptions = activities.results.flatMap((item) => {
+    const body = parseActivity(item.published_body);
+    if (!body) return [];
+    const topics = [body.introduction.trim() ? "役員の仕事" : "", body.membershipBurden.trim() ? "加入すると担うこと" : "", body.membershipBenefit.trim() ? "加入すると得られること" : ""].filter(Boolean);
+    return topics.length ? [{ ...item, topics }] : [];
+  });
   const row = (item: PublicProject) => <li key={item.document_id}><a class="row-link" href={`/${c.var.ward.slug}/p/${encodeURIComponent(item.project_id)}`}><b>{item.project_kind === "event" && item.kind === "announcement" ? `${item.title}のご案内` : paperHeading(item.title, publicDocumentTitle(item))}</b>{isCurrent(item) && publishedItem(item.body, "date_time") ? <span>{formatDateText(publishedItem(item.body, "date_time"))}</span> : null}{isCurrent(item) && publishedItem(item.body, "place") ? <span>{publishedItem(item.body, "place")}</span> : null}{isCurrent(item) && (publishedItem(item.body, "date_time") || publishedItem(item.body, "place")) ? null : <span>{formatJstDate(item.published_at)}に載せました</span>}</a></li>;
   const [contact, lineUrl] = await Promise.all([getPublicContact(c.env.DB, c.var.ward.wardId), getOfficialLineUrl(c.env.DB, c.var.ward.wardId)]);
   return c.html(<Layout title={`${c.var.ward.name}のお知らせ`} siteName={c.var.ward.name}>
@@ -142,7 +148,7 @@ pub.get("/", async (c) => {
     {opportunities.length ? <><h2>一回だけ手伝う</h2><p>自治会に入っていなくても手伝えます。お名前と手伝える時間帯を教えてください。</p><div class="action-links"><a class="button secondary" href={`/${c.var.ward.slug}/help`}>手伝いを申し込む</a></div></> : null}
     {lineUrl ? <><h2>新しいお知らせを受け取る</h2><p>区の公式LINEを友だちに追加すると、新しいお知らせがスマホに届きます。名前の登録はいりません。追加しなくても、このページと紙で読めます。</p><div class="action-links"><a class="button secondary" href={`/${c.var.ward.slug}/line`}>LINEで受け取る</a></div></> : null}
     {past.length ? <><h2>これまでのお知らせと報告</h2><ul class="rows two">{past.map(row)}</ul></> : null}
-    {activities.results.length ? <><h2>自治会の仕事を知る</h2><ul class="rows">{activities.results.map((item) => <li key={item.project_id}><a class="row-link" href={`/${c.var.ward.slug}/work/${encodeURIComponent(item.project_id)}`}><b>{item.title}で役員がしたこと</b><span>加入すると担うことと、得られることも読めます</span></a></li>)}</ul></> : null}
+    {descriptions.length ? <><h2>自治会の説明をご覧ください</h2><ul class="rows">{descriptions.map((item) => <li key={item.project_id}><a class="row-link" href={`/${c.var.ward.slug}/work/${encodeURIComponent(item.project_id)}`}><b>{item.title}と自治会の説明を読む</b><span>{item.topics.join("、")}</span></a></li>)}</ul></> : null}
     <h2>分からないときは</h2><ResidentContact contact={contact} />
     <details class="hint"><summary>個人情報の扱いについて</summary><div><p>答えは行事の準備と運営のために使います。消してほしいときは、上の連絡先へお知らせください。</p><p><a class="quiet" href={`/${c.var.ward.slug}/privacy`}>個人情報の扱いを読む</a></p></div></details>
   </Layout>);
@@ -165,16 +171,16 @@ pub.get("/work/:projectId", async (c) => {
   const notices = await listPublic(c.env.DB, c.var.ward.wardId, projectId);
   return c.html(<Layout title={`${activity.title}の活動`} siteName={c.var.ward.name}>
     <p class="link-line"><a href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のページへ</a></p>
-    <h1>{activity.title}で役員がしたこと</h1>
-    <p class="lead">役員の仕事の記録です。関わり方を考える時にご覧ください。</p>
-    {body.introduction ? <p style="white-space:pre-wrap">{body.introduction}</p> : null}
-    <h2>どんな仕事があったか</h2>
+    <h1>{activity.title}と自治会の説明をご覧ください</h1>
+    <p class="lead">関わり方を考えるときに、役員が書いた説明をご覧ください。</p>
+    {body.introduction.trim() ? <><p style="white-space:pre-wrap">{body.introduction}</p>
+    {listed.length || facts.length ? <><h2>役員の仕事をご覧ください</h2>
     <p>仕事の記録から作りました。</p>
     {listed.length ? <ul>{listed.map((task) => <li>{task.name}{task.period ? `（${task.period}）` : ""}</li>)}</ul> : null}
     {facts.length ? <ul>{facts.map((fact) => <li>{fact}</li>)}</ul> : null}
-    {!listed.length && !facts.length ? <p>紹介する仕事はありません。</p> : null}
-    <h2>加入すると担うこと</h2><p style="white-space:pre-wrap">{body.membershipBurden || "この項目の説明はありません。"}</p>
-    <h2>加入すると得られること</h2><p style="white-space:pre-wrap">{body.membershipBenefit || "この項目の説明はありません。"}</p>
+    </> : null}</> : null}
+    {body.membershipBurden.trim() ? <><h2>加入すると担うことをご覧ください</h2><p style="white-space:pre-wrap">{body.membershipBurden}</p></> : null}
+    {body.membershipBenefit.trim() ? <><h2>加入すると得られることをご覧ください</h2><p style="white-space:pre-wrap">{body.membershipBenefit}</p></> : null}
     <h2>関わり方は選べます</h2><p>読むだけでも、一回だけ手伝うだけでもかまいません。</p>
     {opportunities.length ? <p class="link-line"><a href={`/${c.var.ward.slug}/help`}>手伝いを申し込む</a></p> : null}
     <h2>来年の案内をご覧ください</h2>
