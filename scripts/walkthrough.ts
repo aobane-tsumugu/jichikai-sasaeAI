@@ -326,8 +326,11 @@ async function runFull() {
   start = Date.now();
   currentStage = "3";
   currentStarted = start;
+  // 班は区の設定で変わるので、答える画面の選びから取る。残りの通しが kakuu 区の班を置き換える事がある。
+  const answerForm = await get(wardPath + "/answer/" + project);
+  const district = /name="district"[^>]*value="([^"]+)"/.exec(answerForm.html)?.[1] ?? "";
   const answer = await post(wardPath + "/answer/" + project, {
-    attend: "yes", household: "架空 小林", district: "1班", children_count: "0", adults_count: "2", seniors_count: "0", helper_name: "架空 小林さと", helper_times: "受付10:30-12:00"
+    attend: "yes", household: "架空 小林", district, children_count: "0", adults_count: "2", seniors_count: "0", helper_name: "架空 小林さと", helper_times: "受付10:30-12:00"
   });
   if (answer.status !== 200 || !(await answer.text()).includes("答えを受け付けました")) throw new Error("架空の答えを送れません");
   record("3", "通過", "公開された案内から架空の答えを送信。", start);
