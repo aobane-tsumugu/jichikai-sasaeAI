@@ -6,7 +6,7 @@ import type { Bundle } from "../../core/bundle";
 import { getSquads } from "../../settings/store";
 import { ArticleBody, articleParagraphs } from "../../publish";
 import type { AdminEnv } from "../../env";
-import { CutLine, FieldBox, PrintDocument, PrintQr, Sheet } from "../a4";
+import { CutLine, FieldBox, PrintDocument, PrintQr, Sheet, paperHeading } from "../a4";
 import { makePaperCode, makeProjectPaperCode, printQrUrl, projectPaperQrUrl } from "../qr";
 import { getProjectState, getProjectSummary } from "../../project/api";
 import { createInvite, getSpace } from "../../space/api";
@@ -95,14 +95,16 @@ admin.get("/print/:projectId/paper/:kind", async (c) => {
 
 admin.get("/print/:projectId/:documentId/:versionNo/preview", async (c) => {
   const { ward } = c.var;
-  const row = await c.env.DB.prepare(`SELECT COALESCE(v.title, d.title) AS title, v.body, v.version_no FROM documents d
+  const row = await c.env.DB.prepare(`SELECT COALESCE(v.title, d.title) AS title, p.title AS project_title, v.body, v.version_no FROM documents d
     JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
+    JOIN projects p ON p.ward_id = d.ward_id AND p.project_id = d.project_id
     WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_no = ?`)
     .bind(ward.wardId, c.req.param("projectId"), c.req.param("documentId"), Number(c.req.param("versionNo")))
-    .first<{ title: string; body: string; version_no: number }>();
+    .first<{ title: string; project_title: string; body: string; version_no: number }>();
   if (!row) return c.notFound();
-  return c.html(<PrintDocument title={`${row.title} 印刷の見え方`}>
-    <Sheet footer={<><span>{ward.name}</span><span>確認用</span></>}><h1>{row.title}</h1><ArticleBody body={row.body} /></Sheet>
+  const heading = paperHeading(row.project_title, row.title);
+  return c.html(<PrintDocument title={`${heading} 印刷の見え方`}>
+    <Sheet footer={<><span>{ward.name}</span><span>確認用</span></>}><h1>{heading}</h1><ArticleBody body={row.body} /></Sheet>
   </PrintDocument>);
 });
 
@@ -128,7 +130,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   if (kind === "poster") {
     if (row.scope !== "public") return c.notFound();
     const wardUrl = `${baseUrl.replace(/\/+$/, "")}/${encodeURIComponent(ward.slug)}/`;
-    return c.html(<PosterPage title={row.document_title} body={row.body} wardUrl={wardUrl} />);
+    return c.html(<PosterPage title={paperHeading(row.title, row.document_title)} body={row.body} wardUrl={wardUrl} />);
   }
   const squads = await getSquads(c.env.DB, ward.wardId);
   const leaderUrls = new Map<string, string>();
@@ -165,14 +167,14 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   const printTitle = `${row.title} ${kindLabel(kind)}`;
   return c.html(<PrintDocument title={printTitle}>
     {kind === "announcement" && onOneSheet ? (squads.length ? squads : [""]).map((squad) => <Sheet key={squad} footer={<><span>{ward.name} {squad}</span><span>案内 {versionNo}</span></>}>
-      <h1>{row.document_title}</h1><ArticleBody body={row.body} /><CutLine />
+      <h1>{paperHeading(row.title, row.document_title)}</h1><ArticleBody body={row.body} /><CutLine />
       <h2>{row.title} 回答票 {squad}</h2>{answerSheet(squad, 24)}
       <p>QR を読むと案内のページが開き、Web でも回答できます。</p>
     </Sheet>) : null}
     {kind === "announcement" && !onOneSheet ? <>
       <Sheet dense={dense} footer={<><span>{ward.name}</span><span>案内 {versionNo}</span></>}>
         <div class="float-qr">{paperQr()}</div>
-        <h1>{row.document_title}</h1><ArticleBody body={row.body} />
+        <h1>{paperHeading(row.title, row.document_title)}</h1><ArticleBody body={row.body} />
       </Sheet>
       {squads.map((squad) => <Sheet key={squad} footer={<><span>{ward.name} {squad}</span><span>回答票</span></>}>
         <h1>{row.title} 回答票</h1><p>班: {squad}</p>{answerSheet(squad, 28)}

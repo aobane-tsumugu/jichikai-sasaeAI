@@ -1,3 +1,4 @@
+import { ITEM_LABEL } from "../../project/model";
 import { PrintDocument } from "../a4";
 import { qrSvg } from "../qr";
 
@@ -35,13 +36,16 @@ function publishedItem(body: string, key: string): string | null {
 export function PosterPage({ title, body, wardUrl }: { title: string; body: string; wardUrl: string }) {
   const dateTime = publishedItem(body, "date_time");
   const place = publishedItem(body, "place");
+  // 雨の時の場所を載せないと、掲示を見た人が雨の日に元の場所へ行く
+  const rainPlan = publishedItem(body, "rain_plan");
   return <PrintDocument title={`${title} 貼れる一枚`} hint="一枚の部分を撮って掲示や転送に使えます。印刷する時は A4、倍率100%、ヘッダーとフッターなしにしてください。">
     <style dangerouslySetInnerHTML={{ __html: POSTER_CSS }} />
     <section class="sheet poster" aria-label="貼れる一枚">
       <h1>{title}</h1>
-      {dateTime || place ? <dl>
-        {dateTime ? <><dt>日時</dt><dd>{dateTime}</dd></> : null}
-        {place ? <><dt>場所</dt><dd>{place}</dd></> : null}
+      {dateTime || place || rainPlan ? <dl>
+        {dateTime ? <><dt>{ITEM_LABEL.date_time}</dt><dd>{dateTime}</dd></> : null}
+        {place ? <><dt>{ITEM_LABEL.place}</dt><dd>{place}</dd></> : null}
+        {rainPlan ? <><dt>{ITEM_LABEL.rain_plan}</dt><dd>{rainPlan}</dd></> : null}
       </dl> : null}
       <div class="poster-link">
         <div class="poster-qr" role="img" aria-label="区のページを開く QR" dangerouslySetInnerHTML={{ __html: qrSvg(wardUrl) }} />

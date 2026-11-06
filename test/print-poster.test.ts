@@ -110,3 +110,33 @@ it("空間向けに配った文書は貼れる一枚の対象にしない", asyn
   expect(await (await get(realApp, path, cookie)).text()).not.toContain("貼れる一枚");
   expect((await get(realApp, `${path}/poster`, cookie)).status).toBe(404);
 });
+
+it("題が文書の種類だけの紙には行事名を出し、貼れる一枚に雨天時の場所も載せる", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const project = await createProject(env.DB, ward.wardId, {
+    kind: "event", title: "架空の秋祭り", year: 2026, accountId: account.accountId,
+  });
+  await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
+    kind: "announcement", title: "案内", scope: "public", basedOn: 0,
+    body: JSON.stringify({ text: "架空の本文", items: [
+      { key: "date_time", content: "2026年11月14日" }, { key: "place", content: "架空の広場" },
+      { key: "rain_plan", content: "架空の公民館" },
+    ] }),
+  });
+  const version = await env.DB.prepare(`SELECT document_id, version_id, version_no FROM document_versions
+    WHERE ward_id = ? AND project_id = ?`).bind(ward.wardId, project.projectId)
+    .first<{ document_id: string; version_id: string; version_no: number }>();
+  if (!version) throw new Error("案がありません。");
+  const root = `/${ward.slug}/admin`;
+  expect((await postForm(realApp, `${root}/publish/${project.projectId}/send`, {
+    documentId: version.document_id, versionId: version.version_id,
+    versionNo: String(version.version_no), lineDelivery: "skip",
+  }, cookie)).status).toBe(303);
+  const path = `${root}/print/${project.projectId}/${version.document_id}/${version.version_no}`;
+  const poster = await (await get(realApp, `${path}/poster`, cookie)).text();
+  expect(poster).toContain("<h1>架空の秋祭り 案内</h1>");
+  expect(poster).toContain("雨天時");
+  expect(poster).toContain("架空の公民館");
+  expect(await (await get(realApp, `${path}/announcement`, cookie)).text()).toContain("<h1>架空の秋祭り 案内</h1>");
+  expect(await (await get(realApp, `${path}/preview`, cookie)).text()).toContain("<h1>架空の秋祭り 案内</h1>");
+});
