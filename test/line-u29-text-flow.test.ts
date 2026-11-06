@@ -93,7 +93,7 @@ it("U29: 一対一とグループの作業連絡を残し、出欠だけ数え�
   setClientFactory(() => ai);
   vi.stubGlobal("fetch", fakeLine);
   try {
-    expect(MATCH_PACK_VERSION).toBe("match@3");
+    expect(MATCH_PACK_VERSION).toBe("match@4");
     for (const group of [false, true]) {
       const suffix = group ? fixture.dutyTitle : fixture.draftTitle;
       const initialCalls = matchCalls;
@@ -140,14 +140,11 @@ it("U29: 一対一とグループの作業連絡を残し、出欠だけ数え�
       const failedText = `${fixture.phoneHousehold}です。大人4人で参加します。${suffix}`;
       const beforeFailure = matchCalls;
       const failedId = await send(failedText, group);
-      if (group) await checkMaterial(failedId, failedText, false);
-      else {
-        // 一対一で当てられなかった文は、今の受付どおり役員への問い合わせとして残る。
-        expect(await env.DB.prepare("SELECT subject AS text FROM inquiry_records WHERE ward_id = ? AND line_event_id = ?")
-          .bind(ward.wardId, failedId).first()).toEqual({ text: failedText });
-      }
-      expect(matchCalls).toBe(beforeFailure + 1);
-      expect(sent.filter((message) => message.replyToken === `${failedId}-reply`)).toHaveLength(group ? 0 : 1);
+      await checkMaterial(failedId, failedText, false);
+      expect(await env.DB.prepare("SELECT inquiry_id FROM inquiry_records WHERE ward_id = ? AND line_event_id = ?")
+        .bind(ward.wardId, failedId).first()).toBeNull();
+      expect(matchCalls).toBe(beforeFailure + 3);
+      expect(sent.filter((message) => message.replyToken === `${failedId}-reply`)).toHaveLength(0);
       fail = false;
     }
     // 真偽が欠けた応答や文字のtrueでは、人数を数えない。
@@ -160,7 +157,7 @@ it("U29: 一対一とグループの作業連絡を残し、出欠だけ数え�
     expect((await listAnswers(env.DB, ward.wardId, project.projectId)).filter((answer) => answer.household === fixture.firstHousehold))
       .toEqual(expect.arrayContaining([expect.objectContaining({ district: "", peopleCount: 2 }), expect.objectContaining({ district: "", peopleCount: 3 })]));
     expect((await getAnswerTotals(env.DB, ward.wardId, project.projectId)).people).toBe(5);
-    expect(sent).toHaveLength(1);
+    expect(sent).toHaveLength(0);
     await Promise.all(pending);
   } finally {
     await Promise.allSettled(pending);
