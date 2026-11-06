@@ -107,7 +107,7 @@ loginRoutes.get("/login/help", (c) => {
   const connections = signInConnections(c.env);
   c.header("Cache-Control", "no-store"); c.header("X-Robots-Tag", "noindex");
   return c.html(<Layout title="入れないとき" siteName={`${c.var.ward.name}役員の画面`} noindex>
-    <a class="back" href={adminPath(c.var.ward, "/login")}>入る画面へ</a><h1>入れないとき</h1>
+    <a class="back" href={adminPath(c.var.ward, "/login")}>← 入る画面へ</a><h1>入れないとき</h1>
     <p class="lead">自分で戻せる方法から、試してください。</p>
     {connections.email || connections.line ? <><h2>ほかの入り方で入る</h2><p>つないである入り方なら、IDやパスワードが分からなくても入れます。</p>
       {(["email", "line"] as const).map((kind) => connections[kind] ? <form method="post" action={adminPath(c.var.ward, `/sign-in-connect/${kind}/start`)}><button class="secondary">{kind === "line" ? "LINE" : "メール"}で入る</button></form> : null)}</> : null}

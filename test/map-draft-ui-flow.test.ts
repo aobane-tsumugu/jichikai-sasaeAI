@@ -67,7 +67,7 @@ it("資料のない一年目から仕事・質問・下書き・別の雨の知�
   expect((await getEditableDocument(env.DB, ward.wardId, project.projectId, "announcement"))?.body).toContain(FIRST_SLICE.layoutPosition);
 
   const draft = await (await get(realApp, `${path}/draft/announcement`, cookie)).text();
-  expect(draft).toContain('name="title" value="案内"');
+  expect(draft).toMatch(/name="title" value="[^"]+のご案内"/);
   expect(draft).toContain(`value="${FIRST_SLICE.layoutPosition}"`);
   expect(draft).toContain("保存して配る内容を見る");
   const fields = { title: "案内", scope: "public", based_on: String((await state()).project.stateVersion), text: FIRST_SLICE.publicAnnouncement, item_place: FIRST_SLICE.layoutPosition };

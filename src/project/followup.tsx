@@ -32,13 +32,22 @@ export async function recordLineInquiry(db: D1Database, wardId: string, input: {
 const inquiryPath = (id: string) => `/inquiries/${encodeURIComponent(id)}`;
 const today = () => new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
 
+const daysUntil = (date: string) => Math.round((Date.parse(date.slice(0, 10)) - Date.parse(today())) / 86400_000);
+
 export function daysRemaining(date: string): string {
-  const days = Math.round((Date.parse(date.slice(0, 10)) - Date.parse(today())) / 86400_000);
+  const days = daysUntil(date);
   if (!Number.isFinite(days)) return "";
-  return days > 0 ? `あと${days}日` : days === 0 ? "今日です" : `${-days}日前です`;
+  return days > 0 ? `あと${days}日` : days === 0 ? "今日です" : `${-days}日過ぎました`;
 }
 
-function dateWords(subject: string): string[] {
+/** 「行事まであと44日」。過ぎたあとも文が崩れないようにする。 */
+function untilText(name: string, date: string): string {
+  const days = daysUntil(date);
+  if (!Number.isFinite(days)) return "";
+  return days > 0 ? `${name}まであと${days}日` : days === 0 ? `${name}は今日です` : `${name}は${-days}日前でした`;
+}
+
+export function dateWords(subject: string): string[] {
   return [...new Set(subject.match(/今日|明日|あさって|明後日|今週|来週|今月|来月|[0-9０-９]{1,2}月[0-9０-９]{1,2}日/g) ?? [])];
 }
 
@@ -81,31 +90,31 @@ followupAdmin.get("/inquiries", async (c) => {
   const answered = groups.filter((g) => g[0]!.answer).map((g) => g[0]!);
   const requests = records.filter((r) => r.kind === "request");
   return c.html(<Layout title="問い合わせと要望" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, "/")}>最初の画面へ</a>
-    <h1>問い合わせと要望</h1><p class="lead">公式LINEなどで届いた問い合わせです。AIは答えていません。問い合わせを開くと、役員が書いた返事を公式LINEで送れます。</p>
+    <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a>
+    <h1>問い合わせと要望</h1>
+    {!groups.length ? <><div class="notice" role="status"><strong>届いている問い合わせはありません</strong><p>{notice}</p></div><section class="next"><strong>次は</strong><p>電話や立ち話で受けたことは、書いて残せます。</p><a class="button" href={adminPath(ward, "/inquiries/write")}>受けたことを書く</a></section></> : <><p class="lead">公式LINEなどで届いた問い合わせです。AIは答えていません。返事を書いて送れます。</p>
     <div class="action-links"><a class="button secondary" href={adminPath(ward, "/inquiries/write")}>電話や立ち話で受けたことを書く</a></div>
-    {records.some((r) => r.line_replied_at) ? <Notice><strong>受け付けたことを伝えています</strong><p>「役員に伝えて、内容を確認します」と返しました。</p></Notice> : null}
+    {records.some((r) => r.line_replied_at) ? <Notice><strong>送った人には返事をしてあります</strong><p>「役員に伝えて、内容を確認します」と返しました。</p></Notice> : null}
     <p class="muted">{notice}</p>
     <h2>届いた問い合わせ（{open.length}件）</h2>
     <p class="muted">「明日」などの日付の言葉、行事までの日数、締切、同じ内容の件数が分かるものを上に並べています。ほかのものも同じ一覧にあります。</p>
     <ul class="rows">{open.map(({ group, project }) => { const record = group[0]!; return <li>
       <a class="row-link" href={adminPath(ward, inquiryPath(record.inquiry_id))}><b>「{inquirySubject(record.subject)}」</b>
         <span>送った人: {record.line_sender_label || "名前は分かりません"}{record.line_source_type ? `（${record.line_source_type === "user" ? "公式への一対一" : "LINEグループ"}）` : ""}</span>
-        {dateWords(record.subject).map((word) => <span>「{word}」と書かれています（{formatJstDate(record.received_at)}に届きました）</span>)}
-        <span>{group.length > 1 ? `同じ内容が${group.length}件あります　` : ""}{formatJstDate(group[group.length - 1]!.received_at)}に届きました</span>
-        {project ? <span>{project.title}の話のようです{project.deadlines.event_day ? `　行事まで${daysRemaining(project.deadlines.event_day)}` : ""}{project.deadlines.answer_due ? `　答えの締切は${formatJstDate(project.deadlines.answer_due)}　${daysRemaining(project.deadlines.answer_due)}` : ""}{project.deadlines.submit_due ? `　提出の締切は${formatJstDate(project.deadlines.submit_due)}　${daysRemaining(project.deadlines.submit_due)}` : ""}</span> : null}
+        <span>{dateWords(record.subject).map((word) => `「${word}」と書かれています　`).join("")}{group.length > 1 ? `同じ内容が${group.length}件あります　最初は` : ""}{formatJstDate(group[group.length - 1]!.received_at)}に届きました</span>
+        {project ? <span>{project.title}の話のようです{project.deadlines.event_day ? `　${untilText("行事", project.deadlines.event_day)}` : ""}{project.deadlines.answer_due ? `　${untilText("答えの締切", project.deadlines.answer_due)}` : ""}{project.deadlines.submit_due ? `　${untilText("提出の締切", project.deadlines.submit_due)}` : ""}</span> : null}
       </a></li>; })}</ul>
-    {open.length === 0 ? <p>届いている問い合わせはありません。電話や立ち話で受けたことも、上のボタンから書けます。</p> : null}
+    {open.length === 0 ? <p>届いている問い合わせはありません。</p> : null}
     <h2>答えを残したもの</h2><ul class="rows">{answered.map((r) => <li><a class="row-link" href={adminPath(ward, inquiryPath(r.inquiry_id))}><b>{r.kind === "request" ? "要望" : "問い合わせ"}　{inquirySubject(r.subject)}</b><span>{formatJstDate(r.received_at)}に受けました</span><span>答え: {r.answer}</span><span>{r.submitted_to_city ? "行政に出しました" : "行政には出していません"}</span></a></li>)}</ul>
     {answered.length === 0 ? <p>答えを残したものは、まだありません。</p> : null}
-    <details class="fold"><summary>要望だけを見る（{requests.length}件）</summary><div><ul class="rows">{requests.map((r) => <li><a class="row-link" href={adminPath(ward, inquiryPath(r.inquiry_id))}><b>{inquirySubject(r.subject)}</b><span>{formatJstDate(r.received_at)}に受けました　{r.submitted_to_city ? "行政に出しました" : "行政には出していません"}</span></a></li>)}</ul>{requests.length === 0 ? <p>要望はまだありません。</p> : null}</div></details>
+    <details class="fold"><summary>要望だけを見る（{requests.length}件）</summary><div><ul class="rows">{requests.map((r) => <li><a class="row-link" href={adminPath(ward, inquiryPath(r.inquiry_id))}><b>{inquirySubject(r.subject)}</b><span>{formatJstDate(r.received_at)}に受けました　{r.submitted_to_city ? "行政に出しました" : "行政には出していません"}</span></a></li>)}</ul>{requests.length === 0 ? <p>要望はまだありません。</p> : null}</div></details></>}
   </Layout>);
 });
 
 followupAdmin.get("/inquiries/write", (c) => {
   const { ward } = c.var;
   return c.html(<Layout title="受けたことを書く" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, "/inquiries")}>問い合わせと要望へ</a>
+    <a class="back" href={adminPath(ward, "/inquiries")}>← 問い合わせと要望へ</a>
     <h1>受けたことを書く</h1><p class="lead">電話や立ち話で受けた問い合わせや要望を、一行で書いてください。</p>
     <form method="post" action={adminPath(ward, "/inquiries")}>
       <label for="receivedAt">受けた日</label><input id="receivedAt" name="receivedAt" type="date" value={today()} required />
@@ -124,7 +133,7 @@ followupAdmin.get("/inquiries/:inquiryId/original", async (c) => {
   if (!row) return c.notFound();
   const group = records.filter((r) => inquirySubject(r.subject) === inquirySubject(row.subject));
   return c.html(<Layout title="元の文" siteName={c.var.ward.name} noindex adminHomeHref={adminPath(c.var.ward, "/")}>
-    <a class="back" href={adminPath(c.var.ward, inquiryPath(row.inquiry_id))}>前の画面へ</a><h1>元の文</h1>
+    <a class="back" href={adminPath(c.var.ward, inquiryPath(row.inquiry_id))}>← 前の画面へ</a><h1>元の文</h1>
     <p class="lead">{row.line_source_type ? "公式LINEに届いたときのままの文です。" : "受けたこととして残した文です。"}この画面では直せません。</p>
     <dl class="facts"><dt>件数</dt><dd>{group.length}件</dd></dl>
     {group.map((r) => <div class="panel"><p class="muted">{formatJstDate(r.received_at)}　送った人: {r.line_sender_label || "名前は分かりません"}</p><p class="preserve-lines">{r.subject}</p></div>)}
@@ -144,14 +153,14 @@ followupAdmin.get("/inquiries/:inquiryId", async (c) => {
   if (c.req.query("wish") === "1") return adminResult(c, "要望として残しました。", 200,
     { href: adminPath(ward, "/inquiries"), label: "問い合わせと要望へ" }, "要望の一覧に入りました。返事が要るときは、この問い合わせの画面から送れます。");
   if (c.req.query("saved")) return c.html(<Layout title="答えを記録しました" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, "/inquiries")}>問い合わせと要望へ</a><h1>記録しました</h1>
+    <a class="back" href={adminPath(ward, "/inquiries")}>← 問い合わせと要望へ</a><h1>記録しました</h1>
     <div class="notice done"><strong>「{inquirySubject(record.subject)}」の{record.answer ? "答え" : "内容"}を残しました</strong><p>{record.answer ? "一覧の「答えを残したもの」に移しました。" : "一覧の「届いた問い合わせ」に入れました。"}書き間違えたときは、もう一度書いて記録してください。新しい記録が足されます。</p></div>
     <section class="next"><strong>次は</strong><p>ほかに届いている問い合わせは{inquiryGroups(records.filter((r) => !r.answer && r.subject.trim() !== record.subject.trim())).length}件です。</p><a class="button" href={adminPath(ward, "/inquiries")}>問い合わせの一覧を開く</a></section>
     <a class="quiet" href={path}>記録を直す</a>
   </Layout>);
   const sentResult = c.req.query("sent") === "1";
   if (sentResult) return c.html(<Layout title="公式LINEに送りました" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, "/inquiries")}>問い合わせの一覧へ</a><h1>公式LINEに送りました</h1>
+    <a class="back" href={adminPath(ward, "/inquiries")}>← 問い合わせの一覧へ</a><h1>公式LINEに送りました</h1>
     <div class="notice done"><strong>送った文を記録に残しました</strong><p>送った返事は取り消せません。書き間違えたときは、この問い合わせを開いて直した返事を送れます。</p></div>
     <section class="next"><strong>次は</strong><p>ほかに届いている問い合わせを見られます。</p><a class="button" href={adminPath(ward, "/inquiries")}>問い合わせの一覧を開く</a></section><a class="quiet" href={path}>この問い合わせに戻る</a>
   </Layout>);
@@ -161,7 +170,7 @@ followupAdmin.get("/inquiries/:inquiryId", async (c) => {
     ? `問い合わせが届いたグループや一対一のトーク${destinationCount}か所` : `公式へ一対一で送った${destinationCount}人`;
   const notes = (JSON.parse(record.answer_history) as Array<{ answer: string; submitted_to_city: number; created_at: string }>).reverse();
   return c.html(<Layout title="問い合わせに答えを残す" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, "/inquiries")}>問い合わせと要望へ</a><h1>「{inquirySubject(record.subject)}」</h1>
+    <a class="back" href={adminPath(ward, "/inquiries")}>← 問い合わせと要望へ</a><h1>「{inquirySubject(record.subject)}」</h1>
     <p class="lead">{canPush ? "AIは答えていません。返事を書いて送ると、来たところへ届き、そのまま記録に残ります。" : "AIは答えていません。LINEでは返せません。だれか分かるときは、電話や直接答えてください。"}</p>
     {group.some((r) => r.line_source_type && !r.line_user_id) ? <div class="notice warn"><strong>公式LINEで返事を送れない人がいます</strong><p>送り先が分からないため送れません。書いた返事を残し、電話や直接答えたときは、その内容を記録してください。</p></div> : null}<p class="muted">{notice}</p>
     <a class="quiet" href={`${path}/original`}>元の文を見る</a>
@@ -262,7 +271,7 @@ followupAdmin.get("/requests/city", async (c) => {
   }));
   rows.sort((a, b) => (a.dueOn ?? "9999-12-31").localeCompare(b.dueOn ?? "9999-12-31") || b.year - a.year);
   return c.html(<Layout title="行政の依頼" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, "/")}>最初の画面へ</a><h1>行政の依頼</h1><p class="lead">行政から届いた依頼と、締切です。押すと、答えの下書きや、出したことを残せます。</p>
+    <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a><h1>行政の依頼</h1><p class="lead">行政から届いた依頼と、締切です。押すと、答えの下書きや、出したことを残せます。</p>
     <div class="action-links"><a class="button secondary" href={adminPath(ward, `/intake?back=${encodeURIComponent(adminPath(ward, "/requests/city"))}`)}>通知を撮って送る</a></div>
     {[false, true].map((submitted) => <section><h2>{submitted ? "出したもの" : "まだ出していないもの"}</h2><ul class="rows">{rows.filter((p) => Boolean(p.submitted_on) === submitted).map((project) => <li><a class="row-link" href={adminPath(ward, `/requests/city/${encodeURIComponent(project.project_id)}`)}><b>{project.title}</b><span>{project.year}年　締切は{project.dueOn ? formatDateText(project.dueOn) : "まだ分かりません"}</span><span>{project.submitted_on ? `${formatJstDate(project.submitted_on)}に出しました` : "出したことの記録はありません"}</span></a></li>)}</ul>{rows.filter((p) => Boolean(p.submitted_on) === submitted).length === 0 ? <p>{submitted ? "出したものはまだありません。行政に出したら、依頼の画面から残せます。" : "まだ出していない依頼はありません。届いた通知は、上のボタンから撮って送れます。"}</p> : null}</section>)}
     <p class="link-line"><a href={adminPath(ward, "/")}>役員画面へ</a></p>
@@ -284,7 +293,7 @@ followupAdmin.get("/requests/city/:projectId", async (c) => {
   const sourceText = readings.flatMap((rows) => rows.map((row) => row.body.summary)).filter(Boolean).join("\n").slice(0, 6000);
   const back = adminPath(ward, `/requests/city/${encodeURIComponent(projectId)}`);
   if (c.req.query("saved")) return c.html(<Layout title="行政の依頼を記録しました" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={back}>{project.title}へ</a><h1>記録しました</h1>
+    <a class="back" href={back}>← {project.title}へ</a><h1>記録しました</h1>
     <div class="notice done"><strong>{project.title}の内容を保存しました</strong><p>間違えたときは、前の画面で直して、もう一度「記録する」を押してください。</p></div>
     <section class="next"><strong>次は</strong><p>{details?.submitted_on ? "出したことの記録も残りました。ほかの行政の依頼を見られます。" : "出した日がまだ空です。行政に出したら、出したものと出した日を入れてください。"}</p><a class="button" href={details?.submitted_on ? adminPath(ward, "/requests/city") : back}>{details?.submitted_on ? "行政の依頼の一覧を開く" : "出したことを入れる"}</a></section>
     <a class="quiet" href={adminPath(ward, "/requests/city")}>行政の依頼の一覧に戻る</a>

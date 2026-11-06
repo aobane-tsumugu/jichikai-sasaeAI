@@ -6,11 +6,14 @@ import { adminPath, clearDeviceCookie } from "../core/auth";
 import type { Bundle } from "../core/bundle";
 import type { AdminEnv } from "../env";
 import { getProjectState, listOpenProjects } from "../project/api";
+import { dateWords } from "../project/followup";
+import { countWord } from "../project/model";
 import { listInboxItems } from "../line";
 import { nearInquiryDates } from "../line/digest";
 import { info } from "./info";
 import { formatJstDate } from "../core/time";
 import { people } from "./people";
+import { mySignInPath } from "./sign-in";
 import { templates } from "./templates";
 import { deletion } from "./deletion";
 
@@ -25,10 +28,12 @@ admin.get("/", async (c) => {
     listOpenProjects(c.env.DB, ward.wardId), listInboxItems(c.env.DB, ward.wardId),
     c.env.DB.prepare(`SELECT status, COUNT(*) AS count FROM jobs WHERE ward_id = ? AND project_id IS NULL
       AND via = 'admin' AND withdrawn_at IS NULL GROUP BY status`).bind(ward.wardId).all<{ status: string; count: number }>(),
-    c.env.DB.prepare("SELECT COUNT(*) AS count FROM inquiry_records WHERE ward_id = ? AND kind = 'inquiry' AND line_source_type IS NOT NULL")
-      .bind(ward.wardId).first<{ count: number }>(),
+    c.env.DB.prepare("SELECT subject FROM inquiry_records WHERE ward_id = ? AND kind = 'inquiry' AND line_source_type IS NOT NULL")
+      .bind(ward.wardId).all<{ subject: string }>(),
   ]);
-  const inquiryCount = inquiries?.count ?? 0;
+  const inquiryCount = inquiries.results.length;
+  const inquiryWords = inquiries.results.map((row) => dateWords(row.subject));
+  const inquiryWord = inquiryWords.flat()[0];
   const receivedCount = lineInbox.length + inquiryCount;
   const sent = pending.results.reduce((sum, row) => sum + row.count, 0);
   const read = pending.results.filter((row) => row.status === "read").reduce((sum, row) => sum + row.count, 0);
@@ -47,7 +52,7 @@ admin.get("/", async (c) => {
     {projects.length ? <><li class="link-line"><a href={adminPath(ward, "/requests/city")}>行政の依頼</a></li><li class="link-line"><a href={adminPath(ward, "/inquiries")}>問い合わせと要望</a></li></> : null}
     <li><form method="post" action={adminPath(ward, "/logout")}><button class="quiet">このスマホやパソコンから出る</button></form></li>
   </ul></>;
-  return c.html(<AdminPage ward={ward} account={account} title="最初の画面">
+  return c.html(<AdminPage ward={ward} account={account} title="最初の画面" home>
     {projects.length === 0 ? sent === 0 ? <>
       <h1>去年の資料を送ってください</h1>
       <p class="lead">案内の紙でも、Wordでも、写真でも、そのまま送れます。整理はいりません。</p>
@@ -77,12 +82,12 @@ admin.get("/", async (c) => {
         return <li><a class="row-link" href={adminPath(ward, `/projects/${p.projectId}/map`)}><b>{p.title}</b>
           {due ? <span>{formatJstDate(due)}{p.deadlines.submit_due && !p.deadlines.event_day ? "までに提出" : days !== null && days >= 0 ? `まで、あと${days}日` : ""}</span> : null}
           <span>{tasks.length ? `今の時期の仕事: ${tasks.map((t) => t.name).join("、")}` : state?.mapTasks.length ? "今の時期の仕事はありません" : "仕事はまだありません。段取りから足せます"}</span>
-          {questions ? <span>質問{questions}つ</span> : null}
+          {questions ? <span>質問 {countWord(questions)}</span> : null}
         </a></li>;
       })}</ul>
       <div class="action-links"><a class="button secondary" href={adminPath(ward, "/projects")}>新しく始める</a></div>
-      <h2>届いたもの</h2><ul class="rows"><li><a class="row-link" href={adminPath(ward, "/inbox")}><b>公式LINEに届いた写真と文{receivedCount}件</b>
-        {receivedCount ? <span>{lineInbox.some((i) => i.disposition === "matched") ? "AIが行事に入れました。" : ""}{lineInbox.some((i) => i.disposition === "unmatched") ? `${lineInbox.filter((i) => i.disposition === "unmatched").length}件はどの行事か分かりませんでした` : ""}{inquiryCount ? `問い合わせが${inquiryCount}件届いています。` : ""}</span> : <span>まだ届いていません</span>}
+      <h2>届いたもの</h2><ul class="rows"><li><a class="row-link" href={adminPath(ward, "/inbox")}><b>公式LINEに届いた写真と文 {receivedCount}件</b>
+        {receivedCount ? <span>{lineInbox.some((i) => i.disposition === "matched") ? "AIが行事に入れました。" : ""}{lineInbox.some((i) => i.disposition === "unmatched") ? `${lineInbox.filter((i) => i.disposition === "unmatched").length}件はどの行事か分かりませんでした` : ""}{inquiryCount ? `問い合わせが${countWord(inquiryCount)}あります。${inquiryWord ? `${countWord(inquiryWords.filter((words) => words.includes(inquiryWord)).length)}に「${inquiryWord}」と書かれています` : ""}` : ""}</span> : <span>まだ届いていません</span>}
       </a></li>{sent ? <li><a class="row-link" href={adminPath(ward, "/intake/read")}><b>送った資料{sent}件</b><span>読み終わったものを見る</span></a></li> : null}</ul>
       {places}
     </>}
@@ -92,20 +97,18 @@ admin.get("/", async (c) => {
 admin.get("/settings", (c) => {
   const { ward, account } = c.var;
   return c.html(
-    <AdminPage ward={ward} account={account} title="区の設定" back={{ href: adminPath(ward, "/"), label: "役員画面" }}>
-      <h1>区の設定</h1><p class="lead">区の連絡先、役員、決まった知らせの文などを設定する画面です。直したい項目を選んでください。</p>
-      <ul>
-        <li>
-          <a href={adminPath(ward, "/settings/people")}>役員の席とアカウント</a>
-          （足す、外す、パスワードの作り直し、なくした端末の締め出し）
-        </li>
-        <li>
-          <a href={adminPath(ward, "/settings/info")}>区の情報</a>（公開用の連絡先、班の名前）
-        </li>
-        <li><a href={adminPath(ward, "/settings/deletion")}>消す希望</a>（住民から届いた希望の処理）</li>
-        <li>
-          <a href={adminPath(ward, "/settings/templates")}>決まった知らせの文</a>（雨の変更の知らせなど）
-        </li>
+    <AdminPage ward={ward} account={account} title="区の設定" back={{ href: adminPath(ward, "/"), label: "最初の画面へ" }}>
+      <h1>区の設定</h1><p class="lead">直したいものを選んでください。ふだんは直さなくてかまいません。</p>
+      <ul class="rows">
+        <li><a class="row-link" href={adminPath(ward, "/settings/people")}><b>役員の一覧</b><span>役員を足す、外す。入るためのリンクを出す。なくしたスマホやパソコンで入れないようにする。</span></a></li>
+        <li><a class="row-link" href={mySignInPath(ward)}><b>自分の入り方</b><span>LINEやメールをつなぎます。</span></a></li>
+        <li><a class="row-link" href={adminPath(ward, "/settings/info")}><b>区の情報</b><span>連絡先、班の名前、知らせの時刻。</span></a></li>
+        <li><a class="row-link" href={adminPath(ward, "/settings/templates")}><b>決まった知らせの文</b><span>雨の変更の知らせなど、くり返し出す文です。</span></a></li>
+        <li><a class="row-link" href={adminPath(ward, "/settings/deletion")}><b>消す希望</b><span>住民から消してほしいと頼まれたものを消します。</span></a></li>
+      </ul>
+      <ul class="links">
+        <li><a href="/contact">SasaeAIに問い合わせる</a></li>
+        <li><form method="post" action={adminPath(ward, "/logout")}><button class="quiet">このスマホやパソコンから出る</button></form></li>
       </ul>
     </AdminPage>,
   );

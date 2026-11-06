@@ -86,6 +86,7 @@ button.danger:active, a.button.danger:active { background: var(--danger); border
 main:has(.page-action) { padding-bottom: calc(var(--space-7) + 7rem + env(safe-area-inset-bottom)); }
 
 /* Notice */
+.notice:empty { display: none; }
 .notice { margin: var(--space-4) 0; padding: var(--space-3) var(--space-4); border: 2px solid var(--accent); border-radius: var(--radius); background: var(--info-bg); color: var(--fg); }
 .notice strong { display: block; color: var(--accent); font-weight: 700; }
 .notice p { margin: 0; }
@@ -159,6 +160,7 @@ details.fold > div { padding: 0 var(--space-3) var(--space-3); }
 
 /* Panel と RowLink */
 .panel { margin: var(--space-3) 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel); }
+.panel > :first-child { margin-top: 0; }
 .panel > :last-child { margin-bottom: 0; }
 .qr-image { display: block; width: 11rem; height: 11rem; margin: var(--space-3) 0; border: 1px solid var(--line-strong); background: #fff; }
 .rows { display: grid; gap: var(--space-3); margin: var(--space-3) 0; padding: 0; list-style: none; }

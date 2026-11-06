@@ -499,7 +499,7 @@ describe("画面", () => {
     expect(anon.status).toBe(303);
   });
 
-  it("行事を選ぶ画面と、送る先の検査", async () => {
+  it("行事から開いた時だけ送る先が決まり、送る先を検査する", async () => {
     const { ward, cookie } = await seedAdmin(env.DB);
     setProjectDirectory({
       listOpen: async () => [{ projectId: "p-1", title: "秋の収穫祭（架空）" }],
@@ -507,8 +507,8 @@ describe("画面", () => {
     });
     setPipelineDeps(fakeDeps(okRead()));
     const { ctx, settle } = ctxOf();
-    const page = await (await request(`/${ward.slug}/admin/intake`, { headers: { cookie } }, ctx)).text();
-    expect(page).toContain("秋の収穫祭（架空）");
+    const page = await (await request(`/${ward.slug}/admin/intake?project=p-1`, { headers: { cookie } }, ctx)).text();
+    expect(page).toContain('name="project_id" value="p-1"');
     const bad = await request(`/${ward.slug}/admin/intake`, multipart([["project_id", "p-2"], ["text", "あ"]], cookie), ctx);
     expect(bad.status).toBe(400);
     const good = await request(`/${ward.slug}/admin/intake`, multipart([["project_id", "p-1"], ["text", "い"]], cookie), ctx);

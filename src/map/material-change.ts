@@ -1,4 +1,4 @@
-import { ITEM_SCREEN_LABEL, TABLES, TABLE_KEYS } from "../project/model";
+import { ITEM_SCREEN_LABEL, TABLES, TABLE_KEYS, countWord } from "../project/model";
 import type { ProjectState, SourceView } from "../project/types";
 
 const MAX_LABELS = 3;
@@ -43,6 +43,6 @@ export function materialChangeText(state: ProjectState, originalId: string): str
     ...tasks,
     ...itemParts(state, originalId),
     ...tableParts(state, originalId),
-    ...(questions ? [`質問を${questions === 1 ? "一" : questions}つ足しました`] : []),
+    ...(questions ? [`質問を${questions === 1 ? "一つ" : countWord(questions)}足しました`] : []),
   ].slice(0, MAX_PARTS).join("。");
 }

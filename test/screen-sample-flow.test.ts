@@ -4,7 +4,7 @@ import { addAnswer } from "../src/answers/api";
 import { countText, countUnread } from "../src/answers/counts";
 import { addHelpOffer, listHelpOffers } from "../src/answers/help";
 import { seedAdmin } from "../src/core/testing";
-import { createProject } from "../src/project/api";
+import { applyChange, createProject, getProjectState } from "../src/project/api";
 import { saveDocument } from "../src/project/actions";
 import { materialChangeText } from "../src/map/material-change";
 import type { ProjectState } from "../src/project/types";
@@ -116,5 +116,71 @@ it("段取りの最近届いた資料に、その資料から入った項目を�
     VALUES ('value-map', ?, ?, 'place', 'current', '架空の公民館', 'original', 'original-map', 'high', ?)`).bind(ward.wardId, project.projectId, now).run();
   const page = await (await get(realApp, `/${ward.slug}/admin/projects/${project.projectId}/map`, cookie)).text();
   expect(page).toContain("どこでを入れました");
-  expect(page).not.toContain("読み終わりました。届いた資料で中身を見られます");
+  expect(page).not.toContain("読み終わりました。届いた資料で内容を見られます");
+});
+
+it("実行委員向けの下書きも、配る前に本文と表を確かめる", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の当番確認", year: 2026, accountId: account.accountId });
+  const id = project.projectId;
+  const root = `/${ward.slug}/admin`;
+  const addDuty = async (assignee: string) => expect((await applyChange(env.DB, ward.wardId, id, {
+    kind: "row", table: "duties", data: { slot: "午前", assignee }, source: { kind: "person", accountId: account.accountId }, confidence: "high", packVersion: "confirm-test@1",
+  })).status).toBe("applied");
+  await addDuty("架空の受付係");
+  await saveDocument(env.DB, ward.wardId, id, account.accountId, { kind: "duty_roster", title: "当番表", scope: "space", basedOn: 0, body: JSON.stringify({ text: "架空の当番の説明", items: [] }) });
+  const list = await (await get(realApp, `${root}/publish/${id}`, cookie)).text();
+  expect(list).toContain(`action="${root}/publish/${id}/confirm"`);
+  expect(list).not.toContain(`action="${root}/publish/${id}/space"`);
+
+  const state = await getProjectState(env.DB, ward.wardId, id);
+  const saved = await postForm(realApp, `${root}/projects/${id}/draft/duty_roster/save`, {
+    based_on: String(state?.project.stateVersion ?? 0), title: "当番表", scope: "space", text: "架空の当番の説明を直した文", after: "confirm",
+  }, cookie);
+  expect(saved.status).toBe(200);
+  const confirm = await saved.text();
+  expect(confirm).toContain("次の内容で配ります");
+  expect(confirm).toContain("架空の当番の説明を直した文");
+  expect(confirm).toContain("架空の受付係");
+  expect(confirm).toContain("実行委員と班長に配ります。区のページには載りません。");
+  expect(confirm).toContain(`action="${root}/publish/${id}/space"`);
+  expect(confirm).not.toContain("LINEで送った知らせ");
+  expect(confirm).not.toContain("部を印刷できます");
+
+  const latest = async () => await env.DB.prepare(`SELECT v.document_id, v.version_id, v.version_no, v.published_at FROM document_versions v
+    JOIN documents d ON d.ward_id = v.ward_id AND d.document_id = v.document_id
+    WHERE v.ward_id = ? AND v.project_id = ? AND d.kind = 'duty_roster' ORDER BY v.version_no DESC LIMIT 1`)
+    .bind(ward.wardId, id).first<{ document_id: string; version_id: string; version_no: number; published_at: string | null }>();
+  const fields = (row: NonNullable<Awaited<ReturnType<typeof latest>>>) => ({ documentId: row.document_id, versionId: row.version_id, versionNo: String(row.version_no) });
+  const draft = await latest();
+  if (!draft) throw new Error("当番表がありません。");
+  expect(draft.published_at).toBeNull();
+  expect((await postForm(realApp, `${root}/publish/${id}/space`, fields(draft), cookie)).headers.get("location")).toContain("space=sent");
+  // 表が変わっていなければ、配り直す確認は出ない。
+  expect((await postForm(realApp, `${root}/publish/${id}/confirm`, fields(draft), cookie)).status).toBe(303);
+
+  await addDuty("架空の片付け係");
+  const again = await (await postForm(realApp, `${root}/publish/${id}/confirm`, fields(draft), cookie)).text();
+  expect(again).toContain("次の内容で配り直します");
+  expect(again).toContain("配ったときから表が変わっています");
+  expect(again).toContain("架空の片付け係");
+});
+
+it("実行委員だけに見せる案内も、確かめて配れる", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の内輪の案内", year: 2026, accountId: account.accountId });
+  const id = project.projectId;
+  const root = `/${ward.slug}/admin`;
+  await saveDocument(env.DB, ward.wardId, id, account.accountId, { kind: "announcement", title: "案内", scope: "space", basedOn: 0, body: JSON.stringify({ text: "架空の内輪の文", items: [] }) });
+  const row = await env.DB.prepare("SELECT v.document_id, v.version_id, v.version_no FROM document_versions v WHERE v.ward_id = ? AND v.project_id = ?")
+    .bind(ward.wardId, id).first<{ document_id: string; version_id: string; version_no: number }>();
+  if (!row) throw new Error("案内がありません。");
+  const fields = { documentId: row.document_id, versionId: row.version_id, versionNo: String(row.version_no) };
+  const confirm = await postForm(realApp, `${root}/publish/${id}/confirm`, fields, cookie);
+  expect(confirm.status).toBe(200);
+  const page = await confirm.text();
+  expect(page).toContain("架空の内輪の文");
+  expect(page).not.toContain("回答票");
+  expect(page).not.toContain("<h3>当番</h3>");
+  expect((await postForm(realApp, `${root}/publish/${id}/space`, fields, cookie)).status).toBe(303);
 });

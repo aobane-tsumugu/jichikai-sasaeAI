@@ -1,6 +1,6 @@
 import { countText, labelsFromBody } from "../answers/counts";
 import { getAnswerLabels } from "../settings/answer-labels";
-import { formatDateText, formatJstDate } from "../core/time";
+import { formatDateText, formatJstDate, periodText, shortDate } from "../core/time";
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
@@ -36,14 +36,15 @@ admin.get("/archive", async (c) => {
   const projects = (await listProjects(c.env.DB, ward.wardId, { includeClosed: true })).filter((project) => project.closedAt);
   const byMonth = new Map<string, typeof projects>();
   for (const project of projects) {
-    const month = String(project.year);
+    const month = new Date(Date.parse(project.closedAt!) + 9 * 3600_000).toISOString().slice(0, 7);
     byMonth.set(month, [...(byMonth.get(month) ?? []), project]);
   }
-  return c.html(<Layout title="記録" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/projects")}>行事一覧</a>}>
-    <h1>記録を読む</h1><p class="lead">年と行事を選ぶと、報告と段取りを読めます。ここから新しい年の準備も始められます。</p>
-    <nav class="action-links"><a class="button secondary" href={adminPath(ward, "/archive/map")}>区の段取り</a><a class="button secondary" href={adminPath(ward, "/archive/search")}>記録を探す</a></nav>
-    {[...byMonth.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([year, entries]) => <section><h2>{year}年</h2><ul class="rows">{entries.map((p) => <li><a class="row-link" href={adminPath(ward, `/archive/${p.projectId}`)}><b>{p.title}</b><span>{PROJECT_KIND_LABEL[p.kind]}</span></a></li>)}</ul></section>)}
-    {projects.length === 0 ? <p>閉じた行事はまだありません。</p> : null}
+  return c.html(<Layout title="記録" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a><h1>記録</h1>
+    {projects.length === 0 ? <><div class="notice" role="status"><strong>閉じた行事はまだありません</strong><p>行事を閉じると、ここに残ります。</p></div><section class="next"><strong>次は</strong><p>去年の資料が手元にあれば、送ると段取りに使えます。</p><a class="button" href={adminPath(ward, "/intake")}>資料を送る</a></section></> : <><p class="lead">終わった行事の記録です。去年の動きを読めます。ここから新しい年の準備も始められます。</p>
+    <nav class="action-links"><a class="button secondary" href={adminPath(ward, "/archive/search")}>記録を探す</a><a class="button secondary" href={adminPath(ward, "/archive/map")}>一年の予定を見る</a></nav>
+    {[...byMonth.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([month, entries]) => <section><h2>{Number(month.slice(0, 4))}年{Number(month.slice(5, 7))}月に閉じたもの</h2><ul class="rows two">{entries.map((p) => <li><a class="row-link" href={adminPath(ward, `/archive/${p.projectId}`)}><b>{p.title}</b><span>{p.year}年　{PROJECT_KIND_LABEL[p.kind]}</span><span>段取りと報告を読めます</span></a></li>)}</ul></section>)}
+    <p class="muted">記録を押すと、その行事の段取り、配ったもの、答えを読めます。</p></>}
   </Layout>);
 });
 
@@ -59,12 +60,13 @@ admin.get("/archive/map", async (c) => {
     const month = row.period_start?.slice(0, 7) ?? `${row.year}年・時期未定`;
     months.set(month, [...(months.get(month) ?? []), row]);
   }
-  return c.html(<Layout title="一年の予定" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/archive")}>記録</a>}>
-    <a class="back" href={adminPath(ward, "/archive")}>記録へ</a><h1>一年の予定</h1><p class="lead">区の仕事を、始まりの月ごとに並べています。去年の記録を開くと、そこから新しく始められます。</p>
+  return c.html(<Layout title="一年の予定" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <a class="back" href={adminPath(ward, "/archive")}>← 記録へ</a><h1>一年の予定</h1><p class="lead">区の仕事を、始まりの月ごとに並べています。去年の記録を開くと、そこから新しく始められます。</p>
+    {rows.results.some((row) => !row.period_start) ? <p class="muted">時期が決まっていない仕事は「時期未定」の月にまとまります。</p> : null}
     {[...months.entries()].sort(([a], [b]) => b.slice(0, 4).localeCompare(a.slice(0, 4)) || a.localeCompare(b)).map(([month, entries]) => <section>
       <h2>{month.replace(/^(\d{4})-(\d{2})$/, (_, year: string, month: string) => `${year}年${Number(month)}月`)}</h2><ul class="rows two">{entries.map((entry) => <li>
         <a class="row-link" href={adminPath(ward, entry.closed_at ? `/archive/${entry.project_id}` : `/projects/${entry.project_id}/map`)}>
-          <b>{entry.name}</b><span>{entry.title}（{entry.year}年　{entry.closed_at ? "記録" : "進めています"}）</span><span>{entry.period_start ? formatJstDate(entry.period_start) : "時期はまだ決まっていません"}{entry.period_end ? `から${formatJstDate(entry.period_end)}` : ""}</span>
+          <b>{entry.name}</b><span>{entry.title}（{entry.year}年　{entry.closed_at ? "記録" : "進めています"}）</span><span>{entry.period_start && entry.period_end ? periodText(entry.period_start, entry.period_end) : entry.period_end ? `${shortDate(entry.period_end)}まで` : entry.period_start ? `${shortDate(entry.period_start)}から` : "時期はまだ決まっていません"}</span>
         </a>
         {entry.closed_at ? <a class="quiet" href={adminPath(ward, `/archive/${entry.project_id}?view=seed`)}>この記録から新しく始める</a> : null}
       </li>)}</ul></section>)}
@@ -85,7 +87,7 @@ admin.get("/archive/search", async (c) => {
   const results = query.trim().length >= 2 ? await searchArchive(c.env.DB, ward.wardId, { query, year, recordType, projectKind, counterpart, limit: 30 }) : [];
   const years = [...new Set((await listProjects(c.env.DB, ward.wardId, { includeClosed: true })).map((p) => p.year))].sort((a, b) => b - a);
   const labels: Record<ArchiveRecordType, string> = { reading: "読み取り", decision: "決めたこと", report: "報告", map: "段取り" };
-  return c.html(<Layout title="記録を探す" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/archive")}>記録</a>}>
+  return c.html(<Layout title="記録を探す" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>記録を探す</h1><p class="lead">覚えている言葉を入れて、過去の資料や報告を探します。年や相手の名前でも絞れます。</p>
     <p>二文字以上で探します。年、種類、相手の名前で絞れます。</p>
     <form method="get" action={adminPath(ward, "/archive/search")}>
@@ -245,7 +247,7 @@ admin.get("/archive/:projectId", async (c) => {
     {(["decisions", "sponsors"] as const).map((table) => <section>
       <h2>{TABLES[table].label}</h2><RecordedRows table={table} rows={(state?.tables[table] ?? []).filter((row) => row.scope === "current")} ward={ward} />
     </section>)}
-    <h2 id="orig">元の資料</h2>{originals.results?.map((o) => <p class="link-line"><a href={adminPath(ward, `/intake/originals/${o.original_id}`)}>{o.filename || "一行の文"}（{o.kind === "photo" ? "写真" : o.kind === "file" ? "ファイル" : "文"}）</a></p>)}
+    <h2 id="orig">元の資料</h2>{originals.results?.map((o) => <p class="link-line"><a href={adminPath(ward, `/intake/originals/${o.original_id}`)}>{o.filename || "書いたこと"}（{o.kind === "photo" ? "写真" : o.kind === "file" ? "ファイル" : "文"}）</a></p>)}
     {originals.results?.length === 0 ? <p>元の資料はありません。</p> : null}
 
   </AdminPage>);

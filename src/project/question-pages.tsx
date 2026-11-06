@@ -3,13 +3,24 @@ import { adminPath } from "../core/auth";
 import { ErrorNotice, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { getProjectState } from "./api";
-import { ITEM_LABEL, isItemKey } from "./model";
+import { ITEM_SCREEN_LABEL, isItemKey } from "./model";
+import type { QuestionView } from "./types";
 
 /** 保存済みの選択肢の値は保ち、資料の年を聞く言葉だけ揃える。 */
 export function questionOptionLabel(option: string): string {
   if (["今年のもの", "今年の資料"].includes(option)) return "今年のもの";
   if (["去年のもの", "去年の資料", "去年かそれより前", "去年か、それより前"].includes(option)) return "去年か、それより前のもの";
   return option;
+}
+
+/** 長い質問は、短い見出しと本文に分ける。保存済みの質問の文もこの形で読む。 */
+function questionTitle(question: QuestionView): { heading: string; body: string } {
+  if (question.kind === "unreadable") return { heading: "読めなかったところがあります", body: question.text };
+  if (question.kind === "conflict" && isItemKey(question.target)) return {
+    heading: `「${ITEM_SCREEN_LABEL[question.target]}」が資料によって違います`,
+    body: question.text.replace(/^「[^」]*」が食い違っています。/, "").replace("年の書いていない", "年の書かれていない"),
+  };
+  return { heading: question.text, body: "" };
 }
 
 export const questionPages = new Hono<AdminEnv>();
@@ -22,7 +33,7 @@ questionPages.get("/projects/:projectId/questions/:questionId/compare", async (c
   const back = adminPath(ward, fromDraft ? `/projects/${id}/draft/announcement` : `/projects/${id}/questions`);
   const currentValue = question.target && isItemKey(question.target) ? state.items.find((item) => item.key === question.target)?.current?.content : "";
   return c.html(<Layout title="二つを見比べる" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={back}>← {fromDraft ? "下書きへ" : "質問へ"}</a><h1>{question.text}</h1><p class="lead">使う方を選んでください。選ばないときは、{currentValue ? `今の下書きの${currentValue}` : "今の内容"}のままです。</p>
+    <a class="back" href={back}>← {fromDraft ? "下書きへ" : "質問へ"}</a><h1>{questionTitle(question).heading}</h1><p class="lead">使う方を選んでください。選ばないときは、{currentValue ? `今の下書きの${currentValue}` : "今の内容"}のままです。</p>
     {state.project.closedAt ? <Notice>この行事は閉じました。もう一度開くと答えを入れられます。</Notice> : <form method="post" action={adminPath(ward, `/projects/${id}/questions/${question.questionId}`)}>
       {fromDraft ? <input type="hidden" name="from" value="draft" /> : null}
       <fieldset><legend>使う内容</legend>{question.options?.length ? question.options.map((option) => <label><input type="radio" name="answer" value={option} required />{questionOptionLabel(option)}</label>) : <><p class="preserve-lines">{question.answer}</p><label for="answer">確かめた内容</label><input id="answer" name="answer" required maxlength={2000} /></>}</fieldset>
@@ -49,13 +60,13 @@ questionPages.get("/projects/:projectId/questions", async (c) => {
     {!questions.length || answered ? next : null}
     {state.project.closedAt ? <Notice>この行事は閉じました。もう一度開くと答えを入れられます。</Notice> : null}
     {questions.map((question) => <section class="panel" id={`question-${question.questionId}`}>
-      <h2>{question.kind === "unreadable" ? "読めなかったところがあります" : question.text}</h2>
-      {question.kind === "unreadable" ? <p>{question.text}</p> : null}
+      <h2>{questionTitle(question).heading}</h2>
+      {questionTitle(question).body ? <p>{questionTitle(question).body}</p> : null}
       {question.source?.locator ? <p class="muted">{question.source.locator}</p> : null}
       {question.kind === "conflict" ? <p><a class="button secondary" href={adminPath(ward, `/projects/${id}/questions/${question.questionId}/compare`)}>二つを見比べる</a></p> : null}
       {!state.project.closedAt ? <form method="post" action={adminPath(ward, `/projects/${id}/questions/${question.questionId}`)}>
         {question.options?.length ? <div class="action-links">{question.options.map((option) => <button class="secondary" name="answer" value={option}>{questionOptionLabel(option)}</button>)}</div> : <>
-          <div class="field"><label for={`answer-${question.questionId}`}>{isItemKey(question.target) ? ITEM_LABEL[question.target] : question.text.includes("金額") ? "金額" : "答え"}</label><input id={`answer-${question.questionId}`} name="answer" maxlength={2000} inputmode={question.text.includes("金額") ? "numeric" : undefined} /></div>
+          <div class="field"><label for={`answer-${question.questionId}`}>{isItemKey(question.target) ? ITEM_SCREEN_LABEL[question.target] : question.text.includes("金額") ? "金額" : "答え"}</label><input id={`answer-${question.questionId}`} name="answer" maxlength={2000} inputmode={question.text.includes("金額") ? "numeric" : undefined} /></div>
           <div class="action-links"><button class="secondary" name="action" value="answer">{question.text.includes("金額") ? "この金額を入れる" : "答える"}</button></div>
         </>}
         <div class="question-actions">{question.source?.kind === "original" && question.source.ref ? <a class="quiet" href={adminPath(ward, `/intake/originals/${encodeURIComponent(question.source.ref)}`)}>元の資料を見る</a> : null}

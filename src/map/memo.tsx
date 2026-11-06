@@ -78,7 +78,7 @@ memoAdmin.get("/ledger", async (c) => {
   const { ward } = c.var;
   const projects = await listProjects(c.env.DB, ward.wardId, { includeClosed: true });
   return c.html(<Layout title="運営メモ" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, "/")}>最初の画面へ</a><h1>運営メモ</h1><p class="lead">行事の段取りから、費用や来年のためのメモを開けます。</p>
+    <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a><h1>運営メモ</h1><p class="lead">行事の段取りから、費用や来年のためのメモを開けます。</p>
     {projects.length ? <ul class="rows">{projects.map((project) => <li><a class="row-link" href={adminPath(ward, `/projects/${project.projectId}/map`)}><b>{project.title}の段取り</b></a></li>)}</ul> : <p>行事はまだありません。最初の画面から始められます。</p>}
   </Layout>);
 });
@@ -108,9 +108,9 @@ memoAdmin.get("/projects/:projectId/ledger/:rowId", async (c) => {
   const source = row.current ?? row.reference;
   const original = source?.source.kind === "original" ? source.source.ref : data.receiptOriginalId;
   return c.html(<Layout title={row.name} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={back}>{state.project.title}の運営メモへ</a><h1>{row.name}</h1><p class="lead">{adding ? "来年の担当の方に残したいことを、行にできます。" : empty ? "書けることだけ書いてください。書かなくても進められます。" : "読み違いを直せます。分からない欄は空のままでかまいません。"}元の資料は変わりません。</p>
+    <a class="back" href={back}>← {state.project.title}の運営メモへ</a><h1>{row.name}</h1><p class="lead">{adding ? "来年の担当の方に残したいことを、行にできます。" : empty ? "書けることだけ書いてください。書かなくても進められます。" : "読み違いを直せます。分からない欄は空のままでかまいません。"}元の資料は変わりません。</p>
     {row.hint ? <p>よく残すこと: {row.hint}</p> : null}<PreviousMemo row={row} />
-    {state.project.closedAt ? <Notice>この行事は閉じています。開き直すとメモを書けます。<p><a class="quiet" href={adminPath(ward, `/close/${id}`)}>行事を開き直す画面へ</a></p></Notice> : <>
+    {state.project.closedAt ? <Notice>この行事は閉じています。もう一度開くとメモを書けます。<p><a class="quiet" href={adminPath(ward, `/close/${id}`)}>行事をもう一度開く画面へ</a></p></Notice> : <>
       <form method="post" action={adminPath(ward, rowPath(id, row.key))}>
         {adding ? field("what", "何の行か") : !empty || row.sponsor ? fields : null}
         <div class="field"><label for="note">メモ</label><textarea id="note" name="note" rows={5} maxlength={2000}>{data.note ?? ""}</textarea></div>
@@ -187,7 +187,7 @@ memoAdmin.post("/projects/:projectId/ledger/:rowId", async (c) => {
     if (!Number.isSafeInteger(amount) || amount < 0) return adminResult(c, "額を保存できませんでした。", 400, back, "額は0以上の整数で入れてください。分からなければ空のままで保存できます。");
     data[name] = amount;
   }
-  if (!await writeMemo(c.env.DB, ward.wardId, state, row, account.accountId, data)) return adminResult(c, "メモを保存できませんでした。", 409, back, "行事が閉じているときは開き直せます。メモを開き、もう一度保存してください。");
+  if (!await writeMemo(c.env.DB, ward.wardId, state, row, account.accountId, data)) return adminResult(c, "メモを保存できませんでした。", 409, back, "行事が閉じているときはもう一度開けます。メモを開き、もう一度保存してください。");
   return c.redirect(`${adminPath(ward, rootPath(id))}?notice=saved&changed=${encodeURIComponent(row.key)}`, 303);
 });
 
@@ -201,6 +201,10 @@ memoAdmin.get("/projects/:projectId/ledger", async (c) => {
   const changedRow = rows.find((row) => row.key === c.req.query("changed"));
   const notice = c.req.query("notice");
   const result = notice === "saved" ? "メモを残しました" : "";
+  const sumOf = (entries: MemoRow[]) => entries.reduce((sum, row) => sum + (typeof row.data.amount === "number" ? row.data.amount : 0), 0);
+  const costs = sumOf(active.filter((row) => !row.sponsor));
+  const sponsors = active.filter((row) => row.sponsor);
+  const unknownSponsors = sponsors.filter((row) => typeof row.data.amount !== "number").map((row) => row.name);
   const renderRows = (entries: MemoRow[]) => <ul class="rows">{entries.map((row) => <li><a class="row-link" href={adminPath(ward, rowPath(id, row.key))}>
     <b>{row.name}{row.data.counterpart && row.data.what ? `　${row.data.counterpart}` : ""}</b>
     <span>{typeof row.data.amount === "number" ? yen(row.data.amount) : row.data.counterpart || row.data.note ? "額の情報なし" : "情報なし"}{row.data.date ? `　${formatDateText(String(row.data.date))}` : ""}</span>
@@ -208,11 +212,12 @@ memoAdmin.get("/projects/:projectId/ledger", async (c) => {
     {row.reference ? <span>{row.reference.refYear ? `${row.reference.refYear}年` : "過去"}の額: {typeof row.reference.data.amount === "number" ? yen(row.reference.data.amount) : "情報なし"}{row.reference.data.note ? `　メモ: ${row.reference.data.note}` : ""}</span> : null}
   </a></li>)}</ul>;
   return c.html(<Layout title="運営メモ" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>{state.project.title}の段取りへ</a><h1>{state.project.title}の運営メモ</h1>
-    <p class="lead">よく要るものを並べました。情報なしの行は、そのままでかまいません。来年の担当の方が見ます。</p>
+    <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {state.project.title}の段取りへ</a><h1>{state.project.title}の運営メモ</h1>
+    <p class="lead">行事でよく要るものを並べました。写真から読めた分が入っています。情報なしの行は、そのままでかまいません。来年の担当の方が見ます。</p>
     <Notice><strong>参考の記録です</strong><p>会計の帳簿や決算の代わりにはなりません。証跡として使わず、税務と法務の判断はしません。領収書の紙は、これまでどおり会計の方で保管してください。</p></Notice>
     {result ? <><div class="notice done" role="status"><strong>{result}</strong><p>元の資料は変わりません。ほかの行は、そのままでかまいません。</p></div><section class="next"><strong>次は</strong><p>思い出したときに書き直せます。</p><a class="button" href={changedRow ? adminPath(ward, rowPath(id, changedRow.key)) : root}>メモを開く</a></section><p><a class="quiet" href={adminPath(ward, `/projects/${id}/map`)}>段取りに戻る</a></p></> : null}
-    {!state.project.closedAt ? <div class="action-links"><a class="button" href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>写真を送る</a></div> : <Notice>この行事は閉じています。記録を読めます。<p><a class="quiet" href={adminPath(ward, `/close/${id}`)}>行事を開き直す画面へ</a></p></Notice>}
+    {!state.project.closedAt ? <div class="action-links"><a class="button" href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>写真を送る</a></div> : <Notice>この行事は閉じています。記録を読めます。<p><a class="quiet" href={adminPath(ward, `/close/${id}`)}>行事をもう一度開く画面へ</a></p></Notice>}
+    {costs || sumOf(sponsors) ? <p>分かっている費用は{yen(costs)}、協賛は{yen(sumOf(sponsors))}です{unknownSponsors.length ? `（${unknownSponsors.join("、")}の額は分かっていません）` : ""}。</p> : null}
     <h2>よく要るもの</h2>{renderRows(active.filter((row) => !row.sponsor))}
     {!state.project.closedAt ? <p><a class="button secondary" href={adminPath(ward, `${rootPath(id)}/new`)}>行を足す</a></p> : null}
     {active.some((row) => row.sponsor) ? <><h2>協賛</h2>{renderRows(active.filter((row) => row.sponsor))}</> : null}
