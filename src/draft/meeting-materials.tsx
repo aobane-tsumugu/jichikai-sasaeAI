@@ -30,6 +30,22 @@ export function documentText(raw: string): string {
   return "";
 }
 
+/** 議事録の「決めていないこと」の節を、そのまま未決として読む。AI は呼ばない。 */
+export function pendingFromMinutes(text: string): string[] {
+  const pending: string[] = [];
+  let inside = false;
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line.startsWith("#") || (line.length <= 20 && !line.includes("。"))) {
+      inside = /決めていない|決まっていない|決まらなかった|続けること|持ち越/.test(line);
+      continue;
+    }
+    if (inside) pending.push(line.replace(/^[-・]\s*/, ""));
+  }
+  return pending;
+}
+
 export async function meetingRecord(db: D1Database, wardId: string, projectId: string): Promise<MeetingRecord | null> {
   const state = await getProjectState(db, wardId, projectId);
   if (!state) return null;
@@ -45,7 +61,7 @@ export async function meetingRecord(db: D1Database, wardId: string, projectId: s
     decisions: state.tables.decisions.filter((row) => row.scope === "current").map((row) => ({
       text: String(row.data.what ?? ""), on: String(row.data.decidedOn ?? ""), proposal: row.source.kind === "ai_proposal",
     })).filter((row) => row.text.trim()),
-    questions: state.questions.filter((question) => question.state === "open" || question.state === "later").map((question) => question.text),
+    questions: [...new Set([...state.questions.filter((question) => question.state === "open" || question.state === "later").map((question) => question.text), ...pendingFromMinutes(text)])],
     minutes: text ? { text, proposal: !closedMinutes?.body && origin?.origin === "ai" } : null,
     agenda: agenda ? documentText(agenda.body) || null : null,
   };

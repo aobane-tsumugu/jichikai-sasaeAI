@@ -1,5 +1,6 @@
 import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
+import { pendingFromMinutes } from "../src/draft/meeting-materials";
 import { expect, it, vi } from "vitest";
 import { FIRST_SLICE as fixture } from "../fixtures/first-slice";
 import * as session from "../src/ai/session";
@@ -187,4 +188,11 @@ it("役員会を2回閉じ、前回の決定と未決、年の決定と運営メ
   expect(nextAgenda).toContain(fixture.previousMaterial);
   expect(nextAgenda).toContain("収入: 記録はまだありません");
   expect(nextAgenda).not.toContain(`収入: ${fixture.sponsorAmount.toLocaleString("ja-JP")}円`);
+});
+
+it("議事録の決めていないことの節を未決として読み、決めたことを混ぜない", () => {
+  const text = "## 決めたこと\n清掃用具は共同で購入します。\n\n## まだ決めていないこと\n遊具の更新は話し合いを続けます。\n\n## 次回\n二月に開きます。";
+  expect(pendingFromMinutes(text)).toEqual(["遊具の更新は話し合いを続けます。"]);
+  expect(pendingFromMinutes("決まらなかったこと\n・倉庫の片付けは次回にします。")).toEqual(["倉庫の片付けは次回にします。"]);
+  expect(pendingFromMinutes("清掃用具は共同で購入します。")).toEqual([]);
 });
