@@ -44,7 +44,9 @@ const draftText = (form: Form) => [...form.values].filter(([key]) => key === "te
 
 // 資料に無い決定を、特定の禁止語だけで見落とさない。言い換えもPMの確認へ回す。
 export function checkKindsFacts(text: string, allowed: string[], required: string[], strict = false) {
-  for (const fact of required) assert(compact(text).includes(compact(fact)), "送った決定や未決が下書きにありません（言い換えはPMの確認が必要です）");
+  // AI は語尾を整えるので、語尾を除いた形で探す。
+  const stem = (fact: string) => compact(fact).replace(/(?:ことに決めました|ことにします|ます|ました|。)+$/, "");
+  for (const fact of required) assert(compact(text).includes(stem(fact)), "送った決定や未決が下書きにありません（言い換えはPMの確認が必要です）");
   const known = new Set(allowed.flatMap(s => s.split(/[。\n]/)).map(compact));
   const words = allowed.flatMap(s => s.match(/[一-龠ァ-ヶー]{2,}/g) ?? []);
   // 句点の無い短い行は見出しや項目として扱い、文だけを照合する。
