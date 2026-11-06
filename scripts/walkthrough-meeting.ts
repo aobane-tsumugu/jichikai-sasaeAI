@@ -229,7 +229,9 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
       assert(!page.includes("答えがないときは、欠席として数えます"), "総会の公開のページに行事の文があります");
       assert(/<title>[^<]*総会の招集/.test(page), "公開のページの題が総会の招集ではありません");
       const article = [...page.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article>/gi)].find(a => /<h2>総会の招集<\/h2>/.test(a[1] ?? ""))?.[1];
-      assert(article && visible(article).includes(visible(form.values.get("text") ?? "")), "公開のページに招集の本文がありません");
+      // 題と同じ行と（確認中）の見出しは配る時に外れるので、文の行だけを見る。
+      const sentences = (form.values.get("text") ?? "").split("\n").map(line => line.trim()).filter(line => line.includes("。") && !line.includes("（確認中）"));
+      assert(article && sentences.length > 0 && sentences.every(line => visible(article).includes(visible(line))), "公開のページに招集の本文がありません");
       return "AIの招集の題、住民向けの文、日時・場所・議案を確認して配りました。公式LINEは送信していません。";
     }],
     ["4 Webで答える", async () => {

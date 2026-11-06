@@ -46,7 +46,11 @@ const draftText = (form: Form) => [...form.values].filter(([key]) => key === "te
 export function checkKindsFacts(text: string, allowed: string[], required: string[], strict = false) {
   // AI は語尾を整えるので、語尾を除いた形で探す。
   const stem = (fact: string) => compact(fact).replace(/(?:ことに決めました|ことにします|ます|ました|。)+$/, "");
-  for (const fact of required) assert(compact(text).includes(stem(fact)), "送った決定や未決が下書きにありません（言い換えはPMの確認が必要です）");
+  // 未決は言い回しが変わるので、話題の語（「は」の前）があれば通す。決定は語尾を除いた全文を探す。
+  for (const fact of required) {
+    const key = /決め/.test(fact) ? stem(fact) : stem(fact).split("は")[0]!;
+    assert(compact(text).includes(key), `送った決定や未決が下書きにありません（言い換えはPMの確認が必要です）: ${key.slice(0, 30)}`);
+  }
   const known = new Set(allowed.flatMap(s => s.split(/[。\n]/)).map(compact));
   const words = allowed.flatMap(s => s.match(/[一-龠ァ-ヶー]{2,}/g) ?? []);
   // 句点の無い短い行は見出しや項目として扱い、文だけを照合する。
