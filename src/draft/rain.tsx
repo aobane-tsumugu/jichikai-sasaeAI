@@ -36,7 +36,7 @@ export async function rainDraft(c: Context<AdminEnv>) {
       <div class="sheet-preview"><b>配る文</b><p id="rain-preview">{renderTemplate(template.body, { 行事名: state.project.title, 会場: place, 日時: dateTime })}</p></div>
       <script type="application/json" id="rain-templates" dangerouslySetInnerHTML={{ __html: JSON.stringify(templates).replace(/</g, "\\u003c") }} />
       <script dangerouslySetInnerHTML={{ __html: `(() => { const form = document.getElementById('rain-form'); const templates = JSON.parse(document.getElementById('rain-templates').textContent); const update = () => { const data = new FormData(form); const template = templates.find(item => item.id === data.get('templateId')); if (!template) return; const values = { '行事名': data.get('eventName'), '会場': data.get('place'), '日時': data.get('dateTime') }; document.getElementById('rain-preview').textContent = template.body.replace(/\\{([^{}]+)\\}/g, (whole, key) => values[key.trim()] ?? whole); }; form.addEventListener('input', update); form.addEventListener('change', update); })();` }} />
-      <fieldset><legend>公式LINE</legend><label><input type="radio" name="lineDelivery" value="send" checked />送る</label><label><input type="radio" name="lineDelivery" value="skip" />今回は知らせない</label></fieldset>
+      <fieldset><legend>公式LINE</legend><label><input type="radio" name="lineDelivery" value="send" checked />LINEで友だちに知らせる</label><label><input type="radio" name="lineDelivery" value="skip" />今回は知らせない</label></fieldset>
       <p>「送る」を選んで配ると、公式LINEの友だち全員へ知らせます。LINEで送った知らせは取り消せません。</p>
       <div class="action-bar"><button>配る</button></div>
     </form> : <p>{state.project.closedAt ? "この行事は閉じました。" : "案内を配ったあとに、雨の変更を知らせられます。"}</p>}
