@@ -136,7 +136,7 @@ describe("区の開設", () => {
       postForm(realApp, "/ops/wards", form, cookie, opsEnv, JSON_HEADERS);
     const base = { name: "区", firstAccountName: "役員" };
 
-    for (const slug of ["ops", "Bad_Slug", "a", "-x", "区"]) {
+    for (const slug of ["ops", "contact", "Bad_Slug", "a", "-x", "区"]) {
       const res = await open({ ...base, slug });
       expect(res.status, slug).toBe(400);
     }
@@ -204,29 +204,17 @@ describe("固定URLとQRと案内", () => {
 });
 
 describe("役員が入れなくなったときの復旧（提供側）", () => {
-  it("アカウントを足し、初期化すると古いパスワードは使えない", async () => {
+  it("区の画面からは足さず、作り直さず、問い合わせの受付へ案内する", async () => {
     const cookie = await opsLogin();
     const slug = uniqueSlug("recover");
-    const opened = (await (
-      await postForm(realApp, "/ops/wards", { name: "復旧の区", slug, firstAccountName: "役員" }, cookie, opsEnv, JSON_HEADERS)
-    ).json()) as { account: { name: string; password: string } };
-
-    const added = await postForm(realApp, `/ops/wards/${slug}/accounts`, { name: "新しい役員" }, cookie, opsEnv);
-    expect(added.status).toBe(201);
-    const addedPassword = /class="secret">([a-z0-9-]+)</.exec(await added.text())?.[1];
-    expect(addedPassword).toBeDefined();
-    expect((await postForm(realApp, `/${slug}/admin/login`, { name: "新しい役員", password: addedPassword! })).status).toBe(303);
-
-    const row = await env.DB.prepare(
-      "SELECT a.account_id FROM accounts a JOIN wards w ON w.ward_id = a.ward_id WHERE w.slug = ? AND a.name = ?",
-    )
-      .bind(slug, "役員")
-      .first<{ account_id: string }>();
-    const reset = await postForm(realApp, `/ops/wards/${slug}/accounts/${row!.account_id}/reset`, {}, cookie, opsEnv);
-    expect(reset.status).toBe(200);
-    const newPassword = /class="secret">([a-z0-9-]+)</.exec(await reset.text())?.[1];
-    expect(newPassword).not.toBe(opened.account.password);
-    expect((await postForm(realApp, `/${slug}/admin/login`, opened.account)).status).toBe(401);
-    expect((await postForm(realApp, `/${slug}/admin/login`, { name: "役員", password: newPassword! })).status).toBe(303);
+    await postForm(realApp, "/ops/wards", { name: "復旧の区（架空）", slug, firstAccountName: "役員" }, cookie, opsEnv, JSON_HEADERS);
+    const ward = await env.DB.prepare("SELECT ward_id FROM wards WHERE ward_id = (SELECT ward_id FROM wards WHERE slug = ?)").bind(slug).first<{ ward_id: string }>();
+    const account = await env.DB.prepare("SELECT account_id FROM accounts WHERE ward_id = ? AND name = ?").bind(ward!.ward_id, "役員").first<{ account_id: string }>();
+    expect((await postForm(realApp, `/ops/wards/${slug}/accounts`, { name: "新しい役員（架空）" }, cookie, opsEnv)).status).toBe(404);
+    expect((await postForm(realApp, `/ops/wards/${slug}/accounts/${account!.account_id}/reset`, {}, cookie, opsEnv)).status).toBe(404);
+    const html = await (await get(realApp, `/ops/wards/${slug}`, cookie, opsEnv)).text();
+    expect(html).toContain('href="/ops/contacts"');
+    expect(html).not.toContain('/accounts/');
+    expect(html).not.toContain('name="name"');
   });
 });

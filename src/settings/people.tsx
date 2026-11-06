@@ -107,7 +107,7 @@ async function loadView(c: Context<AdminEnv>): Promise<View> {
     c.env.DB.prepare(`SELECT a.name, COALESCE(actor.name, '役員') AS actor, l.created_at, l.purpose, l.created_by_provider, l.notified_at, l.notification_error
       FROM sign_in_links l JOIN accounts a ON a.ward_id = l.ward_id AND a.account_id = l.account_id
       LEFT JOIN accounts actor ON actor.ward_id = l.ward_id AND actor.account_id = l.created_by_account_id
-      WHERE l.ward_id = ? AND (l.purpose = 'reset' OR (l.purpose = 'invite' AND EXISTS
+      WHERE l.ward_id = ? AND (l.created_by_provider = 1 OR l.purpose = 'reset' OR (l.purpose = 'invite' AND EXISTS
         (SELECT 1 FROM sign_in_links old WHERE old.ward_id = l.ward_id AND old.account_id = l.account_id AND old.created_at < l.created_at AND old.purpose = 'invite')))
       ORDER BY l.created_at DESC`).bind(wardId)
       .all<View["resets"][number]>(),

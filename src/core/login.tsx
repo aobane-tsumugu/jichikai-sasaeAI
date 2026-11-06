@@ -30,6 +30,7 @@ const LoginPage = (props: { wardName: string; action: string; next: string; erro
     </form>
     <p class="muted">このスマホやパソコンでは、次から入力しなくても入れます。</p>
     <a class="quiet" href={`${props.action}/help`}>入れないとき</a>
+    <a class="quiet" href="/contact">SasaeAIに問い合わせる</a>
   </Layout>
 );
 
@@ -113,7 +114,7 @@ loginRoutes.get("/login/help", (c) => {
     <h2>ほかに入れるスマホやパソコンがあるとき</h2><p>そのスマホやパソコンで役員の一覧を開き、「自分の入り方へ」から入り方を足せます。</p>
     <h2>自分で戻せないとき</h2><p>ほかの役員に頼んでください。役員の一覧から、入るためのリンクを作ってもらえます。</p>
     <h2>ほかの役員も入れないとき</h2><p>連絡のつく連絡先を伝えてください。登録したメールが使えなくなったときも、連絡のつく所へ連絡します。</p>
-    <p>SasaeAIへの問い合わせの窓口は、まだ使えません。</p>
+    <a class="button" href={`/contact?ward=${encodeURIComponent(c.var.ward.name)}`}>SasaeAIに問い合わせる</a>
   </Layout>);
 });
 loginRoutes.route("/", signInRoutes);

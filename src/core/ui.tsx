@@ -66,8 +66,8 @@ export const ErrorNotice: FC<{ code?: string; messages: Readonly<Record<string, 
   code && Object.prototype.hasOwnProperty.call(messages, code) ? <Notice error>{messages[code]}</Notice> : null
 );
 
-/** 役員が入れないときの連絡先は、最初に渡した紙で案内する。 */
-export const ProviderContact: FC = () => <p>SasaeAIに連絡して、区の名前とお名前を伝えてください。連絡先は、最初にお渡しした紙に書いてあります。</p>;
+/** 入れないときも、区が止まっているときも開ける提供側への道。 */
+export const ProviderContact: FC = () => <a class="quiet" href="/contact">SasaeAIに問い合わせる</a>;
 
 export const WardStopped: FC<{ wardName: string; homeHref: string }> = ({ wardName, homeHref }) => (
   <Layout title="役員の画面は止まっています" siteName={`${wardName}役員の画面`} noindex>

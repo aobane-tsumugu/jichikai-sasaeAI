@@ -8,17 +8,20 @@ import type { AppEnv } from "../env";
 import { CutLine, PrintDocument, PrintQr, Sheet, qrSvg } from "../print";
 import { dispatchProject, SESSION_BUDGET_CENTS } from "../ai/session";
 import { retryJob } from "../intake/api";
-import { addAccount, listAccounts, resetPassword } from "../settings/accounts";
+import { listAccounts } from "../settings/accounts";
 import { checkOpsLogin, createOpsSession, OPS_COOKIE, OPS_SESSION_HOURS, opsConfigured, verifyOpsSession } from "./session";
 import { getWardMetrics, listWardQueue, type MonthlyMetrics } from "./metrics";
 import { listWards, openWard } from "./wards";
 import { clearLoginFailures, delayLoginAfterFailures } from "../core/login-throttle";
 import { formatJstDate, formatJst } from "../core/time";
 import { lifecyclePages } from "./lifecycle-pages";
+import { contactOpsRoutes } from "./contacts";
+import { alertsRoutes } from "./alerts";
+import { PrivateWardContact, getPrivateWardContact, savePrivateWardContact } from "./private-contact";
 import { readSpacePaper } from "../space/receive-paper";
 
 // 束 1: 運用の画面（提供側の ID とパスワード）。/ops に付く。
-// 区の一覧と開設、固定 URL と QR、A4 の案内、最初の役員の入る人の足す・初期化（役員が入れなくなった時）。
+// 区の一覧と開設、固定 URL と QR、A4 の案内、問い合わせの受付。提供側の復旧は受付から行う。
 // 区の開設は scripts/open-ward.ts からも同じ入口（POST /ops/wards、Accept: application/json）で行う。
 
 export const opsRoutes = new Hono<AppEnv>();
@@ -119,7 +122,7 @@ opsRoutes.post("/logout", (c) => {
 
 // ---- 区の一覧と開設 ----
 
-const OpenForm = (props: { error?: string; values?: { slug: string; name: string; firstAccountName: string; lineDestination?: string } }) => (
+const OpenForm = (props: { error?: string; values?: { slug: string; name: string; firstAccountName: string; lineDestination?: string; providerPhone?: string; providerEmail?: string } }) => (
   <>
     <h2 id="open-ward">新しい区を開く</h2>
     {props.error ? <Notice error>{props.error}</Notice> : null}
@@ -130,6 +133,8 @@ const OpenForm = (props: { error?: string; values?: { slug: string; name: string
       <input id="slug" name="slug" type="text" required maxlength={40} value={props.values?.slug ?? ""} />
       <label for="first">最初の役員の名前</label>
       <input id="first" name="firstAccountName" type="text" required maxlength={40} value={props.values?.firstAccountName ?? ""} />
+      <label for="provider-phone">区の連絡先の電話（提供側だけが見ます）</label><input id="provider-phone" name="providerPhone" maxlength={200} value={props.values?.providerPhone ?? ""} />
+      <label for="provider-email">区の連絡先のメール（書かなくてかまいません）</label><input id="provider-email" name="providerEmail" type="email" maxlength={200} value={props.values?.providerEmail ?? ""} />
       <details><summary>公式LINEを使う区だけ</summary>
         <label for="line-destination">公式LINEの送信先ID（書かなくてかまいません）</label>
         <input id="line-destination" name="lineDestination" type="text" maxlength={100} value={props.values?.lineDestination ?? ""} />
@@ -147,6 +152,8 @@ opsRoutes.get("/", async (c) => {
   return c.html(
     <OpsPage title="区の一覧" loggedIn>
       <h1>区の一覧</h1><p class="lead">SasaeAIを提供している区です。区の名前を押すと、その区の画面が開きます。</p><a class="quiet" href="#open-ward">新しい区を開く</a>
+      <p class="link-line"><a href="/ops/contacts">問い合わせを見る</a></p>
+      <p class="link-line"><a href="/ops/alerts">提供側で見る知らせ</a></p>
       <p class="link-line"><a href="/ops/costs">全体の費用を見る</a></p>
       <p class="link-line"><a href="/ops/deletions">消去の状況</a></p>
       {wards.length === 0 ? (
@@ -164,7 +171,7 @@ opsRoutes.get("/", async (c) => {
 opsRoutes.post("/wards", async (c) => {
   const form = await c.req.parseBody();
   const text = (key: string) => (typeof form[key] === "string" ? (form[key] as string) : "");
-  const input = { slug: text("slug"), name: text("name"), firstAccountName: text("firstAccountName"), lineDestination: text("lineDestination") };
+  const input = { slug: text("slug"), name: text("name"), firstAccountName: text("firstAccountName"), lineDestination: text("lineDestination"), providerPhone: text("providerPhone"), providerEmail: text("providerEmail") };
   const result = await openWard(c.env.DB, input);
 
   if (!result.ok) {
@@ -178,6 +185,7 @@ opsRoutes.post("/wards", async (c) => {
     );
   }
 
+  await savePrivateWardContact(c.env.DB, result.ward.wardId, text("providerPhone"), text("providerEmail"));
   const url = wardUrl(c.env, c.req.url, result.ward.slug);
   const adminUrl = `${url}admin/`;
   if (wantsJson(c)) {
@@ -255,23 +263,24 @@ opsRoutes.get("/wards/:slug", async (c) => {
   const labels = await getAnswerLabels(c.env.DB, ward.wardId);
   const digest = await getDigestSettings(c.env.DB, ward.wardId);
   const accounts = await listAccounts(c.env.DB, ward.wardId);
+  const privateContact = await getPrivateWardContact(c.env.DB, ward.wardId);
   const url = wardUrl(c.env, c.req.url, ward.slug);
   return c.html(
     <OpsPage title={ward.name} loggedIn>
       <p class="link-line">
         <a href="/ops/">区の一覧</a>
       </p>
-      <h1>{ward.name}</h1><p class="lead">この区の提供側の画面です。役員全員が入れなくなったときに、本人を確かめてから、入る人を足したり、パスワードを作り直したりします。</p>
+      <h1>{ward.name}</h1><p class="lead">この区の提供側の画面です。入れない方は、問い合わせの受付で本人を確かめてからリンクを出します。</p>
+      <PrivateWardContact value={privateContact} />
+      <p>入る人を足すことと、リンクを出すことは、問い合わせの受付で行います。</p>
+      <a class="button" href="/ops/contacts">問い合わせを見る</a>
       <h2>役員の入る人</h2>
-      <p class="muted">役員がだれも入れないと連絡が来たら、パスワードを作り直す前に、区の連絡先へこちらから電話して、本人か確かめてください。</p>
-      <p>パスワードを作り直すと、古いパスワードと、その人のスマホやパソコンの記憶は使えなくなります。前のパスワードには戻せません。</p>
       <table class="stack">
         <thead>
           <tr>
             <th>ID</th>
             <th>表示名</th>
             <th>役職</th>
-            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -280,28 +289,12 @@ opsRoutes.get("/wards/:slug", async (c) => {
               <td data-label="ID">{a.loginId}</td>
               <td data-label="表示名">{a.name}</td>
               <td data-label="役職">{a.seatTitle ?? ""}</td>
-              <td data-label="操作">
-                <form
-                  class="inline"
-                  method="post"
-                  action={`/ops/wards/${ward.slug}/accounts/${a.accountId}/reset`}
-                >
-                  <button type="submit" class="secondary">
-                    パスワードを作り直す
-                  </button>
-                </form>
-              </td>
+
             </tr>
           ))}
         </tbody>
       </table>
-      <form method="post" action={`/ops/wards/${ward.slug}/accounts`} class="panel">
-        <label for="newname">足す人の表示名</label>
-        <input id="newname" name="name" type="text" required maxlength={40} />
-        <p>
-          <button type="submit">入る人を足す</button>
-        </p>
-      </form>
+
       {c.req.query("digest") === "saved" ? <Notice>知らせの時刻と日数を保存しました。区の情報から直すこともできます。</Notice> : null}
       <form method="post" action={`/ops/wards/${ward.slug}/digest`}><DigestFields value={digest} /><button class="secondary">知らせの時刻と日数を保存する</button></form>
       <h2>この区のほかの画面</h2>
@@ -331,60 +324,6 @@ opsRoutes.post("/wards/:slug/answer-labels", async (c) => {
   if (!ward) return c.html(<WardNotFound />, 404);
   if (!await saveAnswerLabels(c.env.DB, ward.wardId, await c.req.parseBody(), null)) return c.html(<OpsPage title="人数の聞き方" loggedIn><Notice error>人数の聞き方を三つとも入れてください。一つ80文字までです。</Notice><a href={`/ops/wards/${ward.slug}`}>戻る</a></OpsPage>, 400);
   return c.redirect(`/ops/wards/${ward.slug}?labels=saved`, 303);
-});
-
-opsRoutes.post("/wards/:slug/accounts", async (c) => {
-  const ward = await wardOrNull(c, c.req.param("slug"));
-  if (!ward) return c.html(<WardNotFound />, 404);
-  const form = await c.req.parseBody();
-  const result = await addAccount(c.env.DB, ward.wardId, { name: typeof form["name"] === "string" ? form["name"] : "" });
-  if (!result.ok) {
-    return c.html(
-      <OpsPage title="足せませんでした" loggedIn>
-        <Notice error>{result.message}</Notice>
-        <p class="link-line">
-          <a href={`/ops/wards/${ward.slug}`}>戻る</a>
-        </p>
-      </OpsPage>,
-      400,
-    );
-  }
-  return c.html(
-    <OpsPage title="入る人を足しました" loggedIn>
-      <h1>入る人を足しました</h1>
-      <Credentials loginId={result.loginId} name={result.name} password={result.password} /><section class="next"><strong>次は</strong><p>この人に、IDとパスワードを渡してください。渡し終えてから、この画面を閉じてください。</p></section><p>閉じたら、もう一度パスワードを作り直せます。</p>
-      <p class="link-line">
-        <a href={`/ops/wards/${ward.slug}`}>区の画面へ戻る</a>
-      </p>
-    </OpsPage>,
-    201,
-  );
-});
-
-opsRoutes.post("/wards/:slug/accounts/:accountId/reset", async (c) => {
-  const ward = await wardOrNull(c, c.req.param("slug"));
-  if (!ward) return c.html(<WardNotFound />, 404);
-  const result = await resetPassword(c.env.DB, ward.wardId, c.req.param("accountId"));
-  if (!result.ok) {
-    return c.html(
-      <OpsPage title="パスワードを作り直せませんでした" loggedIn>
-        <Notice error>{result.message}</Notice>
-        <p class="link-line">
-          <a href={`/ops/wards/${ward.slug}`}>戻る</a>
-        </p>
-      </OpsPage>,
-      404,
-    );
-  }
-  return c.html(
-    <OpsPage title="パスワードを作り直しました" loggedIn>
-      <h1>パスワードを作り直しました</h1>
-      <Credentials loginId={result.loginId} name={result.name} password={result.password} /><section class="next"><strong>次は</strong><p>この人に、IDとパスワードを渡してください。渡し終えてから、この画面を閉じてください。</p></section><p>閉じたら、もう一度パスワードを作り直せます。</p>
-      <p class="link-line">
-        <a href={`/ops/wards/${ward.slug}`}>区の画面へ戻る</a>
-      </p>
-    </OpsPage>,
-  );
 });
 
 // ---- QR と A4 の案内 ----
@@ -622,6 +561,8 @@ opsRoutes.post("/wards/:slug/queue/:jobId/retry", async (c) => {
   return c.html(<OpsPage title={retried ? "もう一度動かしました" : "動かし直す必要はありません"} loggedIn><h1>{retried ? "もう一度動かしました" : "動かし直す必要はありません"}</h1><Notice>{retried ? `${filename || "資料"}を、もう一度読み始めました` : "この資料は、すでに処理が進んでいます。"}</Notice><p>結果は、少しあとで、読み取りの状況に出ます。役員に何かを頼む必要はありません。</p><section class="next"><strong>次は</strong><p>しばらくしてから、読み取りの状況で結果を見てください。</p><a class="button" href={`/ops/wards/${ward.slug}/queue`}>読み取りの状況へ戻る</a></section><h2>間違えたときは</h2><p>間違えて動かしたときも、困ることはありません。もう一度読み直します。</p></OpsPage>);
 });
 
+opsRoutes.route("/contacts", contactOpsRoutes);
+opsRoutes.route("/alerts", alertsRoutes);
 opsRoutes.route("/", lifecyclePages);
 
 function budgetSaved(c: OpsContext, slug: string) {
