@@ -779,6 +779,10 @@ def _check_story() -> None:
 def main() -> None:
     _check_story()
     sys.stdout.reconfigure(encoding="utf-8")  # Windows の既定の文字コードで化けないように
+    if "--kinds" in sys.argv:
+        from build_kinds import write_kinds
+        write_kinds()
+        return
     write_roster()
     write_secretary()
     write_committee_xlsx()
@@ -795,6 +799,8 @@ def main() -> None:
     write_rota_day()
     write_texts()
     write_web_and_line()
+    from build_kinds import write_kinds
+    write_kinds()
     n = sum(1 for p in ROOT.rglob("*") if p.is_file() and "build" not in p.parts)
     print(f"作成: {n} ファイル ({ROOT})")
 

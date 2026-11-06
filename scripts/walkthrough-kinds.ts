@@ -1,6 +1,8 @@
 // U51。PMが架空の区へ流すHTTPの通し確認。引数はwalkthrough-meetingと同じ。
 import type { MeetingOptions, MeetingPorts } from "./walkthrough-meeting.ts";
 import { kindsMaterial } from "../test/fixtures/kinds.ts";
+import { KIND_FILES, KINDS_FIXTURE_YEAR, kindFilesForm } from "../test/fixtures/kinds-files.ts";
+import type { KindFileGroup } from "../test/fixtures/kinds-files.ts";
 
 class Stop extends Error {}
 function assert(value: unknown, message: string): asserts value {
@@ -85,7 +87,7 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
   assert(["http:", "https:"].includes(base.protocol) && base.pathname === "/" && !base.search && !base.hash && !base.username && !base.password, "--baseには資格情報や区のパスを含まないURLを指定してください");
   assert(/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(options.ward) && options.ward !== "demoku", "demokuでは通し確認を実行しません。確認用の区のURL名を指定してください");
   const root = `/${options.ward}`, admin = root + "/admin";
-  const source = kindsMaterial();
+  const source = options.files ? kindsMaterial(KINDS_FIXTURE_YEAR) : kindsMaterial();
   const projects: Record<string, string> = {};
   const cookies = { officer: new Map<string, { pair: string; path: string }>(), member: new Map<string, { pair: string; path: string }>() };
   const secrets = new Set([options.name, options.password]);
@@ -149,20 +151,31 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
     await get(location);
     return id;
   };
-  const upload = async (id: string, label: string, text: string) => {
+  const upload = async (id: string, label: string, text: string, group: KindFileGroup) => {
     const filename = `架空の${label}_${id}.txt`;
-    const form = new FormData();
-    form.set("project_id", id); form.append("part", new Blob([text], { type: "text/plain" }), filename); form.append("part_kind", "file");
+    let form: FormData;
+    if (options.files) {
+      assert(ports.loadFixture, "架空資料の読み込みを用意してください");
+      form = await kindFilesForm(id, group, ports.loadFixture, await get(admin + "/intake?project=" + id));
+    } else {
+      form = new FormData();
+      form.set("project_id", id); form.append("part", new Blob([text], { type: "text/plain" }), filename); form.append("part_kind", "file");
+    }
+    const filenames = options.files ? KIND_FILES[group].map(path => path.split("/").at(-1)!) : [filename];
     const res = await req(admin + "/intake", { method: "POST", headers: { accept: "application/json" }, body: form });
     const result = await res.json() as { ok?: boolean; jobId?: string };
     assert(res.ok && result.ok && result.jobId, "架空の資料を受け付けられません");
     await wait(async () => {
       const html = await get(`${admin}/intake/received?project=${id}`);
-      const section = [...html.matchAll(/<li\b[^>]*class="panel"[^>]*>([\s\S]*?)<\/li>/gi)].find(s => visible(s[1] ?? "").includes(filename));
-      assert(section, "送った資料の読み取りの進み具合がありません");
-      const status = visible(section[1] ?? "");
-      assert(!/読めませんでした|読み取りが遅れています|繋げられませんでした|止まりました/.test(status), "資料の読み取り・反映が止まりました");
-      return status.includes("行事に入れました") ? true : null;
+      let done = true;
+      for (const name of filenames) {
+        const section = [...html.matchAll(/<li\b[^>]*class="panel"[^>]*>([\s\S]*?)<\/li>/gi)].find(s => visible(s[1] ?? "").includes(name));
+        assert(section, "送った資料の読み取りの進み具合がありません");
+        const status = visible(section[1] ?? "");
+        assert(!/読めませんでした|読み取りが遅れています|繋げられませんでした|止まりました/.test(status), "資料の読み取り・反映が止まりました");
+        done = done && status.includes("行事に入れました");
+      }
+      return done ? true : null;
     });
   };
   const draft = async (id: string, kind: string) => {
@@ -205,8 +218,8 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
       // 区に前の試行の会議が残っていても、同じ日なら閉じた順で今回の一回目が「前回」になる。その年の最後の日に揃える。
       const today = `${source.year}-12-31`, tomorrow = today;
       const first = await open("board1", "board_meeting", source.year, "役員会1回目（架空）", today);
-      await upload(first, "役員会の議題", source.agenda);
-      await upload(first, "役員会の記録", source.minutes);
+      await upload(first, "役員会の議題", source.agenda, "boardAgenda");
+      await upload(first, "役員会の記録", source.minutes, "boardMinutes");
       const minutes = await draft(first, "report");
       checkKindsFacts(draftText(minutes.form), [source.minutes, source.agenda, `${source.year}年1月10日`, "架空の集会室"], [source.decision, source.pending]);
       // AIが拾った決定を人が閉じる画面から残す。住民への報告は空欄にする。
@@ -220,7 +233,7 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
       // 未決が資料の別の場所にあるだけでも、質問へ引き継がれなければ通過にしない。
       const questions = /<h4>決まらなかったこと・残っている質問<\/h4>([\s\S]*?)(?=<h4>|<a\b)/.exec(agenda.html)?.[1] ?? "";
       assert(compact(visible(questions)).includes(compact(source.pending)), "前回の未決が残っている質問にありません");
-      await upload(second, "役員会2回目の記録", source.nextMinutes);
+      await upload(second, "役員会2回目の記録", source.nextMinutes, "boardNextMinutes");
       const next = await draft(second, "report");
       checkKindsFacts(draftText(next.form), [source.nextMinutes, `${source.year}年2月10日`, "架空の集会室"], [source.nextDecision]);
       const nextClose = readForm(await get(`${admin}/close/${second}`), `/close/${second}/finalize`);
@@ -235,7 +248,7 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
         [...handPage.matchAll(/<select\b[^>]*name="district"[^>]*>([\s\S]*?)<\/select>/g)].flatMap(s => [...(s[1] ?? "").matchAll(/<option\b([^>]*)>/g)]).map(o => attr(o[1] ?? "", "value")).find(Boolean);
       assert(district, "班の選びに班の名前がありません。PMが確認用の区に班を用意してください");
       await setRoster([source.names.retained, source.names.exempt, source.names.departed], district);
-      await upload(previous, "当番の表", source.duty);
+      await upload(previous, "当番の表", source.duty, "duty");
       // 表が今年の中身へ入ったことを、閉じる前に担当の入力欄で確認する。
       const oldDraft = await get(`${admin}/projects/${previous}/draft/duty_roster`);
       const oldNames = forms(oldDraft).filter(f => /\/draft\/duty-row\//.test(f.action)).map(f => f.values.get("assignee"));
@@ -296,7 +309,7 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
     }],
     ["3 市の依頼を配らずに閉じる", async () => {
       const id = await open("city", "city_request", source.year, "設備の状況の回答（架空）");
-      await upload(id, "市の通知", source.city);
+      await upload(id, "市の通知", source.city, "city");
       const result = await draft(id, "procedure");
       assert(result.form.values.get("title") === "回答の資料", "市の依頼の下書きが回答の資料ではありません");
       const text = draftText(result.form);
@@ -345,6 +358,7 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
       "# 行事と総会の外の通し確認", "", `- 実行日時: ${new Date().toISOString()}`, `- 接続先: ${base.origin}`, `- 区: ${options.ward}`,
       ...Object.entries(projects).map(([kind, id]) => `- 作った仕事（${kind}）: ${id}`),
       "- 資料・世帯・理由: すべて架空", "- 公式LINE: 実送信なし", "- 資格情報: 値は記録しません",
+      `- 入力: ${options.files ? "Word・Excel・PDF・紙の写真風（固定日付の架空資料）" : "文の架空資料"}`,
       "- HTTPとHTMLの確認です。本物のAI・staging・紙の見え方の確認は実行環境に応じてPMが判断します。", "",
       "| 段 | 結果 | 確認したこと | 秒 |", "|---|---|---|---:|", ...rows, "",
     ].join("\n")));
@@ -361,7 +375,7 @@ async function main() {
   const arg = (key: string) => { const i = args.indexOf(key); return i < 0 ? undefined : args[i + 1]; };
   const base = arg("--base"), ward = arg("--ward"), creds = arg("--creds");
   if (!base || !ward || !creds || ward === "demoku") {
-    console.error("使い方: npm run walkthrough-kinds -- --base <URL> --ward <架空の区のURL名> --creds <資格情報ファイル>。demokuでは実行しません。");
+    console.error("使い方: npm run walkthrough-kinds -- --base <URL> --ward <架空の区のURL名> --creds <資格情報ファイル> [--files]。demokuでは実行しません。");
     process.exitCode = 2; return;
   }
   const text = readFileSync(resolve(creds), "utf8");
@@ -369,7 +383,8 @@ async function main() {
   const password = /^パスワード\s*[:：]\s*(.+)$/m.exec(text)?.[1]?.trim();
   assert(name && password, "資格情報は「名前:」「パスワード:」形式で指定してください");
   const evidence = resolve(dirname(fileURLToPath(import.meta.url)), "../docs/EVIDENCE/walkthrough-kinds-" + new Date().toISOString().replace(/[:.]/g, "-") + ".md");
-  const result = await runKindsWalkthrough({ base, ward, name, password }, {
+  const result = await runKindsWalkthrough({ base, ward, name, password, files: args.includes("--files") }, {
+    loadFixture: async path => new Uint8Array(readFileSync(fileURLToPath(new URL("../fixtures/kinds/" + path, import.meta.url).href))),
     fetch, log: line => console.log(line), record: report => { mkdirSync(dirname(evidence), { recursive: true }); writeFileSync(evidence, report, "utf8"); },
   });
   console.log("記録: " + evidence);

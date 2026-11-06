@@ -1,10 +1,13 @@
 // 総会をHTTPで通す道具。本物のAIを使う実行はPMが行う。
-// npm run walkthrough-meeting -- --base <URL> --ward <区のURL名> --creds <資格情報ファイル>
+// npm run walkthrough-meeting -- --base <URL> --ward <区のURL名> --creds <資格情報ファイル> [--files]
+import { KIND_FILES, MEETING_FIXTURE_NOW, kindFilesForm } from "../test/fixtures/kinds-files.ts";
+import type { FixtureLoader, KindFileGroup } from "../test/fixtures/kinds-files.ts";
 export interface MeetingOptions {
   base: string;
   ward: string;
   name: string;
   password: string;
+  files?: boolean;
 }
 export interface MeetingPorts {
   fetch: typeof fetch;
@@ -12,9 +15,10 @@ export interface MeetingPorts {
   log: (line: string) => void;
   sleep?: (ms: number) => Promise<void>;
   waitMs?: number;
+  loadFixture?: FixtureLoader;
 }
 
-// fixturesには総会の議案が無いため、期間中に作った架空の文を使う。
+// 文だけの通しは、従来どおり実行日から日付を決める。
 export function meetingMaterial(now = new Date()) {
   const day = new Date(now.getTime() + 60 * 86400_000);
   const due = new Date(now.getTime() + 30 * 86400_000);
@@ -92,7 +96,7 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
   const root = `/${options.ward}`;
   const admin = root + "/admin";
   const projectTitle = "架空の総会 通し確認";
-  const material = meetingMaterial();
+  const material = options.files ? meetingMaterial(new Date(MEETING_FIXTURE_NOW)) : meetingMaterial();
   const cookies = new Map<string, { pair: string; path: string }>();
   const secrets = new Set([options.name, options.password]);
   const rows: string[] = [];
@@ -145,21 +149,32 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
     } while (Date.now() < until);
     throw new Error(label + "を待つ上限に達しました");
   };
-  const upload = async (filename: string, text: string) => {
-    const form = new FormData();
-    form.set("project_id", project);
-    form.append("part", new Blob([text], { type: "text/plain" }), filename);
-    form.append("part_kind", "file");
+  const upload = async (filename: string, text: string, group: KindFileGroup) => {
+    let form: FormData;
+    if (options.files) {
+      assert(ports.loadFixture, "架空資料の読み込みを用意してください");
+      form = await kindFilesForm(project, group, ports.loadFixture, await get(admin + "/intake?project=" + project));
+    } else {
+      form = new FormData();
+      form.set("project_id", project);
+      form.append("part", new Blob([text], { type: "text/plain" }), filename);
+      form.append("part_kind", "file");
+    }
+    const filenames = options.files ? KIND_FILES[group].map(path => path.split("/").at(-1)!) : [filename];
     const sent = await req(admin + "/intake", { method: "POST", headers: { accept: "application/json" }, body: form });
     const result = await sent.json() as { ok?: boolean; jobId?: string };
     assert(sent.ok && result.ok && result.jobId, "架空の資料を受け付けられません");
     await wait(async () => {
       const html = await get(`${admin}/intake/received?project=${project}`);
-      const section = [...html.matchAll(/<li\b[^>]*class="panel"[^>]*>([\s\S]*?)<\/li>/gi)].find(s => visible(s[1] ?? "").includes(filename));
-      assert(section, "送った資料の読み取りの進み具合がありません");
-      const status = visible(section[1] ?? "");
-      assert(!/読めませんでした|読み取りが遅れています|繋げられませんでした|止まりました/.test(status), "資料の読み取り・反映が止まりました");
-      return status.includes("行事に入れました") ? true : null;
+      let done = true;
+      for (const name of filenames) {
+        const section = [...html.matchAll(/<li\b[^>]*class="panel"[^>]*>([\s\S]*?)<\/li>/gi)].find(s => visible(s[1] ?? "").includes(name));
+        assert(section, "送った資料の読み取りの進み具合がありません");
+        const status = visible(section[1] ?? "");
+        assert(!/読めませんでした|読み取りが遅れています|繋げられませんでした|止まりました/.test(status), "資料の読み取り・反映が止まりました");
+        done = done && status.includes("行事に入れました");
+      }
+      return done ? true : null;
     }, "資料の読み取り・反映");
   };
   const draft = async (kind: string) => {
@@ -198,8 +213,8 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
       return "種類を総会にして新しく開きました。資料・名前・答えはすべて架空です。";
     }],
     ["2 議案の資料を送る", async () => {
-      await upload(`架空の総会_議案_${project}.txt`, material.agenda);
-      return "架空の議案の文を送り、読み取りと反映が終わりました。";
+      await upload(`架空の総会_議案_${project}.txt`, material.agenda, "meetingAgenda");
+      return options.files ? "去年の議案書・決算書・議事録の写真と今年の総会の資料を送り、読み取りと反映が終わりました。" : "架空の議案の文を送り、読み取りと反映が終わりました。";
     }],
     ["3 招集を頼んで配る", async () => {
       const form = await draft("announcement");
@@ -276,7 +291,7 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
       return "電話の出席を1件追加。答えた5世帯、出席2世帯、委任2世帯、欠席1世帯を画面で確認しました。";
     }],
     ["7 議事録を頼む", async () => {
-      await upload(`架空の総会_記録_${project}.txt`, material.minutes);
+      await upload(`架空の総会_記録_${project}.txt`, material.minutes, "meetingMinutes");
       const form = await draft("report");
       assert(form.values.get("title") === "議事録", "AIの下書きの題が議事録ではありません");
       assert(form.values.get("scope") === "staff", "議事録が役員だけの下書きではありません");
@@ -314,6 +329,7 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
     await ports.record([
       "# 総会の通し確認", "", `- 実行日時: ${new Date().toISOString()}`, `- 接続先: ${base.origin}`, `- 区: ${options.ward}`,
       `- 総会: ${project || "まだ開いていません"}`, "- 資料と答え: すべて架空", "- 公式LINE: 実送信なし", "- 資格情報: 値は記録しません",
+      `- 入力: ${options.files ? "Word・Excel・紙の写真風（固定日付の架空資料）" : "文の架空資料"}`,
       "- この記録はHTTPとHTMLの確認です。本物のAI・staging・紙の見え方の確認は、実行環境に応じてPMが別に判断します。", "",
       "| 段 | 結果 | 確認したこと | 秒 |", "|---|---|---|---:|", ...rows, "",
     ].join("\n"));
@@ -330,7 +346,7 @@ async function main() {
   const arg = (key: string) => { const i = args.indexOf(key); return i < 0 ? undefined : args[i + 1]; };
   const base = arg("--base"); const ward = arg("--ward"); const creds = arg("--creds");
   if (!base || !ward || !creds) {
-    console.error("使い方: npm run walkthrough-meeting -- --base <URL> --ward <区のURL名> --creds <資格情報ファイル>");
+    console.error("使い方: npm run walkthrough-meeting -- --base <URL> --ward <区のURL名> --creds <資格情報ファイル> [--files]");
     process.exitCode = 2; return;
   }
   if (ward === "demoku") {
@@ -342,7 +358,8 @@ async function main() {
   const password = /^パスワード\s*[:：]\s*(.+)$/m.exec(text)?.[1]?.trim();
   assert(name && password, "資格情報は「名前:」「パスワード:」形式で指定してください");
   const evidence = resolve(dirname(fileURLToPath(import.meta.url)), "../docs/EVIDENCE/walkthrough-meeting-" + new Date().toISOString().replace(/[:.]/g, "-") + ".md");
-  const result = await runMeetingWalkthrough({ base, ward, name, password }, {
+  const result = await runMeetingWalkthrough({ base, ward, name, password, files: args.includes("--files") }, {
+    loadFixture: async path => new Uint8Array(readFileSync(fileURLToPath(new URL("../fixtures/kinds/" + path, import.meta.url).href))),
     fetch, log: line => console.log(line), record: report => { mkdirSync(dirname(evidence), { recursive: true }); writeFileSync(evidence, report, "utf8"); },
   });
   console.log("記録: " + evidence);
