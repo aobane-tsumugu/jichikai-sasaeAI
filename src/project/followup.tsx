@@ -74,19 +74,25 @@ function inquiryFacts(projects: Awaited<ReturnType<typeof listProjects>>, subjec
   return matches.length === 1 ? matches[0] : null;
 }
 
+// 点数は付けない。日付の手がかりのあるものを先にし、その中は届いた日の順。
+function sortOpen(groups: InquiryRow[][], projects: Awaited<ReturnType<typeof listProjects>>) {
+  return groups.filter((g) => !g[0]!.answer).map((group) => ({ group, project: inquiryFacts(projects, group[0]!.subject) }))
+    .sort((a, b) => Number(Boolean(dateWords(b.group[0]!.subject).length || b.project || b.group.length > 1))
+      - Number(Boolean(dateWords(a.group[0]!.subject).length || a.project || a.group.length > 1))
+      || b.group[0]!.received_at.localeCompare(a.group[0]!.received_at));
+}
+
+/** 答えていない問い合わせを、問い合わせの画面と同じ順で返す。 */
+export async function openInquiries(db: D1Database, wardId: string) {
+  return sortOpen(inquiryGroups(await inquiryRecords(db, wardId)), await listProjects(db, wardId));
+}
+
 followupAdmin.get("/inquiries", async (c) => {
   const { ward } = c.var;
   const records = await inquiryRecords(c.env.DB, ward.wardId);
   const notice = inquiryNotice(await getDigestSettings(c.env.DB, ward.wardId), Boolean(await officerGroupId(c.env, ward.wardId)));
   const groups = inquiryGroups(records);
-  const projects = await listProjects(c.env.DB, ward.wardId);
-  const open = groups.filter((g) => !g[0]!.answer).map((group) => ({
-    group, project: inquiryFacts(projects, group[0]!.subject),
-  }));
-  // 点数は付けない。日付の手がかりのあるものを先にし、その中は届いた日の順。
-  open.sort((a, b) => Number(Boolean(dateWords(b.group[0]!.subject).length || b.project || b.group.length > 1))
-    - Number(Boolean(dateWords(a.group[0]!.subject).length || a.project || a.group.length > 1))
-    || b.group[0]!.received_at.localeCompare(a.group[0]!.received_at));
+  const open = sortOpen(groups, await listProjects(c.env.DB, ward.wardId));
   const answered = groups.filter((g) => g[0]!.answer).map((g) => g[0]!);
   const requests = records.filter((r) => r.kind === "request");
   return c.html(<Layout title="問い合わせと要望" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
