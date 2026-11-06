@@ -72,13 +72,15 @@ export async function findFragments(db: D1Database, wardId: string, question: st
   const terms = questionTerms(question);
   if (terms.length === 0) return [];
   const hits = terms.map(() => "(instr(e.content, ?) > 0)").join(" + ");
+  // 冒頭の「去年」だけに寄らず、質問の語が初めて現れる位置のうち後ろの箇所から取る。
+  const position = `max(1, ${terms.map(() => "instr(e.content, ?)").join(", ")})`;
   const result = await db.prepare(`
     SELECT e.entry_id, e.project_id, p.title, p.closed_at, p.kind AS project_kind, e.year, e.record_type,
-           e.counterpart, e.source_id, e.locator, substr(e.content, 1, 600) AS excerpt
+           e.counterpart, e.source_id, e.locator, substr(e.content, max(1, ${position} - 100), 600) AS excerpt
       FROM archive_search_entries e
       JOIN projects p ON p.ward_id = e.ward_id AND p.project_id = e.project_id
      WHERE e.ward_id = ? AND (${hits}) > 0
      ORDER BY (${hits}) DESC, e.year DESC, e.entry_id DESC
-     LIMIT ?`).bind(wardId, ...terms, ...terms, limit).all<ArchiveSearchResult>();
+     LIMIT ?`).bind(...terms, wardId, ...terms, ...terms, limit).all<ArchiveSearchResult>();
   return result.results;
 }
