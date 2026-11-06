@@ -65,6 +65,8 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
         VALUES (?, '2026-11-06', '2026-11-06', 1, 0, 1)`).bind(w),
       env.DB.prepare(`INSERT INTO line_photo_sources (ward_id, destination, source_type, source_id, project_id)
         VALUES (?, 'fictional-destination', 'group', 'fictional-group', ?)`).bind(w, p),
+      env.DB.prepare(`INSERT INTO line_photo_context_texts (ward_id, destination, source_type, source_id, event_id, received_at, text, expires_at)
+        VALUES (?, 'fictional-destination', 'user', 'fictional-user', 'fictional-context-event', '2026-11-06T00:00:00Z', '架空の写真の前後の文', '2026-11-07T00:00:00Z')`).bind(w),
       env.DB.prepare(`INSERT INTO project_help_offers (ward_id, offer_id, project_id, name, times, created_at)
         VALUES (?, ?, ?, '架空の手伝い', '架空の午後', '2026-11-06')`).bind(w, w, p),
       env.DB.prepare(`INSERT INTO sign_in_links (ward_id, link_id, account_id, purpose, token_hash, expires_at, created_at, created_by_account_id)
@@ -91,7 +93,13 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
   const otherCounts = new Map<string, number>();
   for (const entry of WARD_TABLE_POLICY) {
     const rows = await env.DB.prepare(`SELECT * FROM ${entry.table} WHERE ward_id = ?`).bind(target.ward.wardId).all();
-    expect(snapshot.tables[entry.table], entry.table).toEqual(rows.results);
+    if (entry.snapshot === true) {
+      expect(snapshot.tables[entry.table], entry.table).toEqual(rows.results);
+    } else {
+      // 一時的な文など、復元しない方針の表は空配列としても写しに入れない。
+      expect(snapshot.tables).not.toHaveProperty(entry.table);
+    }
+    if (entry.table === "line_photo_context_texts") expect(rows.results).toHaveLength(1);
     if (typeof entry.deletion === "object") if (!entry.table.startsWith("provider_contact")) expect(rows.results.length, entry.table).toBeGreaterThan(0);
     if (entry.export === true) {
       const expected = rows.results.map((row) => Object.fromEntries(Object.entries(row).filter(([column]) => !entry.omitExportColumns?.includes(column))));
@@ -103,6 +111,9 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
     otherCounts.set(entry.table, count!.n);
   }
   expect(snapshot.tables.line_photo_items).toContainEqual(expect.objectContaining({ quote_token: "fictional-quote-token" }));
+  expect(snapshot.tables).not.toHaveProperty("line_photo_context_texts");
+  expect(exported.tables).not.toHaveProperty("line_photo_context_texts");
+  expect(otherCounts.get("line_photo_context_texts")).toBe(1);
   expect(exported.tables.accounts![0]).not.toHaveProperty("password_hash");
   expect(exported.tables.sign_in_methods![0]).not.toHaveProperty("subject");
   expect(exported.objects.map((object) => object.key)).toEqual(["originals/fictional.jpg"]);

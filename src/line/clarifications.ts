@@ -7,6 +7,8 @@ import { addQuestion } from "../project/api";
 import { lineChannelCredentials, replyLineText, pushInquiryAnswer, inquiryPushAllowance, sendLineQuestion } from "./api";
 import { photoCheckMessage } from "../intake/photo-check";
 import { sha256Hex } from "../intake/media";
+import { matchPendingLinePhotos } from "../intake/pipeline";
+import { PHOTO_AFTER_MS, purgePhotoTexts } from "./photo-context";
 
 // 実測前の仮の値。夜の質問、催促、無制限の通知を作らない。
 export const PHOTO_GROUP_GAP_MS = 5000;
@@ -31,6 +33,7 @@ interface Batch {
   reply_token: string | null; reply_at: string | null; quick_replied: number;
   prepared_at: string | null; message_text: string | null; sent_at: string | null;
   screen_answered_at: string | null;
+  match_finished_at: string | null;
 }
 
 export async function registerLinePhoto(db: D1Database, wardId: string, input: {
@@ -112,6 +115,8 @@ async function prepareQuestions(env: Env, wardId: string, batch: Batch, now: Dat
   if (!items.results.length || items.results.some((item) => !item.read_at)) return false;
   if (batch.expected_count !== null && items.results.length < batch.expected_count) return false;
   if (batch.expected_count === null && now.getTime() - Date.parse(batch.last_received_at) < PHOTO_GROUP_GAP_MS) return false;
+  if (items.results.some((item) => !item.project_id) &&
+    (!batch.match_finished_at || now.getTime() < Date.parse(batch.last_received_at) + PHOTO_AFTER_MS)) return false;
   const claim = await env.DB.prepare("UPDATE line_photo_batches SET prepared_at = ? WHERE ward_id = ? AND batch_id = ? AND prepared_at IS NULL")
     .bind(now.toISOString(), wardId, batch.batch_id).run();
   if (!claim.meta.changes) return false;
@@ -380,6 +385,8 @@ export async function completeScreenClarifications(env: Env, wardId: string, dep
 
 export async function processPhotoBatches(env: Env, wardId: string, deps: QuestionDeliveryDeps = {}): Promise<void> {
   const now = deps.now ?? new Date();
+  await purgePhotoTexts(env.DB, wardId, now);
+  await matchPendingLinePhotos(env, wardId, now);
   await completeScreenClarifications(env, wardId, deps);
   await resolveRetakes(env, wardId, deps);
   const batches = await env.DB.prepare(`SELECT * FROM line_photo_batches b WHERE b.ward_id = ? AND b.prepared_at IS NULL

@@ -7,7 +7,7 @@ import { getClient } from "../ai/deps";
 import { matchClarificationAnswer } from "../ai/clarification";
 import { recordLineInquiry } from "../project/followup";
 import { isUnknownAnswer, replyAfterClarification, PHOTO_GROUP_GAP_MS, processPhotoBatches, registerLinePhoto, replyPhotoReceipt, replyQuickPhotoChecks, saveClarificationAnswers, sentQuestionsForSource, type ClarificationRow, type PhotoSource } from "./clarifications";
-import { rememberPhotoSource } from "./photo-context";
+import { rememberPhotoSource, rememberPhotoText, purgePhotoTexts, PHOTO_AFTER_MS } from "./photo-context";
 
 const RECEIPT_RETENTION_DAYS = 30;
 
@@ -140,6 +140,8 @@ export async function acceptLineWebhook(
   const events = payload.events;
   const processEvents = async (): Promise<void> => {
   let receivedPhoto = false;
+  let receivedText = false;
+  await purgePhotoTexts(db, wardId, now);
   const photoChecksPending: Promise<void>[] = [];
   const photoJobs: string[] = [];
   const duplicateSets = new Map<string, { source: PhotoSource; setId: string; count: number }>();
@@ -215,6 +217,16 @@ export async function acceptLineWebhook(
         quotedMessageId: event.message.quotedMessageId, clarificationId: postback?.get("clarification") ?? undefined, now,
       });
       if (original.kind === "text") {
+        receivedText = true;
+        await rememberPhotoText(db, wardId, { destination: payload.destination!, sourceType: source.type, sourceId: source.id,
+          eventId, receivedAt: original.receivedAt, text: original.text ?? "" }, now);
+        const waitingPhoto = await db.prepare(`SELECT batch_id FROM line_photo_batches WHERE ward_id = ? AND destination = ?
+          AND source_type = ? AND source_id = ? AND match_finished_at IS NULL AND last_received_at <= ?
+          AND last_received_at >= ? LIMIT 1`)
+          .bind(wardId, payload.destination!, source.type, source.id, original.receivedAt,
+            new Date(Date.parse(original.receivedAt) - PHOTO_AFTER_MS).toISOString()).first();
+        // 写真のあとに届く文は当てるためだけに持つ。公式への質問と、聞いたことへの答えは従来の道へ。
+        if (waitingPhoto && !activeQuestions.length && !(original.officialAddressed && looksLikeInquiry(original.text ?? ""))) continue;
         const questions = activeQuestions;
         if (event.message.quotedMessageId && questions.length) original.officialAddressed = true;
         if (postback) {
@@ -236,7 +248,10 @@ export async function acceptLineWebhook(
           const projectIds = [...new Set(answers.flatMap((answer) => answer.question.project_id ? [answer.question.project_id] : []))];
           match = projectIds.length === 1 ? { disposition: "matched", projectId: projectIds[0] } : { disposition: "unmatched" };
           if (!projectIds.length && answers.some((answer) => answer.question.topic === "project")) {
-            try { match = await ports.matchInboxItem(wardId, { ...original, officialAddressed: false }); } catch { /* 行事が分からなくても受ける。 */ }
+            const named = await db.prepare("SELECT project_id FROM projects WHERE ward_id = ? AND closed_at IS NULL AND title = ?")
+              .bind(wardId, (original.text ?? "").trim()).all<{ project_id: string }>();
+            if (named.results.length === 1) match = { disposition: "matched", projectId: named.results[0]!.project_id };
+            else try { match = await ports.matchInboxItem(wardId, { ...original, officialAddressed: false }); } catch { /* 行事が分からなくても受ける。 */ }
           }
         } else if (original.officialAddressed && looksLikeInquiry(original.text ?? "")) {
           match = { disposition: "unmatched", inquiry: true };
@@ -348,12 +363,15 @@ export async function acceptLineWebhook(
     finally {
       for (const jobId of photoJobs) await replyPhotoReceipt(env, wardId, jobId, { fetch: fetcher, now: deliveryNow });
     }
-    // 同じ送信の写真は順に読む。直前の写真の当て先が次の写真の手掛かりになる。
+    // 全部の読みがそろってから、同じ送信の写真をまとめて当てる。
     for (const jobId of photoJobs) {
       try { await ports.readPhoto?.(wardId, jobId); }
       catch { console.error("写真の読み取りを始められませんでした", wardId, jobId); }
     }
   }
+  if (receivedText) await processPhotoBatches(env, wardId, { fetch: fetcher, now }).catch(() => {
+    console.error("後から届いた文で写真を確認できませんでした", wardId);
+  });
   };
   const work = processEvents();
   if (dependencies) await work;
