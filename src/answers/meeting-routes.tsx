@@ -6,7 +6,7 @@ import { newId } from "../core/ids";
 import { PrintDocument, Sheet } from "../print/a4";
 import { getSquads } from "../settings/store";
 import { getReadings } from "../intake/api";
-import { getAnswer, getAnswerDeadline, getRoster, listAnswers, normalizeHousehold, type AnswerRow, type RosterEntry } from "./api";
+import { getAnswer, getAnswerDeadline, getRoster, listAnswers, unansweredRoster, type AnswerRow, type RosterEntry } from "./api";
 import { EventDetails, ReceptionClosed, ResidentContact, residentContext } from "./resident";
 import { isMeetingStatus, MEETING_LABELS, MeetingFields, meetingNote, meetingText, parseMeetingAnswer } from "./meeting";
 import { saveMeetingAnswer } from "./meeting-store";
@@ -30,9 +30,7 @@ function receptionClosed(project: Meeting) {
 }
 
 export function meetingRemaining(roster: RosterEntry[], answers: AnswerRow[]) {
-  const valid = answers.filter((answer) => isMeetingStatus(answer.meetingStatus));
-  return roster.filter((entry) => !valid.some((answer) => normalizeHousehold(answer.household) === normalizeHousehold(entry.household) &&
-    (answer.district === entry.district || (!answer.district && roster.filter((other) => normalizeHousehold(other.household) === normalizeHousehold(answer.household)).length === 1))));
+  return unansweredRoster(roster, answers.filter((answer) => isMeetingStatus(answer.meetingStatus)));
 }
 
 function DistrictFields({ squads, value = "", disabled = false }: { squads: string[]; value?: string; disabled?: boolean }) {
