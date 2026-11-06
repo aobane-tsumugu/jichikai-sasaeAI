@@ -6,9 +6,9 @@ import assert from "node:assert/strict";
 import { chromium } from "playwright";
 import type { Page } from "playwright";
 
-type Options = { base: string; ward: string; creds: string; out: string; project?: string };
+type Options = { base: string; ward: string; creds: string; out: string; project?: string; meetingProject?: string; dutyProject?: string };
 type Failure = { item: string; detail: string };
-type Result = { path: string; width: number | "共通"; failures: Failure[] };
+type Result = { path: string; width: number | "共通"; failures: Failure[]; primaryChecked?: boolean };
 const widths = [390, 1280];
 const limit = 200;
 
@@ -26,8 +26,10 @@ const screens = [
   "/admin/print/:project/:document/:version/:kind",
   "/admin/answers", "/admin/answers/roster", "/admin/answers/:project",
   "/admin/answers/:project/:answer/edit", "/admin/space/:project", "/admin/close/:project",
+  "/admin/projects/:project/committee", "/admin/rota/exemptions", "/admin/rota/history", "/admin/rota/:project/result",
   "/admin/intake", "/admin/intake/received", "/admin/intake/read", "/admin/intake/started/:project",
   "/admin/inbox", "/admin/inbox/questions", "/admin/archive", "/admin/archive/map",
+  "/admin/inbox/:item/pick", "/admin/inbox/city/:job/pick",
   "/admin/archive/search", "/admin/archive/:project", "/admin/settings",
   "/admin/settings/people", "/admin/settings/info", "/admin/settings/deletion",
   "/admin/settings/templates", "/admin/inquiries", "/admin/inquiries/:inquiry", "/admin/inquiries/:inquiry/original", "/admin/requests/city",
@@ -80,26 +82,39 @@ function scope(options: Options) {
   function screenQuery(url: URL): string {
     const route = match(url)?.shape ?? "";
     const views: Record<string, readonly string[]> = {
-      "/admin/answers/:project": ["send", "sent", "hand", "list", "helpers", "unanswered"],
+      "/admin/answers/:project": ["send", "sent", "hand", "list", "read", "helpers", "unanswered"],
       "/admin/archive/:project": ["seed"],
       "/admin/close/:project": ["activity"],
     };
     const query = new URLSearchParams();
     const view = url.searchParams.get("view");
     if (view && views[route]?.includes(view)) query.set("view", view);
+    if (route === "/admin/answers/:project" && view === "unanswered" && url.searchParams.get("print") === "1") query.set("print", "1");
     if (route === "/admin/projects/:project/draft/:kind" && relative(url)?.endsWith("/draft/notice") && url.searchParams.get("edit") === "1") query.set("edit", "1");
     // 検索語や入力内容は、画面の識別にも報告にも使わない。
     return query.size ? `?${query.toString()}` : "";
+  }
+  function projectKind(url: URL) {
+    const index = match(url)?.shape.split("/").indexOf(":project") ?? -1;
+    const id = index >= 0 ? relative(url)?.split("/")[index] : undefined;
+    if (id && id === encodeURIComponent(options.meetingProject ?? "")) return "総会";
+    if (id && id === encodeURIComponent(options.dutyProject ?? "")) return "当番";
+    return "";
   }
   function shape(url: URL): string {
     const route = match(url);
     // 下書きの種類と印刷の種類は別の画面。IDとページ番号、検索語はまとめる。
     const actual = relative(url)?.split("/") ?? [];
     const parts = route?.shape.split("/").map((part, index) => part === ":kind" ? actual[index] : part);
-    return `${wardPath}${parts?.join("/") ?? "/対象外"}${screenQuery(url)}`;
+    return `${wardPath}${parts?.join("/") ?? "/対象外"}${screenQuery(url)}${projectKind(url)}`;
+  }
+  function primaryRule(url: URL) {
+    const route = match(url)?.shape ?? "";
+    // 追加画面には配置の見本を当てていない。共通検査は続け、ボタンの位置・数は判定しない。
+    return !projectKind(url) && !route.includes("/rota/") && !route.endsWith("/committee") && !route.endsWith("/pick");
   }
   const displayPath = (url: URL) => url.pathname + screenQuery(url);
-  return { base, wardPath, loginPath, relative, match, candidate, shape, displayPath };
+  return { base, wardPath, loginPath, relative, match, candidate, shape, displayPath, primaryRule };
 }
 
 function readCredentials(path: string) {
@@ -125,8 +140,8 @@ function errorHead(message: string, kind: "console.error" | "pageerror"): string
   return (resource ?? (csp && /Content Security Policy|script-src|style-src/.test(message) ? `${csp} [対象を伏せました] (Content Security Policy)` : exception ? `${exception}: [本文を伏せました]` : `${kind}: [本文を伏せました]`)).slice(0, 100);
 }
 
-async function inspect(page: Page): Promise<Failure[]> {
-  return page.evaluate(() => {
+async function inspect(page: Page, primaryChecked: boolean): Promise<Failure[]> {
+  return page.evaluate((primaryChecked) => {
     const failures: Array<{ item: string; detail: string }> = [];
     const visible = (element: Element) => element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) && element.getClientRects().length > 0;
     // 本文や名前、フォームの値を報告へ写さず、要素の場所で示す。
@@ -185,13 +200,13 @@ async function inspect(page: Page): Promise<Failure[]> {
     const primary = Array.from(document.body.querySelectorAll(".button, button"))
       .filter((element) => !element.matches(".secondary, .quiet, :disabled, [aria-disabled=true]") && visible(element));
     const first = primary[0];
-    if (first) {
+    if (primaryChecked && first) {
       const rect = first.getBoundingClientRect();
       if (rect.top < 0 || rect.bottom > innerHeight || rect.left < 0 || rect.right > innerWidth) {
         failures.push({ item: "主なボタンが一画面目に見えない", detail: `${location(first)}（上${Math.round(rect.top)}px、下${Math.round(rect.bottom)}px、画面の高さ${innerHeight}px）` });
       }
     }
-    if (primary.length > 1) failures.push({ item: "主なボタンが二つ以上", detail: `${primary.length}件: ${primary.slice(0, 8).map(location).join(" / ")}` });
+    if (primaryChecked && primary.length > 1) failures.push({ item: "主なボタンが二つ以上", detail: `${primary.length}件: ${primary.slice(0, 8).map(location).join(" / ")}` });
 
     // innerTextは閉じた説明やscriptを含めない。入力中の文字も画面の文字として見る。
     const shown = document.body.innerText + controls.filter(visible).map((element) => {
@@ -202,7 +217,7 @@ async function inspect(page: Page): Promise<Failure[]> {
     const invalid = ["undefined", "null", "[object", "NaN"].filter((word) => shown.includes(word));
     if (invalid.length) failures.push({ item: "文字の表示の誤り", detail: invalid.join("、") });
     return failures;
-  });
+  }, primaryChecked);
 }
 
 async function check(options: Options): Promise<{ results: Result[]; project: string; capped: boolean }> {
@@ -261,19 +276,24 @@ async function check(options: Options): Promise<{ results: Result[]; project: st
     loggingIn = false;
 
     const list = new URL(`${site.wardPath}/admin/projects`, site.base);
+    async function projectFromPage() {
+      const hrefs = await page.locator("a[href]").evaluateAll((links) => links.map((link) => (link as HTMLAnchorElement).href));
+      for (const href of hrefs) {
+        const url = site.candidate(href, page.url());
+        if (url && ["/admin/projects/:project", "/admin/projects/:project/map"].includes(site.match(url)?.shape ?? "")) {
+          return decodeURIComponent(site.relative(url)?.split("/")[3] ?? "");
+        }
+      }
+      return "";
+    }
+    // 今の「新しく始める」画面は開いた仕事の一覧ではない。最初の画面の段取りへのリンクを先に使う。
+    if (!project) project = await projectFromPage();
     if (!project) {
-      // 一覧は開いている行事だけ。閉じた行事へ勝手に切り替えない。
+      // 古い一覧にも対応し、閉じた記録へは切り替えない。
       try {
         const response = await page.goto(list.href, { waitUntil: "load", timeout: 30000 });
         if (!response?.ok() || !site.match(new URL(page.url()))) throw new Error();
-        const hrefs = await page.locator("a[href]").evaluateAll((links) => links.map((link) => (link as HTMLAnchorElement).href));
-        for (const href of hrefs) {
-          const url = site.candidate(href, page.url());
-          if (url && site.match(url)?.shape === "/admin/projects/:project") {
-            project = decodeURIComponent(url.pathname.split("/").at(-1) ?? "");
-            break;
-          }
-        }
+        project = await projectFromPage();
       } catch {
         results.push({ path: `${site.wardPath}/admin/projects`, width: "共通", failures: [{ item: "行事の選択", detail: "開いている行事の一覧を読めませんでした" }] });
       }
@@ -295,6 +315,18 @@ async function check(options: Options): Promise<{ results: Result[]; project: st
         enqueue(`${site.wardPath}${path}`, site.base.href);
       }
     }
+    // 種類で画面が変わるので、通常の行事と同じ形のURLでも別々に読む。
+    if (options.meetingProject) {
+      const id = encodeURIComponent(options.meetingProject);
+      for (const path of [`/admin/answers/${id}`, `/answer/${id}`, `/admin/projects/${id}/committee`,
+        ...["hand", "list", "read", "send", "sent", "unanswered"].map((view) => `/admin/answers/${id}?view=${view}`)]) enqueue(`${site.wardPath}${path}`, site.base.href);
+    }
+    if (options.dutyProject) {
+      const id = encodeURIComponent(options.dutyProject);
+      enqueue(`${site.wardPath}/admin/projects/${id}/draft/duty_roster`, site.base.href);
+      enqueue(`${site.wardPath}/admin/rota/${id}/result`, site.base.href);
+    }
+    for (const path of ["/admin/rota/exemptions", "/admin/rota/history", "/admin/answers"]) enqueue(`${site.wardPath}${path}`, site.base.href);
     enqueue(`${site.wardPath}/admin/`, site.base.href);
     enqueue(`${site.wardPath}/`, site.base.href);
     enqueue(`${site.wardPath}/help`, site.base.href);
@@ -322,7 +354,7 @@ async function check(options: Options): Promise<{ results: Result[]; project: st
           if (!(response.headers()["content-type"] ?? "").includes("text/html")) throw new Error();
           await view.evaluate(async () => { await document.fonts.ready; window.scrollTo(0, 0); });
           await view.waitForTimeout(250);
-          failures.push(...await inspect(view));
+          failures.push(...await inspect(view, site.primaryRule(url)));
           const hrefs = await view.locator("a[href]:not([download])").evaluateAll((links) => links.map((link) => (link as HTMLAnchorElement).href));
           for (const href of hrefs) enqueue(href, view.url());
         } catch (error) {
@@ -330,7 +362,7 @@ async function check(options: Options): Promise<{ results: Result[]; project: st
         } finally {
           for (const error of httpErrors) failures.push({ item: "HTTPの誤り", detail: error });
           if (consoleErrors.length) failures.push({ item: "JavaScriptの誤り（console.errorなど）", detail: `${consoleErrors.length}件: ${[...new Set(consoleErrors)].slice(0, 8).join(" / ")}` });
-          results.push({ path: site.displayPath(url), width, failures });
+          results.push({ path: site.displayPath(url), width, failures, primaryChecked: site.primaryRule(url) });
           if (view) {
             try { await view.close(); }
             catch { failures.push({ item: "ブラウザーの終了", detail: "この画面を閉じる処理に失敗しました" }); }
@@ -348,19 +380,24 @@ function report(options: Options, results: Result[], project: string, capped: bo
   const paths = [...new Set(results.filter((row) => typeof row.width === "number").map((row) => row.path))];
   const passed = paths.filter((path) => widths.every((width) => results.some((row) => row.path === path && row.width === width && !row.failures.length))).length;
   const cell = (value: string | number) => String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\|/g, "&#124;").replace(/[\r\n]/g, " ");
+  const basicOnly = [...new Set(results.filter((row) => row.primaryChecked === false).map((row) => row.path))];
   const lines = [
     "# 画面の確かめ", "",
     `- 確認日時: ${new Date().toISOString()}`,
     `- 対象: ${cell(new URL(options.base).origin)}/${cell(encodeURIComponent(options.ward))}/`,
     `- 行事: ${cell(project || "開いている行事を選べませんでした。区とリンク先の画面を確認します")}`,
-    `- 通った画面: ${passed}/${paths.length}画面（両方の幅で全項目を通過）`,
+    `- 総会: ${cell(options.meetingProject ?? "指定なし")}, 当番: ${cell(options.dutyProject ?? "指定なし")}`,
+    `- 通った画面: ${passed}/${paths.length}画面（両方の幅で適用した検査項目を通過）`,
     `- 幅ごとの結果: 通過${results.filter((row) => typeof row.width === "number" && !row.failures.length).length}件、不合格${results.filter((row) => row.failures.length).length}件`,
     `- 幅390pxは高さ844px、幅1280pxは高さ800px。主なボタンのない画面ではボタンの位置を検査しません。`,
-    "- 同じ形のURLは一つ。下書きと印刷の種類、入力や一覧への切り替えは別々。検索語などの違いはまとめます。",
+    "- 種類・表示が同じ形のURLは一つ。下書きと印刷の種類、入力や一覧への切り替えは別々。検索語などの違いはまとめます。",
+    "- --meeting-projectと--duty-projectで指定した種類は、通常の行事と同じ形のURLでも別々に調べます。未指定の種類の画面を確認済みとはしません。",
+    "- 見本との画像比較は行いません。追加画面は文字・押す面・はみ出し・表示エラー・通信・JavaScriptの共通検査を行い、見本に依存する主なボタンの位置・数を判定しません。従来の画面の判定は維持します。",
     `- ${!paths.length ? "画面を確認できていません。下の実行結果を確認してください。" : capped ? "上限200画面に達しました。残りのリンク先は未確認です。" : "集めたリンク先を最後まで確認しました。"}`,
     "- ログインだけPOSTを一回使います。既存の認証処理による端末の記録を除き、GETの画面だけを開きます。招待を使う入口と更新用の入口へは進みません。",
     "- 文字の大きさは表示中の本文と入力欄を対象にし、印刷の中身（.sheet、.print、[data-print]）とSVGを除きます。本文に埋め込まれたリンクの高さは除きます。",
     "- 本文と資格情報は保存しません。JavaScriptの誤りは、ブラウザーの定型の診断だけを残して対象や本文を伏せ、冒頭100文字以内を記録します。任意のログの本文は伏せます。不合格だけを次に記録します。", "",
+    ...basicOnly.map((path) => `- 主なボタンの位置・数は未判定: ${cell(path)}`), "",
     "| 画面のURL | 幅 | 落ちた項目 | 場所と内容 |", "|---|---:|---|---|",
     ...results.flatMap((row) => row.failures.map((failure) => `| ${cell(row.path)} | ${cell(row.width)} | ${cell(failure.item)} | ${cell(failure.detail)} |`)), "",
   ];
@@ -376,11 +413,11 @@ async function main() {
   };
   const base = arg("--base"), ward = arg("--ward"), creds = arg("--creds"), out = arg("--out");
   if (!base || !ward || !creds || !out) {
-    console.error("使い方: npm run check-screens -- --base <URL> --ward <区> --creds <資格情報のファイル> --out <フォルダ> [--project <行事のID>]");
+    console.error("使い方: npm run check-screens -- --base <URL> --ward <区> --creds <資格情報のファイル> --out <フォルダ> [--project <行事ID> --meeting-project <総会ID> --duty-project <当番ID>]");
     process.exitCode = 2;
     return;
   }
-  const options: Options = { base, ward, creds, out, project: arg("--project") };
+  const options: Options = { base, ward, creds, out, project: arg("--project"), meetingProject: arg("--meeting-project"), dutyProject: arg("--duty-project") };
   try { scope(options); } catch (error) {
     console.error(error instanceof Error ? error.message : "引数を確認してください。");
     process.exitCode = 2;
@@ -430,6 +467,8 @@ async function selfTest() {
         } else response.end(html('<form method="post"><input name="loginId"><input name="password" type="password"><button>入る</button></form>'));
       } else if (path.startsWith("/fixture/admin") && !request.headers.cookie?.includes("device=fictional")) {
         response.writeHead(403); response.end(html("役員用です"));
+      } else if (path === "/fixture/admin/") {
+        response.end(html('<a href="/fixture/admin/projects/first/map">架空の行事の段取り</a><a href="/fixture/admin/archive/old">去年の記録</a>'));
       } else if (path === "/fixture/answer/first") {
         response.end(html('<main><h1>架空の行事の出欠を教えてください</h1><form method="post"><label>代表者のお名前<input name="household"></label><button>この内容で送る</button></form></main>'));
       } else if (path === "/fixture/help/first") {
@@ -437,9 +476,13 @@ async function selfTest() {
       } else if (path === "/fixture/space/first") {
         response.end(html('<main><h1>合言葉を入れてください</h1><form method="post" action="/fixture/space/first/enter"><label>合言葉<input name="passphrase" type="password"></label><button>入る</button></form><a href="/fixture/space/first/join/secret">招待の入口</a><a href="/fixture/space/first/person/secret">班長の入口</a></main>'));
       } else if (path === "/fixture/admin/projects") {
-        response.end(html('<a href="/fixture/admin/projects/today">今やること</a><a href="/fixture/admin/projects/first">架空の行事</a><a href="/fixture/admin/projects/second">別の架空の行事</a>'));
+        response.end(html('<h1>新しく始める</h1><form method="post"><label>名前<input name="title"></label><button>始める</button></form>'));
       } else if (path === "/fixture/admin/projects/first") {
-        response.end(html('<a href="/fixture/admin/projects/first/map">段取り</a><a href="/fixture/admin/answers/first">答えを見る</a><a href="/fixture/admin/projects/first/draft/notice">雨の変更</a><a href="/fixture/admin/projects/second/map">別の段取り</a><a href="/fixture/admin/inbox">届いたもの</a><a href="/fixture/admin/archive">記録</a><a href="/fixture/admin/logout">出る</a><a href="/fixture/admin/projects/first/delete">消す</a><a href="/other/admin/">別の区</a><a href="/fixture/space/first/join/secret">一人用の入口</a>'));
+        response.end(html('<a href="/fixture/admin/projects/first/map">段取り</a><a href="/fixture/admin/answers/first">答えを見る</a><a href="/fixture/admin/projects/first/committee">実行委員名簿</a><a href="/fixture/admin/inbox/item-one/pick">LINEから届いたものを行事に入れる</a><a href="/fixture/admin/inbox/city/job-one/pick">送ったものを行事に入れる</a><a href="/fixture/admin/projects/first/draft/notice">雨の変更</a><a href="/fixture/admin/projects/second/map">別の段取り</a><a href="/fixture/admin/inbox">届いたもの</a><a href="/fixture/admin/archive">記録</a><a href="/fixture/admin/logout">出る</a><a href="/fixture/admin/projects/first/delete">消す</a><a href="/other/admin/">別の区</a><a href="/fixture/space/first/join/secret">一人用の入口</a>'));
+      } else if (path === "/fixture/admin/answers/meeting") {
+        response.end(html(`<main><p${url.searchParams.get("view") === "read" ? ' class="small"' : ""}>架空の総会の答え</p><div style="height:1000px"></div><button>この答えを入れる</button><button>もう一件の答えを入れる</button><a href="?view=unanswered&amp;print=1">未回答の紙</a><a href="/fixture/admin/answers/meeting/answer-one/edit">答えを直す</a></main>`));
+      } else if (/\/committee$|\/rota\//.test(path) || path.endsWith("/pick") || path === "/fixture/admin/projects/duty/draft/duty_roster") {
+        response.end(html('<main><p>架空の追加画面</p><div style="height:1000px"></div><button>一つ目の操作</button><button>二つ目の操作</button><a href="/fixture/admin/rota/exemptions/record-one/withdraw">免除を取り消す</a></main>'));
       } else if (path === "/fixture/admin/answers/first") {
         response.end(html(`<main>${url.searchParams.get("view") === "hand" ? '<div style="height:1000px"></div><form method="post"><button>この答えを入れる</button></form>' : '<p>架空の答えの画面</p>'}<a href="?view=summary">集計</a><a href="?view=hand">手で入れる</a><a href="?view=list&amp;q=fixture-query-text">一覧</a><a href="?view=list&amp;q=another-query-text">同じ一覧</a><a href="?view=unanswered">まだ答えていない世帯</a></main>`));
       } else if (path === "/fixture/admin/projects/first/draft/notice") {
@@ -458,11 +501,26 @@ async function selfTest() {
       assert.ok(address && typeof address !== "string");
       const creds = resolve(temp, "creds.txt");
       writeFileSync(creds, "名前: 架空の役員\nパスワード: fictional-only\n", "utf8");
-      const options = { base: `http://127.0.0.1:${address.port}`, ward: "fixture", creds, out: temp };
+      const options = { base: `http://127.0.0.1:${address.port}`, ward: "fixture", creds, out: temp, meetingProject: "meeting", dutyProject: "duty" };
       const result = await check(options);
       report(options, result.results, result.project, result.capped);
       assert.equal(result.project, "first");
       for (const width of widths) {
+        for (const path of ["/admin/projects/duty/draft/duty_roster", "/admin/rota/duty/result", "/admin/rota/exemptions", "/admin/rota/history", "/admin/projects/first/committee", "/admin/projects/meeting/committee", "/admin/inbox/item-one/pick", "/admin/inbox/city/job-one/pick"]) {
+          const row = result.results.find((row) => row.path === `/fixture${path}` && row.width === width);
+          assert.ok(row, path);
+          assert.equal(row.primaryChecked, false);
+          assert.deepEqual(row.failures, []);
+        }
+        for (const view of ["", "hand", "list", "read", "send", "sent", "unanswered"]) {
+          const row = result.results.find((row) => row.path === `/fixture/admin/answers/meeting${view ? `?view=${view}` : ""}` && row.width === width);
+          assert.ok(row, view);
+          assert.equal(row.primaryChecked, false);
+          assert.ok(!row.failures.some((failure) => failure.item.startsWith("主なボタン")));
+          if (view === "read") assert.ok(row.failures.some((failure) => failure.item === "文字が18px未満"));
+        }
+        assert.ok(result.results.some((row) => row.path === "/fixture/admin/answers/meeting?view=unanswered&print=1" && row.width === width));
+        assert.ok(result.results.some((row) => row.path === "/fixture/admin/answers/meeting/answer-one/edit" && row.width === width));
         for (const view of ["hand", "list", "unanswered"]) {
           assert.ok(result.results.some((row) => row.path === `/fixture/admin/answers/first?view=${view}` && row.width === width));
         }
@@ -484,9 +542,10 @@ async function selfTest() {
       assert.equal(requests.filter((request) => request.startsWith("GET /fixture/admin/answers/first?view=list&")).length, widths.length);
       assert.ok(requests.includes("GET /fixture/app.js"));
       assert.ok(!requests.includes("GET /favicon.ico"));
-      assert.ok(!requests.some((request) => /second|other|logout|delete|join|person|\/enter|\/title/.test(request)));
+      assert.ok(!requests.some((request) => /second|other|logout|delete|join|person|\/enter|\/title|\/withdraw/.test(request)));
       const markdown = readFileSync(resolve(temp, "report.md"), "utf8");
       assert.ok(markdown.includes("通った画面:"));
+      assert.ok(markdown.includes("主なボタンの位置・数は未判定: /fixture/admin/rota/exemptions"));
       assert.ok(markdown.includes("/answers/first?view=hand") && markdown.includes("/draft/notice?edit=1"));
       assert.ok(!markdown.includes("fixture-query-text") && !markdown.includes("another-query-text"));
       assert.ok(markdown.includes("Failed to load resource: net::ERR_FAILED"));
