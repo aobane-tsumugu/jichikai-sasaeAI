@@ -11,7 +11,7 @@ import { setSetting } from "../src/settings/store";
 import { openSpace } from "../src/space/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("資料も班も無い一年目に案内を配り、紙だけで返す相手と締切が分かり、長い案内は回答票を分ける", async () => {
+it("資料も班もない一年目に案内を配り、紙だけで返す相手と締切が分かり、長い案内は回答票を分ける", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-09-10T03:00:00Z"));
   try {
@@ -60,7 +60,7 @@ it("資料も班も無い一年目に案内を配り、紙だけで返す相手�
       expect(html).not.toContain("までに、");
       expect(html).not.toContain("連絡先：");
       expect(html).toContain("2026年9月10日に配りました");
-      expect(html).toContain("紙の番号 P");
+      expect(html).toContain("紙の番号P");
       expect(html).toContain(`href="${first}"`);
       expect(html).not.toContain("dense");
     }
@@ -92,13 +92,13 @@ it("資料も班も無い一年目に案内を配り、紙だけで返す相手�
       expect(html.match(/class="sheet"/g)).toHaveLength(path === "announcement" ? 2 : 1);
     }
     const poster = await read(`${long}/poster`);
-    expect(poster).toContain("回答の締切：10月24日（日）");
+    expect(poster).toContain("答えの締切：10月24日（日）");
     expect(poster).toContain(FIRST_SLICE.firstOfficer);
     expect(poster).toContain("2026年9月10日に配りました");
     const pack = getDraftPack("announcement");
-    expect(pack.version).toBe("draft-announcement@5");
+    expect(pack.version).toBe("draft-announcement@6");
     expect(pack.instruction).toContain("班長か役員に渡してください");
-    expect(pack.instruction).toContain("無い時間帯、締切、連絡先を作らないでください");
+    expect(pack.instruction).toContain("ない時間帯、締切、連絡先を作らないでください");
   } finally {
     vi.useRealTimers();
   }

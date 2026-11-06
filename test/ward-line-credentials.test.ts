@@ -19,7 +19,7 @@ async function openTestWard() {
   return { ...result, destination };
 }
 
-it("開設した二つの区はそれぞれの鍵で配り、未設定の区は全体の鍵があっても送らない", async () => {
+it("開設した二つの区はそれぞれの鍵で配り、まだ決めていませんの区は全体の鍵があっても送らない", async () => {
   const first = await openTestWard();
   const second = await openTestWard();
   const missing = await openTestWard();

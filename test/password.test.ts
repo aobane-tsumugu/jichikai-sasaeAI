@@ -13,7 +13,7 @@ import {
 import { slugProblem } from "../src/core/ward";
 
 describe("パスワード", () => {
-  it("読み間違えやすい文字を含まない 4 組 6 文字の乱数", () => {
+  it("読み間違えやすい文字を含まない4組6文字の乱数", () => {
     const seen = new Set<string>();
     for (let i = 0; i < 200; i++) {
       const p = generatePassword();

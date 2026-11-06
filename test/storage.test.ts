@@ -2,8 +2,8 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { WardBucket } from "../src/core/storage";
 
-describe("WardBucket（R2 を区ごとに分ける）", () => {
-  it("キーを区の ID で始める", async () => {
+describe("WardBucket（R2を区ごとに分ける）", () => {
+  it("キーを区のIDで始める", async () => {
     const a = new WardBucket(env.ORIGINALS, "ward-a");
     await a.put("originals/1.txt", "あ");
     expect(await env.ORIGINALS.get("ward-a/originals/1.txt")).not.toBeNull();
@@ -13,8 +13,8 @@ describe("WardBucket（R2 を区ごとに分ける）", () => {
   it("他の区の物は読めず、一覧にも出ない", async () => {
     const a = new WardBucket(env.ORIGINALS, "ward-iso-a");
     const b = new WardBucket(env.ORIGINALS, "ward-iso-b");
-    await a.put("x/secret.txt", "a の物");
-    await b.put("x/other.txt", "b の物");
+    await a.put("x/secret.txt", "aの物");
+    await b.put("x/other.txt", "bの物");
     expect(await b.get("x/secret.txt")).toBeNull();
     const listed = await b.list("x/");
     expect(listed.keys.map((k) => k.key)).toEqual(["x/other.txt"]);

@@ -218,7 +218,7 @@ export async function setJobProject(
 export async function closeAbandonedRuns(db: D1Database, wardId: string, jobId: string): Promise<void> {
   await db
     .prepare(
-      `UPDATE job_runs SET status = 'error', error = '中断（応答の後の時間切れなど）', ended_at = ?
+      `UPDATE job_runs SET status = 'error', error = '中断（応答のあとの時間切れなど）', ended_at = ?
         WHERE ward_id = ? AND job_id = ? AND kind = 'read' AND status = 'running'`,
     )
     .bind(nowIso(), wardId, jobId)

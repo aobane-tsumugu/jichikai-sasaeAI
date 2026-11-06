@@ -98,7 +98,7 @@ export async function sendLineTitleAndUrl(
   request: typeof fetch = fetch,
 ): Promise<void> {
   const safeUrl = new URL(url);
-  if (safeUrl.protocol !== "https:") throw new Error("送信先の URL は HTTPS にしてください。");
+  if (safeUrl.protocol !== "https:") throw new Error("送信先のURLはHTTPSにしてください。");
   const response = await request(`${LINE_API}/v2/bot/message/broadcast`, {
     method: "POST",
     headers: {
@@ -124,7 +124,7 @@ export async function broadcastLineText(token: string, text: string, request: ty
   if (!response.ok) throw new Error(`LINE API request failed (${response.status})`);
 }
 
-export const LINE_NOT_CONFIGURED = "この区の公式 LINE は接続設定がないため送信しません。";
+export const LINE_NOT_CONFIGURED = "この区の公式LINEは接続設定がないため送信しません。";
 
 /** 開設時に参照先の名前だけを決め、鍵の値は Workers secrets に置く。 */
 export function lineSecretNames(wardId: string) {

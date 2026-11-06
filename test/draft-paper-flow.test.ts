@@ -16,7 +16,7 @@ import { createInvite, openSpace } from "../src/space/api";
 import { readPublicationTables } from "../src/space/publication-tables";
 import { cookieFrom, get, postForm, realApp, withEnv } from "./helpers";
 
-it("資料から当番の案を行にし、役員が直して紙と空間へ配り、案内を一か所で直して記録を残す", async () => {
+it("資料から当番の下書きを行にし、役員が直して紙と実行委員と班長のページへ配り、案内を一か所で直して記録を残す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   // 固定の本文や題だけで成立しないよう、入力ごとに違う架空の名前と場所をフォームへ渡す。
   const suffix = crypto.randomUUID().slice(0, 8);
@@ -26,7 +26,7 @@ it("資料から当番の案を行にし、役員が直して紙と空間へ配�
   const oldPlace = `${FIRST_SLICE.previousPlace} ${suffix}`;
   const itemPlace = `${FIRST_SLICE.layoutPosition} ${suffix}`;
   const textPlace = `${FIRST_SLICE.layoutSpot} ${suffix}`;
-  const date = `${FIRST_SLICE.sourceYear}年 ${FIRST_SLICE.publicDayText}`;
+  const date = `${FIRST_SLICE.sourceYear}年${FIRST_SLICE.publicDayText}`;
   const slot = "10:30-12:00"; // fixtures の架空の当番表と同じ時間帯。
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title, year: FIRST_SLICE.eventYear, accountId: account.accountId,
@@ -55,7 +55,7 @@ it("資料から当番の案を行にし、役員が直して紙と空間へ配�
   }
   const state = async () => {
     const value = await getProjectState(env.DB, ward.wardId, id);
-    if (!value) throw new Error("プロジェクトがありません");
+    if (!value) throw new Error("行事がありません");
     return value;
   };
   const latest = async (kind: DocumentKind) => {
@@ -115,7 +115,7 @@ it("資料から当番の案を行にし、役員が直して紙と空間へ配�
   const token = await createInvite(env.DB, ward.wardId, id, "member", null, account.accountId, true);
   const entered = await get(realApp, `/${ward.slug}/space/${id}/person/${token}`);
   const memberCookie = cookieFrom(entered, `space_${id}`);
-  if (!memberCookie) throw new Error("空間に入れません");
+  if (!memberCookie) throw new Error("実行委員と班長のページに入れません");
   const space = await (await get(realApp, `/${ward.slug}/space/${id}`, memberCookie)).text();
   expect(space).toContain(helper);
   expect(space).toContain(editedHelper);
@@ -171,7 +171,7 @@ it("資料から当番の案を行にし、役員が直して紙と空間へ配�
     const announcement = await latest("announcement");
     expect((await postForm(realApp, `${root}/publish/${id}/send`, { ...fields(announcement), lineDelivery: "send" }, cookie, bindings)).status).toBe(303);
     expect(messages).toEqual([`${title} 案内\nhttps://example.test/${ward.slug}/p/${id}`]);
-    expect(paperHeading(title, `${title} 案内`)).toBe(`${title} 案内`);
+    expect(paperHeading(title, `${title}案内`)).toBe(`${title}案内`);
     const recordedDate = (await state()).items.find((item) => item.key === "date_time")?.current;
     expect(recordedDate).toMatchObject({ content: date, source: { kind: "person" } });
     expect((await getEditableDocument(env.DB, ward.wardId, id, "announcement"))?.stale).toBe(false);

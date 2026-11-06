@@ -19,7 +19,7 @@ export type DeadlineKind = (typeof DEADLINE_KINDS)[number];
 
 export const DEADLINE_LABEL: Record<DeadlineKind, string> = {
   event_day: "行事の日",
-  answer_due: "回答の締切",
+  answer_due: "答えの締切",
   submit_due: "提出期限",
   board_meeting_day: "役員会の日",
 };
@@ -34,10 +34,10 @@ export const SOURCE_KINDS = ["original", "person", "web_answer", "ai_proposal"] 
 export type SourceKind = (typeof SOURCE_KINDS)[number];
 
 export const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
-  original: "入った物",
+  original: "届いたもの",
   person: "役員が入力",
-  web_answer: "Web の回答",
-  ai_proposal: "AI の案",
+  web_answer: "Webの答え",
+  ai_proposal: "AIの下書き",
 };
 
 /**
@@ -75,7 +75,7 @@ export type ItemKey = (typeof ITEM_KEYS)[number];
 export const ITEM_LABEL: Record<ItemKey, string> = {
   date_time: "日時",
   place: "場所",
-  rain_plan: "雨天時",
+  rain_plan: "雨のとき",
   content: "中身",
   belongings: "持ち物",
   helper_slots: "手伝いの時間帯",
@@ -179,7 +179,7 @@ export const TABLES: Record<TableKey, TableDef> = {
       },
       amount: { label: "額", def: AMOUNT },
       date: { label: "日付", def: TEXT },
-      receiptOriginalId: { label: "領収書の原本", def: TEXT },
+      receiptOriginalId: { label: "領収書の元の資料", def: TEXT },
       note: { label: "メモ", def: TEXT },
     },
     keyFields: ["direction", "counterpart"],
@@ -196,7 +196,7 @@ export const TABLES: Record<TableKey, TableDef> = {
     nameField: "what",
   },
   submissions: {
-    label: "提出した物",
+    label: "提配ったもの",
     fields: {
       what: { label: "何を", def: TEXT },
       to: { label: "どこへ", def: TEXT },
@@ -226,7 +226,7 @@ export function cleanRowData(table: TableKey, raw: unknown): { ok: true; data: R
   const data: RowData = {};
   for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
     const field = def.fields[name];
-    if (!field) return { ok: false, reason: `${def.label}に「${name}」の列はありません` };
+    if (!field) return { ok: false, reason: `${def.label}に「${name}」の項目はありません` };
     if (value === null || value === undefined || value === "") continue;
     switch (field.def.type) {
       case "text":
@@ -235,7 +235,7 @@ export function cleanRowData(table: TableKey, raw: unknown): { ok: true; data: R
         break;
       case "amount":
         if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-          return { ok: false, reason: `${def.label}の「${field.label}」は 0 以上の整数の円で入れてください` };
+          return { ok: false, reason: `${def.label}の「${field.label}」は0以上の整数の円で入れてください` };
         }
         data[name] = value;
         break;
@@ -260,7 +260,7 @@ export function displayFieldValue(table: TableKey, name: string, value: string |
   if (value === undefined) return "";
   const field = TABLES[table].fields[name];
   if (field?.def.type === "enum") return field.def.labels[String(value)] ?? String(value);
-  if (field?.def.type === "amount") return `${Number(value).toLocaleString("ja-JP")} 円`;
+  if (field?.def.type === "amount") return `${Number(value).toLocaleString("ja-JP")}円`;
   if (["date", "decidedOn", "submittedOn"].includes(name) && /^\d{4}-\d{2}-\d{2}$/.test(String(value))) return formatJstDate(String(value));
   return String(value);
 }
@@ -317,9 +317,9 @@ export const QUESTION_KINDS = ["unreadable", "decide", "map_gap", "conflict", "d
 export type QuestionKind = (typeof QUESTION_KINDS)[number];
 
 export const QUESTION_KIND_LABEL: Record<QuestionKind, string> = {
-  unreadable: "読めなかった所",
+  unreadable: "読めなかったところ",
   decide: "今年決めること",
-  map_gap: "地図の空き",
+  map_gap: "段取りの空き",
   conflict: "食い違い",
   discarded: "取り込めなかった変更",
 };

@@ -45,7 +45,7 @@ const okRead = (overrides: Partial<ReadResult> = {}): NonNullable<PipelineDeps["
       document_kind: "memo",
       original_years: originals.map((o) => ({ original_id: o.originalId, year: 2026 })),
       summary: "試験の読み取り",
-      text_blocks: originals.map((o) => ({ original_id: o.originalId, locator: "1 枚目", text: "文" })),
+      text_blocks: originals.map((o) => ({ original_id: o.originalId, locator: "1枚目", text: "文" })),
       fields: [],
       tables: [],
       decisions: [],
@@ -70,11 +70,11 @@ const permissive: ProjectDirectory = { listOpen: async () => [], isOpen: async (
 beforeEach(() => {
   setProjectDirectory(permissive);
   setClientFactory(() => {
-    throw new Error("試験から本物の Anthropic は呼べません");
+    throw new Error("試験から本物のAnthropicは呼べません");
   });
   setPipelineDeps({
     createClient: () => {
-      throw new Error("試験から本物の Anthropic は呼べません");
+      throw new Error("試験から本物のAnthropicは呼べません");
     },
   });
 });
@@ -91,7 +91,7 @@ async function receiveOnly(wardId: string, parts: ReceivePart[] = [photo()]) {
 }
 
 describe("受付", () => {
-  it("原本を R2 に置き、入った物を作る。画像があれば読みの順番待ちになる", async () => {
+  it("元の資料をR2に置き、届いたものを作る。画像があれば読みの順番待ちになる", async () => {
     const ward = await seedWard(env.DB);
     const { ctx, settle } = ctxOf();
     setPipelineDeps(fakeDeps(okRead()));
@@ -121,7 +121,7 @@ describe("受付", () => {
     expect(run).toEqual({ kind: "read", status: "ok", input_tokens: 1000, output_tokens: 200 });
   });
 
-  it("同じ物は置かず「同じ物でした」とし、複数枚は一つの入った物に束ねる", async () => {
+  it("同じものは置かず「同じものでした」とし、複数枚は一つの届いたものに束ねる", async () => {
     const ward = await seedWard(env.DB);
     const { ctx, settle } = ctxOf();
     setPipelineDeps(fakeDeps(okRead()));
@@ -150,7 +150,7 @@ describe("受付", () => {
     expect(stored.objects).toHaveLength(2 + 1 + 1);
   });
 
-  it("別の区なら同じ物でも受ける", async () => {
+  it("別の区なら同じものでも受ける", async () => {
     const a = await seedWard(env.DB);
     const b = await seedWard(env.DB);
     const { ctx } = ctxOf();
@@ -163,7 +163,7 @@ describe("受付", () => {
     expect(await getJob(env.DB, a.wardId, y.jobId as string)).toBeNull();
   });
 
-  it("同じ写真は同じプロジェクト内で束ね、別のプロジェクトでは受ける", async () => {
+  it("同じ写真は同じ行事内で束ね、別の行事では受ける", async () => {
     const ward = await seedWard(env.DB);
     setPipelineDeps(fakeDeps(okRead()));
     const bytes = jpeg();
@@ -191,7 +191,7 @@ describe("受付", () => {
     expect(await getJob(env.DB, ward.wardId, otherProject.jobId as string)).toMatchObject({ project_id: "project-b", status: "read" });
   });
 
-  it("一行の文と文字のファイルと Word は、モデルを通さずにそのまま読み取りになる", async () => {
+  it("一行の文と文字のファイルとWordは、モデルを通さずにそのまま読み取りになる", async () => {
     const ward = await seedWard(env.DB);
     const { ctx } = ctxOf();
     let called = 0;
@@ -201,8 +201,8 @@ describe("受付", () => {
       via: "admin",
       projectId: "p-1",
       parts: [
-        { kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode("公民館 25日午後で押さえた") },
-        { kind: "file", filename: "メモ.txt", mediaType: "text/plain", bytes: new TextEncoder().encode("雨天は屋内\n傘置きは田中") },
+        { kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode("公民館25日午後で押さえた") },
+        { kind: "file", filename: "メモ.txt", mediaType: "text/plain", bytes: new TextEncoder().encode("雨は屋内\n傘置きは田中") },
         {
           kind: "file",
           filename: "a.docx",
@@ -219,7 +219,7 @@ describe("受付", () => {
     const [reading] = await getReadings(env.DB, ward.wardId, out.jobId as string);
     expect(reading).toMatchObject({ source: "direct", pack_version: "read-direct@2", model: "" });
     const texts = (reading?.body as { text_blocks: Array<{ text: string; original_id: string }> }).text_blocks.map((t) => t.text);
-    expect(texts).toEqual(["公民館 25日午後で押さえた", "雨天は屋内", "傘置きは田中", "案内"]);
+    expect(texts).toEqual(["公民館25日午後で押さえた", "雨は屋内", "傘置きは田中", "案内"]);
   });
 
   it("受けられない物はエラーにして、何も置かない", async () => {
@@ -255,7 +255,7 @@ describe("読みの流れ", () => {
     expect(await claimRead(env.DB, ward.wardId, jobId, 60_000, Date.now() + 61_000)).toBe(2);
   });
 
-  it("再試行してよい失敗は received に戻り、Cron が拾い直して読める", async () => {
+  it("再試行してよい失敗はreceivedに戻り、Cronが拾い直して読める", async () => {
     const ward = await seedWard(env.DB);
     const jobId = await receiveOne(ward.wardId);
     let n = 0;
@@ -277,7 +277,7 @@ describe("読みの流れ", () => {
     expect(runs.results.map((r) => r.status)).toEqual(["error", "ok"]);
   });
 
-  it("waitUntil が止められて貸し出しが切れたままの読みも、Cron が拾い直す", async () => {
+  it("waitUntilが止められて貸し出しが切れたままの読みも、Cronが拾い直す", async () => {
     const ward = await seedWard(env.DB);
     const jobId = await receiveOne(ward.wardId);
     await env.DB.prepare("UPDATE jobs SET status = 'reading', attempt = 1, lease_until = ? WHERE ward_id = ? AND job_id = ?")
@@ -293,7 +293,7 @@ describe("読みの流れ", () => {
     expect(runs.results.map((r) => r.status)).toEqual(["error", "ok"]);
   });
 
-  it("再試行できない失敗と、試行の上限は failed になり、もう一度で最初からやり直せる", async () => {
+  it("再試行できない失敗と、試行の上限はfailedになり、もう一度で最初からやり直せる", async () => {
     const ward = await seedWard(env.DB);
     const refusedJob = await receiveOne(ward.wardId);
     expect(await runRead(env, ward.wardId, refusedJob, { deps: fakeDeps(async () => { throw new ReadError("断られた", "refused", false); }) })).toBe("failed");
@@ -317,7 +317,7 @@ describe("読みの流れ", () => {
     expect(await retryJob(env, ctx, ward.wardId, exhausted)).toBe(false);
   });
 
-  it("取り下げられた入った物には読み取りを置かない。実体も消える", async () => {
+  it("取り下げられた届いたものには読み取りを置かない。実体も消える", async () => {
     const ward = await seedWard(env.DB);
     const jobId = await receiveOne(ward.wardId);
     const originals = await listOriginals(env.DB, ward.wardId, jobId);
@@ -342,14 +342,14 @@ describe("読みの流れ", () => {
     expect(await withdrawJob(env, ward.wardId, jobId)).toBe(false);
   });
 
-  it("繋げ始めた入った物は取り下げられない", async () => {
+  it("繋げ始めた届いたものは取り下げられない", async () => {
     const ward = await seedWard(env.DB);
     const jobId = await receiveOne(ward.wardId);
     await env.DB.prepare("UPDATE jobs SET status = 'connecting' WHERE ward_id = ? AND job_id = ?").bind(ward.wardId, jobId).run();
     expect(await withdrawJob(env, ward.wardId, jobId)).toBe(false);
   });
 
-  it("他の区の入った物は取り下げもやり直しもできない", async () => {
+  it("他の区の届いたものは取り下げもやり直しもできない", async () => {
     const a = await seedWard(env.DB);
     const b = await seedWard(env.DB);
     const jobId = await receiveOne(a.wardId);
@@ -372,7 +372,7 @@ describe("画面", () => {
     return { method: "POST", headers: { cookie, origin: "http://localhost", accept: "application/json" }, body: form };
   }
 
-  it("ログインが要る", async () => {
+  it("入るが要る", async () => {
     const { ward } = await seedAdmin(env.DB);
     const { ctx } = ctxOf();
     const res = await request(`/${ward.slug}/admin/intake`, {}, ctx);
@@ -392,7 +392,7 @@ describe("画面", () => {
     for (const word of ["札", "セッション", "差分", "派生", "冪等", "包み"]) expect(visible).not.toContain(word);
   });
 
-  it("写真と一行の文を送ると受けた返事が返り、裏で読みが動く。同じ物は「同じ物でした」", async () => {
+  it("写真と一行の文を送ると受けた返事が返り、裏で読みが動く。同じものは「同じものでした」", async () => {
     const { ward, cookie } = await seedAdmin(env.DB);
     setPipelineDeps(fakeDeps(okRead()));
     const { ctx, settle } = ctxOf();
@@ -420,7 +420,7 @@ describe("画面", () => {
     expect(((await again.json()) as { ok: boolean }).ok).toBe(true);
   });
 
-  it("同じ写真を二度送ると二度目は「同じ物でした」", async () => {
+  it("同じ写真を二度送ると二度目は「同じものでした」", async () => {
     const { ward, cookie } = await seedAdmin(env.DB);
     setPipelineDeps(fakeDeps(okRead()));
     const { ctx, settle } = ctxOf();
@@ -433,7 +433,7 @@ describe("画面", () => {
       );
     expect(((await (await send()).json()) as { message: string }).message).toContain("受け取りました");
     const second = (await (await send()).json()) as { ok: boolean; message: string };
-    expect(second).toMatchObject({ ok: true, message: "同じ物でした。" });
+    expect(second).toMatchObject({ ok: true, message: "同じものでした。" });
     await settle();
   });
 
@@ -452,7 +452,7 @@ describe("画面", () => {
     expect(body.message).toContain("読めない形式");
   });
 
-  it("入った物の一覧に、状態の言葉と、取り下げ、もう一度が出る。他の区の物は出ない", async () => {
+  it("届いたものの一覧に、状態の言葉と、取り下げ、もう一度が出る。他の区の物は出ない", async () => {
     const mine = await seedAdmin(env.DB);
     const other = await seedAdmin(env.DB);
     const { ctx } = ctxOf();
@@ -482,7 +482,7 @@ describe("画面", () => {
     expect(await getJob(env.DB, ward.wardId, out.jobId as string)).toMatchObject({ status: "withdrawn" });
   });
 
-  it("原本の実体は、その区のログインした人だけが開ける", async () => {
+  it("元の資料の実体は、その区の入った人だけが開ける", async () => {
     const mine = await seedAdmin(env.DB);
     const other = await seedAdmin(env.DB);
     const { ctx } = ctxOf();
@@ -499,7 +499,7 @@ describe("画面", () => {
     expect(anon.status).toBe(303);
   });
 
-  it("プロジェクトを選ぶ画面と、送る先の検査", async () => {
+  it("行事を選ぶ画面と、送る先の検査", async () => {
     const { ward, cookie } = await seedAdmin(env.DB);
     setProjectDirectory({
       listOpen: async () => [{ projectId: "p-1", title: "秋の収穫祭（架空）" }],
@@ -518,8 +518,8 @@ describe("画面", () => {
   });
 });
 
-describe("送る先のプロジェクトの検査", () => {
-  it("実在しない、「undefined」のような、閉じたプロジェクトには送れない（束 3 の実物で確かめる）", async () => {
+describe("送る先の行事の検査", () => {
+  it("実在しない、「undefined」のような、閉じた行事には送れない（束3の実物で確かめる）", async () => {
     setProjectDirectory(null);
     const { createProject } = await import("../src/project/api");
     const ward = await seedWard(env.DB);
@@ -536,7 +536,7 @@ describe("送る先のプロジェクトの検査", () => {
     expect(await send(open.projectId)).toMatchObject({ code: "no_project" });
   });
 
-  it("画面からも、実在しないプロジェクトの ID は断る", async () => {
+  it("画面からも、実在しない行事のIDは断る", async () => {
     setProjectDirectory(null);
     const { ward, cookie } = await seedAdmin(env.DB);
     const { ctx } = ctxOf();
@@ -545,12 +545,12 @@ describe("送る先のプロジェクトの検査", () => {
     form.append("text", "あ");
     const res = await app.request(`/${ward.slug}/admin/intake`, { method: "POST", headers: { cookie, origin: "http://localhost", accept: "application/json" }, body: form }, env, ctx);
     expect(res.status).toBe(400);
-    expect(((await res.json()) as { message: string }).message).toContain("プロジェクト");
+    expect(((await res.json()) as { message: string }).message).toContain("行事");
   });
 });
 
 describe("束の差し込み口", () => {
-  it("intake は役員画面の口と Cron を持つ", () => {
+  it("intakeは役員画面の口とCronを持つ", () => {
     expect(intake.admin).toBeDefined();
     expect(intake.scheduled).toBeTypeOf("function");
     expect(readOriginals).toBeTypeOf("function");

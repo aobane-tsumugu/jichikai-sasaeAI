@@ -129,10 +129,10 @@ const ID_PATTERN = /^[A-Za-z0-9_-]+$/;
  */
 export function printQrUrl(baseUrl: string, wardSlug: string, code: PrintCode): string {
   if (!ID_PATTERN.test(code.projectId) || !ID_PATTERN.test(code.documentId)) {
-    throw new Error("プロジェクトと文書の識別子は英数字、_、- だけにしてください。");
+    throw new Error("行事と文書の識別子は英数字、_、- だけにしてください。");
   }
   if (!Number.isInteger(code.version) || code.version < 1) {
-    throw new Error("版は 1 以上の整数にしてください。");
+    throw new Error("版は1以上の整数にしてください。");
   }
   const base = `${baseUrl.replace(/\/+$/, "")}/${wardSlug}/q/${code.projectId}/${code.documentId}/${code.version}`;
   return code.squad ? `${base}?s=${encodeURIComponent(code.squad)}` : base;

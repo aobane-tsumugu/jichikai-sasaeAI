@@ -32,12 +32,12 @@ export async function addQuestion(
   if (project.closed_at) return { status: "rejected", reason: "closed" };
 
   const text = typeof input.text === "string" ? input.text.trim() : "";
-  if (text === "" || text.length > MAX_TEXT) return { status: "rejected", reason: "bad_input", detail: "問いの文が空か長すぎます" };
+  if (text === "" || text.length > MAX_TEXT) return { status: "rejected", reason: "bad_input", detail: "質問の文が空か長すぎます" };
   if (!WRITABLE_KINDS.includes(input.kind)) {
-    return { status: "rejected", reason: "bad_input", detail: "問いの種類が合いません" };
+    return { status: "rejected", reason: "bad_input", detail: "質問の種類が合いません" };
   }
   if (typeof input.packVersion !== "string" || input.packVersion === "") {
-    return { status: "rejected", reason: "bad_input", detail: "読み方の版が分かりません" };
+    return { status: "rejected", reason: "bad_input", detail: "読み取った内容を確かめられませんでした" };
   }
   if (
     input.options !== undefined &&
@@ -48,7 +48,7 @@ export async function addQuestion(
     return { status: "rejected", reason: "bad_input", detail: "選べる物の形が合いません" };
   }
   if (input.target !== undefined && (typeof input.target !== "string" || input.target.length > 200)) {
-    return { status: "rejected", reason: "bad_input", detail: "問いの対象が合いません" };
+    return { status: "rejected", reason: "bad_input", detail: "質問の対象が合いません" };
   }
 
   let source = undefined;
@@ -56,7 +56,7 @@ export async function addQuestion(
     const shape = checkSourceShape(input.source);
     if (!shape.ok) return { status: "rejected", reason: "bad_source", detail: shape.reason };
     if (input.source.kind === "original" && options.verifyOriginal && !(await options.verifyOriginal(input.source.ref as string))) {
-      return { status: "rejected", reason: "bad_source", detail: "出どころの原本が見つかりません" };
+      return { status: "rejected", reason: "bad_source", detail: "出どころの元の資料が見つかりません" };
     }
     source = normalizeSource(input.source);
   }

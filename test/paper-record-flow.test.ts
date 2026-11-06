@@ -10,7 +10,7 @@ import { setSetting } from "../src/settings/store";
 import { lookupPaperCode, lookupPrintQr, printQrUrl, projectPaperQrUrl, qrSvg } from "../src/print/qr";
 import { get, postForm, realApp } from "./helpers";
 
-it("配る前の記入用紙から、班長の紙、閉じた後の本文と答えと報告へつながる", async () => {
+it("配る前の記入用紙から、班長の紙、閉じたあとの本文と答えと報告へつながる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: fixture.draftTitle, year: fixture.eventYear, accountId: account.accountId,

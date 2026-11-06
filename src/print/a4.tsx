@@ -15,7 +15,7 @@ import { BASE_CSS, PRINT_CSS } from "../core/styles";
 
 
 const DEFAULT_HINT =
-  "「印刷する」を押すと、ブラウザの印刷の画面が開きます。用紙は A4、倍率は 100%、ヘッダーとフッターは外してください。プリンターが無い時は、送り先を「PDF に保存」にしてください。";
+  "「印刷する」を押すと、ブラウザの印刷の画面が開きます。用紙はA4、倍率は100%、ヘッダーとフッターは外してください。プリンターがないときは、送り先を「PDFに保存」にしてください。";
 
 /** 印刷用ページの外側。画面の上に印刷ボタンの帯を出す（紙には出ない）。 */
 export const PrintDocument: FC<PropsWithChildren<{ title: string; hint?: Child; back?: string; copies?: string }>> = ({ title, hint, back, copies, children }) => (

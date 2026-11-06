@@ -55,7 +55,7 @@ export async function openSpace(db: D1Database, wardId: string, projectId: strin
     db.prepare("UPDATE project_space_members SET revoked_at = ? WHERE ward_id = ? AND project_id = ? AND revoked_at IS NULL")
       .bind(now, wardId, projectId),
   ]);
-  if ((results[0]?.meta.changes ?? 0) === 0) throw new Error("プロジェクトが見つかりません。");
+  if ((results[0]?.meta.changes ?? 0) === 0) throw new Error("行事が見つかりません。");
 }
 
 export async function closeSpace(db: D1Database, wardId: string, projectId: string, accountId: string): Promise<void> {
@@ -100,14 +100,14 @@ export async function createInvite(
        SELECT ?, ?, p.project_id, ?, ?, ?, ? FROM projects p JOIN project_spaces s ON s.ward_id = p.ward_id AND s.project_id = p.project_id AND s.closed_at IS NULL
        WHERE p.ward_id = ? AND p.project_id = ?`,
     ).bind(newId(), wardId, role, district, hashed, expires, wardId, projectId).run();
-    if ((result.meta.changes ?? 0) === 0) throw new Error("空間を開いてから作ってください。");
+    if ((result.meta.changes ?? 0) === 0) throw new Error("実行委員と班長のページを開いてから作ってください。");
   } else {
     const result = await db.prepare(
       `INSERT INTO project_space_invites (invite_id, ward_id, project_id, token_hash, district, role, expires_at, created_by_account_id)
        SELECT ?, ?, p.project_id, ?, ?, ?, ?, ? FROM projects p JOIN project_spaces s ON s.ward_id = p.ward_id AND s.project_id = p.project_id AND s.closed_at IS NULL
        WHERE p.ward_id = ? AND p.project_id = ?`,
     ).bind(newId(), wardId, hashed, district, role, expires, accountId, wardId, projectId).run();
-    if ((result.meta.changes ?? 0) === 0) throw new Error("空間を開いてから作ってください。");
+    if ((result.meta.changes ?? 0) === 0) throw new Error("実行委員と班長のページを開いてから作ってください。");
   }
   return token;
 }

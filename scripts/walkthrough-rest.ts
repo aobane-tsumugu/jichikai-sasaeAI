@@ -35,7 +35,7 @@ function record(number: number, title: string, result: "通過" | "止まった"
   safe = safe.replaceAll("|", "／").replace(/[\r\n]+/g, " ");
   rows.push(`| ${number} | ${title} | ${result} | ${safe}${status === null ? "" : `（HTTP ${status}）`} | ${Math.round((Date.now() - start) / 1000)} |`);
   writeFileSync(evidence, [
-    "# staging HTTP 確認 " + new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }), "",
+    "# staging HTTP確認 " + new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }), "",
     "- 区: " + ward, "- 資格情報: 値は記録していません", "- 一斉送信: 実行なし（送らない選択）", "- 本物の住民への送信: なし", "",
     "| 項目 | 確認内容 | 結果 | 理由・応答 | 秒 |", "|---:|---|---|---|---:|", ...rows, ""
   ].join("\n"), "utf8");
@@ -146,7 +146,7 @@ try {
   if (login.status !== 303 || !cookies.has("device") || !home.response.ok) throw new Error("役員画面に入れません");
   adminLoggedIn = true;
 } catch (error) {
-  fail(1, "新しいプロジェクトと案内", error, startLogin);
+  fail(1, "新しい行事と案内", error, startLogin);
 }
 
 // 1. 新しいプロジェクトを開いて、手書きの案内を一度配る。
@@ -155,7 +155,7 @@ if (adminLoggedIn) {
   try {
     const opened = await post(admin + "/projects", { kind: "event", year: String(new Date().getFullYear()) });
     projectId = /\/projects\/([^/]+)\/map$/.exec(opened.headers.get("location") ?? "")?.[1] ?? "";
-    if (opened.status !== 303 || !projectId) throw new Error("新しいプロジェクトを開けません");
+    if (opened.status !== 303 || !projectId) throw new Error("新しい行事を開けません");
     projectTitle = FIRST_SLICE.draftTitle + " " + stamp.slice(0, 13);
     const renamed = await post(admin + "/projects/" + projectId + "/title", { title: projectTitle });
     if (renamed.status !== 303) throw new Error("題を保存できません");
@@ -178,10 +178,10 @@ if (adminLoggedIn) {
     const publicPage = await get(wardPath + "/p/" + projectId);
     if (!publicPage.response.ok) throw new Error("配った案内を開けません");
     publicLive = true;
-    record(1, "新しいプロジェクトと案内", "通過", "手書きの案内を保存し、公式 LINE を送らない選択で配布", distributed.status, start);
-  } catch (error) { fail(1, "新しいプロジェクトと案内", error, start); }
+    record(1, "新しい行事と案内", "通過", "手書きの案内を保存し、公式LINEを送らない選択で配布", distributed.status, start);
+  } catch (error) { fail(1, "新しい行事と案内", error, start); }
 } else {
-  for (const [number, title] of [[2,"回答票"],[3,"今やることと区の地図"],[5,"実態の一枚"],[6,"言葉で下書きを直す"],[7,"当番表の編集"],[8,"対象者への配布"],[10,"予備の列"],[11,"行政の依頼と帳簿"],[12,"原本を消す"],[13,"引渡し"]] as const) skip(number, title, "役員画面に入れず、前提のプロジェクトがありません");
+  for (const [number, title] of [[2,"回答票"],[3,"今やることと区の段取り"],[5,"実態の一枚"],[6,"言葉で下書きを直す"],[7,"当番表の編集"],[8,"対象者への配布"],[10,"予備の列"],[11,"行政の依頼と帳簿"],[12,"元の資料を消す"],[13,"引渡し"]] as const) skip(number, title, "役員画面に入れず、前提の行事がありません");
 }
 
 // 2. 架空の回答票を読み取り、役員が確認して確定する。
@@ -198,16 +198,16 @@ if (projectId && publicLive) {
     const answerPath = admin + "/answers/" + projectId;
     const page = await waitPage(answerPath + "?view=list", html => html.includes("/sheet/") && html.includes("/row/0"), html => html.includes("読めませんでした"));
     const original = /\/answers\/[^/]+\/sheet\/([^/]+)\/row\/0/.exec(page.html)?.[1];
-    if (!original) throw new Error("確認できる回答行がありません");
+    if (!original) throw new Error("確認できる答え行がありません");
     sheetOriginal = original;
     const rowForm = readForm(page.html, "/answers/" + projectId + "/sheet/" + original + "/row/0");
     if (!["children_count", "adults_count", "seniors_count"].every(name => name in rowForm.fields)) throw new Error("人数の内訳の欄がありません");
     const confirmed = await post(rowForm.action, rowForm.fields);
-    if (confirmed.status !== 303) throw new Error("回答行を確定できません");
+    if (confirmed.status !== 303) throw new Error("答え行を確定できません");
     const totals = await get(answerPath);
     const answerList = await get(answerPath + "?view=list");
     if (!totals.html.includes("参加する") || !answerList.html.includes("直して入れ直す")) throw new Error("入れた答えが一覧と集計に出ません");
-    record(2, "回答票", "通過", "fixtures の回答票を読み取り、確認画面から一行を確定して一覧・集計を確認", confirmed.status, start);
+    record(2, "回答票", "通過", "fixturesの回答票を読み取り、確認画面から一行を確定して一覧・集計を確認", confirmed.status, start);
   } catch (error) { fail(2, "回答票", error, start); }
 } else skip(2, "回答票", "配布済みの案内がなく、回答票の対象がありません");
 
@@ -216,10 +216,10 @@ if (projectId) {
   const start = Date.now();
   try {
     const [today, map] = await Promise.all([get(admin + "/projects/today"), get(admin + "/archive/map")]);
-    if (!today.response.ok || !map.response.ok || !today.html.includes(projectTitle) || !map.html.includes(projectTitle)) throw new Error("今やることと区の地図の両方にプロジェクトが見えません");
-    record(3, "今やることと区の地図", "通過", "役員画面の入口と区の地図で新しいプロジェクトを確認", map.response.status, start);
-  } catch (error) { fail(3, "今やることと区の地図", error, start); }
-} else skip(3, "今やることと区の地図", "プロジェクトを開けませんでした");
+    if (!today.response.ok || !map.response.ok || !today.html.includes(projectTitle) || !map.html.includes(projectTitle)) throw new Error("今やることと区の段取りの両方に行事が見えません");
+    record(3, "今やることと区の段取り", "通過", "役員画面の入口と区の段取りで新しい行事を確認", map.response.status, start);
+  } catch (error) { fail(3, "今やることと区の段取り", error, start); }
+} else skip(3, "今やることと区の段取り", "行事を開けませんでした");
 
 // 4. 閉じた既存プロジェクトの検索と記録への質問。候補が無い時は記録を汚さず飛ばす。
 if (!adminLoggedIn) skip(4, "全文索引と記録に聞く", "役員画面に入れず、閉じた記録を検索できません");
@@ -227,8 +227,8 @@ else {
   const start = Date.now();
   try {
     const archive = await get(admin + "/archive");
-    if (!archive.response.ok || archive.html.includes("閉じたプロジェクトはまだありません")) {
-      skip(4, "全文索引と記録に聞く", "区の記録に閉じたプロジェクトがありません");
+    if (!archive.response.ok || archive.html.includes("閉じた行事はまだありません")) {
+      skip(4, "全文索引と記録に聞く", "区の記録に閉じた行事がありません");
     } else {
       const firstLink = [...archive.html.matchAll(/href="([^"]*\/archive\/[^"/?#]+)"/g)]
         .map(match => match[1] ?? "")
@@ -245,13 +245,13 @@ else {
       const answer = await post(ask.action, ask.fields, 360_000);
       const answerHtml = await answer.text();
       if (!answer.ok || !answerHtml.includes("記録に聞く") || !answerHtml.includes("元の箇所")) throw new Error("答えと元の箇所を確認できません");
-      record(4, "全文索引と記録に聞く", "通過", "閉じた記録の検索結果から原本へ戻り、質問の答えと根拠欄を確認", answer.status, start);
+      record(4, "全文索引と記録に聞く", "通過", "閉じた記録の検索結果から元の資料へ戻り、質問の答えと根拠欄を確認", answer.status, start);
     }
   } catch (error) { fail(4, "全文索引と記録に聞く", error, start); }
 }
 
 // 5. 活動紹介を保存し、閉じた後に掲載する。後続の確認のため開き直す。
-if (!projectId) skip(5, "実態の一枚", "前提のプロジェクトを開けませんでした");
+if (!projectId) skip(5, "実態の一枚", "前提の行事を開けませんでした");
 else {
   const start = Date.now();
   try {
@@ -270,7 +270,7 @@ else {
     const closePage = await get(path);
     const close = readForm(closePage.html, path + "/finalize");
     const closed = await post(close.action, close.values);
-    if (closed.status !== 303) throw new Error("確認用のプロジェクトを閉じられません");
+    if (closed.status !== 303) throw new Error("確認用の行事を閉じられません");
     try {
       const closedPage = await get(path + "?view=activity");
       const publish = readForm(closedPage.html, path + "/activity");
@@ -279,14 +279,14 @@ else {
       const published = await post(publish.action, publish.fields);
       if (published.status !== 303 || published.headers.get("location") !== path + "?view=activity&activity=published") throw new Error("活動紹介を区のページに載せられません");
       const publicPage = await get(wardPath + "/work/" + projectId);
-      if (!publicPage.response.ok || !publicPage.html.includes(form.fields.introduction) || !publicPage.html.includes(form.fields.membershipBurden) || !publicPage.html.includes(form.fields.membershipBenefit)) throw new Error("掲載した活動紹介を区のページで確認できません");
+      if (!publicPage.response.ok || !publicPage.html.includes(form.fields.introduction) || !publicPage.html.includes(form.fields.membershipBurden) || !publicPage.html.includes(form.fields.membershipBenefit)) throw new Error("載せた活動紹介を区のページで確認できません");
     } finally {
       const closedPage = await get(path);
       const reopen = readForm(closedPage.html, path + "/reopen");
       const reopened = await post(reopen.action, reopen.fields);
-      if (reopened.status !== 303) throw new Error("後続の確認用にプロジェクトを開き直せません");
+      if (reopened.status !== 303) throw new Error("後続の確認用に行事を開き直せません");
     }
-    record(5, "実態の一枚", "通過", "架空の活動紹介を保存し、閉じた後に区のページで掲載内容を確認。後続の確認用に開き直した", saved.status, start);
+    record(5, "実態の一枚", "通過", "架空の活動紹介を保存し、閉じたあとに区のページで載せる内容を確認。後続の確認用に開き直した", saved.status, start);
   } catch (error) { fail(5, "実態の一枚", error, start); }
 }
 
@@ -303,9 +303,9 @@ if (projectId) {
     if (queued.status !== 303) throw new Error("下書きの修正を頼めません");
     const after = await waitPage(path, html => /data-ai-status="done"/.test(html) && /<textarea[^>]*name="text"[^>]*>([\s\S]*?)<\/textarea>/i.exec(html)?.[1] !== oldText, html => /data-ai-status="(?:failed|attention)"/.test(html));
     if (!after.html.includes(FIRST_SLICE.previousPlace)) throw new Error("指示した一文を含む下書きになっていません");
-    record(6, "言葉で下書きを直す", "通過", "一文の指示後に下書きの変化を確認", after.response.status, start);
+    record(6, "言葉で下書きを直す", "通過", "一文の指示したあとに下書きの変化を確認", after.response.status, start);
   } catch (error) { fail(6, "言葉で下書きを直す", error, start); }
-} else skip(6, "言葉で下書きを直す", "プロジェクトを開けませんでした");
+} else skip(6, "言葉で下書きを直す", "行事を開けませんでした");
 
 // 7. 当番表の一行があれば編集して保存する。
 if (projectId) {
@@ -323,10 +323,10 @@ if (projectId) {
       record(7, "当番表の編集", "通過", "既存の一行を編集して保存", saved.status, start);
     }
   } catch (error) { fail(7, "当番表の編集", error, start); }
-} else skip(7, "当番表の編集", "プロジェクトを開けませんでした");
+} else skip(7, "当番表の編集", "行事を開けませんでした");
 
 // 8. 名簿から一世帯を選び、配る内容の確認画面まで進む。配る操作は行わない。
-if (!projectId) skip(8, "対象者への配布", "前提のプロジェクトを開けませんでした");
+if (!projectId) skip(8, "対象者への配布", "前提の行事を開けませんでした");
 else {
   const start = Date.now();
   try {
@@ -348,7 +348,7 @@ else {
       const html = await confirm.text();
       const target = JSON.parse(form.fields.household) as [string, string];
       if (!confirm.ok || !unescapeHtml(html).includes(target.join(" / ")) || !html.includes("今回は公式LINEに送りません")) throw new Error("選んだ世帯への紙の配布先を確認できません");
-      record(8, "対象者への配布", "通過", "一世帯を選び、紙の配布先と公式 LINE に送らない選択を確認。配る操作は実行していない", confirm.status, start);
+      record(8, "対象者への配布", "通過", "一世帯を選び、紙の配布先と公式LINEに送らない選択を確認。配る操作は実行していない", confirm.status, start);
     }
   } catch (error) { fail(8, "対象者への配布", error, start); }
 }
@@ -358,14 +358,14 @@ else {
   const start = Date.now();
   try {
     const wardPage = await get(wardPath + "/");
-    if (/action="[^"]*(?:inquir|contact|request)/i.test(wardPage.html)) skip(9, "問い合わせ", "住民向けの HTTP 問い合わせ入口を画面で確認できません（LINE 署名が要る経路は対象外）");
+    if (/action="[^"]*(?:inquir|contact|request)/i.test(wardPage.html)) skip(9, "問い合わせ", "住民向けのHTTP問い合わせ入口を画面で確認できません（LINE署名が要る経路は対象外）");
     else skip(9, "問い合わせ", "住民向け問い合わせ画面がありません。役員の記録フォームは住民側の入口ではありません");
   } catch (error) { fail(9, "問い合わせ", error, start); }
 }
 
 // 10. 専用の予備経路画面がある場合だけ開く。通常の手入力欄とは区別する。
-if (!projectId) skip(10, "予備の列", "前提のプロジェクトを開けませんでした");
-else skip(10, "予備の列", "役員画面に予備経路の専用画面はなく、通常の手入力画面だけです");
+if (!projectId) skip(10, "予備の列", "前提の行事を開けませんでした");
+else skip(10, "予備の列", "役員画面に予備経路の専用画面はなく、通常の手入力画面です");
 
 // 11. 行政依頼・帳簿の入力画面を読み、未提出のまま保存する。
 if (!adminLoggedIn) skip(11, "行政の依頼と帳簿", "役員画面に入れず、行政依頼を保存できません");
@@ -374,7 +374,7 @@ else {
   try {
     const opened = await post(admin + "/projects", { kind: "city_request", year: String(new Date().getFullYear()) });
     const cityId = /\/projects\/([^/]+)\/map$/.exec(opened.headers.get("location") ?? "")?.[1];
-    if (opened.status !== 303 || !cityId) throw new Error("行政の依頼プロジェクトを開けません");
+    if (opened.status !== 303 || !cityId) throw new Error("行政の依頼行事を開けません");
     const cityPath = admin + "/requests/city/" + cityId;
     const cityPage = await get(cityPath);
     if (!cityPage.response.ok) throw new Error("行政の依頼画面を開けません");
@@ -398,30 +398,30 @@ else {
 }
 
 // 12. この通しの回答票の記録を「消す求め」から受け付ける。消去完了は待たない。
-if (!projectId) skip(12, "原本を消す", "前提のプロジェクトを開けませんでした");
+if (!projectId) skip(12, "元の資料を消す", "前提の行事を開けませんでした");
 else {
   const start = Date.now();
   try {
-    if (!sheetOriginal) skip(12, "原本を消す", "この通しで受け取った回答票の原本がありません");
+    if (!sheetOriginal) skip(12, "元の資料を消す", "この通しで受け取った回答票の元の資料がありません");
     else {
       const page = await get(admin + "/settings/deletion");
       if (!page.response.ok) throw new Error("消す求めの画面を開けません");
       const section = [...page.html.matchAll(/<section\b[^>]*>[\s\S]*?<\/section>/gi)]
         .map(match => match[0]).find(html => unescapeHtml(html).includes(projectTitle) && unescapeHtml(html).includes(sheetFilename));
-      if (!section) throw new Error("今回のプロジェクトの回答票を消す求めで選べません");
+      if (!section) throw new Error("今回の行事の回答票を消す求めで選べません");
       const form = readForm(section, admin + "/settings/deletion/");
       const queued = await post(form.action, form.fields);
       const location = queued.headers.get("location");
-      if (queued.status !== 303 || location !== admin + "/settings/deletion?queued=1") throw new Error("原本の消去を受け付けられません");
+      if (queued.status !== 303 || location !== admin + "/settings/deletion?queued=1") throw new Error("元の資料の消去を受け付けられません");
       const accepted = await get(location);
-      if (!accepted.response.ok || !accepted.html.includes("消去を受け付けました。処理は続きから進みます。")) throw new Error("原本の消去の受付を確認できません");
-      record(12, "原本を消す", "通過", "今回の回答票の記録を区の設定の消す求めから受け付けた。消去完了は未確認", accepted.response.status, start);
+      if (!accepted.response.ok || !accepted.html.includes("消去を受け付けました。処理は続きから進みます。")) throw new Error("元の資料の消去の受付を確認できません");
+      record(12, "元の資料を消す", "通過", "今回の回答票の記録を区の設定の消す求めから受け付けた。消去完了は未確認", accepted.response.status, start);
     }
-  } catch (error) { fail(12, "原本を消す", error, start); }
+  } catch (error) { fail(12, "元の資料を消す", error, start); }
 }
 
 // 13. 架空の役員アカウントを足し、新しい資格でログインする。資格情報は表示・記録しない。
-if (!projectId) skip(13, "引渡し", "前提のプロジェクトを開けませんでした");
+if (!projectId) skip(13, "引渡し", "前提の行事を開けませんでした");
 else {
   const start = Date.now();
   try {
@@ -439,7 +439,7 @@ else {
     const login = await post(admin + "/login", { loginId, password });
     const newAccountHome = await get(admin + "/");
     if (login.status !== 303 || !cookies.has("device") || !newAccountHome.response.ok || !newAccountHome.html.includes(testName)) throw new Error("新しい資格で役員画面に入れません");
-    record(13, "引渡し", "通過", "架空の役員アカウントを足し、新しい資格でログイン。資格値は表示・記録していない", newAccountHome.response.status, start);
+    record(13, "引渡し", "通過", "架空の役員アカウントを足し、新しい資格で入る。資格値は表示・記録していない", newAccountHome.response.status, start);
   } catch (error) { fail(13, "引渡し", error, start); }
 }
 
@@ -459,7 +459,7 @@ if (opsCredsArg) {
     if (!numberMatch) throw new Error("費用画面に数字が見つかりません");
     record(14, "運用の費用", "通過", "運用画面の区別費用を開き、数値表示を確認", costs.response.status, start);
   } catch (error) { fail(14, "運用の費用", error, start); }
-} else skip(14, "運用の費用", "--ops-creds がありません");
+} else skip(14, "運用の費用", "--ops-credsがありません");
 
 if (opsLoggedIn) await post("/ops/logout", {});
 console.log("記録: " + evidence);

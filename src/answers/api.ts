@@ -96,7 +96,7 @@ export function parseCsv(text: string): string[][] {
       cell = "";
     } else cell += char;
   }
-  if (quoted) throw new Error("CSV の引用符が閉じていません。");
+  if (quoted) throw new Error("CSVの引用符が閉じていません。");
   if (cell !== "" || row.length > 0) {
     row.push(cell);
     rows.push(row);
@@ -110,7 +110,7 @@ export function rowsToRoster(rows: string[][], columns?: RosterColumns): RosterE
   if (!header) throw new Error("見出しと世帯の行が必要です。");
   const selected = columns ?? chooseRosterColumns(header);
   if (!selected || selected.household === selected.district || selected.household < 0 || selected.district < 0) {
-    throw new Error("世帯名と班の項目を選んでください。");
+    throw new Error("代表者のお名前と班の項目を選んでください。");
   }
   const entries: RosterEntry[] = [];
   for (const row of rows.slice(1)) {
@@ -209,7 +209,7 @@ export async function addAnswer(db: D1Database, wardId: string, input: AnswerInp
              AND p.project_id = project_answers.project_id AND p.closed_at IS NULL)`,
       ).bind(input.household.trim(), input.district.trim(), peopleCount, input.childrenCount ?? null, input.adultsCount ?? null, input.seniorsCount ?? null, input.helperName?.trim() ?? "", input.helperTimes?.trim() ?? "",
         input.accountId ?? null, wardId, input.projectId, input.originalId, input.sheetRowIndex).run();
-      if ((result.meta.changes ?? 0) === 0) throw new Error("このプロジェクトは回答を受け付けていません。");
+      if ((result.meta.changes ?? 0) === 0) throw new Error("この行事は答えを受け付けていません。");
       return existing.answer_id;
     }
   }
@@ -241,7 +241,7 @@ export async function addAnswer(db: D1Database, wardId: string, input: AnswerInp
     )
     .run();
   const exists = await db.prepare("SELECT answer_id FROM project_answers WHERE ward_id = ? AND answer_id = ?").bind(wardId, answerId).first();
-  if (!exists) throw new Error("このプロジェクトは回答を受け付けていません。");
+  if (!exists) throw new Error("この行事は答えを受け付けていません。");
   return answerId;
 }
 
@@ -368,7 +368,7 @@ export async function setAnswerDeadline(db: D1Database, wardId: string, projectI
     )
     .bind(wardId, dueOn, nowIso(), accountId, wardId, projectId)
     .run();
-  if ((result.meta.changes ?? 0) === 0) throw new Error("プロジェクトが見つかりません。");
+  if ((result.meta.changes ?? 0) === 0) throw new Error("行事が見つかりません。");
 }
 
 export async function getAnswerDeadline(db: D1Database, wardId: string, projectId: string): Promise<string | null> {

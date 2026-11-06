@@ -5,7 +5,7 @@ import { receive } from "../src/intake/receive";
 import { createProject } from "../src/project/api";
 import { cookieFrom, get, postForm, realApp } from "./helpers";
 
-it("プロジェクトを閉じると空間と原本を開けず、開き直すと同じ入室情報で開ける", async () => {
+it("行事を閉じると実行委員と班長のページと元の資料を開けず、開き直すと同じ入室情報で開ける", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "閉じる行事（架空）", year: 2026, accountId: account.accountId });
   const admin = `/${ward.slug}/admin`;
@@ -15,7 +15,7 @@ it("プロジェクトを閉じると空間と原本を開けず、開き直す�
   const member = cookieFrom(entered, `space_${project.projectId}`);
   expect(member).not.toBeNull();
   const original = await receive(env, { wardId: ward.wardId, projectId: project.projectId, via: "space", parts: [
-    { kind: "file", filename: "空間の記録（架空）.txt", mediaType: "text/plain", bytes: new TextEncoder().encode("架空の空間の資料です") },
+    { kind: "file", filename: "空間の記録（架空）.txt", mediaType: "text/plain", bytes: new TextEncoder().encode("架空の実行委員と班長のページの資料です") },
   ] });
   const file = `${space}/file/${original.received[0]!.originalId}`;
   expect((await get(realApp, space, member!)).status).toBe(200);

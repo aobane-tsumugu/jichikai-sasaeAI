@@ -12,7 +12,7 @@ import { applyChange, createProject, getProjectState } from "../src/project/api"
 import type { RowData } from "../src/project/model";
 import { cookieFrom, get, postForm, realApp } from "./helpers";
 
-it("空間には配った文書を読みやすく出し、班長の回答票を役員と同じ集計に一度だけ入れる", async () => {
+it("実行委員と班長のページには配った文書を読みやすく出し、班長の回答票を役員と同じ集計に一度だけ入れる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: FIRST_SLICE.nextYearTitle, year: FIRST_SLICE.eventYear, accountId: account.accountId,
@@ -33,7 +33,7 @@ it("空間には配った文書を読みやすく出し、班長の回答票を�
   const leaderToken = await createInvite(env.DB, ward.wardId, projectId, "leader", FIRST_SLICE.district, account.accountId, true);
   const entered = await get(realApp, `${spacePath}/person/${leaderToken}`);
   const memberCookie = cookieFrom(entered, `space_${projectId}`);
-  if (!memberCookie) throw new Error("班長が空間に入れません。");
+  if (!memberCookie) throw new Error("班長が実行委員と班長のページに入れません。");
 
   const source = { kind: "person" as const, accountId: account.accountId };
   const rows: { table: "sponsors" | "duties" | "layout"; data: RowData }[] = [
@@ -48,7 +48,7 @@ it("空間には配った文書を読みやすく出し、班長の回答票を�
     expect(changed.status).toBe("applied");
   }
   const current = await getProjectState(env.DB, ward.wardId, projectId);
-  if (!current) throw new Error("プロジェクトがありません。");
+  if (!current) throw new Error("行事がありません。");
   const save = (text: string, scope: "space" | "staff" = "space") => saveDocument(env.DB, ward.wardId, projectId, account.accountId, {
     kind: "duty_roster", title: text, scope,
     body: JSON.stringify({ text, items: [{ key: "place", content: FIRST_SLICE.previousPlace }] }), basedOn: current.project.stateVersion,

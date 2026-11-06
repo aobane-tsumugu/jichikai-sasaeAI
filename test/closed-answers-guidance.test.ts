@@ -5,10 +5,10 @@ import { seedAdmin } from "../src/core/testing";
 import { createProject } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("閉じた回答画面では受付をせず、開き直してから電話の回答を入れられる", async () => {
+it("閉じた答えの画面では受付をせず、開き直してから電話の答えを入れられる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の回答の確認", year: 2026, accountId: account.accountId,
+    kind: "event", title: "架空の答えの確認", year: 2026, accountId: account.accountId,
   });
   const root = `/${ward.slug}/admin`;
   const path = `${root}/answers/${project.projectId}`;

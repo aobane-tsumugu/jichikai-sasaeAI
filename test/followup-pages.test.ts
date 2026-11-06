@@ -6,7 +6,7 @@ import { listJobs } from "../src/intake/store";
 import { createProject } from "../src/project/api";
 import { get, realApp } from "./helpers";
 
-it("入った物を名前と文で見分け、材料の文を読み、今やることに過ぎた行事の日を出さない", async () => {
+it("届いたものを名前と文で見分け、資料の文を読み、今やることに過ぎた行事の日を出さない", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const jstNow = Date.now() + 9 * 60 * 60 * 1000;
   const yesterday = new Date(jstNow - 86400000).toISOString().slice(0, 10);
@@ -43,10 +43,10 @@ it("入った物を名前と文で見分け、材料の文を読み、今やる�
   const todayHtml = await today.text();
   expect(todayHtml).not.toContain(`${displayDate(yesterday)}　行事の日`);
   expect(todayHtml).toContain(`${displayDate(tomorrow)}　行事の日`);
-  expect(todayHtml).toContain(`${displayDate(yesterday)}　回答の締切`);
+  expect(todayHtml).toContain(`${displayDate(yesterday)}　答えの締切`);
 });
 
-it("AI に頼んだ下書きの仕事は、入った物の一覧に出さない", async () => {
+it("AIに頼んだ下書きの仕事は、届いたものの一覧に出さない", async () => {
   const { ward, account } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
   await env.DB.prepare(`INSERT INTO jobs (job_id, ward_id, project_id, via, task, instruction, account_id, status, created_at, updated_at, read_at)

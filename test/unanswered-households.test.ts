@@ -5,7 +5,7 @@ import { seedAdmin } from "../src/core/testing";
 import { createProject } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("別の班の同名世帯はそれぞれ回答を照合し、全員回答後も名簿にある班を表示する", async () => {
+it("別の班の同名世帯はそれぞれ答えを照合し、全員答え後も名簿にある班を表示する", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,
@@ -23,5 +23,5 @@ it("別の班の同名世帯はそれぞれ回答を照合し、全員回答後�
   expect((await postForm(realApp, path, { household: "架空の同名世帯", district: "2班", people_count: "3" })).status).toBe(200);
   const page = await (await get(realApp, `/${ward.slug}/admin/answers/${project.projectId}?view=unanswered`, cookie)).text();
   expect(page).not.toContain("名簿はまだありません。");
-  expect(page.match(/未回答の世帯はありません。/g)).toHaveLength(2);
+  expect(page.match(/まだ答えていない世帯はありません。/g)).toHaveLength(2);
 });

@@ -7,8 +7,8 @@ import { ITEM_LABEL, isItemKey } from "./model";
 
 /** 保存済みの選択肢の値は保ち、資料の年を聞く言葉だけ揃える。 */
 export function questionOptionLabel(option: string): string {
-  if (["今年の物", "今年の資料"].includes(option)) return "今年のもの";
-  if (["去年の物", "去年の資料", "去年かそれより前"].includes(option)) return "去年か、それより前のもの";
+  if (["今年のもの", "今年の資料"].includes(option)) return "今年のもの";
+  if (["去年のもの", "去年の資料", "去年かそれより前"].includes(option)) return "去年か、それより前のもの";
   return option;
 }
 
@@ -29,7 +29,7 @@ questionPages.get("/projects/:projectId/questions", async (c) => {
     <ErrorNotice code={c.req.query("error")} messages={{ answer_failed: "答えを入れられませんでした。もう一度お試しください。" }} />
     {c.req.query("notice") === "unknown" ? <Notice>分からないとして残しました。あとから下書きで直せます。</Notice> : c.req.query("notice") === "later" ? <Notice>あとで答えられるように残しました。</Notice> : null}
     {!questions.length ? next : null}
-    {state.project.closedAt ? <Notice>このプロジェクトは閉じました。開き直すと答えを入れられます。</Notice> : null}
+    {state.project.closedAt ? <Notice>この行事は閉じました。開き直すと答えを入れられます。</Notice> : null}
     {questions.map((question) => <section class="panel" id={`question-${question.questionId}`}>
       <h2>{question.kind === "unreadable" ? "読めなかったところがあります" : question.text}</h2>
       {question.kind === "unreadable" ? <p>{question.text}</p> : null}

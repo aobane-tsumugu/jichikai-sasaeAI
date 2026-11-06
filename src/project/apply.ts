@@ -110,7 +110,7 @@ async function verifySource(db: Db, wardId: string, source: Source, options: App
   const shape = checkSourceShape(source, allowUnknownProposalYear);
   if (!shape.ok) return shape.reason;
   if ((source.kind === "original" || (source.kind === "ai_proposal" && source.ref)) && options.verifyOriginal) {
-    if (!(await options.verifyOriginal(source.ref as string))) return "出どころの原本が見つかりません";
+    if (!(await options.verifyOriginal(source.ref as string))) return "出どころの元の資料が見つかりません";
   }
   if (source.kind === "person") {
     const account = await db
@@ -131,7 +131,7 @@ async function checkChange(
 ): Promise<Checked<Normalized>> {
   if (typeof change !== "object" || change === null) return { ok: false, reason: "変更の形が合いません" };
   if (typeof change.packVersion !== "string" || change.packVersion === "" || change.packVersion.length > MAX_PACK) {
-    return { ok: false, reason: "読み方の版が分かりません" };
+    return { ok: false, reason: "読み取った内容を確かめられませんでした" };
   }
   if (!(CONFIDENCES as readonly string[]).includes(change.confidence)) return { ok: false, reason: "確かさが合いません" };
   const sourceReason = await verifySource(db, wardId, change.source, options, change.kind === "row" && change.table === "duties");
@@ -142,7 +142,7 @@ async function checkChange(
     case "item": {
       if (!isItemKey(change.itemKey)) return { ok: false, reason: "項目の名前が合いません" };
       if (!(ITEMS_BY_KIND[project.kind as keyof typeof ITEMS_BY_KIND] as readonly string[]).includes(change.itemKey)) {
-        return { ok: false, reason: `このプロジェクトに「${ITEM_LABEL[change.itemKey]}」の項目はありません` };
+        return { ok: false, reason: `この行事に「${ITEM_LABEL[change.itemKey]}」の項目はありません` };
       }
       if (typeof change.value !== "string" || change.value.trim() === "") return { ok: false, reason: "項目の中身が空です" };
       if (change.value.length > MAX_VALUE) return { ok: false, reason: "項目の中身が長すぎます" };
@@ -188,7 +188,7 @@ async function checkChange(
       return { ok: true, value: { change, source, target: [...new Set(change.documents)].sort().join(",") } };
     }
     case "map_task": {
-      if (typeof change.taskKey !== "string" || change.taskKey === "") return { ok: false, reason: "地図の仕事が分かりません" };
+      if (typeof change.taskKey !== "string" || change.taskKey === "") return { ok: false, reason: "段取りの仕事が分かりません" };
       if (change.progress !== "started" && change.progress !== "done") return { ok: false, reason: "仕事の進み方が合いません" };
       return { ok: true, value: { change, source, target: change.taskKey } };
     }
@@ -447,7 +447,7 @@ async function planItem(ctx: Ctx, n: Normalized, change: ItemChange): Promise<Pl
     questions: [
       {
         kind: "conflict",
-        text: `「${label}」が食い違っています。今ある「${quote(current.content)}」と、入った物の「${quote(content)}」のどちらにしますか。`,
+        text: `「${label}」が食い違っています。今ある「${quote(current.content)}」と、届いたものの「${quote(content)}」のどちらにしますか。`,
         target: change.itemKey,
         detail: {
           itemKey: change.itemKey,
@@ -558,7 +558,7 @@ async function planRow(ctx: Ctx, n: Normalized, change: RowChange): Promise<Plan
 
     const questions: NewQuestion[] = conflicts.map((c) => ({
       kind: "conflict" as const,
-      text: `「${def.label}」の「${quote(name)}」の「${def.fields[c.field]?.label ?? c.field}」が食い違っています。今ある「${displayFieldValue(table, c.field, c.current)}」と、入った物の「${displayFieldValue(table, c.field, c.incoming)}」のどちらにしますか。`,
+      text: `「${def.label}」の「${quote(name)}」の「${def.fields[c.field]?.label ?? c.field}」が食い違っています。今ある「${displayFieldValue(table, c.field, c.current)}」と、届いたものの「${displayFieldValue(table, c.field, c.incoming)}」のどちらにしますか。`,
       target: `${table}:${matchKey}`,
       detail: {
         table,
@@ -681,7 +681,7 @@ async function planMapTask(ctx: Ctx, n: Normalized, change: MapTaskChange): Prom
     .bind(ctx.wardId, ctx.projectId, change.taskKey)
     .first<{ task_id: string; name: string; progress: keyof typeof PROGRESS_RANK }>();
   if (!task) {
-    return { status: "dropped", reason: "地図に当てはまる仕事がありません", statements: [], questions: [], bump: false, staleKinds: [] };
+    return { status: "dropped", reason: "段取りに当てはまる仕事がありません", statements: [], questions: [], bump: false, staleKinds: [] };
   }
   // 済み・進んだの印は前に進める向きだけ。戻す時は役員が地図で直す
   if (PROGRESS_RANK[task.progress] >= PROGRESS_RANK[change.progress]) {
@@ -873,7 +873,7 @@ export async function applyChange(
     plan.questions = [
       {
         kind: "discarded",
-        text: `入った物の「${summary}」を取り込めませんでした（${plan.reason ?? "理由は分かりません"}）。`,
+        text: `届いたものの「${summary}」を取り込めませんでした（${plan.reason ?? "理由は分かりません"}）。`,
         target: normalized.target === "-" ? null : normalized.target,
         detail: null,
         suffix: "dropped",
@@ -956,7 +956,7 @@ function describeChange(change: ChangeInput): string {
         ? (raw.documents as DocumentKind[]).map((d) => DOCUMENT_KIND_LABEL[d] ?? "文書").join("、")
         : "文書";
     case "map_task":
-      return "地図の仕事";
+      return "段取りの仕事";
     default:
       return "変更";
   }

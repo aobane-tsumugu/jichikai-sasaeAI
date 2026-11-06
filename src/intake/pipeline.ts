@@ -123,13 +123,13 @@ async function performRead(
       }
     }
     if (originals.length === 0) {
-      if (!direct) throw new ReadError("読む原本がありません", "unsupported", false);
+      if (!direct) throw new ReadError("読む元の資料がありません", "unsupported", false);
       const placed = await finishRead(env.DB, { wardId, jobId, attempt, source: "direct", packVersion: direct.pack_version,
         model: direct.model, body: direct.body });
       await endRun(env.DB, run, wardId, { ok: true, usage: directUsage });
       const latest = placed ? await getJob(env.DB, wardId, jobId) : null;
       if (latest?.project_id) await dispatchProject(env, wardId, latest.project_id).catch((error) => console.error("繋げるの起動に失敗しました", describe(error)));
-      else if (placed) await matchUnassignedAdminJob(env, wardId, jobId, client).catch((error) => console.error("受け箱の当てに失敗しました", describe(error)));
+      else if (placed) await matchUnassignedAdminJob(env, wardId, jobId, client).catch((error) => console.error("届いたものの当てに失敗しました", describe(error)));
       return placed ? "read" : "skipped";
     }
     const bucket = new WardBucket(env.ORIGINALS, wardId);
@@ -138,7 +138,7 @@ async function performRead(
       const object = await bucket.get(o.r2_path as string);
       if (!object) {
         // 取り下げと行き違った。取り下げの方が先なので、何も置かない
-        await endRun(env.DB, run, wardId, { ok: false, error: "原本の実体がありません" });
+        await endRun(env.DB, run, wardId, { ok: false, error: "元の資料の実体がありません" });
         await failJob(env.DB, wardId, jobId, "error");
         return "failed";
       }
@@ -173,7 +173,7 @@ async function performRead(
       await saveAnswerSheetRows(env.DB, wardId, latest.project_id, jobId, latest.account_id);
     }
     if (latest?.project_id && latest.read_kind !== "answer_sheet") await dispatchProject(env, wardId, latest.project_id).catch((e) => console.error("繋げるの起動に失敗しました", describe(e)));
-    else if (latest && (latest.via === "admin" || latest.via === "line_direct" || latest.via === "line_group")) await matchUnassignedAdminJob(env, wardId, jobId, client).catch((e) => console.error("受け箱の当てに失敗しました", describe(e)));
+    else if (latest && (latest.via === "admin" || latest.via === "line_direct" || latest.via === "line_group")) await matchUnassignedAdminJob(env, wardId, jobId, client).catch((e) => console.error("届いたものの当てに失敗しました", describe(e)));
     if (placed) {
       await attachClarificationQuestions(env.DB, wardId, jobId).catch(() => undefined);
       await processPhotoBatches(env, wardId).catch(() => undefined);
@@ -182,7 +182,7 @@ async function performRead(
   } catch (err) {
     const read = err instanceof ReadError ? err : null;
     await endRun(env.DB, run, wardId, { ok: false, error: describe(err) });
-    console.error("入った物の読みに失敗しました", wardId, jobId, describe(err));
+    console.error("届いたものの読みに失敗しました", wardId, jobId, describe(err));
     if (read && (!read.retryable || attempt >= MAX_READ_ATTEMPTS)) {
       await failJob(env.DB, wardId, jobId, read.failure);
       return "failed";

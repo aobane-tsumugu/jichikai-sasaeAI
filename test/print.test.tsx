@@ -25,8 +25,8 @@ function decode(text: string, options?: { border?: number }): string | null {
   return jsQR(rgba, size, size)?.data ?? null;
 }
 
-describe("QR の部品", () => {
-  it("紙の QR の URL を読み戻すと元の文字になる（日本語の班名を含む）", () => {
+describe("QRの部品", () => {
+  it("紙のQRのURLを読み戻すと元の文字になる（日本語の班名を含む）", () => {
     const url = printQrUrl("https://example.test", "demo-ward", {
       projectId: "proj_1",
       documentId: "doc-answer",
@@ -37,12 +37,12 @@ describe("QR の部品", () => {
     expect(decode(url)).toBe(url);
   });
 
-  it("区の固定 URL のような短い文字も読める", () => {
+  it("区の固定URLのような短い文字も読める", () => {
     const url = "https://example.test/demo-ward/";
     expect(decode(url)).toBe(url);
   });
 
-  it("URL を PrintCode に戻せる。形が違えば null", () => {
+  it("URLをPrintCodeに戻せる。形が違えばnull", () => {
     const url = printQrUrl("https://example.test/", "demo-ward", { projectId: "p1", documentId: "d1", version: 3 });
     expect(parsePrintQrUrl(url)).toEqual({
       wardSlug: "demo-ward",
@@ -66,7 +66,7 @@ describe("QR の部品", () => {
     expect(() => printQrUrl("https://example.test", "w", { projectId: "p", documentId: "d", version: 1.5 })).toThrow();
   });
 
-  it("SVG は白地に黒で、内容によって変わる", () => {
+  it("SVGは白地に黒で、内容によって変わる", () => {
     const a = qrSvg("https://example.test/a");
     expect(a.startsWith("<svg")).toBe(true);
     expect(a).toContain('fill="white"');
@@ -75,18 +75,18 @@ describe("QR の部品", () => {
   });
 });
 
-describe("A4 の版面", () => {
+describe("A4の版面", () => {
   const app = new Hono().get("/", (c) =>
     c.html(
       <PrintDocument title="試験の案内（架空）">
         <Sheet footer={<span>架空の区</span>}>
           <h1>試験の案内</h1>
-          <FieldBox label="世帯名" />
+          <FieldBox label="代表者のお名前" />
           <CutLine />
           <PrintQr text="https://example.test/demo-ward/" caption="https://example.test/demo-ward/" sizeMm={30} />
         </Sheet>
         <Sheet>
-          <p>2 枚目</p>
+          <p>2枚目</p>
         </Sheet>
       </PrintDocument>,
     ),
@@ -102,17 +102,17 @@ describe("A4 の版面", () => {
     expect(html).toContain("window.print()");
   });
 
-  it("枚ごとに区切られ、切り取り線と QR と記入欄が出る", async () => {
+  it("枚ごとに区切られ、切り取り線とQRと記入欄が出る", async () => {
     const html = await (await app.request("/")).text();
     expect(html.match(/class="sheet"/g)?.length).toBe(2);
     expect(html).toContain("ここで切り取る");
     expect(html).toContain("<svg");
     expect(html).toContain("width:30mm");
-    expect(html).toContain("世帯名");
+    expect(html).toContain("代表者のお名前");
     expect(html).toContain("架空の区");
   });
 
-  it("タイトルなどの文字は escape される", async () => {
+  it("タイトルなどの文字はescapeされる", async () => {
     const hostile = new Hono().get("/", (c) =>
       c.html(
         <PrintDocument title={'<script>alert(1)</script>'}>
@@ -133,8 +133,8 @@ describe("読む人に見せる本文", () => {
     const body = JSON.stringify({ text: "秋の案内\r\n\r\n日時: 10月24日", items: [{ key: "date_time", content: "10月24日" }] });
     expect(articleParagraphs(body)).toEqual(["秋の案内", "日時: 10月24日"]);
   });
-  it("文に無い項目は見出しを付けて足す", () => {
+  it("文にない項目は見出しを付けて足す", () => {
     const body = JSON.stringify({ text: "秋の案内", items: [{ key: "rain_plan", content: "公民館" }] });
-    expect(articleParagraphs(body)).toEqual(["秋の案内", "雨天時: 公民館"]);
+    expect(articleParagraphs(body)).toEqual(["秋の案内", "雨のとき: 公民館"]);
   });
 });

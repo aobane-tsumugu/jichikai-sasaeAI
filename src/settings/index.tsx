@@ -50,7 +50,7 @@ admin.get("/", async (c) => {
       <div class="action-links"><a class="button secondary" href={adminPath(ward, "/projects")}>資料がないので、種類を選んで始める</a></div>
     </> : <>
       <h1>送った資料</h1><p class="lead">{sent}件を預かっています。読み終わった分から、段取りを作れます。</p>
-      <p class="muted">{read ? `読み終わりました ${read}件。` : ""}{reading ? `読んでいます ${reading}件。` : ""}{delayed ? `読み取りが遅れています ${delayed}件。送り直す必要はありません。` : ""}{failed ? `読めませんでした ${failed}件。もう一度読むか、このまま進められます。` : ""}</p>
+      <p class="muted">{read ? `読み終わりました${read}件。` : ""}{reading ? `読んでいます${reading}件。` : ""}{delayed ? `読み取りが遅れています${delayed}件。送り直す必要はありません。` : ""}{failed ? `読めませんでした${failed}件。もう一度読むか、このまま進められます。` : ""}</p>
       <section class="next"><strong>次は</strong><p>読み終わったものを見てください。</p><a class="button" href={adminPath(ward, "/intake/read")}>読み終わったものを見る</a></section>
       <div class="action-links"><a class="button secondary" href={adminPath(ward, "/intake")}>続けて送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>資料がないので、種類を選んで始める</a></div>
       <p><a href={adminPath(ward, "/intake/received")}>送ったものを見る</a></p>{places}
@@ -66,13 +66,13 @@ admin.get("/", async (c) => {
         return <li><a class="row-link" href={adminPath(ward, `/projects/${p.projectId}/map`)}><b>{p.title}</b>
           {due ? <span>{formatJstDate(due)}{p.deadlines.submit_due && !p.deadlines.event_day ? "までに提出" : days !== null && days >= 0 ? `まで、あと${days}日` : ""}</span> : null}
           <span>{tasks.length ? `今の時期の仕事: ${tasks.map((t) => t.name).join("、")}` : state?.mapTasks.length ? "今の時期の仕事はありません" : "仕事はまだありません。段取りから足せます"}</span>
-          {questions ? <span>質問 {questions}つ</span> : null}
+          {questions ? <span>質問{questions}つ</span> : null}
         </a></li>;
       })}</ul>
       <div class="action-links"><a class="button secondary" href={adminPath(ward, "/projects")}>新しく始める</a></div>
-      <h2>届いたもの</h2><ul class="rows"><li><a class="row-link" href={adminPath(ward, "/inbox")}><b>公式LINEに届いた写真と文 {lineInbox.length}件</b>
+      <h2>届いたもの</h2><ul class="rows"><li><a class="row-link" href={adminPath(ward, "/inbox")}><b>公式LINEに届いた写真と文{lineInbox.length}件</b>
         {lineInbox.length ? <span>{lineInbox.some((i) => i.disposition === "matched") ? "AIが行事に入れました。" : ""}{lineInbox.some((i) => i.disposition === "unmatched") ? `${lineInbox.filter((i) => i.disposition === "unmatched").length}件はどの行事か分かりませんでした` : ""}</span> : <span>まだ届いていません</span>}
-      </a></li>{sent ? <li><a class="row-link" href={adminPath(ward, "/intake/read")}><b>送った資料 {sent}件</b><span>読み終わったものを見る</span></a></li> : null}</ul>
+      </a></li>{sent ? <li><a class="row-link" href={adminPath(ward, "/intake/read")}><b>送った資料{sent}件</b><span>読み終わったものを見る</span></a></li> : null}</ul>
       {places}
     </>}
   </AdminPage>);
@@ -82,7 +82,7 @@ admin.get("/settings", (c) => {
   const { ward, account } = c.var;
   return c.html(
     <AdminPage ward={ward} account={account} title="区の設定" back={{ href: adminPath(ward, "/"), label: "役員画面" }}>
-      <h1>区の設定 <Hint text="区の連絡先、役員、定型文などを設定する画面です。直したい項目を選んでください。" /></h1>
+      <h1>区の設定</h1><p class="lead">区の連絡先、役員、決まった知らせの文などを設定する画面です。直したい項目を選んでください。</p>
       <ul>
         <li>
           <a href={adminPath(ward, "/settings/people")}>役員の席とアカウント</a>
@@ -93,7 +93,7 @@ admin.get("/settings", (c) => {
         </li>
         <li><a href={adminPath(ward, "/settings/deletion")}>消す求め</a>（住民から届いた希望の処理）</li>
         <li>
-          <a href={adminPath(ward, "/settings/templates")}>定型文</a>（雨天の変更の知らせなど）
+          <a href={adminPath(ward, "/settings/templates")}>決まった知らせの文</a>（雨の変更の知らせなど）
         </li>
       </ul>
     </AdminPage>,

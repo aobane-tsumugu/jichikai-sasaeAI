@@ -5,7 +5,7 @@ import { receive } from "../src/intake/receive";
 import { createProject } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("画面を開いた後に処理が進んで取り下げられなかった時は、成功と知らせない", async () => {
+it("画面を開いたあとに処理が進んで取り下げられなかったときは、成功と知らせない", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,

@@ -31,7 +31,7 @@ function record(stage: string, result: string, what: string, start: number) {
   if (result === "停止" || result === "未完了") what += "（" + lastResponse + "）";
   rows.push("| " + stage + " | " + result + " | " + what.replaceAll("|", "／") + " | " + Math.round((Date.now() - start) / 1000) + " |");
   writeFileSync(evidence, [
-    "# staging 通し確認 " + new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }), "",
+    "# staging通し確認 " + new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }), "",
     "- 区: " + ward, "- 一斉送信: 実送信なし（送らない選択）", "- 資格情報: 値は記録していません", "",
     "| 段 | 結果 | 見えた物 | 秒 |", "|---|---|---|---:|", ...rows, ""
   ].join("\n"), "utf8");
@@ -144,14 +144,14 @@ async function publish(project: string, html: string, scope: "public" | "space",
   const confirm = await post(first.action, first.fields);
   if (scope === "space") {
     // 空間への配布は一度の操作で完了し、成功時は公開範囲画面へ303で戻る。
-    if (confirm.status !== 303) throw new Error("空間への配布で停止 (" + confirm.status + ")");
+    if (confirm.status !== 303) throw new Error("実行委員と班長のページへの配布で停止 (" + confirm.status + ")");
     return confirm;
   }
   if (!confirm.ok) throw new Error("配布内容の確認で停止 (" + confirm.status + ")");
   const page = await confirm.text();
-  if (!page.includes("今回は公式LINEに送りません")) throw new Error("LINE を送らない選択を確認できません");
+  if (!page.includes("今回は公式LINEに送りません")) throw new Error("LINEを送らない選択を確認できません");
   const final = readForm(page, "/publish/" + project + "/send");
-  if (final.fields.lineDelivery !== "skip") throw new Error("LINE 送信を止められません");
+  if (final.fields.lineDelivery !== "skip") throw new Error("LINE送信を止められません");
   return post(final.action, final.fields);
 }
 async function runPublic() {
@@ -166,8 +166,8 @@ async function runPublic() {
   const publicPage = await get(link);
   const project = link.split("/").at(-1) ?? "";
   const answer = await get(wardPath + "/answer/" + project);
-  if (!publicPage.response.ok || !answer.response.ok) throw new Error("公開のお知らせまたは回答入口を開けません");
-  record("公開確認", "通過", "公開のお知らせと登録なしの回答入口。役員ログインなし。", start);
+  if (!publicPage.response.ok || !answer.response.ok) throw new Error("公開のお知らせまたは答え入口を開けません");
+  record("公開確認", "通過", "公開のお知らせと登録なしの答え入口。役員入るなし。", start);
 }
 async function runFull() {
   let intakeOk = false;
@@ -188,7 +188,7 @@ async function runFull() {
     sensitiveValues.add(password);
     const login = await post(admin + "/login", { name, password });
     if (login.status !== 303 || !cookies.has("device") || !(await get(admin + "/")).response.ok) throw new Error("役員画面に入れません");
-    record("0", "通過", "資格情報でログイン。値は表示していない。", start);
+    record("0", "通過", "資格情報で入る。値は表示していない。", start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";
     record("0", "停止", message, start);
@@ -203,15 +203,15 @@ async function runFull() {
   try {
   const opened = await post(admin + "/projects", { kind: "event", year: String(new Date().getFullYear()) });
   project = /\/projects\/([^/]+)\/map$/.exec(opened.headers.get("location") ?? "")?.[1] ?? "";
-  if (opened.status !== 303 || !project) throw new Error("新しいプロジェクトを開けません");
+  if (opened.status !== 303 || !project) throw new Error("新しい行事を開けません");
   const title = "架空 秋の収穫祭 " + stamp.slice(0, 13);
   await post(admin + "/projects/" + project + "/title", { title });
-  record("1", "通過", "新規プロジェクト「" + title + "」を作成。", start);
+  record("1", "通過", "新規行事「" + title + "」を作成。", start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";
     record("1", "停止", message, start);
     process.exitCode = 1;
-    for (const n of ["2", "3", "4", "5", "6"]) skipStage(n, "プロジェクトを作成できず、後続操作を実行できません");
+    for (const n of ["2", "3", "4", "5", "6"]) skipStage(n, "行事を作成できず、後続操作を実行できません");
     return;
   }
 
@@ -243,10 +243,10 @@ async function runFull() {
         unfinished.push(filename + "（" + (error instanceof Error ? error.message : "読み取り未完了") + "）");
       }
     } else if (!result.duplicates) {
-      throw new Error("送信結果に入った物も同じ物の記録もありません: " + filename);
+      throw new Error("送信結果に届いたものも同じものの記録もありません: " + filename);
     }
   }
-  if ((await post(admin + "/projects/" + project + "/draft/announcement/start", {})).status !== 303) throw new Error("AI に案内を頼めません");
+  if ((await post(admin + "/projects/" + project + "/draft/announcement/start", {})).status !== 303) throw new Error("AIに案内を頼めません");
   draftPath = admin + "/projects/" + project + "/draft/announcement";
   const draftResult = await waitForDraft(draftPath);
   const draft = draftResult.form;
@@ -260,7 +260,7 @@ async function runFull() {
   canPublish = !!draft.fields.text?.trim();
   intakeOk = unfinished.length === 0;
   if (!intakeOk) process.exitCode = 1;
-  record("2", intakeOk ? "通過" : "未完了", "架空の実ファイル4件を送信。同じ物はそのまま利用。" + (unfinished.length ? " 未完了: " + unfinished.join("、") : " AIの読み取り・反映と案内作成を確認。"), start);
+  record("2", intakeOk ? "通過" : "未完了", "架空の実ファイル4件を送信。同じものはそのまま利用。" + (unfinished.length ? " 未完了: " + unfinished.join("、") : " AIの読み取り・反映と案内作成を確認。"), start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";
     record("2", "停止", message, start);
@@ -280,16 +280,16 @@ async function runFull() {
   if (!printPath || !(await get(printPath)).response.ok) throw new Error("印刷用ページを開けません");
   publicPublished = true;
   const answer = await post(wardPath + "/answer/" + project, {
-    household: "架空 小林", district: "1班", children_count: "0", adults_count: "2", seniors_count: "0", helper_name: "架空 小林さと", helper_times: "受付 10:30-12:00"
+    household: "架空 小林", district: "1班", children_count: "0", adults_count: "2", seniors_count: "0", helper_name: "架空 小林さと", helper_times: "受付10:30-12:00"
   });
-  if (answer.status !== 200 || !(await answer.text()).includes("答えを受け付けました")) throw new Error("架空の回答を送れません");
-  record("3", "通過", "公開ページ、印刷用ページ、架空の回答。公式 LINE は送信なし。", start);
+  if (answer.status !== 200 || !(await answer.text()).includes("答えを受け付けました")) throw new Error("架空の答えを送れません");
+  record("3", "通過", "公開ページ、印刷用ページ、架空の答え。公式LINEは送信なし。", start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";
     record("3", "停止", message, start);
     process.exitCode = 1;
   }
-  else skipStage("3", "段 2 が完了していないため、公開できる状態か確認できません");
+  else skipStage("3", "段2が完了していないため、公開できる状態か確認できません");
 
   start = Date.now();
   currentStage = "4";
@@ -297,21 +297,21 @@ async function runFull() {
   try {
   const passphrase = "架空の合言葉-" + stamp.slice(0, 12);
   sensitiveValues.add(passphrase);
-  if ((await post(admin + "/space/" + project + "/open", { passphrase })).status !== 200) throw new Error("空間を開けません");
-  if ((await post(admin + "/projects/" + project + "/draft/duty_roster/start", {})).status !== 303) throw new Error("当番表の案を頼めません");
+  if ((await post(admin + "/space/" + project + "/open", { passphrase })).status !== 200) throw new Error("実行委員と班長のページを開けません");
+  if ((await post(admin + "/projects/" + project + "/draft/duty_roster/start", {})).status !== 303) throw new Error("当番表の下書きを頼めません");
   const dutyResult = await waitForDraft(admin + "/projects/" + project + "/draft/duty_roster");
   const duty = dutyResult.form;
   if (!dutyResult.ready) {
-    unfinished.push("当番表の案（AI依頼の完了待ちの上限）");
+    unfinished.push("当番表の下書き（AI依頼の完了待ちの上限）");
     process.exitCode = 1;
     if (!duty.fields.text?.trim()) duty.fields.text = "持ち場と時間帯を確認し、担当者を役員で記入してください。";
   }
-  if ((await post(duty.action, duty.fields)).status !== 303) throw new Error("当番表の案を保存できません");
-  if ((await publish(project, (await get(admin + "/publish/" + project)).html, "space")).status !== 303) throw new Error("空間に当番表を出せません");
-  if ((await post(wardPath + "/space/" + project + "/enter", { passphrase })).status !== 303) throw new Error("空間に入れません");
+  if ((await post(duty.action, duty.fields)).status !== 303) throw new Error("当番表の下書きを保存できません");
+  if ((await publish(project, (await get(admin + "/publish/" + project)).html, "space")).status !== 303) throw new Error("実行委員と班長のページに当番表を出せません");
+  if ((await post(wardPath + "/space/" + project + "/enter", { passphrase })).status !== 303) throw new Error("実行委員と班長のページに入れません");
   const space = await get(wardPath + "/space/" + project);
-  if (!space.response.ok || !space.html.includes("当番表")) throw new Error("空間の当番表を読めません");
-  record("4", dutyResult.ready ? "通過" : "未完了", dutyResult.ready ? "空間を開き、AIの案を配って合言葉で読み取り。" : "AIの案は完了待ちの上限までに見えず、手書きの当番表を保存・配布して読み取り。", start);
+  if (!space.response.ok || !space.html.includes("当番表")) throw new Error("実行委員と班長のページの当番表を読めません");
+  record("4", dutyResult.ready ? "通過" : "未完了", dutyResult.ready ? "実行委員と班長のページを開き、AIの下書きを配って合言葉で読み取り。" : "AIの下書きは完了待ちの上限までに見えず、手書きの当番表を保存・配布して読み取り。", start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";
     record("4", message.startsWith("未完了:") ? "未完了" : "停止", message.replace(/^未完了:\s*/, ""), start);
@@ -323,13 +323,13 @@ async function runFull() {
   currentStage = "5";
   currentStarted = start;
   const rain = readForm((await get(admin + "/projects/" + project + "/draft/notice?edit=1")).html, "/draft/notice/save");
-  rain.fields.text = "雨天のため、会場を公民館のホールと集会室に変更します。日時は予定どおりです。";
-  if ((await post(rain.action, rain.fields)).status !== 303) throw new Error("雨天のお知らせを保存できません");
+  rain.fields.text = "雨のため、会場を公民館のホールと集会室に変更します。日ときは予定どおりです。";
+  if ((await post(rain.action, rain.fields)).status !== 303) throw new Error("雨のお知らせを保存できません");
   // 案内の本文を残し、別の知らせとして配る。
   if ((await publish(project, (await get(admin + "/publish/" + project)).html, "public", "知らせ")).status !== 303) throw new Error("雨の変更を知らせられません");
   const rainy = await get(publicPath);
-  if (!rainy.response.ok || !rainy.html.includes("雨天のため")) throw new Error("雨天の変更が公開されていません");
-  record("5", "通過", "同じ公開ページに雨天の変更を追加。公式 LINE は送信なし。", start);
+  if (!rainy.response.ok || !rainy.html.includes("雨のため")) throw new Error("雨の変更が公開されていません");
+  record("5", "通過", "同じ公開ページに雨の変更を追加。公式LINEは送信なし。", start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";
     record("5", "停止", message, start);
@@ -352,7 +352,7 @@ async function runFull() {
   const close = readForm(closePage.html, "/close/" + project + "/finalize");
   const staffReport = close.values.getAll("body")[1] ?? "";
   close.values.delete("body");
-  close.values.append("body", "架空の秋の収穫祭を実施しました。雨天会場に変更して開催しました。");
+  close.values.append("body", "架空の秋の収穫祭を実施しました。雨会場に変更して開催しました。");
   close.values.append("body", staffReport);
   if ((await post(close.action, close.values)).status !== 303) throw new Error("閉じる操作に失敗");
   if (!(await get(wardPath + "/p/" + project)).html.includes("実施しました")) throw new Error("公開ページに実施報告がありません");
@@ -382,7 +382,7 @@ try {
 } catch (error) {
   const message = error instanceof Error ? error.message : "処理に失敗しました";
   rows.push("| " + currentStage + " | 停止 | " + message.replaceAll("|", "／") + "（" + lastResponse.replaceAll("|", "／") + "） | " + Math.round((Date.now() - currentStarted) / 1000) + " |");
-  writeFileSync(evidence, ["# staging 通し確認", "", "- 区: " + ward, "- 資格情報: 値は記録していません", "- 一斉送信: 実送信なし", "", "| 段 | 結果 | 見えた物 | 秒 |", "|---|---|---|---:|", ...rows, ""].join("\n"), "utf8");
+  writeFileSync(evidence, ["# staging通し確認", "", "- 区: " + ward, "- 資格情報: 値は記録していません", "- 一斉送信: 実送信なし", "", "| 段 | 結果 | 見えた物 | 秒 |", "|---|---|---|---:|", ...rows, ""].join("\n"), "utf8");
   console.error("停止: " + message);
   console.error("記録: " + evidence);
   process.exitCode = 1;

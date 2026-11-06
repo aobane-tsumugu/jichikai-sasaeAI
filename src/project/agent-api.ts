@@ -36,57 +36,57 @@ const agentApi: ProjectApi = {
     const source = sourceFor(change);
     if (change.kind === "draft") {
       if (!Number.isInteger(data.based_on_state_version) || (data.based_on_state_version as number) < 0) {
-        return { status: "rejected", note: "下書きの元にした状態がありません。data に based_on_state_version（引いた状態の番号）を入れてください" };
+        return { status: "rejected", note: "下書きの元にした状態がありません。dataにbased_on_state_version（引いた状態の番号）を入れてください" };
       }
       const kind = documentKind(change.target, data);
       if (!kind) return { status: "rejected", note: "文書の種類を特定できませんでした" };
       const packVersion = typeof data.pack_version === "string" ? data.pack_version.slice(0, 100) : ctx.packVersion;
       if (kind === "duty_roster") {
-        if (!Array.isArray(data.duties)) return { status: "rejected", note: "duties に当番の行を入れてください" };
+        if (!Array.isArray(data.duties)) return { status: "rejected", note: "dutiesに当番の行を入れてください" };
         const before = await getProjectState(env.DB, ctx.wardId, ctx.projectId);
-        if (!before || typeof data.text !== "string" || !Array.isArray(data.items)) return { status: "rejected", note: "当番表の本文と items がありません" };
+        if (!before || typeof data.text !== "string" || !Array.isArray(data.items)) return { status: "rejected", note: "当番表の本文とitemsがありません" };
         const duties: { data: RowData; year: number | null }[] = [];
         for (const entry of data.duties) {
           const { source_year: year, ...rawRow } = record(entry);
           const row = cleanRowData("duties", rawRow);
           if (!row.ok || (year !== null && (typeof year !== "number" || !Number.isInteger(year) || year < 1900 || year > 2200))) {
-            return { status: "rejected", note: "duties は {slot, task, assignee, source_year: 参考の年} の行にしてください" };
+            return { status: "rejected", note: "dutiesは {slot, task, assignee, source_year: 参考の年}の行にしてください" };
           }
           duties.push({ data: row.data, year });
         }
         for (const duty of duties) {
           const result = await applyChange(env.DB, ctx.wardId, ctx.projectId, {
             kind: "row", table: "duties", data: duty.data,
-            source: { kind: "ai_proposal", ...(duty.year === null ? {} : { year: duty.year }), locator: "当番表の割り当ての案" },
+            source: { kind: "ai_proposal", ...(duty.year === null ? {} : { year: duty.year }), locator: "当番表の割り当ての下書き" },
             confidence: "low", packVersion, ticketId: ctx.jobId,
           });
-          if (result.status === "rejected" || result.status === "dropped") return { status: "rejected", note: "当番の案を保存できませんでした" };
+          if (result.status === "rejected" || result.status === "dropped") return { status: "rejected", note: "当番の下書きを保存できませんでした" };
         }
         // 当番の行を入れた後の状態を下書きの元にする。
         const current = await getProjectState(env.DB, ctx.wardId, ctx.projectId);
-        if (!current) return { status: "rejected", note: "プロジェクトが見つかりません" };
+        if (!current) return { status: "rejected", note: "行事が見つかりません" };
         if (data.based_on_state_version === before.project.stateVersion) data.based_on_state_version = current.project.stateVersion;
       }
       const ok = await saveAIDraft(env.DB, ctx.wardId, ctx.projectId, kind, packVersion, data);
-      return { status: ok ? "applied" : "rejected", ...(ok ? {} : { note: "下書きを保存できませんでした。data は {text: 本文の文字列, items: [{key: 状態の項目の鍵, content: 文字列}], pack_version, based_on_state_version} にしてください" }) };
+      return { status: ok ? "applied" : "rejected", ...(ok ? {} : { note: "下書きを保存できませんでした。dataは {text: 本文の文字列, items: [{key: 状態の項目の鍵, content: 文字列}], pack_version, based_on_state_version}にしてください" }) };
     }
     if (change.kind === "map_draft") {
       const rawTasks = data.tasks;
-      if (!Array.isArray(rawTasks) || rawTasks.length === 0 || rawTasks.length > 100) return { status: "rejected", note: "地図の仕事がありません" };
+      if (!Array.isArray(rawTasks) || rawTasks.length === 0 || rawTasks.length > 100) return { status: "rejected", note: "段取りの仕事がありません" };
       const job = await env.DB.prepare("SELECT account_id FROM jobs WHERE ward_id = ? AND job_id = ? AND project_id = ?")
         .bind(ctx.wardId, ctx.jobId, ctx.projectId).first<{ account_id: string | null }>();
-      if (!job?.account_id) return { status: "rejected", note: "地図の下書きを保存できませんでした" };
+      if (!job?.account_id) return { status: "rejected", note: "段取りの下書きを保存できませんでした" };
       const current = await env.DB.prepare("SELECT task_id, task_key FROM project_map_tasks WHERE ward_id = ? AND project_id = ? AND removed_at IS NULL")
         .bind(ctx.wardId, ctx.projectId).all<{ task_id: string; task_key: string | null }>();
       const byKey = new Map(current.results.flatMap((task) => task.task_key ? [[task.task_key, task.task_id] as const] : []));
       const statements: D1PreparedStatement[] = [];
       for (const value of rawTasks) {
-        if (typeof value !== "object" || value === null || Array.isArray(value)) return { status: "rejected", note: "地図の仕事の形が合いません" };
+        if (typeof value !== "object" || value === null || Array.isArray(value)) return { status: "rejected", note: "段取りの仕事の形が合いません" };
         const task = value as Record<string, unknown>;
         const key = typeof task.task_id === "string" ? task.task_id : typeof task.task_key === "string" ? byKey.get(task.task_key) : undefined;
         const taskId = current.results.some((row) => row.task_id === key) ? key : undefined;
         const name = typeof task.name === "string" ? task.name.trim().slice(0, 120) : "";
-        if (!taskId || !name) return { status: "rejected", note: "地図の仕事を特定できませんでした" };
+        if (!taskId || !name) return { status: "rejected", note: "段取りの仕事を特定できませんでした" };
         const progress = task.progress === "done" || task.progress === "started" ? task.progress : "open";
         statements.push(env.DB.prepare(`UPDATE project_close_map SET period = ?, name = ?, progress = ?, requested_by = ?, difficulty = ?, next_year = ?, updated_at = ?, updated_by_account_id = ?
           WHERE ward_id = ? AND project_id = ? AND task_id = ?
@@ -100,11 +100,11 @@ const agentApi: ProjectApi = {
       const saved = await env.DB.batch(statements);
       return saved.every((result) => (result.meta.changes ?? 0) === 1)
         ? { status: "applied" }
-        : { status: "rejected", note: "地図の下書きを保存できませんでした" };
+        : { status: "rejected", note: "段取りの下書きを保存できませんでした" };
     }
     if (!source) return { status: "rejected", note: "出どころがありません" };
     if (change.originalId && !(await originalInProject(env.DB, ctx.wardId, ctx.projectId, change.originalId))) {
-      return { status: "rejected", note: "出どころの原本がこのプロジェクトにありません" };
+      return { status: "rejected", note: "出どころの元の資料がこの行事にありません" };
     }
     if (change.kind === "item") {
       const key = isItemKey(change.target) ? change.target : Object.entries(ITEM_LABEL).find(([, label]) => label === change.target)?.[0];
@@ -128,7 +128,7 @@ const agentApi: ProjectApi = {
       if (progress !== "done" && progress !== "started") return { status: "rejected", note: "仕事の進み具合が合いません" };
       const task = await env.DB.prepare("SELECT task_key FROM project_map_tasks WHERE ward_id = ? AND project_id = ? AND removed_at IS NULL AND (task_key = ? OR name = ?) LIMIT 1")
         .bind(ctx.wardId, ctx.projectId, change.target, change.target).first<{ task_key: string | null }>();
-      if (!task?.task_key) return { status: "rejected", note: "地図に当てはまる仕事がありません" };
+      if (!task?.task_key) return { status: "rejected", note: "段取りに当てはまる仕事がありません" };
       const result = await applyChange(env.DB, ctx.wardId, ctx.projectId, { kind: "map_task", taskKey: task.task_key, progress, source, confidence: change.confidence, packVersion: ctx.packVersion, ticketId: ctx.jobId });
       return { status: result.status, ...(result.status !== "rejected" ? { duplicate: result.duplicate } : {}) };
     }
@@ -150,7 +150,7 @@ const agentApi: ProjectApi = {
     return {
       status: result.status,
       ...("questionId" in result ? { questionId: result.questionId } : {}),
-      ...(result.status === "same" ? { note: "同じ問いが既にあります" } : "detail" in result ? { note: result.detail } : {}),
+      ...(result.status === "same" ? { note: "同じ質問が既にあります" } : "detail" in result ? { note: result.detail } : {}),
     };
   },
 };

@@ -106,9 +106,9 @@ describe("アカウント", () => {
   it("他の区のアカウントは外せない", async () => {
     const a = await seedWard(db);
     const b = await seedWard(db);
-    await seedAccount(db, a.wardId, "A の一人目");
-    const bOne = await seedAccount(db, b.wardId, "B の一人目");
-    await seedAccount(db, b.wardId, "B の二人目");
+    await seedAccount(db, a.wardId, "Aの一人目");
+    const bOne = await seedAccount(db, b.wardId, "Bの一人目");
+    await seedAccount(db, b.wardId, "Bの二人目");
     expect((await removeAccount(db, a.wardId, bOne.accountId, null)).ok).toBe(false);
     expect((await listAccounts(db, b.wardId)).length).toBe(2);
   });
