@@ -106,13 +106,39 @@ it("架空の総会の答えをLINEからも世帯で数え、実行委員・班
   const closing = await (await get(realApp, close, cookie)).text();
   expect(closing).not.toContain("人数が読めません");
   expect(closing).not.toContain("0<small>人");
-  expect((await postForm(realApp, `${close}/finalize`, { body: fixture.reportText }, cookie)).status).toBe(303);
+  expect(closing).not.toContain('id="report-public"');
+  expect(closing).toContain(`href="${root}/projects/${id}/draft/notice"`);
+  // 住民への知らせは別に配り、議事録は閉じる画面の役員用の欄に残す。
+  expect((await postForm(realApp, `${root}/projects/${id}/draft/notice/save`, {
+    title: "総会のお知らせ", scope: "public", based_on: "0", text: fixture.reportText,
+  }, cookie)).status).toBe(303);
+  const notice = await env.DB.prepare(`SELECT v.document_id, v.version_id, v.version_no FROM documents d
+    JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
+    WHERE d.ward_id = ? AND d.project_id = ? AND d.kind = 'notice' ORDER BY v.version_no DESC LIMIT 1`)
+    .bind(ward.wardId, id).first<{ document_id: string; version_id: string; version_no: number }>();
+  if (!notice) throw new Error("住民へ配る架空の知らせがありません。");
+  expect((await postForm(realApp, `${root}/publish/${id}/send`, {
+    documentId: notice.document_id, versionId: notice.version_id, versionNo: String(notice.version_no), lineDelivery: "skip",
+  }, cookie)).status).toBe(303);
+  const minutes = `${fixture.nextYearChange}\n委任する相手：${fixture.firstOfficer}`;
+  const form = new FormData();
+  form.append("body", "");
+  form.append("body", minutes);
+  expect((await realApp.request(`${close}/finalize`, {
+    method: "POST", headers: { cookie, origin: "http://localhost" }, body: form,
+  }, env)).status).toBe(303);
   const recordPage = await (await get(realApp, record, cookie)).text();
   checkCounts(recordPage, 5, 1, 2, 2);
+  expect(recordPage).toContain(minutes);
   expect(recordPage).toContain(`委任（委任する相手：${fixture.firstOfficer}）`);
   expect(recordPage).not.toContain("参加0人");
+  expect(await env.DB.prepare(`SELECT COUNT(*) AS n FROM publication_records r
+    JOIN documents d ON d.ward_id = r.ward_id AND d.document_id = r.document_id
+    WHERE r.ward_id = ? AND r.project_id = ? AND d.kind = 'report'`)
+    .bind(ward.wardId, id).first<number>("n")).toBe(0);
   const publicPage = await (await get(realApp, `/${ward.slug}/p/${id}`)).text();
   expect(publicPage).toContain(fixture.reportText);
+  expect(publicPage).not.toContain(minutes);
   expect(publicPage).not.toContain(fixture.firstOfficer);
 
   const event = await createProject(env.DB, ward.wardId, {
