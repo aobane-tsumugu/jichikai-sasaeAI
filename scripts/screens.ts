@@ -128,11 +128,11 @@ const shots: Shot[] = [
   { stage: 0, name: "役員のトップ", path: `${admin}/`, heading: "役員画面" },
   { stage: 0, name: "名簿", path: `${admin}/answers/roster`, heading: "名簿" },
   { stage: 0, name: "区の設定", path: `${admin}/settings`, heading: "区の設定" },
-  { stage: 1, name: "地図", path: "project/map", heading: "地図" },
+  { stage: 1, name: "段取り", path: "project/map", heading: "段取り" },
   { stage: 1, name: "材料", path: "project", heading: "材料とその影響" },
-  { stage: 1, name: "問い", path: "project", heading: "問い" },
+  { stage: 1, name: "質問", path: "project/questions", heading: "分かるものだけ答えてください" },
   { stage: 1, name: "受け箱", path: `${admin}/inbox`, heading: "受け箱" },
-  { stage: 2, name: "案", path: "project/draft", heading: "案" },
+  { stage: 2, name: "下書き", path: "project/draft", heading: "案内の下書きを直す" },
   { stage: 2, name: "配る", path: "project/publish", heading: "配る" },
   { stage: 2, name: "出す", path: "print", heading: "印刷用ページ", a4: true },
   { stage: 2, name: "区のページ", path: "public/ward", heading: "お知らせ" },
@@ -147,8 +147,9 @@ const shots: Shot[] = [
 
 async function pathFor(shot: Shot): Promise<string> {
   if (shot.path === "project") return `${admin}/projects/${encodeURIComponent(projectId)}`;
+  if (shot.path === "project/questions") return `${admin}/projects/${encodeURIComponent(projectId)}/questions`;
   if (shot.path === "project/map") return `${admin}/projects/${encodeURIComponent(projectId)}/map`;
-  if (shot.path === "project/draft") return `${admin}/projects/${encodeURIComponent(projectId)}/draft`;
+  if (shot.path === "project/draft") return `${admin}/projects/${encodeURIComponent(projectId)}/draft/announcement`;
   if (shot.path === "project/publish") return `${admin}/publish/${encodeURIComponent(projectId)}`;
   if (shot.path === "project/space") return `${admin}/space/${encodeURIComponent(projectId)}`;
   if (shot.path === "project/close") return `${admin}/close/${encodeURIComponent(projectId)}`;

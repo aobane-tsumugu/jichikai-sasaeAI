@@ -38,7 +38,7 @@ it("閉じた地図は変更せず、開き直してから仕事を直せる", a
   expect(guidance).toContain("このプロジェクトは閉じました。地図を直す時は「開き直す」を押してください。");
 
   expect((await postForm(realApp, `${root}/close/${project.projectId}/reopen`, {}, cookie)).status).toBe(303);
-  expect(await (await get(realApp, path, cookie)).text()).toContain("時期や担当を直す");
+  expect(await (await get(realApp, `${path}/${task.taskId}`, cookie)).text()).toContain("時期や担当を直す");
   expect((await postForm(realApp, `${path}/${task.taskId}`, fields, cookie)).status).toBe(303);
   expect((await getProjectState(env.DB, ward.wardId, project.projectId))!.mapTasks.find((row) => row.taskId === task.taskId))
     .toMatchObject({ name: fields.name, periodStart: fields.start, periodEnd: fields.end, progress: fields.progress });

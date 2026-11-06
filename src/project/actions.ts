@@ -139,6 +139,23 @@ export async function answerQuestion(db: D1Database, wardId: string, projectId: 
         source: { kind: "person", accountId }, confidence: "high", packVersion: "person-answer@1", requestId: questionId });
       if (result.status === "rejected") return false;
     }
+    // 質問の答えは、すでにある案内の下書きにも入れる。配った内容は残し、新しい下書きとして保存する。
+    if (applied && isItemKey(question?.target)) {
+      const [current, draft] = await Promise.all([
+        getProjectState(db, wardId, projectId), getEditableDocument(db, wardId, projectId, "announcement"),
+      ]);
+      const itemKey = question.target;
+      const content = current?.items.find((item) => item.key === itemKey)?.current?.content;
+      if (current && draft && content !== undefined) {
+        const before = JSON.parse(draft.body) as DocumentBody;
+        const next = reconcileDocumentBody(before, { text: before.text,
+          items: [...before.items.filter((item) => item.key !== itemKey), { key: itemKey, content }],
+        });
+        if (stableStringify(before) !== stableStringify(next) && !(await saveDocument(db, wardId, projectId, accountId, {
+          kind: "announcement", title: draft.title, scope: draft.scope, body: JSON.stringify(next), basedOn: current.project.stateVersion,
+        }))) return false;
+      }
+    }
   }
   const r = await db.prepare(`UPDATE project_questions SET state = ?, answer = ?, answered_at = ?, answered_by_account_id = ?
     WHERE ward_id = ? AND project_id = ? AND question_id = ? AND state IN ('open', 'later')`)
@@ -162,6 +179,14 @@ export async function removeMapTask(db: D1Database, wardId: string, projectId: s
   const r = await db.prepare("UPDATE project_map_tasks SET removed_at = ? WHERE ward_id = ? AND project_id = ? AND task_id = ? AND removed_at IS NULL")
     .bind(nowIso(), wardId, projectId, taskId).run();
   return (r.meta.changes ?? 0) > 0;
+}
+
+export async function restoreMapTask(db: D1Database, wardId: string, projectId: string, taskId: string): Promise<boolean> {
+  const result = await db.prepare(`UPDATE project_map_tasks SET removed_at = NULL
+    WHERE ward_id = ? AND project_id = ? AND task_id = ? AND removed_at IS NOT NULL
+      AND EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL)`)
+    .bind(wardId, projectId, taskId, wardId, projectId).run();
+  return result.meta.changes === 1;
 }
 
 export async function setMapTask(db: D1Database, wardId: string, projectId: string, taskId: string, input: { name: string; start: string; end: string; progress: "open" | "started" | "done"; seatId: string | null }): Promise<boolean> {

@@ -9,7 +9,7 @@ it("初めての役員にプロジェクト・資料・空間の次の操作を�
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   const opening = "行事や総会など、仕事ごとにプロジェクトを開きます。";
-  const materials = "去年の案内や記録の紙、Word や Excel を、見つかった物から送ってください。全部そろえなくてかまいません。";
+  const materials = "ふつうの8つの仕事の段取りを用意しました";
   const emptyHome = await get(realApp, `${root}/`, cookie);
   expect(emptyHome.status).toBe(200);
   const homeHtml = await emptyHome.text();
@@ -30,7 +30,7 @@ it("初めての役員にプロジェクト・資料・空間の次の操作を�
   const emptyMap = await get(realApp, `${root}/projects/${project.projectId}/map`, cookie);
   const mapHtml = await emptyMap.text();
   expect(mapHtml).toContain(materials);
-  expect(mapHtml).toContain("材料を送る");
+  expect(mapHtml).toContain("資料を送る");
   await receive(env, { wardId: ward.wardId, projectId: project.projectId, via: "admin", parts: [
     { kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode("去年の会場の記録（架空）") },
   ] });

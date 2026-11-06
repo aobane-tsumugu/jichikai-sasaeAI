@@ -89,6 +89,7 @@ function readForm(html: string, path: string, sectionTitle?: string) {
       const a = input[1] ?? "";
       const name = /\bname="([^"]*)"/i.exec(a)?.[1];
       const type = /\btype="([^"]*)"/i.exec(a)?.[1];
+      if (type === "radio" && !/\bchecked(?:\s|=|$)/i.test(a)) continue;
       if (name && type !== "file" && type !== "submit") fields[name] = unescapeHtml(/\bvalue="([^"]*)"/i.exec(a)?.[1] ?? "");
     }
     for (const t of body.matchAll(/<textarea\b([^>]*)>([\s\S]*?)<\/textarea>/gi)) {
@@ -316,12 +317,11 @@ async function runFull() {
   start = Date.now();
   currentStage = "5";
   currentStarted = start;
-  const rain = readForm((await get(draftPath)).html, "/draft/announcement/save");
+  const rain = readForm((await get(admin + "/projects/" + project + "/draft/notice?edit=1")).html, "/draft/notice/save");
   rain.fields.text = "雨天のため、会場を公民館のホールと集会室に変更します。日時は予定どおりです。";
   if ((await post(rain.action, rain.fields)).status !== 303) throw new Error("雨天のお知らせを保存できません");
-  const secondEdition = readForm((await get(admin + "/publish/" + project)).html, "/publish/" + project + "/confirm");
-  if (secondEdition.fields.versionNo !== "2") throw new Error("雨天のお知らせが二つ目の版になっていません");
-  if ((await publish(project, (await get(admin + "/publish/" + project)).html, "public")).status !== 303) throw new Error("雨天のお知らせを配れません");
+  // 案内の本文を残し、別の知らせとして配る。
+  if ((await publish(project, (await get(admin + "/publish/" + project)).html, "public", "知らせ")).status !== 303) throw new Error("雨の変更を知らせられません");
   const rainy = await get(publicPath);
   if (!rainy.response.ok || !rainy.html.includes("雨天のため")) throw new Error("雨天の変更が公開されていません");
   record("5", "通過", "同じ公開ページに雨天の変更を追加。公式 LINE は送信なし。", start);

@@ -43,6 +43,7 @@ header.site strong { font-size: 1.05rem; }
 header.site a { display: inline-flex; align-items: center; min-height: var(--tap); font-weight: 600; }
 main { max-width: var(--width-text); margin: 0 auto; padding: var(--space-3) var(--page-gutter) var(--space-7); }
 main.wide { max-width: var(--width-wide); }
+main:has(> .map-page) { max-width: var(--width-wide); }
 .back { display: inline-flex; align-items: center; min-height: var(--tap); font-weight: 600; }
 .lead { color: var(--muted); margin-bottom: var(--space-4); }
 .muted { color: var(--muted); font-size: var(--text-note); }
@@ -68,6 +69,9 @@ button.secondary:active, a.button.secondary:active { background: var(--accent); 
 button.danger:active, a.button.danger:active { background: var(--danger); border-color: var(--danger); color: var(--accent-fg); }
 .action-links { display: flex; flex-direction: column; gap: var(--space-3); margin: var(--space-4) 0; }
 .quiet { display: inline-flex; align-items: center; min-height: var(--tap); font-weight: 600; }
+.question-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.question-actions button.quiet { display: inline-flex; width: auto; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--accent); font-size: 1rem; text-decoration: underline; }
+.question-actions button.quiet:active { background: var(--info-bg); }
 
 /* ActionBar */
 .action-bar { position: sticky; bottom: 0; z-index: 1; display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-5) calc(var(--page-gutter) * -1) calc(var(--space-7) * -1); padding: var(--space-3) var(--page-gutter) calc(var(--space-3) + env(safe-area-inset-bottom)); border-top: 2px solid var(--fg); background: var(--panel); }
@@ -191,6 +195,7 @@ details.fold > div { padding: 0 var(--space-3) var(--space-3); }
 .map-months span { grid-column: 2; display: grid; grid-template-columns: 31fr 30fr 31fr 30fr; }
 .map-months i::first-line { background: var(--bg); }
 .map-months i { padding-left: var(--space-1); border-left: 1px solid var(--line-strong); font-style: normal; white-space: nowrap; }
+@container app (max-width: 35.99rem) { .map-months i { white-space: normal; overflow-wrap: anywhere; } }
 .map-list { margin: 0; padding: 0; list-style: none; }
 .map-row { display: grid; grid-template-columns: var(--label) minmax(0, 1fr); align-items: stretch; min-height: var(--tap); border-bottom: 1px solid var(--line); color: var(--fg); text-decoration: none; }
 .map-row:hover, .map-row:active, .map-row.now { background: var(--info-bg); }

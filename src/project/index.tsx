@@ -13,6 +13,7 @@ import { setProjectApi } from "../ai/project-binding";
 import { agentApi } from "./agent-api";
 import { MAP_TEMPLATES } from "../map/template";
 import { followupAdmin } from "./followup";
+import { questionPages } from "./question-pages";
 import { markMaterialThisYear, unknownYearContents } from "./material-year";
 
 /** 変わった所の対象を、内部の鍵ではなく画面の言葉で示す。 */
@@ -50,6 +51,7 @@ const ERROR_MESSAGES: Readonly<Record<string, string>> = {
 const admin = new Hono<AdminEnv>();
 setProjectApi(agentApi);
 admin.route("/", followupAdmin);
+admin.route("/", questionPages);
 
 admin.get("/projects", async (c) => {
   const { ward } = c.var;
@@ -99,7 +101,7 @@ admin.get("/projects/today", async (c) => {
       if (unansweredCount > 0) entries.push({ date: project.deadlines.answer_due, projectId: project.projectId, project: project.title, label: "未回答", detail: `${unansweredCount}世帯`, href: `/answers/${encodeURIComponent(project.projectId)}` });
     }
     for (const question of state.questions) {
-      entries.push({ date: null, projectId: project.projectId, project: project.title, label: question.kind === "unreadable" ? "読めなかった所" : "未回答の問い", detail: question.text, href: `/projects/${project.projectId}#question-${question.questionId}` });
+      entries.push({ date: null, projectId: project.projectId, project: project.title, label: question.kind === "unreadable" ? "読めなかった所" : "未回答の問い", detail: question.text, href: `/projects/${project.projectId}/questions#question-${question.questionId}` });
     }
     for (const item of state.items) {
       if (!item.current && item.references.length === 0) entries.push({ date: null, projectId: project.projectId, project: project.title, label: "足りない物", detail: ITEM_LABEL[item.key], href: `/projects/${project.projectId}` });
@@ -144,17 +146,6 @@ admin.get("/projects/:projectId", async (c) => {
     ...state.tables.sponsors.map((row) => ({ data: { counterpart: row.data.name ?? "", direction: "income", amount: row.data.amount ?? "", date: "", note: row.data.reply ? `協賛の返事: ${displayFieldValue("sponsors", "reply", row.data.reply)}` : "" } })),
     ...state.tables.ledger,
   ];
-  const questionOrder: Record<string, number> = { conflict: 0, decide: 1, unreadable: 2, map_gap: 3, discarded: 4 };
-  const questionRank = (q: (typeof state.questions)[number]) => (questionOrder[q.kind] ?? 5) * 2 + (isItemKey(q.target) ? 0 : 1);
-  const sortedQuestions = [...state.questions].sort((a, b) => questionRank(a) - questionRank(b));
-  const firstQuestions = sortedQuestions.slice(0, 5);
-  const laterQuestions = sortedQuestions.slice(5);
-  const questionPanel = (q: (typeof state.questions)[number]) => <section class="panel" id={`question-${q.questionId}`}><strong>{q.text}</strong>
-      <form method="post" action={adminPath(ward, `/projects/${projectId}/questions/${q.questionId}`)}>
-        {q.options?.length ? <p class="action-links">{q.options.map((o) => <button name="answer" value={o}>{o}</button>)}</p> : <><label for={`answer-${q.questionId}`}>答え</label><input id={`answer-${q.questionId}`} name="answer" maxlength={2000} /></>}
-        {q.options?.length ? null : <button name="action" value="answer">答える</button>}{" "}<button class="secondary" name="action" value="unknown">分からない</button> <button class="secondary" name="action" value="later">後で</button>
-      </form>
-    </section>;
   return c.html(<Layout title={project.title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/projects")}>プロジェクト一覧</a>}>
     <h1>{project.title} <Hint text="入った材料と、今年の中身や問いを見る画面です。分かる問いに答えるか、案を開いて直してください。" /></h1>
     <nav class="action-links">
@@ -166,10 +157,7 @@ admin.get("/projects/:projectId", async (c) => {
     <p>{PROJECT_KIND_LABEL[project.kind]} / {project.year}年</p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     <details><summary>題を直す</summary><form method="post" action={adminPath(ward, `/projects/${projectId}/title`)}><label for="title">題</label><input id="title" name="title" value={project.title} maxlength={100} required /> <button class="secondary">保存</button></form></details>
-    <h2>問い</h2>
-    {firstQuestions.map(questionPanel)}
-    {laterQuestions.length ? <details><summary>ほかの問い（{laterQuestions.length} 件）</summary>{laterQuestions.map(questionPanel)}</details> : null}
-    {state.questions.length === 0 ? <p>今、問いはありません。</p> : null}
+    <p><a href={adminPath(ward, `/projects/${projectId}/questions`)}>質問{state.questions.length ? `が${state.questions.length}つあります` : "はありません"}</a></p>
     <h2 id="materials">材料とその影響</h2>
     {await Promise.all(jobs.map(async (job) => {
       const originals = await listOriginals(c.env.DB, ward.wardId, job.job_id);
@@ -212,7 +200,14 @@ admin.post("/projects/:projectId/materials/:originalId/this-year", async (c) => 
   const path = adminPath(ward, `/projects/${projectId}`);
   return c.redirect(ok ? `${path}#materials` : `${path}?error=material_failed`, 303);
 });
-admin.post("/projects/:projectId/questions/:questionId", async (c) => { const { ward, account } = c.var; const f = await c.req.formData(); const action = f.get("action") ? String(f.get("action")) : "answer"; if (["answer", "unknown", "later"].includes(action)) await answerQuestion(c.env.DB, ward.wardId, c.req.param("projectId"), c.req.param("questionId"), action as "answer" | "unknown" | "later", String(f.get("answer") ?? ""), account.accountId); return c.redirect(adminPath(ward, `/projects/${c.req.param("projectId")}`), 303); });
+admin.post("/projects/:projectId/questions/:questionId", async (c) => {
+  const { ward, account } = c.var; const id = c.req.param("projectId"); const form = await c.req.formData();
+  const action = String(form.get("action") ?? "answer");
+  const state = await getProjectState(c.env.DB, ward.wardId, id);
+  if (!state || state.project.closedAt) return c.notFound();
+  const ok = ["answer", "unknown", "later"].includes(action) && await answerQuestion(c.env.DB, ward.wardId, id, c.req.param("questionId"), action as "answer" | "unknown" | "later", String(form.get("answer") ?? ""), account.accountId);
+  return c.redirect(`${adminPath(ward, `/projects/${id}/questions`)}?${ok ? `notice=${action === "answer" ? "answered" : action}` : "error=answer_failed"}`, 303);
+});
 
 export { admin as projectAdmin };
 export const project: Bundle = { admin };
