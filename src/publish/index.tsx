@@ -15,6 +15,7 @@ import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, isItemKey, type Docume
 import { applyChange } from "../project/apply";
 import { recordPublishedItems } from "../project/actions";
 import { paperHeading } from "../project/heading";
+import { documentBodyCheckMessage } from "../project/document-body";
 import { currentPublicationTables, publicationTablesDiffer, publicationTablesSql } from "../space/publication-tables";
 
 interface DraftRow {
@@ -173,6 +174,7 @@ admin.get("/publish/:projectId", async (c) => {
   return c.html(<AdminPage ward={ward} account={account} title="配る" back={{ href: adminPath(ward, `/projects/${projectId}/map`), label: `${project.title}の段取りへ` }}>
     <h1>{primary ? paperHeading(project.title, primary.title) : project.title}を配る</h1><p class="lead">配ると、同じ内容が区のページと紙に出ます。</p>
     {project.closed_at ? <Notice>この行事は閉じています。</Notice> : null}
+    {documentBodyCheckMessage(c.req.query("check_body")) ? <Notice>{documentBodyCheckMessage(c.req.query("check_body"))}</Notice> : null}
     {c.req.query("space") === "sent" ? <><Notice>実行委員と班長のページに配りました。</Notice><section class="next"><strong>次は</strong><p>配られたものを実行委員と班長に伝えてください。</p><a class="button" href={adminPath(ward, `/space/${projectId}`)}>実行委員と班長のページへ</a></section><p>間違えたときは、下書きを直して配り直せます。</p></> : null}
     {!drafts.length ? <><p>配れる下書きはまだありません。</p><a class="button" href={adminPath(ward, `/projects/${projectId}/draft/announcement`)}>案内の下書きを書く</a></> : null}
     {orderedDrafts.map((draft, index) => {
@@ -305,6 +307,7 @@ async function confirmPublication(c: Context<AdminEnv>) {
   c.header("Cache-Control", "no-store");
   return c.html(<AdminPage ward={ward} account={account} title="配る内容を見る" back={{ href: editHref, label: "下書きへ" }}>
     <div class="publish-confirm"><h1>次の内容で配ります</h1><p class="lead">まだ配っていません。読んで、よければ「配る」を押してください。LINEで送った知らせは取り消せません。</p>
+    {documentBodyCheckMessage(c.req.query("check_body")) ? <Notice>{documentBodyCheckMessage(c.req.query("check_body"))}</Notice> : null}
     <dl class="facts"><dt>{publicScope ? "区のページ" : "実行委員と班長のページ"}</dt><dd>載ります</dd>{publicScope ? <><dt>公式LINE</dt><dd>{lineDelivery === "skip" ? "今回は公式LINEに送りません。" : lineNotice || (friends === null ? "題とページを送ります" : `友だち${friends}人に届きます`)}</dd></> : null}{!rain ? <><dt>紙</dt><dd>{copies ? `${copies}部を印刷できます` : "印刷して配れます"}</dd></> : null}</dl>
     <form method="post" action={adminPath(ward, `/publish/${projectId}/${publicScope ? "send" : "space"}`)}>
       <input type="hidden" name="documentId" value={draft.document_id} /><input type="hidden" name="versionId" value={draft.version_id} /><input type="hidden" name="versionNo" value={draft.version_no} />

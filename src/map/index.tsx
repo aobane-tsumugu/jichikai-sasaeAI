@@ -5,7 +5,7 @@ import { ErrorNotice, Layout, Notice } from "../core/ui";
 import { formatJstDate } from "../core/time";
 import type { AdminEnv } from "../env";
 import { getProjectState } from "../project/api";
-import { addMapTask, removeMapTask, restoreMapTask, setMapTask } from "../project/actions";
+import { addMapTask, removeMapTask, restoreMapTask, setEventDay, setMapTask } from "../project/actions";
 import { MAP_PROGRESS_LABEL, type DocumentKind } from "../project/model";
 import { nextMapTask, mapCalendar } from "./next";
 import { opensOf, type MapOpens } from "./template";
@@ -49,6 +49,7 @@ admin.get("/projects/:projectId/map", async (c) => {
       <h1>{project.title}の段取り</h1>
       <p class="lead">{first ? materials.results.length ? `${readCount}件の資料を読んで、${tasks.length}つの仕事の段取りを用意しました。違うところは、仕事を押して直せます。` : `ふつうの${tasks.length}つの仕事の段取りを用意しました。違うところは、仕事を押して直せます。` : `${day && daysLeft !== null && daysLeft >= 0 ? `${formatJstDate(day)}まで、あと${daysLeft}日です。` : ""}仕事を押すと開きます。`}</p>
       <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
+      {notice === "event_day" ? <Notice><p>行事の日を変えました。済んでいない仕事の時期を置き直しました。案内の文は変わりません。</p><p>段取りの仕事を押して、時期を確かめてください。戻すときは、下の「行事の日を直す」からもう一度入れ直せます。</p><a class="quiet" href="#event-day">行事の日を直す</a></Notice> : null}
       {notice === "removed" ? <Notice>仕事を外しました。下の「外した仕事」から戻せます。</Notice> : notice === "restored" ? <Notice>仕事を戻しました。仕事を押すと直せます。</Notice> : notice === "added" ? <Notice>仕事を足しました。仕事を押すと直せます。</Notice> : null}
       {project.closedAt ? <Notice>この行事は閉じました。直すときは「報告と閉じる」から「開き直す」を押してください。</Notice> : <>
         <section class="next"><strong>次は</strong>
@@ -79,6 +80,10 @@ admin.get("/projects/:projectId/map", async (c) => {
         <ul class="rows"><li><a class="row-link" href={adminPath(ward, `/projects/${id}/questions`)}><b>{questions.length ? `質問が${questions.length}つあります` : "質問はありません"}</b><span>答えなくても配れます。</span></a></li></ul>
         <h2>最近届いた資料</h2>
         {materials.results.length ? <ul class="rows">{materials.results.slice(0, 3).map((material) => <li><a class="row-link" href={adminPath(ward, `/intake/originals/${material.original_id}`)}><b>{material.filename || "一行の文"}</b><span>{shortDate(material.created_at)}に送りました</span></a></li>)}</ul> : <p>資料はまだ届いていません。</p>}
+        {!project.closedAt ? <details class="fold" id="event-day" open={c.req.query("error") === "invalid_input"}><summary>行事の日を直す</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/map/event-day`)}>
+          <div class="field"><label for="event-day-input">行事の日</label><input id="event-day-input" name="event_day" type="date" value={day ?? ""} required /></div>
+          <p>済んでいない仕事の時期も動きます。案内の文は変わりません。もう一度入れ直せば戻せます。</p><button class="secondary">行事の日を保存する</button>
+        </form></div></details> : null}
         {!project.closedAt ? <details class="fold"><summary>仕事を足す、外した仕事を戻す</summary><div>
           <form method="post" action={adminPath(ward, `/projects/${id}/map/add`)}><div class="field"><label for="new-task">足す仕事の名前</label><input id="new-task" name="name" maxlength={100} required /></div><button class="secondary">足す</button></form>
           {removed.results.length ? <><p><b>外した仕事</b></p>{removed.results.map((task) => <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.task_id}/restore`)}><p>{task.name}</p><button class="secondary">この仕事を戻す</button></form>)}</> : null}
@@ -148,6 +153,11 @@ admin.post("/projects/:projectId/map/add", async (c) => {
   const form = await c.req.formData(); const id = c.req.param("projectId");
   const ok = await addMapTask(c.env.DB, c.var.ward.wardId, id, String(form.get("name") ?? ""));
   return c.redirect(`${adminPath(c.var.ward, `/projects/${id}/map`)}?${ok ? "notice=added" : "error=invalid_input"}`, 303);
+});
+admin.post("/projects/:projectId/map/event-day", async (c) => {
+  const form = await c.req.formData(); const id = c.req.param("projectId");
+  const ok = await setEventDay(c.env.DB, c.var.ward.wardId, id, String(form.get("event_day") ?? ""), c.var.account.accountId);
+  return c.redirect(`${adminPath(c.var.ward, `/projects/${id}/map`)}?${ok ? "notice=event_day" : "error=invalid_input"}`, 303);
 });
 admin.post("/projects/:projectId/map/:taskId", async (c) => {
   const form = await c.req.formData(); const id = c.req.param("projectId"); const taskId = c.req.param("taskId"); const progress = String(form.get("progress"));

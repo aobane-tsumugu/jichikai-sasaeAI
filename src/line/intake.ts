@@ -46,7 +46,7 @@ async function saveLineAnswer(db: D1Database, wardId: string, projectId: string,
   if (namedDistricts.length) candidates = namedDistricts.filter((entry) => entry.district.length === namedDistricts[0]!.district.length);
   // 同名の世帯は、班も使って一つの候補に絞れた時だけ回答に入れる。
   const household = candidates[0];
-  if (!household || candidates.some((entry) => entry.district !== household.district || normalizeHousehold(entry.household) !== normalizeHousehold(household.household))) return;
+  if (household && candidates.some((entry) => entry.district !== household.district || normalizeHousehold(entry.household) !== normalizeHousehold(household.household))) return;
   // 人数だけ文字の幅をそろえる。原本や手伝える時間の文は書き換えない。
   const countText = text.normalize("NFKC");
   const adults = /大人\s*(\d+)\s*人/.exec(countText);
@@ -58,13 +58,18 @@ async function saveLineAnswer(db: D1Database, wardId: string, projectId: string,
   const sourceOriginal = await db.prepare("SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ? AND withdrawn_at IS NULL ORDER BY position LIMIT 1")
     .bind(wardId, jobId).first<{ original_id: string }>();
   const helperPhrase = /([^。\n]{1,40}?)(?:なら|は)(?:手伝え|手伝い|手伝)/.exec(text)?.[1]?.trim() ?? "";
+  const statedName = /^\s*([^\s、。\n]{1,40}?)(?:です(?=[\s、。\n]|$)|家(?=[はがも\s、。:：\n]|$))/.exec(text)?.[1];
+  // 「大人1人です」のように、人数だけを述べた文を名前として扱わない。
+  const nameIsCount = statedName !== undefined && [adults, children, seniors, total]
+    .some((count) => count?.[0] === statedName.normalize("NFKC"));
+  const name = household?.household ?? (statedName && !nameIsCount ? statedName : "名前の分からない答え");
   await addAnswer(db, wardId, {
     projectId,
-    household: household.household,
-    district: household.district,
+    household: name,
+    district: household?.district ?? "",
     peopleCount,
     ...(adults || children || seniors ? { childrenCount: Number(children?.[1] ?? 0), adultsCount: Number(adults?.[1] ?? 0), seniorsCount: Number(seniors?.[1] ?? 0) } : {}),
-    ...(helperPhrase ? { helperName: household.household, helperTimes: helperPhrase } : {}),
+    ...(helperPhrase ? { helperName: name, helperTimes: helperPhrase } : {}),
     source: "line",
     ...(sourceOriginal ? { originalId: sourceOriginal.original_id } : {}),
   });

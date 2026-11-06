@@ -9,6 +9,7 @@ import type { WardEnv } from "../env";
 import { getOfficialLineUrl, getPublicContact, getSetting } from "../settings/store";
 import { ArticleBody } from "../publish";
 import { listHelpOpportunities } from "../answers/help";
+import { paperHeading } from "../project/heading";
 
 interface PublicProject {
   project_id: string;
@@ -91,7 +92,7 @@ pub.get("/", async (c) => {
     </section> : null}
     <h2>これまでのお知らせと報告</h2>
     {unique.length === 0 ? <p>公開中のお知らせはありません。</p> : unique.map((item) => <section class="panel" key={item.document_id}>
-      <h2><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(item.project_id)}`}>{item.kind === "announcement" ? `${item.title}のご案内` : item.document_title}</a></h2>
+      <h2><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(item.project_id)}`}>{item.kind === "announcement" ? `${item.title}のご案内` : paperHeading(item.title, item.document_title)}</a></h2>
       <p>更新: {formatJstDate(item.published_at)}</p>
     </section>)}
     <h2>自治会の仕事を知る</h2>
@@ -174,6 +175,8 @@ pub.get("/p/:projectId", async (c) => {
   const ordered = [...documents.values()].sort((a, b) => Number(b.latest.kind === "notice") - Number(a.latest.kind === "notice"));
   const activeAnnouncement = ordered.some(({ latest }) => latest.kind === "announcement" && !latest.unpublished_at);
   const changes = ordered.some(({ latest }) => latest.kind === "notice" && !latest.unpublished_at);
+  const newerNotice = ordered.some(({ latest: notice }) => notice.kind === "notice" && !notice.unpublished_at &&
+    ordered.some(({ latest: announcement }) => announcement.kind === "announcement" && !announcement.unpublished_at && notice.published_at > announcement.published_at));
   const renderDocument = ({ latest, earlier }: { latest: PublicProject; earlier: PublicProject[] }) => {
       const date = (item: PublicProject) => formatJstDate(item.published_at);
       if (latest.unpublished_at) return <article class="panel" key={latest.document_id}>
@@ -195,7 +198,7 @@ pub.get("/p/:projectId", async (c) => {
     <h1>{items[0]!.title}のご案内</h1>
     {ordered.filter(({ latest }) => latest.kind === "notice").map(renderDocument)}
     {activeAnnouncement ? <>
-      <EventDetails item={context.item} />
+      {!newerNotice ? <EventDetails item={context.item} /> : null}
       {deadline ? <p>答えの締切{formatJstDate(deadline)}まで</p> : null}
       {closed ? <ReceptionClosed closed={!!items[0]!.closed_at} due={deadline} /> : <><p><a class="button" href={`/${c.var.ward.slug}/answer/${encodeURIComponent(projectId)}${suffix}`}>参加する人数を答える</a></p><p>参加しないときは、答えなくてかまいません。紙の回答票を班長に渡しても答えられます。</p></>}
     </> : null}

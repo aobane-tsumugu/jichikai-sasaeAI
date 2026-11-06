@@ -117,7 +117,7 @@ it("配った当番・配置・協賛先は直しても変わらず、配り直�
   expect(archive).toContain(FIRST_SLICE.previousPlace);
   expect(archive).not.toContain(FIRST_SLICE.firstOfficer);
   expect(archive).toContain("手伝いだけの申し込み（閉じたとき）: 1人");
-  expect(archive).toContain("参加する人数2人 / 手伝いの申し出1件");
+  expect(archive).toContain("参加すると答えた人数2人 / 手伝いの申し出1件");
   expect(archive).not.toContain(FIRST_SLICE.sheetHelper);
   expect((await get(realApp, spacePath, memberCookie)).status).toBe(403);
 });
