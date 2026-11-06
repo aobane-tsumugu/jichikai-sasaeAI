@@ -199,6 +199,28 @@ describe("Excelの展開", () => {
 });
 
 describe("展開した結果の検査と読み取りへの変換", () => {
+  it.each([
+    "7141bfa4-2978-4455-9e2e-350b530de48c",
+    "7141bfa4-2030-4455-9e2e-350b530de48c",
+    "20260110-1000-4455-9e2e-350b530de48c",
+  ])("ファイル名のUUIDを資料の年として拾わない: %s", (id) => {
+    const parts = [
+      { originalId: "dated", filename: `架空の役員会の記録_${id}.txt`, text: "2026年1月10日の架空の役員会の記録" },
+      { originalId: "undated", filename: `架空の記録_${id}.txt`, text: "架空の年のない記録" },
+      { originalId: "filename-year", filename: `架空の記録_2025_${id}.txt`, text: "架空の記録" },
+      { originalId: "conflict", filename: `架空の記録_2025_${id}.txt`, text: "2026年の架空の記録" },
+      { originalId: "two-years", filename: `架空の記録_${id}.txt`, text: "2025年と2026年の架空の記録" },
+    ];
+    expect(buildDirectReading(parts).original_years).toEqual([
+      { original_id: "dated", year: 2026 },
+      { original_id: "undated", year: null },
+      { original_id: "filename-year", year: 2025 },
+      { original_id: "conflict", year: null },
+      { original_id: "two-years", year: null },
+    ]);
+    expect(buildDirectReading(parts).text_blocks.map((block) => block.text)).toEqual(parts.map((part) => part.text));
+  });
+
   it("形が違う物を弾く", () => {
     expect(parseExtracted(null)).toBeNull();
     expect(parseExtracted({ format: "pdf", paragraphs: [], tables: [] })).toBeNull();

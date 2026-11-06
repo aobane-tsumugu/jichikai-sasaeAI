@@ -1,3 +1,4 @@
+import { photosAvailable } from "../photos/policy";
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
@@ -78,6 +79,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
   if (project.kind === "event" && kindRaw === "notice" && !document && c.req.query("edit") !== "1") return rainDraft(c);
   const pack = getDraftPack(kindRaw, project.kind);
   const meetingMaterials = kindRaw === "procedure" ? await getMeetingMaterials(c.env.DB, ward.wardId, project) : null;
+  const reportPhotos = kindRaw === "report" && project.kind === "event" && await photosAvailable(c.env, ward.wardId);
   const minutes = kindRaw === "report" && ["general_meeting", "board_meeting"].includes(project.kind);
   const body: DraftBody = document ? parseBody(document.body) : { text: "", items: (minutes ? [] : state.items).map((item) => {
     if (item.current?.content.trim()) return { key: item.key, content: item.current.content };
@@ -141,6 +143,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     {document?.stale ? <div class="notice warn"><strong>新しい資料が届きました</strong><p>このまま直して配れます。</p><a class="quiet" href="#redo">新しい資料を入れて作り直す</a></div> : null}
     {project.closedAt ? <Notice>この行事は閉じました。もう一度開くと下書きを直せます。</Notice> : null}
     <MeetingMaterialsView ward={ward} materials={meetingMaterials} />
+    {reportPhotos ? <p><a class="button secondary" href={adminPath(ward, `/photos/${id}`)}>報告の写真を選ぶ・直す</a></p> : null}
     {minutes ? <a class="button secondary" href={adminPath(ward, `/close/${id}`)}>議事録を閉じて記録に残す</a> : null}
     {rota}
     <form id="draft-form" method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/save`)}>

@@ -18,7 +18,7 @@ describe("各置き場の差し込み口", () => {
     expect(Object.keys(bundles).sort()).toEqual(
       [
         "ai", "answers", "archive", "check", "close", "draft", "intake", "line", "map", "printPages",
-        "project", "publish", "settings", "space", "wardPages",
+        "photos", "project", "publish", "settings", "space", "wardPages",
       ].sort(),
     );
   });
@@ -74,6 +74,19 @@ describe("各置き場の差し込み口", () => {
     const { ward, cookie } = await seedAdmin(env.DB);
     expect((await postForm(app, `/${ward.slug}/admin/probe`, {})).status).toBe(303);
     expect((await postForm(app, `/${ward.slug}/admin/probe`, {}, cookie)).status).toBe(200);
+  });
+
+  it("写真の設定のGETとPOSTは提供側の入口に戻し、ほかのhooksへ認証を広げない", async () => {
+    const app = appWith({ hooks: new Hono<AppEnv>().post("/probe-photo-hook", (c) => c.text("hook")) });
+    for (const response of [
+      await get(app, "/hooks/photo-settings/fictional-ward"),
+      await postForm(app, "/hooks/photo-settings/fictional-ward", {}),
+    ]) {
+      expect(response.status).toBe(303);
+      expect(response.headers.get("location")).toBe("/ops/login");
+    }
+    expect((await get(app, "/hooks/nothing")).status).toBe(404);
+    expect(await (await postForm(app, "/hooks/probe-photo-hook", {})).text()).toBe("hook");
   });
 });
 

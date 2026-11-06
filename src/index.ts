@@ -4,6 +4,8 @@ import { createApp, runScheduled } from "./core/app";
 import type { Bundle } from "./core/bundle";
 import type { Env } from "./env";
 
+import { photos } from "./photos";
+export { FaceMaskContainer } from "./photos/container";
 import { ai } from "./ai";
 import { answers } from "./answers";
 import { archive } from "./archive";
@@ -22,6 +24,7 @@ import { wardPages } from "./ward";
 
 /** 経路の先に当たる順。名前は Cron の失敗の記録に出る。 */
 export const bundles: Record<string, Bundle> = {
+  photos,
   settings,
   intake,
   ai,

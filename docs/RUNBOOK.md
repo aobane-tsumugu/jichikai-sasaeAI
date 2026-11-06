@@ -302,3 +302,38 @@ npm run line-sim -- --base http://localhost:8787 --ward <確認用の区のURL�
 場面は6種類を各10件、連続する文を含め62通です。一対一とグループの文を順に送り、同じ場面の文はAIの判断を待たず続けて送ります。そのあとD1で答えの名前・班・人数、行事に入った資料、問い合わせ、雑談を外した件数を照合します。待つ時間は一場面60秒で、`--wait-ms`で変えられます。結果は`docs/EVIDENCE/line-sim-*.md`へ途中から残り、一致した数、外れた文、応答不明、送っていない数を読み分けられます。終了コードは全一致0、不一致か未確認1、開始・通信・D1の失敗2です。応答が分からない書き込みは自動再送しません。
 
 問い合わせのReplyに失敗しても保存と次の文の受付が続くことは、`test/line-sim-flow.test.ts`の主な流れ一本で確認します。試験はローカルのWorkersの受け口・D1・R2を通し、AIとLINEの通信を偽物にしています。実行は外側の試験に任せ、この追記時点では未実行です。PMはstagingの記録の`replied`とWorkersのログも読み、架空の鍵によるReplyの失敗後に次の文が残ったかを確かめます。HTTP200だけでは通過にしません。資料のAIによる反映完了、本物のAIの分類精度、写真のあとの文と写真の当て先、本物のLINEへの到達は別に確認します。
+
+
+## 行事の報告の写真（U34、提供側・PM用）
+
+既定では写真の入口は出ません。写真の検出と隠す処理は提供側が行います。実モデルの今回の測定には小さい顔の見落としがあり、有効化済みや品質合格として扱わないでください。配備、有料資源の作成、区の有効化はPMが行います。
+
+モデルを初めて取得する端末で次を実行します。既にあるモデルは上書きせず、`Get-FileHash`で照合します。固定の長さは232589bytes、SHA-256は`model.json`です。
+
+```powershell
+python -X utf8 containers/face-mask/fetch_model.py --destination containers/face-mask/models/yunet.onnx
+Get-FileHash -Algorithm SHA256 containers/face-mask/models/yunet.onnx
+uv --no-cache pip install --python python --target containers/face-mask/.python -r containers/face-mask/requirements.txt
+$env:PYTHONPATH = (Resolve-Path containers/face-mask/.python).Path
+python -X utf8 containers/face-mask/measure.py containers/face-mask/evaluation/measured-manifest.json --model containers/face-mask/models/yunet.onnx --output containers/face-mask/evaluation/measured-predictions.json
+python -X utf8 containers/face-mask/evaluate.py containers/face-mask/evaluation/measured-manifest.json --predictions containers/face-mask/evaluation/measured-predictions.json --output containers/face-mask/evaluation/measured-result.json
+```
+
+画像はPR #62から引き継いだ生成人物の画像だけです。正解枠は人による確認が未了です。別の生成場面も含めて提供側が品質を確かめます。実在の人の写真を評価に入れません。
+
+Dockerが使える端末では、モデルの照合後に完全なruntimeをビルドします。モデルも依存もイメージに入れ、起動後に外から取りません。
+
+```powershell
+docker build --target runtime -t sasae-face-mask containers/face-mask
+docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges sasae-face-mask python -c "from server import YuNetEngine; YuNetEngine('models/yunet.onnx'); print('model loaded')"
+```
+
+上はイメージ内のモデル起動を確かめる操作です。HTTP、Cloudflareでの起動、外への通信が止まることの確認とは分けます。[CloudflareのContainer API](https://developers.cloudflare.com/containers/api/durable-object-container/)の`enableInternet:false`を使用しています。
+
+PMが`wrangler.toml`末尾のContainer、Durable Object binding、クラスのmigrationのコメントを外して配備します。`src/index.ts`のFaceMaskContainerのexportと`src/env.ts`のFACE_MASKは接続済みです。ローカルのWorkers起動にもDockerが必要です。D1の0617を適用し、外側の主な流れの試験と既存試験を通し、架空の確認用の区で写真の選択、待たずに戻る、範囲を足す・外す、隠さない、失敗時の写真の除外、紙と区のページの同じ写し、取り下げと消去を確かめます。`demoku`で通しを走らせません。
+
+提供側の運用の画面に入った後、`/hooks/photo-settings/<区のID>`を開きます。区の設定として、測定結果ファイルのSHA-256を記入して有効にします。役員の入り方では変更できません。Containerのbindingが無ければ有効にできません。未配備の間と無効な区には、報告の写真の入口は出ません。
+
+役員は行事の報告の下書きで「報告の写真を選ぶ・直す」から選びます。処理を待たずに戻れます。直す必要があるときだけ写真を押して範囲を足し、枠を押して外し、「この写真を直す」で提供側へ送ります。「この写真は顔を隠さない」には了承の一文を出しますが、確認を必須にはしません。配る確認で準備が済んでいない写真には「この写真は載りません」と出し、報告の配布は止めません。
+
+取り下げ、元の写真の消去、行事と区の消去、区の写真の設定変更で写しを無効にします。公開のURLは写しだけを返し、元の写真は役員の認証の内側です。公開と紙の読み取りでContainerは呼びません。日次の写しに加工画像・処理中の写真・有効化設定は入れず、復旧後は無効から始めます。自動で再検出・再公開せず、提供側の設定と役員の選択をやり直して配り直します。

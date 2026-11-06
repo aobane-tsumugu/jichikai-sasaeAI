@@ -1,3 +1,6 @@
+import { photosAvailable } from "../photos/policy";
+import { listDraftPhotos, readyReportPhotos } from "../photos/drafts";
+import { photoPublicationStatements, bodyWithPhotoInputs } from "../photos/server";
 import { getAnswerLabels } from "../settings/answer-labels";
 import { meetingNote } from "../answers/meeting";
 import { deliveryAlert } from "../line/delivery-alert";
@@ -293,6 +296,9 @@ async function confirmPublication(c: Context<AdminEnv>) {
   const draftDue = withAnswer ? answerDeadlineFromDraft(draft.body, project.year) : null;
   const pastDue = draftDue && draftDue < new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date());
   const lineDelivery = !publicScope || !canSendLine(draft.kind) || form.get("lineDelivery") === "skip" ? "skip" : "send";
+  const reportPhotoEnabled = publicScope && project.kind === "event" && draft.kind === "report" && await photosAvailable(c.env, ward.wardId);
+  const reportPhotos = reportPhotoEnabled ? await listDraftPhotos(c.env, ward.wardId, projectId) : [];
+  const photoPreview = reportPhotos.filter((p) => p.state === "ready" && p.prepared).map((p) => <img style="max-width:100%;max-height:240px" src={adminPath(ward, `/photos/${projectId}/${p.original_id}/preview?revision=${p.revision}`)} alt="報告の写真" />);
   const warnings = publicScope ? await checkPublicDraft(c.env.DB, ward.wardId, projectId, draft.kind as DocumentKind, draft.body) : [];
   let friends: number | null = null;
   let remaining: number | null = null;
@@ -319,6 +325,8 @@ async function confirmPublication(c: Context<AdminEnv>) {
     <dl class="facts"><dt>{publicScope ? "区のページ" : "実行委員と班長のページ"}</dt><dd>載ります</dd>{publicScope ? <><dt>公式LINE</dt><dd>{lineDelivery === "skip" ? "今回は公式LINEに送りません。" : lineNotice || (friends === null ? "友だちに知らせます" : `友だち${friends}人に届きます`)}</dd></> : null}{!rain ? <><dt>紙</dt><dd>{copies ? `${copies}部を印刷できます` : "印刷して配れます"}</dd></> : null}</dl>
     <form method="post" action={adminPath(ward, `/publish/${projectId}/${publicScope ? "send" : "space"}`)}>
       <input type="hidden" name="documentId" value={draft.document_id} /><input type="hidden" name="versionId" value={draft.version_id} /><input type="hidden" name="versionNo" value={draft.version_no} />
+      {reportPhotos.filter((p) => p.state === "ready").map((p) => <input type="hidden" name="photoRevision" value={p.revision} />)}
+      {reportPhotos.filter((p) => p.state !== "ready").map(() => <Notice>この写真は載りません。</Notice>)}
       {publicScope && !rain ? <details class="fold"><summary>配る相手や部数を変える</summary><div>
         <input type="hidden" name="targetMode" value="district" />
         <fieldset><legend>紙を配る相手</legend><div class="choice"><label><input type="radio" name="recipientScope" value="member_households" checked={recipientScope === "member_households"} /> 加入世帯</label><label><input type="radio" name="recipientScope" value="all_households" checked={recipientScope === "all_households"} /> 全戸（加入していない世帯も）</label></div></fieldset>
@@ -334,8 +342,8 @@ async function confirmPublication(c: Context<AdminEnv>) {
       {draft.stale_since_version !== null ? <Notice>新しいものが入っています。ここに表示した内容で配れます。直すときは下書きに戻ってください。</Notice> : null}
       {warnings.filter((warning) => !warning.startsWith("まだ決まっていないところ")).map((warning) => <PublicWarning finding={warning} />)}
       {draft.body.includes(PENDING) ? <div class="notice warn"><strong>まだ決めていないところがあります</strong><p>「（確認中）」のところは、紙とページから外して配ります。入れるときは下書きを直してください。</p><a class="quiet" href={adminPath(ward, `/projects/${projectId}/draft/${draft.kind}`)}>下書きを直す</a></div> : null}
-      <div class="compare"><section class="compare-paper"><b>紙{copies ? `（${recipientScope === "all_households" ? "全戸" : "加入世帯"}に${copies}部）` : ""}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} kind={draft.kind} />{tablesPreview}{withAnswer ? <p class="answer-slip-preview"><b>回答票</b>　切り取って班長か役員に渡します。{project.kind === "general_meeting" ? "出席、委任、欠席の欄があります。" : "代表者のお名前、人数、手伝いの欄があります。"}</p> : null}</div></section>
-        <section><b>{publicScope ? "区のページ" : "実行委員と班長のページ"}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} kind={draft.kind} />{tablesPreview}{withAnswer ? <p class="muted">この下に「出欠を答える」のボタンが出ます。</p> : null}</div></section></div>
+      <div class="compare"><section class="compare-paper"><b>紙{copies ? `（${recipientScope === "all_households" ? "全戸" : "加入世帯"}に${copies}部）` : ""}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} kind={draft.kind} />{photoPreview}{tablesPreview}{withAnswer ? <p class="answer-slip-preview"><b>回答票</b>　切り取って班長か役員に渡します。{project.kind === "general_meeting" ? "出席、委任、欠席の欄があります。" : "代表者のお名前、人数、手伝いの欄があります。"}</p> : null}</div></section>
+        <section><b>{publicScope ? "区のページ" : "実行委員と班長のページ"}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} kind={draft.kind} />{photoPreview}{tablesPreview}{withAnswer ? <p class="muted">この下に「出欠を答える」のボタンが出ます。</p> : null}</div></section></div>
       <p class="compare-link"><a class="quiet" href={printHref}>紙の見え方を見る</a></p><p class="muted">{publicScope ? "配ったあとも、区のページからは下げられます。" : "実行委員と班長に配ります。区のページには載りません。"}</p>
       <div class="action-bar"><button type="submit">{sendLabel}</button><a class="button secondary" href={editHref}>下書きに戻る</a></div>
     </form></div>
@@ -386,6 +394,14 @@ admin.post("/publish/:projectId/send", async (c) => {
   try { parsed = JSON.parse(row.body); } catch { /* 文だけの古い下書きも配れる。 */ }
   if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) publishedBody = JSON.stringify({ ...parsed, answerLabels, ...note });
   else if (generalMeeting) publishedBody = JSON.stringify({ text: articleParagraphs(row.body).join("\n\n"), items: [], answerLabels, ...note });
+  const photos = row.kind === "report" && project.kind === "event"
+    ? await readyReportPhotos(c.env, ward.wardId, projectId, form.getAll("photoRevision").map(String)) : [];
+  if (photos.length) {
+    let body: unknown;
+    try { body = JSON.parse(publishedBody); } catch { body = null; }
+    if (!body || typeof body !== "object" || Array.isArray(body)) publishedBody = JSON.stringify({ text: publishedBody, items: [] });
+    publishedBody = bodyWithPhotoInputs(publishedBody, photos);
+  }
   const publication = await c.env.DB.batch([
     c.env.DB.prepare(`UPDATE document_versions SET body = ?, published_at = ?, published_by_account_id = ?, project_title = ?, tables_snapshot = ${publicationTablesSql}
       WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_id = ? AND version_no = ?
@@ -402,6 +418,7 @@ admin.post("/publish/:projectId/send", async (c) => {
       )`)
       .bind(ward.wardId, publicationId, projectId, documentId, versionId, versionNo, recipientScope, JSON.stringify(distribution), now, account.accountId,
         ward.wardId, versionId, now, account.accountId),
+    ...photoPublicationStatements(c.env.DB, ward.wardId, projectId, publicationId, photos),
     // 配った内容と同時に締切を保存する。回答画面で保存した日付は上書きしない。
     ...(answerDue ? [c.env.DB.prepare(`INSERT INTO project_deadlines
       (ward_id, project_id, kind, due_on, updated_at, updated_by_account_id)
