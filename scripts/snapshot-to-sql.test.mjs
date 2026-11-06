@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("../", import.meta.url));
 // 日次の書き手と同じ表・SELECTの順を使い、復元側の並べ方には依存しない。
 const writer = readFileSync(join(root, "src/archive/snapshot.ts"), "utf8");
-const tables = [...writer.match(/const SNAPSHOT_TABLES = \[([\s\S]*?)\] as const/)[1].matchAll(/"([a-z_]+)"/g)].map((match) => match[1]);
+const tables = [...writer.matchAll(/\{ table: "([a-z_]+)", snapshot: true,/g)].map((match) => match[1]);
 const wardId = "fixture-restore-ward";
 
 function database(t) {
@@ -74,7 +74,7 @@ test("前年の記録をもとに始めた行事を、日次の行順のまま�
   roundTrip(t, data);
 });
 
-test("変更記録を持つ項目と当番の行を、値と出どころを保って戻せる", (t) => {
+test("変更記録と写真の質問と認証の記録を、写しの表が逆順でも戻せる", (t) => {
   const db = fixture(t);
   project(db, "fixture-project", 2026);
   db.prepare(`INSERT INTO project_changes (change_id, ward_id, project_id, kind, target, status, dedupe_key, payload_hash, payload, result, pack_version, created_by_account_id)
@@ -83,8 +83,25 @@ test("変更記録を持つ項目と当番の行を、値と出どころを保�
     VALUES ('fixture-value', ?, 'fixture-project', 'place', 'current', '架空の公民館', 'person', 'z-creator', 'high', 'fixture-change', 'z-creator')`).run(wardId);
   db.prepare(`INSERT INTO project_rows (row_id, ward_id, project_id, table_key, scope, match_key, data, source_kind, source_ref, confidence, change_id, created_by_account_id)
     VALUES ('fixture-duty', ?, 'fixture-project', 'duties', 'current', 'fixture-duty', '{"name":"架空 受付役"}', 'person', 'z-creator', 'high', 'fixture-change', 'z-creator')`).run(wardId);
+  db.prepare(`INSERT INTO jobs (job_id, ward_id, project_id, via, task, status, created_at, updated_at)
+    VALUES ('fixture-job', ?, 'fixture-project', 'line_direct', 'connect', 'done', '2026-11-06', '2026-11-06')`).run(wardId);
+  db.prepare(`INSERT INTO originals (original_id, ward_id, job_id, position, kind, content_hash, media_type, byte_size, received_at)
+    VALUES ('fixture-original', ?, 'fixture-job', 1, 'photo', 'fictional-hash', 'image/jpeg', 100, '2026-11-06')`).run(wardId);
+  db.prepare(`INSERT INTO readings (reading_id, ward_id, job_id, source, pack_version, body, created_at)
+    VALUES ('fixture-reading', ?, 'fixture-job', 'direct', 'fixture@1', '{"text_blocks":[]}', '2026-11-06')`).run(wardId);
+  db.prepare(`INSERT INTO line_photo_batches (ward_id, batch_id, destination, source_type, source_id, sender_id, created_at, last_received_at, reply_token)
+    VALUES (?, 'fixture-batch', 'fixture-destination', 'user', 'fixture-user', 'fixture-user', '2026-11-06', '2026-11-06', 'fictional-reply')`).run(wardId);
+  db.prepare(`INSERT INTO line_photo_items (ward_id, batch_id, job_id, message_id, quote_token)
+    VALUES (?, 'fixture-batch', 'fixture-job', 'fixture-message', 'fictional-quote')`).run(wardId);
+  db.prepare(`INSERT INTO line_clarifications (ward_id, clarification_id, batch_id, job_id, original_id, topic, text)
+    VALUES (?, 'fixture-clarification', 'fixture-batch', 'fixture-job', 'fixture-original', 'year', '架空の年の質問')`).run(wardId);
+  db.prepare(`INSERT INTO line_clarification_answers (ward_id, event_id, clarification_id, job_id, answer_text, sender_label)
+    VALUES (?, 'fixture-event', 'fixture-clarification', 'fixture-job', '架空の返事', '架空の役員')`).run(wardId);
+  db.prepare(`INSERT INTO sign_in_links (link_id, ward_id, account_id, purpose, token_hash, expires_at, created_at, created_by_account_id)
+    VALUES ('fixture-link', ?, 'z-creator', 'invite', 'fictional-token-hash', '2026-11-07', '2026-11-06', 'z-creator')`).run(wardId);
+  db.prepare("UPDATE accounts SET sign_in_completed_at = NULL WHERE ward_id = ? AND account_id = 'z-creator'").run(wardId);
   const data = snapshot(db);
-  assert.ok(tables.indexOf("project_item_values") < tables.indexOf("project_changes"));
+  data.tables = Object.fromEntries(Object.entries(data.tables).reverse());
   roundTrip(t, data);
 });
 
