@@ -318,8 +318,8 @@ admin.post("/close/:projectId/finalize", async (c) => {
   }
   await c.env.DB.batch([
     ...statements,
-    // 名前を消す既存の処理が動く前に、閉じた時の人数だけを同じ書き込みで残す。
-    c.env.DB.prepare(`UPDATE projects SET help_offer_count_on_close = (
+    // 前に閉じた時の人数を保ち、名前を消す前に新しい申し込みの人数を足す。
+    c.env.DB.prepare(`UPDATE projects SET help_offer_count_on_close = COALESCE(help_offer_count_on_close, 0) + (
       SELECT COUNT(*) FROM project_help_offers WHERE ward_id = ? AND project_id = ?
     ) WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL`)
       .bind(ward.wardId, id, ward.wardId, id),
