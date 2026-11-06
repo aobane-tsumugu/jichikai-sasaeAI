@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { adminPath } from "../core/auth";
 import { ErrorNotice, Layout, Notice } from "../core/ui";
 import { AdminPage } from "../core/admin-ui";
@@ -73,7 +73,9 @@ admin.get("/rota/:projectId/result", async (c) => {
   </AdminPage>);
 });
 
-admin.get("/rota/exemptions", async (c) => {
+type ExemptionFields = Record<"household" | "reason" | "starts_on" | "ends_on", string>;
+
+async function exemptionPage(c: Context<AdminEnv>, values?: ExemptionFields) {
   const { ward } = c.var;
   const [roster, records] = await Promise.all([getRoster(c.env.DB, ward.wardId), exemptions(c.env.DB, ward.wardId)]);
   const entries = roster.filter((entry) => roster.filter((other) => householdKey(other) === householdKey(entry)).length === 1);
@@ -89,12 +91,12 @@ admin.get("/rota/exemptions", async (c) => {
       <p>{action === "withdraw" ? "取り消しを戻すときは、下の記録の「取り消した免除を戻す」を押せます。" : "書き間違えたときは、下の記録の「この免除を取り消す」を押して、書き直せます。"}</p>
       <a class="quiet" href={root}>免除の画面へ戻る</a>
     </> : null}
-    <ErrorNotice code={c.req.query("error")} messages={{ input: "代表者のお名前、理由、始めと終わりの日を確かめて、もう一度保存してください。" }} />
+    <ErrorNotice code={values ? "input" : c.req.query("error")} messages={{ input: "代表者のお名前、理由、始めと終わりの日を確かめて、もう一度保存してください。" }} />
     {entries.length ? <form class="panel" method="post" action={root}>
-      <div class="field"><label for="household">代表者のお名前と班</label><select id="household" name="household" required>{entries.map((entry) => <option value={JSON.stringify(entry)}>{householdLabel(entry)}</option>)}</select></div>
-      <div class="field"><label for="reason">免除の理由</label><input id="reason" name="reason" maxlength={200} required /></div>
-      <div class="field"><label for="starts">始めの日</label><input id="starts" type="date" name="starts_on" required /></div>
-      <div class="field"><label for="ends">終わりの日</label><input id="ends" type="date" name="ends_on" required /></div>
+      <div class="field"><label for="household">代表者のお名前と班</label><select id="household" name="household" required>{entries.map((entry) => <option value={JSON.stringify(entry)} selected={values?.household === JSON.stringify(entry)}>{householdLabel(entry)}</option>)}</select></div>
+      <div class="field"><label for="reason">免除の理由</label><input id="reason" name="reason" value={values?.reason} maxlength={200} required /></div>
+      <div class="field"><label for="starts">始めの日</label><input id="starts" type="date" name="starts_on" value={values?.starts_on} required /></div>
+      <div class="field"><label for="ends">終わりの日</label><input id="ends" type="date" name="ends_on" value={values?.ends_on} required /></div>
       <div class="action-links"><button>免除を記録する</button></div>
     </form> : <section class={c.req.query("saved") ? "panel" : "next"}><strong>{c.req.query("saved") ? "名簿がまだありません" : "次は"}</strong><p>今の名簿に、班とお名前で区別できる世帯がありません。名簿を入れるか直すと、免除を書けます。</p>
       <a class="button" href={adminPath(ward, "/answers/roster")}>名簿を入れる・直す</a></section>}
@@ -104,18 +106,24 @@ admin.get("/rota/exemptions", async (c) => {
       <form method="post" action={`${root}/${record.exemption_id}/${record.withdrawn_at ? "restore" : "withdraw"}`}>
         <button class="secondary">{record.withdrawn_at ? "取り消した免除を戻す" : "この免除を取り消す"}</button></form>
     </section>)}
-  </Layout>);
-});
+  </Layout>, values ? 400 : 200);
+}
+
+admin.get("/rota/exemptions", (c) => exemptionPage(c));
 
 admin.post("/rota/exemptions", async (c) => {
   const form = await c.req.formData();
+  const values: ExemptionFields = {
+    household: String(form.get("household") ?? ""), reason: String(form.get("reason") ?? ""),
+    starts_on: String(form.get("starts_on") ?? ""), ends_on: String(form.get("ends_on") ?? ""),
+  };
   let selected: unknown;
-  try { selected = JSON.parse(String(form.get("household") ?? "")); } catch { selected = null; }
+  try { selected = JSON.parse(values.household); } catch { selected = null; }
   const entry = typeof selected === "object" && selected !== null ? selected as Record<string, unknown> : {};
   const ok = typeof entry.household === "string" && typeof entry.district === "string" && await addExemption(c.env.DB, c.var.ward.wardId, c.var.account.accountId, {
-    household: entry.household, district: entry.district, reason: String(form.get("reason") ?? ""), startsOn: String(form.get("starts_on") ?? ""), endsOn: String(form.get("ends_on") ?? ""),
+    household: entry.household, district: entry.district, reason: values.reason, startsOn: values.starts_on, endsOn: values.ends_on,
   });
-  return c.redirect(`${adminPath(c.var.ward, "/rota/exemptions")}?${ok ? "saved=1" : "error=input"}`, 303);
+  return ok ? c.redirect(`${adminPath(c.var.ward, "/rota/exemptions")}?saved=1`, 303) : exemptionPage(c, values);
 });
 admin.post("/rota/exemptions/:id/:action", async (c) => {
   const action = c.req.param("action");
