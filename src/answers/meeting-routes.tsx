@@ -11,6 +11,7 @@ import { EventDetails, ReceptionClosed, ResidentContact, residentContext } from 
 import { isMeetingStatus, MEETING_LABELS, MeetingFields, meetingNote, meetingText, parseMeetingAnswer } from "./meeting";
 import { saveMeetingAnswer } from "./meeting-store";
 import { isAnswerSheetReading } from "../ai/schema";
+import { formatJstDate } from "../core/time";
 
 type Meeting = { title: string; closed_at: string | null; due_on: string | null };
 type SheetReading = { original_id: string; filename: string; body: string | null };
@@ -89,20 +90,32 @@ async function renderAdmin(c: Context<AdminEnv>, project: Meeting) {
     .bind(ward.wardId, id).all<SheetReading>()).results : [];
   const title = ({ hand: "電話や紙の答えを手で入れる", list: "答えの一覧", read: "読み取った答えを直して入れる", send: "回答票を撮って送る", sent: "回答票を受け取りました", unanswered: "まだ答えていない世帯" } as Record<string, string>)[view] ?? `${project.title}の答え`;
   return c.html(<AdminPage ward={ward} account={c.var.account} title={title} back={{ href: view === "summary" ? `/${ward.slug}/admin/projects/${id}/map` : root, label: view === "summary" ? "総会の段取りへ戻る" : "総会の答えへ戻る" }}>
-    <h1>{title}</h1><p class="lead">世帯ごとの出席・委任・欠席を、紙・電話・スマホを合わせて数えます。</p>
+    <h1 class={view === "summary" || view === "list" ? "answers-wide" : undefined}>{title}</h1>
+    {view !== "summary" ? <p class="lead">世帯ごとの出席・委任・欠席を、紙・電話・スマホを合わせて数えます。</p> : null}
     {c.req.query("done") ? <Notice>保存しました。答えと数を確かめてください。</Notice> : null}
     {closed ? <Notice>この総会は閉じました。答えを直すときは、総会をもう一度開いてください。<p><a href={`/${ward.slug}/admin/close/${id}`}>閉じた総会の画面へ</a></p></Notice> : null}
     {view === "summary" ? <>
-      <div class="counts"><div class="count"><b>{valid.length}<small>世帯</small></b><span>答えた世帯</span></div>
+      <p class="lead">{answers.length ? "紙、電話、スマホの答えを合わせた数です。" : ""}{deadline ? `答えの締切は${formatJstDate(deadline)}です。` : "答えの締切はまだ決まっていません。"}</p>
+      {!answers.length ? <>
+        <div class="notice"><strong>まだ答えはありません</strong><p>紙、電話、スマホの答えが、ここに集まります。</p></div>
+        {!closed ? <><section class="next"><strong>次は</strong><p>回答票が手元にあれば、撮って送れます。</p><a class="button" href={`${root}?view=send`}>回答票を撮って送る</a></section><a class="quiet" href={`${root}?view=hand`}>電話で聞いた答えを入れる</a></> : null}
+        {!roster.length ? <p><a class="quiet" href={`/${ward.slug}/admin/answers/roster`}>名簿を入れる</a></p> : null}
+      </> : <>
+      <div class="counts"><div class="count"><b>{answers.length}<small>世帯</small></b><span>答えた世帯</span></div>
         {Object.entries(MEETING_LABELS).map(([status, label]) => <div class="count"><b>{valid.filter((answer) => answer.meetingStatus === status).length}<small>世帯</small></b><span>{label}</span></div>)}
         <div class="count"><b>{roster.length ? remaining.length : "―"}<small>世帯</small></b><span>まだ答えていない世帯</span></div></div>
       {!roster.length ? <p>名簿はまだありません。まだ答えていない世帯の数は分かりません。</p> : null}
       {answers.length > valid.length ? <Notice>出席・委任・欠席が分からない答えが{answers.length - valid.length}件あります。答えの一覧で確かめてください。</Notice> : null}
-      <ul class="rows">
-        {!closed ? <><li><a class="row-link" href={`${root}?view=send`}>回答票を撮って送る</a></li><li><a class="row-link" href={`${root}?view=hand`}>電話や紙の答えを手で入れる</a></li></> : null}
-        <li><a class="row-link" href={`${root}?view=read`}>読み取った答えを直して入れる</a></li><li><a class="row-link" href={`${root}?view=list`}>答えの一覧</a></li><li><a class="row-link" href={`${root}?view=unanswered`}>まだ答えていない世帯</a></li>
+      {!closed ? <div class="action-links"><a class="button" href={`${root}?view=send`}>回答票を撮って送る</a></div> : null}
+      <ul class="rows two">
+        <li><a class="row-link" href={`${root}?view=unanswered`}><b>{roster.length ? `まだ答えていない世帯 ${remaining.length}世帯` : "まだ答えていない世帯"}</b><span>班ごとに見られます</span></a></li>
+        {!closed ? <li><a class="row-link" href={`${root}?view=hand`}><b>電話や紙の答えを手で入れる</b><span>代表者のお名前、班、出席・委任・欠席を入れます</span></a></li> : null}
+        <li><a class="row-link" href={`${root}?view=list`}><b>答えの一覧</b><span>読み違いは、ここで直せます</span></a></li>
+        <li><a class="row-link" href={`${root}?view=read`}><b>回答票の読み取り</b><span>撮って送った回答票の読みを見られます</span></a></li>
+        <li><a class="row-link" href={`/${ward.slug}/admin/answers/roster`}><b>名簿</b><span>まだ答えていない世帯を出すために使います</span></a></li>
       </ul>
-      {!closed ? <details class="fold"><summary>答えの締切を変える</summary><form method="post" action={`${root}/deadline`}><label for="due">答えの締切</label><input id="due" name="due_on" type="date" value={deadline ?? ""} required /><button class="secondary">締切を変える</button></form></details> : null}
+      </>}
+      {!closed ? <details class="fold"><summary>答えの締切を変える</summary><div><form method="post" action={`${root}/deadline`}><label for="due">答えの締切</label><input id="due" name="due_on" type="date" value={deadline ?? ""} required /><button class="secondary">締切を変える</button></form></div></details> : null}
     </> : null}
     {view === "hand" && !closed ? <form method="post" action={`${root}/phone`}><HouseholdFields squads={squads} /><div class="action-bar"><button>この答えを入れる</button></div></form> : null}
     {view === "send" && !closed ? <><p>預かった回答票を撮って送ってください。一枚の写真に何枚写っていてもかまいません。</p><form method="post" action={`${root}/sheet`} enctype="multipart/form-data"><label class="file-button">回答票を撮る<input name="part" type="file" accept="image/*,.pdf" capture="environment" required /></label><button>送る</button></form></> : null}
