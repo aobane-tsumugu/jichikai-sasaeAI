@@ -19,9 +19,9 @@ it("保存した問い合わせ・行政の答え・年間帳簿・活動紹介�
   expect((await postForm(realApp, `${root}/requests/city/${project.projectId}`, {
     operation: "save", answerDraft: "架空の答えの下書き", dueOn: "2026-11-30",
   }, cookie)).status).toBe(303);
-  expect((await postForm(realApp, `${root}/ledger`, {
-    year: "2026", budgetIncome: "12000", budgetExpense: "10000", settlementDraft: "架空の決算の下書き",
-  }, cookie)).status).toBe(303);
+  // 後回しになった帳簿の既存データも、書き出しから落とさない。
+  await env.DB.prepare(`INSERT INTO ward_annual_budgets (ward_id, year, budget_income, budget_expense, settlement_draft, updated_at, updated_by_account_id)
+    VALUES (?, 2026, 12000, 10000, '架空の決算の下書き', '2026-11-05', ?)`).bind(ward.wardId, account.accountId).run();
   expect((await postForm(realApp, `${root}/close/${project.projectId}/activity`, {
     action: "save", introduction: "架空の活動紹介",
   }, cookie)).status).toBe(303);

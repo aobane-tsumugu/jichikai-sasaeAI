@@ -20,7 +20,7 @@ const targetPath: Record<MapOpens, (id: string, taskKey: string | null) => strin
   materials: (id) => `/intake?project=${encodeURIComponent(id)}#send-form`,
   draft: (id, key) => `/projects/${id}/draft/${taskDraftKind(key)}`,
   answers: (id) => `/answers/${encodeURIComponent(id)}`,
-  ledger: (id) => `/projects/${id}#ledger`,
+  ledger: (id) => `/projects/${id}/ledger`,
 };
 
 admin.get("/projects/:projectId/map", async (c) => {
@@ -91,7 +91,7 @@ admin.get("/projects/:projectId/map", async (c) => {
         <p><a class="quiet" href={adminPath(ward, `/answers/${id}`)}>答えを見る</a></p>
         <p><a class="quiet" href={adminPath(ward, `/space/${id}`)}>実行委員と班長のページ</a></p>
         {canRain && !project.closedAt ? <p><a class="quiet" href={adminPath(ward, `/projects/${id}/draft/notice`)}>雨の変更を知らせる</a></p> : null}
-        <p><a class="quiet" href={adminPath(ward, `/projects/${id}#ledger`)}>収支</a></p>
+        <p><a class="quiet" href={adminPath(ward, `/projects/${id}/ledger`)}>運営メモ</a></p>
         <p><a class="quiet" href={adminPath(ward, `/close/${id}`)}>報告を書いて閉じる</a></p>
       </aside></div>
     </div>
@@ -115,7 +115,7 @@ admin.get("/projects/:projectId/map/:taskId", async (c) => {
   const owner = seats.results.find((seat) => seat.seat_id === task.seatId)?.title;
   const destinations = opensOf(project.kind, task.taskKey);
   const draft = state.documents.find((document) => document.kind === taskDraftKind(task.taskKey));
-  const labels: Record<MapOpens, string> = { materials: "資料を送る", draft: `${task.taskKey === "duty_roster" ? "当番表" : task.taskKey === "report" ? "報告" : "案内"}の下書きを直す`, answers: "答えを見る", ledger: "収支を見る" };
+  const labels: Record<MapOpens, string> = { materials: "資料を送る", draft: `${task.taskKey === "duty_roster" ? "当番表" : task.taskKey === "report" ? "報告" : "案内"}の下書きを直す`, answers: "答えを見る", ledger: "運営メモを見る" };
   return c.html(<Layout title={task.name} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {project.title}の段取りへ</a>
     <h1>{task.name}</h1><p class="lead">{task.periodEnd ? `${formatJstDate(task.periodEnd)}まで。` : "時期はまだ決まっていません。"}{owner ? `担当は${owner}です。` : "担当はあとから直せます。"}</p>

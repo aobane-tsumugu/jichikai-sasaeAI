@@ -170,9 +170,10 @@ export const TABLES: Record<TableKey, TableDef> = {
     nameField: "spot",
   },
   ledger: {
-    label: "収支",
+    label: "運営メモ",
     fields: {
-      counterpart: { label: "相手", def: TEXT },
+      what: { label: "何に", def: TEXT },
+      counterpart: { label: "どこに", def: TEXT },
       direction: {
         label: "収入か支出",
         def: { type: "enum", values: ["income", "expense"], labels: { income: "収入", expense: "支出" } },
@@ -181,6 +182,12 @@ export const TABLES: Record<TableKey, TableDef> = {
       date: { label: "日付", def: TEXT },
       receiptOriginalId: { label: "領収書の元の資料", def: TEXT },
       note: { label: "メモ", def: TEXT },
+      contact: { label: "連絡先と、頼んだ人", def: TEXT },
+      requestedOn: { label: "いつ頼んだか", def: TEXT },
+      quantity: { label: "頼んだ内容の量", def: TEXT },
+      estimate: { label: "見積りの額", def: AMOUNT },
+      payment: { label: "払い方", def: TEXT },
+      thanks: { label: "お礼の仕方", def: TEXT },
     },
     keyFields: ["direction", "counterpart"],
     optionalKeyFields: ["date"],
@@ -225,7 +232,8 @@ export function cleanRowData(table: TableKey, raw: unknown): { ok: true; data: R
   }
   const data: RowData = {};
   for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
-    const field = def.fields[name];
+    // 保存先を指す内部の名前は、紙や画面の項目の一覧には出さない。
+    const field = def.fields[name] ?? (table === "ledger" && ["memoKey", "memoGroup"].includes(name) ? { label: "記録", def: TEXT } : undefined);
     if (!field) return { ok: false, reason: `${def.label}に「${name}」の項目はありません` };
     if (value === null || value === undefined || value === "") continue;
     switch (field.def.type) {
@@ -248,6 +256,8 @@ export function cleanRowData(table: TableKey, raw: unknown): { ok: true; data: R
     }
   }
   for (const key of def.keyFields) {
+    // 手で書く運営メモは、何も書かなくても同じ記録に戻れる。
+    if (table === "ledger" && data.memoKey) continue;
     if (data[key] === undefined) {
       return { ok: false, reason: `${def.label}の行には「${def.fields[key]?.label ?? key}」が要ります` };
     }
@@ -348,6 +358,9 @@ export function normalizeKey(text: string): string {
 
 /** 行の照合の鍵（鍵の列を正規化してつなぐ）。 */
 export function rowMatchKey(table: TableKey, data: RowData): string {
+  // 写真から来た既存の行は、手で直しても同じ写真の照合先を保つ。
+  if (table === "ledger" && typeof data.memoKey === "string" && data.memoKey.startsWith("legacy:")) return data.memoKey.slice(7);
+  if (table === "ledger" && data.memoKey) return `memo:${data.memoKey}`;
   const def = TABLES[table];
   const names = [...def.keyFields, ...(def.optionalKeyFields ?? [])];
   return names.map((name) => normalizeKey(String(data[name] ?? ""))).join("|");
@@ -355,6 +368,7 @@ export function rowMatchKey(table: TableKey, data: RowData): string {
 
 /** 行を画面と問いの文で呼ぶ名前。 */
 export function rowDisplayName(table: TableKey, data: RowData): string {
+  if (table === "ledger") return String(data.what || data.counterpart || "メモ");
   const def = TABLES[table];
   return String(data[def.nameField] ?? "");
 }

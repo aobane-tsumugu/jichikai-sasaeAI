@@ -79,7 +79,7 @@ describe("秋の収穫祭の最初の一片", () => {
     expect(mapHtml).toContain(`href="${materialPath}"`);
     expect(mapHtml).toContain(`/admin/projects/${projectId}/map/`);
     expect(mapHtml).toContain(`/admin/answers/${encodeURIComponent(projectId as string)}`);
-    expect(mapHtml).toContain(`/admin/projects/${projectId}#ledger`);
+    expect(mapHtml).toContain(`/admin/projects/${projectId}/ledger`);
     // 地図から送る画面を開き、送り先を選び直さずに材料を送れる。
     const materialPage = await get(realApp, materialPath, cookie);
     expect(materialPage.status).toBe(200);

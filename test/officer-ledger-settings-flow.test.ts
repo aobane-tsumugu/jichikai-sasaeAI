@@ -9,7 +9,7 @@ import { DOCUMENT_KINDS } from "../src/project/model";
 import { recordLineInquiry } from "../src/project/followup";
 import { get, postForm, realApp } from "./helpers";
 
-it("名簿のない一年目に資料を送り、問い合わせの答えを残し、協賛の読み違いを直して年の帳簿を保存する", async () => {
+it("名簿のない一年目に資料を送り、問い合わせの答えと協賛の運営メモを残す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
@@ -27,7 +27,7 @@ it("名簿のない一年目に資料を送り、問い合わせの答えを残�
 
   expect(await read(`${root}/inquiries`)).toContain("届いている問い合わせはありません");
   expect(await read(`${root}/requests/city`)).toContain("まだ出していない依頼はありません");
-  expect(await read(`${root}/ledger`)).toContain("行事の収支はまだありません");
+  expect(await read(`${root}/ledger`)).toContain("行事はまだありません");
   expect(await read(`${root}/archive/map`)).toContain("予定はまだありません");
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: fixture.nextYearTitle, year: fixture.nextYear,
@@ -95,7 +95,7 @@ it("名簿のない一年目に資料を送り、問い合わせの答えを残�
   const sponsor = state?.tables.sponsors.find((r) => r.scope === "current");
   if (!sponsor) throw new Error("架空の協賛の行がありません");
   const ledgerPath = `${root}/projects/${id}/ledger`;
-  expect(await read(ledgerPath)).toContain("確かめ中");
+  expect(await read(ledgerPath)).toContain("額の情報なし");
   const edited = await follow(await postForm(realApp, `${ledgerPath}/${sponsor.rowId}`, {
     counterpart: fixture.sponsorName, amount: String(fixture.sponsorAmount), direction: "income", note: fixture.reportText,
   }, cookie));
@@ -103,16 +103,19 @@ it("名簿のない一年目に資料を送り、問い合わせの答えを残�
   expect(edited).toContain(`${fixture.sponsorAmount.toLocaleString("ja-JP")}円`);
   const after = await getProjectState(env.DB, ward.wardId, id);
   expect(after?.tables.sponsors.find((r) => r.rowId === sponsor.rowId)).toMatchObject({
+    source: { kind: "original", ref: original.originalId },
+  });
+  expect(after?.tables.sponsors.find((r) => r.rowId === sponsor.rowId)?.data.amount).toBeUndefined();
+  expect(after?.tables.ledger.find((r) => r.data.memoGroup === "sponsors")).toMatchObject({
     data: { amount: fixture.sponsorAmount }, source: { kind: "original", ref: original.originalId }, personFields: expect.arrayContaining(["amount"]),
   });
   const raw = await get(realApp, `${originalPath}?raw=1`, cookie);
   expect(await raw.text()).toBe(fixture.publicAnnouncement);
-  expect(await read(`${root}/ledger`)).toContain(`協賛${fixture.sponsorAmount.toLocaleString("ja-JP")}円`);
-  const ledgerSaved = await follow(await postForm(realApp, `${root}/ledger`, {
-    year: String(fixture.nextYear), budgetIncome: String(fixture.sponsorAmount + 1000), budgetExpense: "0", settlementDraft: fixture.reportText,
-  }, cookie));
-  expect(ledgerSaved).toContain("予算と決算の下書きを保存しました");
-  expect(await read(`${root}/ledger`)).toContain("予算より1,000円少ない");
+  expect(await read(`${ledgerPath}/${sponsor.rowId}`)).toContain(`value="${fixture.sponsorAmount}"`);
+  const memoEntry = await read(`${root}/ledger`);
+  expect(memoEntry).toContain(`href="${root}/projects/${id}/map"`);
+  expect(memoEntry).not.toContain('name="budgetIncome"');
+  expect(memoEntry).not.toContain('name="settlementDraft"');
   // 名簿を入れなくても、一般的な題の下書きを全種類で読める。
   for (const kind of DOCUMENT_KINDS) {
     const beforeDraft = await getProjectState(env.DB, ward.wardId, id);
