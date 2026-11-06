@@ -311,7 +311,8 @@ async function check(options: Options): Promise<{ results: Result[]; project: st
       queue.push(url);
     }
     if (project) {
-      for (const path of [`/admin/projects/${encodeURIComponent(project)}`, `/answer/${encodeURIComponent(project)}`, `/help/${encodeURIComponent(project)}`, `/space/${encodeURIComponent(project)}`]) {
+      // 実行委員の入口は、開いているときだけ設定画面に出るリンクからたどる。
+      for (const path of [`/admin/projects/${encodeURIComponent(project)}`, `/answer/${encodeURIComponent(project)}`, `/help/${encodeURIComponent(project)}`, `/admin/space/${encodeURIComponent(project)}`]) {
         enqueue(`${site.wardPath}${path}`, site.base.href);
       }
     }
@@ -440,7 +441,7 @@ async function selfTest() {
   const { createServer } = await import("node:http");
   const { mkdtempSync, rmSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
-  await test("架空の区で入る、画面を集める、両幅の不合格を残し、更新と別の区へ進まない", async () => {
+  for (const spaceOpen of [false, true]) await test(`架空の区で画面を集め、更新と別の区へ進まない（実行委員のページ${spaceOpen ? "開設済み" : "未開設"}）`, async () => {
     const temp = mkdtempSync(resolve(tmpdir(), "check-screens-"));
     const requests: string[] = [];
     const html = (body: string) => `<!doctype html><html lang="ja"><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="/favicon.ico"><style>body{margin:0;font-size:18px}a,button,input,summary{display:block;min-height:48px;font-size:18px}.small{font-size:12px}.wide{width:1400px}</style><script nonce="fixture" src="/fixture/app.js"></script></head><body>${body}</body></html>`;
@@ -473,8 +474,13 @@ async function selfTest() {
         response.end(html('<main><h1>架空の行事の出欠を教えてください</h1><form method="post"><label>代表者のお名前<input name="household"></label><button>この内容で送る</button></form></main>'));
       } else if (path === "/fixture/help/first") {
         response.end(html('<main><h1>手伝える時間帯を教えてください</h1><form method="post"><label>お名前<input name="helper_name"></label><label>時間帯<input name="helper_times"></label><button>申し込む</button></form></main>'));
+      } else if (path === "/fixture/admin/space/first") {
+        response.end(html(spaceOpen
+          ? '<main><h1>実行委員と班長のページ</h1><a href="/fixture/space/first">入口のアドレス</a></main>'
+          : '<main><h1>実行委員と班長のページ</h1><p>まだ開いていません。</p><form method="post" action="/fixture/admin/space/first/open"><label>合言葉<input name="passphrase"></label><button>開く</button></form></main>'));
       } else if (path === "/fixture/space/first") {
-        response.end(html('<main><h1>合言葉を入れてください</h1><form method="post" action="/fixture/space/first/enter"><label>合言葉<input name="passphrase" type="password"></label><button>入る</button></form><a href="/fixture/space/first/join/secret">招待の入口</a><a href="/fixture/space/first/person/secret">班長の入口</a></main>'));
+        if (spaceOpen) response.end(html('<main><h1>合言葉を入れてください</h1><form method="post" action="/fixture/space/first/enter"><label>合言葉<input name="passphrase" type="password"></label><button>入る</button></form><a href="/fixture/space/first/join/secret">招待の入口</a><a href="/fixture/space/first/person/secret">班長の入口</a></main>'));
+        else { response.writeHead(403); response.end(html('<main><h1>まだ開いていません</h1><p>役員がまだ開いていません。</p></main>')); }
       } else if (path === "/fixture/admin/projects") {
         response.end(html('<h1>新しく始める</h1><form method="post"><label>名前<input name="title"></label><button>始める</button></form>'));
       } else if (path === "/fixture/admin/projects/first") {
@@ -526,7 +532,7 @@ async function selfTest() {
         }
         assert.ok(result.results.some((row) => row.path.endsWith("/answers/first?view=hand") && row.width === width && row.failures.some((failure) => failure.item === "主なボタンが一画面目に見えない")));
         assert.ok(result.results.some((row) => row.path.endsWith("/draft/notice?edit=1") && row.width === width && row.failures.some((failure) => failure.item === "文字が18px未満")));
-        for (const path of ["/fixture/answer/first", "/fixture/help/first", "/fixture/space/first"]) {
+        for (const path of ["/fixture/answer/first", "/fixture/help/first", ...(spaceOpen ? ["/fixture/space/first"] : [])]) {
           const publicPage = result.results.find((row) => row.path === path && row.width === width);
           assert.ok(publicPage, path);
           assert.deepEqual(publicPage.failures, [], path);
@@ -539,6 +545,9 @@ async function selfTest() {
         assert.ok(result.results.some((row) => row.path.endsWith("/settings") && row.width === width && !row.failures.length));
       }
       assert.equal(requests.filter((request) => request.startsWith("POST ")).length, 1);
+      assert.equal(result.results.filter((row) => row.path === "/fixture/admin/space/first").length, widths.length);
+      assert.equal(requests.some((request) => request === "GET /fixture/space/first"), spaceOpen);
+      assert.equal(result.results.filter((row) => row.path === "/fixture/space/first").length, spaceOpen ? widths.length : 0);
       assert.equal(requests.filter((request) => request.startsWith("GET /fixture/admin/answers/first?view=list&")).length, widths.length);
       assert.ok(requests.includes("GET /fixture/app.js"));
       assert.ok(!requests.includes("GET /favicon.ico"));
