@@ -1,9 +1,11 @@
 import { Hono } from "hono";
 import { adminPath } from "../core/auth";
 import { ErrorNotice, Layout, Notice } from "../core/ui";
+import { AdminPage } from "../core/admin-ui";
 import type { AdminEnv, WardInfo } from "../env";
 import { getRoster } from "../answers/api";
 import { addExemption, compareRota, exemptions, householdKey, householdLabel, lastPreparation, rotaDate, type Comparison } from "./store";
+import { getProjectSummary } from "../project/api";
 import { householdHistory } from "./history";
 
 const admin = new Hono<AdminEnv>();
@@ -28,7 +30,8 @@ export async function rotaPanel(db: D1Database, ward: WardInfo, projectId: strin
       </> : <p>順番のルールは作っていません。免除の期間に当たる人は担当から外します。</p>}
       <form method="post" action={`${root}/start`}><button>{preparation ? "今の名簿と免除を下書きに反映する" : comparison.hasPreviousTable === false ? "名簿から下書きを作る" : "去年の表と名簿から下書きを作る"}</button></form>
       <p>役員が直した行はそのまま残します。保存しただけでは配られません。</p>
-    </> : <p>去年の表も今の名簿もまだありません。名簿か去年の当番表を送ると、下書きを作れます。</p>}
+    </> : <section class="next"><strong>次は</strong><p>去年の表も今の名簿もまだありません。手元の当番表を写真やファイルで送れます。</p>
+      <a class="button" href={adminPath(ward, `/intake?project=${encodeURIComponent(projectId)}#send-form`)}>当番表を送る</a></section>}
     <div class="action-links"><a class="button secondary" href={adminPath(ward, "/rota/exemptions")}>免除を記録する</a>
       <a class="button secondary" href={adminPath(ward, "/rota/history")}>世帯ごとの当番と役を読む</a></div>
   </section>;
@@ -39,15 +42,53 @@ export async function rotaRowNotes(db: D1Database, wardId: string, projectId: st
   return preparation ? (JSON.parse(preparation.comparison_json) as Comparison).entries : [];
 }
 
+// 保存は元の経路に任せ、当番の作成と作り直しの成功後だけ案内を出す。
+admin.use("/projects/:projectId/draft/duty_roster/start", async (c, next) => {
+  if (c.req.method !== "POST") return next();
+  const { ward } = c.var;
+  const id = c.req.param("projectId");
+  const project = await getProjectSummary(c.env.DB, ward.wardId, id);
+  if (!project || project.kind !== "duty" || project.closedAt) return next();
+  const previous = await lastPreparation(c.env.DB, ward.wardId, id);
+  await next();
+  const location = c.res.headers.get("location");
+  if (c.res.status === 303 && location && new URL(location, c.req.url).searchParams.get("notice") === "saved") {
+    c.res = c.redirect(`${adminPath(ward, `/rota/${id}/result`)}?notice=saved&done=${previous ? "updated" : "created"}`, 303);
+  }
+});
+
+admin.get("/rota/:projectId/result", async (c) => {
+  const { ward } = c.var;
+  const id = c.req.param("projectId");
+  const project = await getProjectSummary(c.env.DB, ward.wardId, id);
+  if (!project || project.kind !== "duty") return c.notFound();
+  const draft = adminPath(ward, `/projects/${id}/draft/duty_roster`);
+  const title = c.req.query("done") === "updated" ? "今の名簿と免除を下書きに反映しました" : "当番の下書きを作りました";
+  return c.html(<AdminPage ward={ward} account={c.var.account} title={title}
+    back={{ href: draft, label: "当番の下書きへ戻る" }}>
+    <h1>{title}</h1><p class="lead">役員が直した行と去年の表は残しています。まだ配っていません。</p>
+    <section class="next"><strong>次は</strong><p>時間帯や担当を、下書きで直せます。</p><a class="button" href={draft}>当番の下書きを直す</a></section>
+    <p>担当を戻したいときも、下書きで書き直せます。免除を間違えたときは、免除の画面で取り消せます。</p>
+    <a class="quiet" href={adminPath(ward, "/rota/exemptions")}>免除の画面へ戻る</a>
+  </AdminPage>);
+});
+
 admin.get("/rota/exemptions", async (c) => {
   const { ward } = c.var;
   const [roster, records] = await Promise.all([getRoster(c.env.DB, ward.wardId), exemptions(c.env.DB, ward.wardId)]);
   const entries = roster.filter((entry) => roster.filter((other) => householdKey(other) === householdKey(entry)).length === 1);
   const root = adminPath(ward, "/rota/exemptions");
+  const action = c.req.query("action");
+  const result = action === "withdraw" ? "免除を取り消しました。" : action === "restore" ? "取り消した免除を戻しました。" : "免除の記録を保存しました。";
   return c.html(<Layout title="当番の免除" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/rota/history")}>世帯ごとの当番と役へ</a>
     <h1>当番の免除</h1><p class="lead">役員が決めた免除の理由と期間を書きます。ここに書いたことは役員だけが読みます。</p>
-    {c.req.query("saved") ? <Notice>免除の記録を保存しました。当番表で「今の名簿と免除を下書きに反映する」を押すと、まだ直していない担当に反映します。</Notice> : null}
+    {c.req.query("saved") ? <>
+      <Notice>{result}</Notice><section class="next"><strong>次は</strong><p>当番表で「今の名簿と免除を下書きに反映する」を押すと、まだ直していない担当に反映できます。</p>
+        <a class="button" href={adminPath(ward, "/")}>当番を選ぶ</a></section>
+      <p>{action === "withdraw" ? "取り消しを戻すときは、下の記録の「取り消した免除を戻す」を押せます。" : "書き間違えたときは、下の記録の「この免除を取り消す」を押して、書き直せます。"}</p>
+      <a class="quiet" href={root}>免除の画面へ戻る</a>
+    </> : null}
     <ErrorNotice code={c.req.query("error")} messages={{ input: "代表者のお名前、理由、始めと終わりの日を確かめて、もう一度保存してください。" }} />
     {entries.length ? <form class="panel" method="post" action={root}>
       <label for="household">代表者のお名前と班</label><select id="household" name="household" required>{entries.map((entry) => <option value={JSON.stringify(entry)}>{householdLabel(entry)}</option>)}</select>
@@ -55,7 +96,8 @@ admin.get("/rota/exemptions", async (c) => {
       <label for="starts">始めの日</label><input id="starts" type="date" name="starts_on" required />
       <label for="ends">終わりの日</label><input id="ends" type="date" name="ends_on" required />
       <p><button>免除を記録する</button></p>
-    </form> : <p>今の名簿に、班とお名前で区別できる世帯がありません。名簿を確かめてから書けます。</p>}
+    </form> : <section class={c.req.query("saved") ? "panel" : "next"}><strong>{c.req.query("saved") ? "名簿がまだありません" : "次は"}</strong><p>今の名簿に、班とお名前で区別できる世帯がありません。名簿を入れるか直すと、免除を書けます。</p>
+      <a class="button" href={adminPath(ward, "/answers/roster")}>名簿を入れる・直す</a></section>}
     <p>書き間違えたものは取り消して、書き直せます。理由や期間は当番表や紙には載りません。</p>
     {records.map((record) => <section class="panel"><h2>{householdLabel(record)}</h2><p>{record.reason}</p>
       <p>{rotaDate(record.starts_on)}から{rotaDate(record.ends_on)}まで</p>
@@ -80,7 +122,7 @@ admin.post("/rota/exemptions/:id/:action", async (c) => {
   if (action !== "restore" && action !== "withdraw") return c.notFound();
   const result = await c.env.DB.prepare(`UPDATE rota_exemptions SET withdrawn_at = ?, withdrawn_by_account_id = ? WHERE ward_id = ? AND exemption_id = ?`)
     .bind(action === "withdraw" ? new Date().toISOString() : null, action === "withdraw" ? c.var.account.accountId : null, c.var.ward.wardId, c.req.param("id")).run();
-  return c.redirect(`${adminPath(c.var.ward, "/rota/exemptions")}?${result.meta.changes === 1 ? "saved=1" : "error=input"}`, 303);
+  return c.redirect(`${adminPath(c.var.ward, "/rota/exemptions")}?${result.meta.changes === 1 ? `saved=1&action=${action}` : "error=input"}`, 303);
 });
 
 admin.get("/rota/history", async (c) => {
@@ -91,6 +133,8 @@ admin.get("/rota/history", async (c) => {
     <p class="lead">閉じた当番や行事の担当、役員の交代と免除を、今ある記録から読みます。</p>
     <p>名前だけでは世帯を特定できない記録は分けて表示します。書かれていない出席や過去の交代は推測しません。</p>
     <a class="button secondary" href={adminPath(ward, "/rota/exemptions")}>免除を記録する</a>
+    {!households.length ? <section class="next"><strong>次は</strong><p>当番と役の記録はまだありません。名簿を入れると、世帯ごとに読めます。</p>
+      <a class="button" href={adminPath(ward, "/answers/roster")}>名簿を入れる</a></section> : null}
     {households.map((household) => <section class="panel"><h2>{householdLabel(household)}</h2>
       {household.records.length === 0 && household.exemptions.length === 0 ? <p>当番と役の記録はまだありません。</p> : null}
       {household.records.map((record) => <article><h3>{record.what}</h3><p>{record.who} / {record.when}</p><p>{record.detail}</p>
