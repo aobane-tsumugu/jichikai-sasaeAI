@@ -11,7 +11,8 @@ export function reconcileDocumentBody(previous: DocumentBody, next: DocumentBody
   let text = next.text;
   const items = next.items.filter((item) => {
     const old = previous.items.find((entry) => entry.key === item.key);
-    if (!old?.content || !previous.text.includes(old.content)) return true;
+    // 一文字の中身は本文の別の所にも当たるので、揃えない。
+    if (!old?.content || old.content.length < 2 || !previous.text.includes(old.content)) return true;
     if (textChanged) {
       // 同時に直した項目も、役員が書いた文と食い違うなら足さない。
       return item.content !== old.content ? next.text.includes(item.content) : next.text.includes(old.content);
