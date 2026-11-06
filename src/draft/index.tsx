@@ -23,6 +23,8 @@ import { opensOf, taskDraftKind } from "../map/template";
 import { draftMaterials } from "./materials";
 import { startMaterialDraft } from "./start";
 import { getMeetingMaterials, meetingMaterialInstruction, MeetingMaterialsView } from "./meeting-materials";
+import { rotaPanel, rotaRowNotes } from "../rota";
+import { prepareRota } from "../rota/store";
 
 const SEE_LABEL: Record<Scope, string> = { public: "だれでも読める", space: "実行委員と班長だけ", staff: "役員だけ" };
 const ERROR_MESSAGES: Readonly<Record<string, string>> = {
@@ -32,6 +34,7 @@ const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   "notice_save_failed": "知らせを保存できませんでした",
   "save_failed": "保存できませんでした。入力を確かめてください",
   "duty_save_failed": "当番の行を保存できませんでした",
+  "rota_missing": "下書きを作れませんでした。去年の同じ当番の表があるか確かめて、もう一度お試しください",
   "ai_failed": "AIに頼めませんでした。ここで手入力して保存できます"
 };
 
@@ -50,6 +53,8 @@ admin.get("/projects/:projectId/draft", async (c) => {
   const { ward } = c.var; const id = c.req.param("projectId"); const project = await getProjectSummary(c.env.DB, ward.wardId, id);
   if (!project) return c.notFound();
   const written = await c.env.DB.prepare("SELECT DISTINCT kind FROM documents WHERE ward_id = ? AND project_id = ?").bind(ward.wardId, id).all<{ kind: string }>();
+  const dutyWritten = project.kind === "duty" && await c.env.DB.prepare(`SELECT 1 AS found FROM project_rows
+    WHERE ward_id = ? AND project_id = ? AND table_key = 'duties' AND scope = 'current' AND removed_at IS NULL LIMIT 1`).bind(ward.wardId, id).first();
   return c.html(<Layout title={`下書き: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {project.title}の段取りへ</a>
     <h1>{project.title}の下書き</h1><p class="lead">作りたい文書を選んでください。今ある資料からAIに下書きを頼むか、自分で書き始められます。</p><p>文書を選び、必要ならAIに下書きを起こさせます。AIが止まっているときも、ここで書いて保存できます。</p>
@@ -57,8 +62,8 @@ admin.get("/projects/:projectId/draft", async (c) => {
     {c.req.query("notice") === "started" ? <Notice>AIに下書きを頼みました。画面を閉じても続きます。</Notice> : null}
     {c.req.query("notice") === "restored" ? <Notice>前の下書きを戻して、新しい下書きとして保存しました。</Notice> : null}
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
-    {listDraftPacks(project.kind).map((pack) => <section class="panel"><h2><a href={adminPath(ward, `/projects/${id}/draft/${pack.kind}`)}>{pack.title}</a></h2><p>{written.results.some((row) => row.kind === pack.kind) ? "下書きがあります。" : "まだありません。"}{SEE_LABEL[pack.scope]}</p>
-      <form method="post" action={adminPath(ward, `/projects/${id}/draft/${pack.kind}/start`)}><button class="secondary">AIに下書きを頼む</button></form>
+    {listDraftPacks(project.kind).map((pack) => <section class="panel"><h2><a href={adminPath(ward, `/projects/${id}/draft/${pack.kind}`)}>{pack.title}</a></h2><p>{written.results.some((row) => row.kind === pack.kind) || (pack.kind === "duty_roster" && dutyWritten) ? "下書きがあります。" : "まだありません。"}{SEE_LABEL[pack.scope]}</p>
+      <form method="post" action={adminPath(ward, `/projects/${id}/draft/${pack.kind}/start`)}><button class="secondary">{project.kind === "duty" && pack.kind === "duty_roster" ? "去年の表と名簿から下書きを作る" : "AIに下書きを頼む"}</button></form>
     </section>)}
     <div class="action-links"><a class="button secondary" href={adminPath(ward, `/publish/${id}`)}>配る画面へ</a></div>
   </Layout>);
@@ -121,6 +126,8 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
   const dateValue = body.items.find((item) => item.key === "date_time")?.content ?? "";
   const oldDates = [...new Set(state.items.find((item) => item.key === "date_time")?.references.flatMap((ref) => ref.content.match(/\d{1,2}月\d{1,2}日/g) ?? []) ?? [])].filter((date) => body.text.includes(date) && !dateValue.includes(date));
   const bodyCheck = c.req.query("notice") === "saved" ? documentBodyCheckMessage(c.req.query("check_body")) : null;
+  const rota = project.kind === "duty" && kindRaw === "duty_roster" ? await rotaPanel(c.env.DB, ward, id) : null;
+  const rotaNotes = project.kind === "duty" && kindRaw === "duty_roster" ? await rotaRowNotes(c.env.DB, ward.wardId, id) : [];
   return c.html(<Layout title={`${pack.title}の下書きを直す`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, kindRaw === "duty_roster" ? `/projects/${id}/draft` : relatedTask ? `/projects/${id}/map/${relatedTask.taskId}` : `/projects/${id}/map`)}>← {kindRaw === "duty_roster" ? "下書きの一覧" : relatedTask ? relatedTask.name : `${project.title}の段取り`}へ</a>
     <h1>{pack.title}の下書きを直す</h1>
@@ -135,6 +142,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     {project.closedAt ? <Notice>この行事は閉じました。もう一度開くと下書きを直せます。</Notice> : null}
     <MeetingMaterialsView ward={ward} materials={meetingMaterials} />
     {minutes ? <a class="button secondary" href={adminPath(ward, `/close/${id}`)}>議事録を閉じて記録に残す</a> : null}
+    {rota}
     <form id="draft-form" method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/save`)}>
       <input type="hidden" name="based_on" value={baseVersion} />
       <div class="field"><label for="title">題</label><input id="title" name="title" value={kindRaw === "announcement" && project.kind === "event" && (document?.title ?? pack.title) === pack.title ? `${project.title}のご案内` : document?.title ?? pack.title} maxlength={100} required /></div>
@@ -150,11 +158,12 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     </form>
     {kindRaw === "duty_roster" ? <section>
       <h2>当番の担当を直す</h2>
-      <p>手伝いの申し込みと、世帯の答えにある手伝いから、AIが担当の下書きを入れます。直した行は、AIが上書きしません。</p>
+      <p>{project.kind === "duty" ? "去年の表と今の名簿から担当の下書きを入れます。空いたところや転入した世帯の担当を直せます。" : "手伝いの申し込みと、世帯の答えにある手伝いから、AIが担当の下書きを入れます。"}直した行は、AIが上書きしません。</p>
       <div class="duty-rows">{state.tables.duties.filter((row) => row.scope === "current").map((row) => <form class="panel" method="post" action={adminPath(ward, `/projects/${id}/draft/duty-row/${row.rowId}`)}>
         <label for={`slot-${row.rowId}`}>時間帯</label><input id={`slot-${row.rowId}`} name="slot" value={String(row.data.slot ?? "")} maxlength={120} required />
         <label for={`task-${row.rowId}`}>持ち場</label><input id={`task-${row.rowId}`} name="task" value={String(row.data.task ?? "")} maxlength={200} />
         <label for={`assignee-${row.rowId}`}>担当</label><input id={`assignee-${row.rowId}`} name="assignee" value={String(row.data.assignee ?? "")} maxlength={160} />
+        {rotaNotes.find((entry) => entry.rowId === row.rowId)?.explanation ? <p class="help-text">{rotaNotes.find((entry) => entry.rowId === row.rowId)?.explanation}</p> : null}
         {row.data.note ? <p class="help-text">{String(row.data.note)}</p> : null}
         <fieldset><legend>出席</legend><div class="choice half">{([ ["no_change", "まだ記録しない"], ["present", "出席"], ["absent", "欠席"] ] as const).map(([value, label]) => <label><input type="radio" name="attendance" value={value} checked={value === (row.data.attendance || "no_change")} />{label}</label>)}</div></fieldset>
         <p><button type="submit" class="secondary">この行を保存する</button></p>
@@ -168,9 +177,9 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
       </section>) : <p>前の下書きはまだありません。</p>}<p class="muted">今の下書きも残ります。</p>
     </div></details>
     {!project.closedAt ? <>
-      <details class="fold" id="redo"><summary>AIに言葉で頼む</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/start`)}>
+      {project.kind === "duty" && kindRaw === "duty_roster" ? null : <details class="fold" id="redo"><summary>AIに言葉で頼む</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/start`)}>
         <div class="field"><label for="instruction">頼むこと</label><input id="instruction" name="instruction" type="text" maxlength={800} /><p class="help-text">{project.kind === "event" ? "例: 雨のときの場所の変更を入れてください" : minutes ? "例: 送った紙から決めたことをまとめてください" : "例: 送った資料の内容を入れてください"}</p></div><button class="secondary">AIに頼む</button>
-      </form></div></details>
+      </form></div></details>}
       <div class="action-bar page-action"><button type="submit" form="draft-form" name="after" value={paperFirst ? "paper" : "confirm"}>{paperFirst ? "保存して紙の見え方を見る" : "保存して配る内容を見る"}</button><button class="secondary" type="submit" form="draft-form">保存だけする</button></div>
     </> : null}
   </Layout>);
@@ -292,6 +301,10 @@ admin.post("/projects/:projectId/draft/:kind/start", async (c) => {
   if (!isKind(kindRaw)) return c.notFound();
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
   if (!project || project.closedAt) return c.notFound();
+  if (project.kind === "duty" && kindRaw === "duty_roster") {
+    const ok = await prepareRota(c.env.DB, ward.wardId, id, account.accountId);
+    return c.redirect(`${adminPath(ward, `/projects/${id}/draft/duty_roster`)}?${ok ? "notice=saved" : "error=rota_missing"}`, 303);
+  }
   const pack = getDraftPack(kindRaw, project.kind);
   const form = await c.req.formData();
   const instruction = String(form.get("instruction") ?? "").trim().slice(0, 800);

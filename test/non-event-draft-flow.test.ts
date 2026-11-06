@@ -11,7 +11,8 @@ import { draftMaterials } from "../src/draft/materials";
 import { buildDirectReading } from "../src/intake/direct-reading";
 import { receive } from "../src/intake/receive";
 import { getEditableDocument } from "../src/project/actions";
-import { createProject, getProjectState } from "../src/project/api";
+import { applyChange, createProject, getProjectState } from "../src/project/api";
+import { replaceRoster } from "../src/answers/api";
 import { paperHeading } from "../src/project/heading";
 import type { DocumentKind, ProjectKind, Scope } from "../src/project/model";
 import { get, postForm, realApp } from "./helpers";
@@ -100,32 +101,52 @@ it("総会、役員会、当番、市の依頼、要望の仕事から資料と�
       expect(pack.instruction).toContain("名簿や去年の出席者から補いません");
       expect(await read(`${path}/draft/report`)).toContain("紙や文を送る");
     }
+    if (entry.kind === "duty") {
+      await replaceRoster(env.DB, ward.wardId, [{ household: fixture.requestedBy, district: fixture.district }], { household: 0, district: 1 });
+      expect((await applyChange(env.DB, ward.wardId, id, {
+        kind: "row", table: "duties", data: { slot: fixture.publicDayText, task: fixture.helperTime, assignee: fixture.requestedBy },
+        source: { kind: "original", ref: photo.originalId, locator: "1行目", year: fixture.sourceYear },
+        confidence: "high", packVersion: "non-event-duty-fixture@1",
+      })).status).toBe("applied");
+    }
     const ctx = createExecutionContext();
     const started = await realApp.fetch(new Request(`http://localhost${path}/draft/${entry.main}/start`, {
       method: "POST", headers: { cookie, origin: "http://localhost", "content-type": "application/x-www-form-urlencoded" }, body: "instruction=",
     }), env, ctx);
     await waitOnExecutionContext(ctx);
     expect(started.status).toBe(303);
-    expect(started.headers.get("location")).toContain("notice=started");
-    const job = await env.DB.prepare(`SELECT job_id, instruction FROM jobs WHERE ward_id = ? AND project_id = ? AND task = 'draft'`)
-      .bind(ward.wardId, id).first<{ job_id: string; instruction: string }>();
-    if (!job) throw new Error("下書きの依頼がありません");
-    expect(job.instruction.length).toBeGreaterThan(4000);
-    expect(job.instruction).toContain(material);
-    expect(job.instruction).toContain(`対象の文書: ${entry.main}。範囲: ${entry.scope}。`);
-    const ticket = `tk_${crypto.randomUUID()}`;
-    await env.DB.prepare("UPDATE jobs SET status = 'connecting', ticket_hash = ? WHERE ward_id = ? AND project_id = ? AND job_id = ?")
-      .bind(await sha256Hex(ticket), ward.wardId, id, job.job_id).run();
-    const result = await callTool(env, ward.wardId, "write_change", {
-      ticket, kind: "draft", target: entry.main, confidence: "high", data: {
-        title: pack.title, scope: pack.scope, text: fixture.reportText,
-        items: [{ key: "content", content: fixture.reportText, source: photo.originalId }],
-        pack_version: pack.version, based_on_state_version: state.project.stateVersion,
-        ...(entry.main === "duty_roster" ? { duties: [{ slot: fixture.publicDayText, task: fixture.helperTime, assignee: fixture.requestedBy, source_year: fixture.eventYear }] } : {}),
-      },
-    });
-    expect(result.isError).not.toBe(true);
-    expect(JSON.parse(result.content[0]!.text)).toMatchObject({ status: "applied" });
+    if (entry.kind === "duty") {
+      expect(started.headers.get("location")).toContain("notice=saved");
+      const prepared = await getProjectState(env.DB, ward.wardId, id);
+      expect(prepared?.tables.duties.filter((row) => row.scope === "current")).toMatchObject([
+        { data: { slot: fixture.publicDayText, assignee: fixture.requestedBy }, source: { kind: "ai_proposal" } },
+      ]);
+      expect(await env.DB.prepare("SELECT job_id FROM jobs WHERE ward_id = ? AND project_id = ? AND task = 'draft'")
+        .bind(ward.wardId, id).first()).toBeNull();
+      expect((await postForm(realApp, `${path}/draft/${entry.main}/save`, {
+        title: pack.title, scope: pack.scope, text: fixture.reportText, based_on: String(prepared?.project.stateVersion),
+      }, cookie)).headers.get("location")).toContain("notice=saved");
+    } else {
+      expect(started.headers.get("location")).toContain("notice=started");
+      const job = await env.DB.prepare(`SELECT job_id, instruction FROM jobs WHERE ward_id = ? AND project_id = ? AND task = 'draft'`)
+        .bind(ward.wardId, id).first<{ job_id: string; instruction: string }>();
+      if (!job) throw new Error("下書きの依頼がありません");
+      expect(job.instruction.length).toBeGreaterThan(4000);
+      expect(job.instruction).toContain(material);
+      expect(job.instruction).toContain(`対象の文書: ${entry.main}。範囲: ${entry.scope}。`);
+      const ticket = `tk_${crypto.randomUUID()}`;
+      await env.DB.prepare("UPDATE jobs SET status = 'connecting', ticket_hash = ? WHERE ward_id = ? AND project_id = ? AND job_id = ?")
+        .bind(await sha256Hex(ticket), ward.wardId, id, job.job_id).run();
+      const result = await callTool(env, ward.wardId, "write_change", {
+        ticket, kind: "draft", target: entry.main, confidence: "high", data: {
+          title: pack.title, scope: pack.scope, text: fixture.reportText,
+          items: [{ key: "content", content: fixture.reportText, source: photo.originalId }],
+          pack_version: pack.version, based_on_state_version: state.project.stateVersion,
+        },
+      });
+      expect(result.isError).not.toBe(true);
+      expect(JSON.parse(result.content[0]!.text)).toMatchObject({ status: "applied" });
+    }
     const saved = await getEditableDocument(env.DB, ward.wardId, id, entry.main);
     expect(saved).toMatchObject({ title: pack.title, scope: pack.scope });
     const latest = await env.DB.prepare(`SELECT document_id, version_id, version_no FROM document_versions WHERE ward_id = ? AND project_id = ? AND version_id = ?`)
