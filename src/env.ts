@@ -5,6 +5,8 @@
 export interface Env {
   /** D1。全ての表は ward_id を持つ。 */
   DB: D1Database;
+  /** 提供側の顔処理。未配備では区の設定を有効にしない。 */
+  FACE_MASK?: DurableObjectNamespace;
   /** R2。原本、出した物、写し。キーは src/core/storage.ts の WardBucket 越しに作る。 */
   ORIGINALS: R2Bucket;
 

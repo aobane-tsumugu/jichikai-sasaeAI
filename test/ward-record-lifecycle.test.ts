@@ -8,6 +8,10 @@ import { exportWard, requestWardDeletion, runDeletionCron } from "../src/ops/lif
 import { createProject } from "../src/project/api";
 import { CONTACT_WARD, contactByToken, messages, receiveContact } from "../src/contact/store";
 import { PROVIDER_CONTACT_FIXTURE } from "../fixtures/provider-contact";
+import { saveWardPhotoPolicy, activePhotoPolicy, PHOTO_MODEL_SHA256, PHOTO_PROFILE } from "../src/photos/policy";
+import { photoHash, photoPublicationStatements, type PreparedPhoto } from "../src/photos/server";
+import { saveDocument } from "../src/project/actions";
+import { SOURCE_PNG, MASKED_PNG } from "./fixtures/report-photo";
 
 it("区の全表を控えと写しの方針に含め、秘密を渡さず、他の区を残して消去できる", async () => {
   // 表の追加時に方針への記入を忘れたら、この一本で分かる。
@@ -43,12 +47,14 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
     await env.DB.prepare("UPDATE accounts SET seat_id = ? WHERE ward_id = ? AND account_id = ?").bind(seat, w, account.accountId).run();
     const project = await createProject(env.DB, w, { kind: "event", title: "架空の控え確認会", year: 2026, accountId: account.accountId });
     const p = project.projectId;
+    const sourceBytes = Uint8Array.from(atob(SOURCE_PNG), (character) => character.charCodeAt(0));
+    const sourceHash = await photoHash(sourceBytes);
     // ここで使うIDと本文と認証の値は全て試験用の架空のもの。
     await env.DB.batch([
       env.DB.prepare(`INSERT INTO jobs (ward_id, job_id, project_id, via, task, status, created_at, updated_at)
         VALUES (?, ?, ?, 'line_direct', 'connect', 'done', '2026-11-06', '2026-11-06')`).bind(w, w, p),
       env.DB.prepare(`INSERT INTO originals (ward_id, original_id, job_id, position, kind, content_hash, media_type, byte_size, r2_path, received_at)
-        VALUES (?, ?, ?, 1, 'photo', 'fictional-hash', 'image/jpeg', 100, 'originals/fictional.jpg', '2026-11-06')`).bind(w, w, w),
+        VALUES (?, ?, ?, 1, 'photo', ?, 'image/png', ?, 'originals/fictional.jpg', '2026-11-06')`).bind(w, w, w, sourceHash, sourceBytes.length),
       env.DB.prepare(`INSERT INTO readings (ward_id, reading_id, job_id, source, pack_version, body, created_at)
         VALUES (?, ?, ?, 'direct', 'fixture@1', '{"text_blocks":[]}', '2026-11-06')`).bind(w, w, w),
       env.DB.prepare(`INSERT INTO paper_reading_slices (ward_id, job_id, source_job_id, body, created_at)
@@ -81,7 +87,34 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
       env.DB.prepare("INSERT INTO ops_deletion_marks (ward_id, mark_id, scope, deleted_at) VALUES (?, ?, 'record', '2026-11-06')").bind(w, w),
     ]);
     const bucket = new WardBucket(env.ORIGINALS, w);
-    await bucket.put("originals/fictional.jpg", "架空の写真");
+    await bucket.put("originals/fictional.jpg", sourceBytes);
+    // 写真の3表も実際に行を持たせ、公開の条件を通った写しの書き出しと連動消去を確かめる。
+    await saveWardPhotoPolicy(env.DB, w, { enabled: true, authorApprovedAt: "2026-11-06T00:00:00Z",
+      qualityReportSha256: "a".repeat(64), providerId: "fictional-provider" });
+    const policy = await activePhotoPolicy(env, w);
+    if (!policy) throw new Error("架空の写真の設定を作れませんでした");
+    const photo: PreparedPhoto = { photoId: w, originalId: w, sourceHash,
+      maskedHash: await photoHash(Uint8Array.from(atob(MASKED_PNG), (character) => character.charCodeAt(0))),
+      png: MASKED_PNG, width: 128, height: 128, faces: 1, policy, mode: "auto",
+      masks: [{ x: 0, y: 0, width: 1, height: 1 }] };
+    expect(await saveDocument(env.DB, w, p, account.accountId, {
+      kind: "report", title: "架空の写真の報告", scope: "public", body: JSON.stringify({ text: "架空の報告です。", items: [] }), basedOn: 0,
+    })).toBe(true);
+    const version = await env.DB.prepare("SELECT document_id, version_id, version_no FROM document_versions WHERE ward_id = ? AND project_id = ?")
+      .bind(w, p).first<{ document_id: string; version_id: string; version_no: number }>();
+    if (!version) throw new Error("架空の報告を作れませんでした");
+    await env.DB.batch([
+      env.DB.prepare("UPDATE document_versions SET published_at = '2026-11-06' WHERE ward_id = ? AND version_id = ?").bind(w, version.version_id),
+      env.DB.prepare(`INSERT INTO publication_records
+        (ward_id, publication_id, project_id, document_id, version_id, version_no, line_status, published_at, published_by_account_id)
+        VALUES (?, ?, ?, ?, ?, ?, 'not_sent', '2026-11-06', ?)`)
+        .bind(w, w, p, version.document_id, version.version_id, version.version_no, account.accountId),
+      env.DB.prepare(`INSERT INTO report_photo_drafts
+        (ward_id, project_id, original_id, revision, state, mode, masks, prepared, updated_at)
+        VALUES (?, ?, ?, ?, 'ready', 'auto', ?, ?, '2026-11-06')`)
+        .bind(w, p, w, w, JSON.stringify(photo.masks), JSON.stringify(photo)),
+      ...photoPublicationStatements(env.DB, w, p, w, [photo]),
+    ]);
     return { ward, bucket };
   }
   const target = await records();
@@ -126,6 +159,14 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
   expect(otherCounts.get("line_photo_context_texts")).toBe(1);
   expect(exported.tables.accounts![0]).not.toHaveProperty("password_hash");
   expect(exported.tables.sign_in_methods![0]).not.toHaveProperty("subject");
+  expect(snapshot.tables).not.toHaveProperty("ward_photo_policy");
+  expect(snapshot.tables).not.toHaveProperty("report_photo_drafts");
+  expect(snapshot.tables).not.toHaveProperty("publication_photos");
+  expect(exported.tables).not.toHaveProperty("ward_photo_policy");
+  expect(exported.tables).not.toHaveProperty("report_photo_drafts");
+  expect(exported.tables.publication_photos).toEqual([expect.objectContaining({
+    photo_id: target.ward.wardId, masked_png: MASKED_PNG, model_sha256: PHOTO_MODEL_SHA256, profile: PHOTO_PROFILE,
+  })]);
   expect(exported.objects.map((object) => object.key)).toEqual(["originals/fictional.jpg"]);
 
   await requestWardDeletion(env.DB, target.ward.wardId);
@@ -143,7 +184,8 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
     expect(otherCount!.n, entry.table).toBe(otherCounts.get(entry.table));
   }
   expect((await target.bucket.list("")).keys.length).toBe(0);
-  expect(await (await other.bucket.get("originals/fictional.jpg"))!.text()).toBe("架空の写真");
+  expect(new Uint8Array(await (await other.bucket.get("originals/fictional.jpg"))!.arrayBuffer()))
+    .toEqual(Uint8Array.from(atob(SOURCE_PNG), (character) => character.charCodeAt(0)));
   // 区の消去で提供側の写しを失わず、その行を親から戻すと同じ受付を開ける。
   expect(await providerBucket.head("snapshots/daily/2026-11-06.json")).not.toBeNull();
   await env.DB.prepare("DELETE FROM provider_contacts WHERE ward_id = ? AND contact_id = ?").bind(CONTACT_WARD, received.id).run();

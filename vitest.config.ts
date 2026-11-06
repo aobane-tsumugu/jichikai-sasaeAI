@@ -14,9 +14,13 @@ export default defineConfig(async () => {
           // Workersのメモリ上限とD1の準備を持ち込まない。
           test: {
             name: "node",
+            // 同時実行数が異なるWorkersとは実行順を分ける。
+            sequence: { groupOrder: 0 },
             environment: "node",
             pool: "forks",
             include: nodeTests,
+            // 全ソースのSQLを2回検査する。単純な関数1回分の既定の5秒では足りない。
+            testTimeout: 30_000,
           },
         },
         {
@@ -29,6 +33,11 @@ export default defineConfig(async () => {
           ],
           test: {
             name: "workers",
+            sequence: { groupOrder: 1 },
+            // D1の移行とHTTPの通しが重なりすぎないよう、同時実行数に上限を置く。
+            maxWorkers: 2,
+            // HTTP・D1・R2を繰り返す通し試験の上限。
+            testTimeout: 30_000,
             setupFiles: ["./test/apply-migrations.ts"],
             include: ["test/**/*.test.{ts,tsx}", "src/**/*.test.{ts,tsx}"],
             exclude: [...configDefaults.exclude, ...nodeTests],

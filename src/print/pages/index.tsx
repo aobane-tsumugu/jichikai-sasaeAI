@@ -1,3 +1,4 @@
+import { listPublicPhotos } from "../../photos/public";
 import { formatDateText } from "../../core/time";
 import { plainText, withoutPending, writtenInText } from "../../project/document-body";
 import { collectsAttendance, withoutTitleLine } from "../../project/heading";
@@ -231,8 +232,13 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   // 公開の文書から開いた当番表の紙は、本文ではなく表を出す。
   const dutyPaper = row.kind === "duty_roster" || row.scope !== "space";
   const withTables = dutyPaper || row.kind === "procedure";
+  const reportPhotos = row.kind === "report" && row.scope === "public"
+    ? (await listPublicPhotos(c.env, ward.wardId, projectId)).filter((p) => p.document_id === documentId && p.version_no === versionNo) : [];
   const printTitle = `${row.title} ${(kind === "announcement" && !withAnswer) || (kind === "duty" && !dutyPaper) ? "本文の紙" : kindLabel(kind)}`;
   return c.html(<PrintDocument title={printTitle} back={back} copies={copies}>
+    {reportPhotos.map((photo) => <Sheet footer={footer()}><h1>{paperHeading(row.title, row.document_title)}</h1>
+      <img style="display:block;max-width:100%;max-height:220mm;object-fit:contain" src={`/${ward.slug}/photos/${projectId}/${photo.photo_id}`} alt="行事の報告の写真" />
+    </Sheet>)}
     {kind === "announcement" && !withAnswer ? <Sheet footer={footer()}>
       <h1>{paperHeading(row.title, row.document_title)}</h1><PaperBody body={row.body} project={row.title} title={row.document_title} kind={row.kind} />
     </Sheet> : null}

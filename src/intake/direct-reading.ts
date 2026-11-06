@@ -50,14 +50,16 @@ export interface DirectPart {
 
 /** 書かれた年だけを読む。複数の年があって一つに決まらなければ年不明に留める。 */
 function writtenYear(part: DirectPart): number | null {
-  const text = [part.filename ?? "", part.text ?? "", ...(part.extracted?.paragraphs ?? []),
+  // ファイル名に付いたUUIDの区切り（例: -2030-）は、資料に書かれた年ではない。
+  const filename = (part.filename ?? "").replace(/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/gi, "");
+  const text = [filename, part.text ?? "", ...(part.extracted?.paragraphs ?? []),
     ...(part.extracted?.tables.flatMap((table) => [table.name, ...table.rows.map((row) => row.join("\t"))]) ?? [])]
     .join("\n").normalize("NFKC");
   const years = new Set<number>();
   for (const match of text.matchAll(/(?<!\d)([12]\d{3})\s*(?:年|[/.\-]\s*\d{1,2}\s*[/.\-]\s*\d{1,2})/g)) {
     years.add(Number(match[1]));
   }
-  for (const match of (part.filename ?? "").normalize("NFKC").matchAll(/(?:^|[_.\s-])([12]\d{3})(?=$|[_.\s-])/g)) {
+  for (const match of filename.normalize("NFKC").matchAll(/(?:^|[_.\s-])([12]\d{3})(?=$|[_.\s-])/g)) {
     years.add(Number(match[1]));
   }
   for (const match of text.matchAll(/(令和|平成|昭和)\s*(元|\d{1,2})\s*年/g)) {
