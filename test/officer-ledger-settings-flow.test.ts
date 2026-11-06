@@ -66,24 +66,29 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
     .bind(ward.wardId).first<{ inquiry_id: string }>();
   if (!inquiry) throw new Error("架空の問い合わせがありません");
   const inquiryPath = `${root}/inquiries/${inquiry.inquiry_id}`;
-  expect(await read(inquiryPath)).toContain("返事は、公式LINEの管理アプリか電話で送ってください");
+  const inquiryPage = await read(inquiryPath);
+  expect(inquiryPage).toContain("返事を書いて、問い合わせが届いた公式LINEのトークへ送れます");
+  expect(inquiryPage).toContain('<button name="operation" value="send">届いたトークへ公式LINEで返事を送る</button>');
+  expect(inquiryPage).toContain('<button class="secondary" name="operation" value="record">電話や直接答えたことを残す</button>');
+  expect(inquiryPage).toContain("送った人をLINEで確認できないため、その人へは電話か直接答え");
   const saved = await follow(await postForm(realApp, inquiryPath, {
-    answer: fixture.reportText, submittedToCity: "yes", kind: "request",
+    answer: fixture.reportText, submittedToCity: "yes", kind: "request", operation: "record",
   }, cookie));
   expect(saved).toContain("新しい記録が足されます");
   expect(saved).toContain("問い合わせの一覧を開く");
-  await follow(await postForm(realApp, inquiryPath, { answer: fixture.nextYearChange, kind: "request" }, cookie));
+  await follow(await postForm(realApp, inquiryPath, { answer: fixture.nextYearChange, kind: "request", operation: "record" }, cookie));
   const notes = await read(inquiryPath);
   expect(notes).toContain(fixture.reportText);
   expect(notes).toContain(fixture.nextYearChange);
   expect(await read(`${inquiryPath}/original`)).toContain(fixture.publicAnnouncement);
-  const rawInquiries = await env.DB.prepare("SELECT subject, answer, answer_history FROM inquiry_records WHERE ward_id = ?")
-    .bind(ward.wardId).all<{ subject: string; answer: string; answer_history: string }>();
+  const rawInquiries = await env.DB.prepare("SELECT subject, answer, answer_history, line_answer_sent_at FROM inquiry_records WHERE ward_id = ?")
+    .bind(ward.wardId).all<{ subject: string; answer: string; answer_history: string; line_answer_sent_at: string | null }>();
   expect(rawInquiries.results).toHaveLength(2);
   for (const row of rawInquiries.results) {
     expect(row.subject).toBe(fixture.publicAnnouncement);
     expect(row.answer).toBe(fixture.nextYearChange);
     expect(JSON.parse(row.answer_history)).toHaveLength(2);
+    expect(row.line_answer_sent_at).toBeNull();
   }
 
   expect((await applyChange(env.DB, ward.wardId, id, {

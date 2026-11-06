@@ -1,10 +1,11 @@
+import { getDigestSettings, inquiryNotice } from "../settings/digest";
 import { adminResult } from "../core/admin-ui";
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { WardBucket } from "../core/storage";
 import { Layout, Notice } from "../core/ui";
-import { CRON, isOfficerDigestTime } from "../core/cron";
-import { INQUIRY_NOTICE, sendOfficerDigest } from "./digest";
+import { CRON } from "../core/cron";
+import { sendOfficerDigest } from "./digest";
 import { listClarifications, processPhotoBatches } from "./clarifications";
 import type { AdminEnv, AppEnv } from "../env";
 import { getLineAllowance, lineAccessToken, sendLineTitleAndUrl } from "./api";
@@ -91,7 +92,7 @@ admin.get("/inbox", async (c) => {
       <a class="quiet" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a>
     </section>
     <h2>役員に届いた問い合わせ</h2>
-    <p>{INQUIRY_NOTICE}</p>
+    <p>{inquiryNotice(await getDigestSettings(c.env.DB, ward.wardId))}</p>
     {inquiries.results.length ? <ul class="rows">{inquiries.results.map((q) => <li><a class="row-link" href={adminPath(ward, "/inquiries")}><b>{q.subject}</b><span>{formatJst(q.received_at)}に届きました</span>
       {q.line_source_type ? <span>送った人: {q.line_sender_label || "名前は分かりません"}（{q.line_source_type === "user" ? "公式への一対一" : "LINEグループ"}）</span> : null}
       {q.line_replied_at ? <span>AIは答えていません。送った人には「役員に伝えて、内容を確認します。」と返しました。</span> : null}
@@ -224,7 +225,7 @@ export const line: Bundle = {
     const now = new Date();
     for (const ward of wards.results) {
       try {
-        if (isOfficerDigestTime(new Date(event.scheduledTime))) await sendOfficerDigest(env, ward.ward_id, ward.slug, now);
+        await sendOfficerDigest(env, ward.ward_id, ward.slug, now);
       }
       catch { console.error("役員への知らせを送れませんでした", ward.ward_id); }
       await processPhotoBatches(env, ward.ward_id);

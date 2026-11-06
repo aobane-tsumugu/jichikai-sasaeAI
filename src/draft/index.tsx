@@ -222,6 +222,7 @@ admin.post("/projects/:projectId/draft/rain-notice", async (c) => {
   if (!ok) return c.redirect(`${adminPath(ward, `/projects/${id}/draft/notice`)}?error=notice_save_failed`, 303);
   const saved = await latestFields(c, "notice");
   if (!saved) return c.notFound();
+  saved.set("lineDelivery", form.get("lineDelivery") === "skip" ? "skip" : "send");
   const warnings = await checkPublicDraft(c.env.DB, ward.wardId, id, "notice", JSON.stringify({ text, items: [] }));
   // 混入が見つかった時は既存の確認に出す。見つからなければ、見本の「配る」でそのまま配る。
   if (warnings.length) return openPublish(c, `/publish/${id}/confirm`, saved);

@@ -6,7 +6,7 @@ import { getLineMemberDisplayName, lineChannelCredentials, replyLineText } from 
 import { getClient } from "../ai/deps";
 import { matchClarificationAnswer } from "../ai/clarification";
 import { recordLineInquiry } from "../project/followup";
-import { PHOTO_GROUP_GAP_MS, processPhotoBatches, registerLinePhoto, replyQuickPhotoChecks, saveClarificationAnswers, sentQuestionsForSource, type ClarificationRow, type PhotoSource } from "./clarifications";
+import { isUnknownAnswer, replyAfterClarification, PHOTO_GROUP_GAP_MS, processPhotoBatches, registerLinePhoto, replyQuickPhotoChecks, saveClarificationAnswers, sentQuestionsForSource, type ClarificationRow, type PhotoSource } from "./clarifications";
 
 const RECEIPT_RETENTION_DAYS = 30;
 
@@ -202,15 +202,18 @@ export async function acceptLineWebhook(
       // テキストは受信ジョブを作る前に分類する。無関係な文はジョブや原本を残さず、日次集計だけに加える。
       let match: InboxMatch | null = null;
       let answers: Array<{ question: ClarificationRow; text: string }> = [];
+      const activeQuestions = await sentQuestionsForSource(db, wardId, payload.destination!, source, {
+        quotedMessageId: event.message.quotedMessageId, clarificationId: postback?.get("clarification") ?? undefined, now,
+      });
       if (original.kind === "text") {
-        const questions = await sentQuestionsForSource(db, wardId, payload.destination!, source, {
-          quotedMessageId: event.message.quotedMessageId, clarificationId: postback?.get("clarification") ?? undefined, now,
-        });
+        const questions = activeQuestions;
         if (event.message.quotedMessageId && questions.length) original.officialAddressed = true;
         if (postback) {
           const question = questions.find((question) => question.options.includes(original.text ?? ""));
           if (!question) continue;
           answers = [{ question, text: original.text ?? "" }];
+        } else if (questions.length && (isUnknownAnswer(original.text ?? "") || questions[0]!.options.includes(original.text ?? ""))) {
+          answers = [{ question: questions[0]!, text: original.text ?? "" }];
         } else if (questions.length && !looksLikeInquiry(original.text ?? "")) {
           try {
             const matched = await (dependencies?.matchAnswer ?? matchClarificationAnswer)(getClient(env), original.text ?? "", questions);
@@ -235,7 +238,7 @@ export async function acceptLineWebhook(
           match = { disposition: "unmatched", reason: "当て先を確認できませんでした", inquiry: original.officialAddressed };
         }
         if (original.officialAddressed && match?.inquiry) {
-          await recordLineInquiry(db, wardId, { eventId, receivedAt: original.receivedAt, text: original.text ?? "", sourceType: source.type, sourceId: source.id, senderLabel: original.senderDisplayName ?? null });
+          await recordLineInquiry(db, wardId, { eventId, receivedAt: original.receivedAt, text: original.text ?? "", sourceType: source.type, sourceId: source.id, userId: event.source.userId ?? null, senderLabel: original.senderDisplayName ?? null });
           if (event.replyToken) try {
             await replyLineText(accessToken, event.replyToken, "役員に伝えて、内容を確認します。", fetcher);
             await db.prepare("UPDATE inquiry_records SET line_replied_at = ? WHERE ward_id = ? AND line_event_id = ?")
@@ -256,21 +259,28 @@ export async function acceptLineWebhook(
         INSERT INTO line_inbox_items (
           ward_id, item_id, event_id, sender_id, original_kind, original_text,
           original_object_key, received_at, sender_display_name, sender_label, matched_project_id, matched_project_name,
-          match_reason, disposition, job_id
-        ) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, NULL, NULL, NULL, 'unmatched', ?)
+          match_reason, disposition, job_id, source_type, source_id
+        ) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, NULL, NULL, NULL, 'unmatched', ?, ?, ?)
       `).bind(
         wardId, itemId, eventId, original.senderId, original.kind, original.receivedAt,
         original.senderDisplayName, original.sourceType === "group" ? "LINEグループ" : original.sourceType === "room" ? "LINE複数人トーク" : "LINE個別",
-        itemId,
+        itemId, source.type, source.id,
       ).run();
       if (original.kind === "image") {
         await registerLinePhoto(db, wardId, { destination: payload.destination!, source, jobId: itemId, messageId: event.message.id,
           imageSet: event.message.imageSet, quoteToken: event.message.quoteToken, replyToken: event.replyToken, now });
+        const retake = activeQuestions.find((question) => question.topic === "unreadable");
+        if (retake) {
+          await db.prepare("UPDATE line_photo_items SET retake_clarification_id = ? WHERE ward_id = ? AND job_id = ?")
+            .bind(retake.id, wardId, itemId).run();
+          if (retake.project_id) await ports.assignProject(wardId, itemId, retake.project_id);
+        }
         receivedPhoto = true;
         if (ports.checkPhoto) photoChecksPending.push(ports.checkPhoto(wardId, original, itemId).catch(() => undefined));
       }
       if (answers.length) {
         await saveClarificationAnswers(db, wardId, eventId, itemId, original.senderDisplayName || "LINEで答えた人", answers, now);
+        await replyAfterClarification(env, wardId, answers[0]!.question.batch_id, event.replyToken, { fetch: fetcher, now });
         if (match?.projectId && answers.some((answer) => answer.question.topic === "project")) {
           const batchIds = [...new Set(answers.filter((answer) => answer.question.topic === "project").map((answer) => answer.question.batch_id))];
           for (const batchId of batchIds) {

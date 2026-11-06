@@ -1,3 +1,4 @@
+import { getDigestSettings, inquiryNotice } from "./digest";
 import { Hono } from "hono";
 import { AdminPage } from "../core/admin-ui";
 import { Hint } from "../core/ui";
@@ -6,7 +7,7 @@ import type { Bundle } from "../core/bundle";
 import type { AdminEnv } from "../env";
 import { getProjectState, listOpenProjects } from "../project/api";
 import { listInboxItems } from "../line";
-import { INQUIRY_NOTICE, nearInquiryDates } from "../line/digest";
+import { nearInquiryDates } from "../line/digest";
 import { info } from "./info";
 import { formatJstDate } from "../core/time";
 import { people } from "./people";
@@ -36,12 +37,13 @@ admin.get("/", async (c) => {
   const failed = pending.results.filter((row) => row.status === "failed").reduce((sum, row) => sum + row.count, 0);
   const states = await Promise.all(projects.map((p) => getProjectState(c.env.DB, ward.wardId, p.projectId)));
   const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
-  const near = nearInquiryDates(projects, today);
+  const digest = await getDigestSettings(c.env.DB, ward.wardId);
+  const near = nearInquiryDates(projects, today, digest);
   const places = <><h2>ほかの場所</h2><ul class="links">
     <li class="link-line"><a href={adminPath(ward, "/archive")}>記録を読む</a></li>
     {projects.length ? <><li class="link-line"><a href={adminPath(ward, "/archive/map")}>一年の予定</a></li><li class="link-line"><a href={adminPath(ward, "/answers/roster")}>名簿</a></li></> : null}
     <li class="link-line"><a href={adminPath(ward, "/settings")}>役員の一覧と区の情報</a></li>
-    {projects.length ? <><li class="link-line"><a href={adminPath(ward, "/requests/city")}>行政の依頼</a></li><li class="link-line"><a href={adminPath(ward, "/inquiries")}>問い合わせと要望</a></li><li class="link-line"><a href={adminPath(ward, "/ledger")}>帳簿</a></li></> : null}
+    {projects.length ? <><li class="link-line"><a href={adminPath(ward, "/requests/city")}>行政の依頼</a></li><li class="link-line"><a href={adminPath(ward, "/inquiries")}>問い合わせと要望</a></li></> : null}
     <li><form method="post" action={adminPath(ward, "/logout")}><button class="quiet">このスマホやパソコンから出る</button></form></li>
   </ul></>;
   return c.html(<AdminPage ward={ward} account={account} title="最初の画面">
@@ -62,7 +64,7 @@ admin.get("/", async (c) => {
       <p class="link-line"><a href={adminPath(ward, "/intake/received")}>送ったものを見る</a></p>{places}
     </> : <>
       <h1>いま進めていること</h1>
-      {near.length ? <div class="notice warn"><strong>{near[0]}</strong><p>{INQUIRY_NOTICE}</p><a class="quiet" href={adminPath(ward, "/inquiries")}>問い合わせを見る</a></div> : null}
+      {near.length ? <div class="notice warn"><strong>{near[0]}</strong><p>{inquiryNotice(digest)}</p><a class="quiet" href={adminPath(ward, "/inquiries")}>問い合わせを見る</a></div> : null}
       <p class="lead">押すと段取りが開きます。手元に紙や資料があれば、先に送ってかまいません。</p>
       <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a></div>
       <ul class="rows two">{projects.map((p, index) => {

@@ -6,9 +6,9 @@
 
 /** 包みの版。どの版で読んだかを readings に残し、直した後に古い版で読んだ物を選んで読み直せるようにする。 */
 export const READ_PACK_VERSION = {
-  general: "read-general@3",
-  answer_sheet: "read-answer-sheet@4",
-  restore: "read-restore@3",
+  general: "read-general@4",
+  answer_sheet: "read-answer-sheet@5",
+  restore: "read-restore@4",
   /** モデルを通さない読み取り（Word、Excel、文字） */
   direct: "read-direct@2",
 } as const;

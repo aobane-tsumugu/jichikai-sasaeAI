@@ -60,7 +60,7 @@ admin.get("/projects", async (c) => {
   return c.html(<Layout title="行事" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>行事</h1><p class="lead">行事や総会、市からの依頼を始める画面です。去年の段取りがあればそこから、なければ下の欄から開いてください。</p>
     <p><a class="button secondary" href={adminPath(ward, "/projects/today")}>今やること</a></p>
-    <p><a class="button secondary" href={adminPath(ward, "/requests/city")}>行政の依頼</a> <a class="button secondary" href={adminPath(ward, "/inquiries")}>問い合わせと要望</a> <a class="button secondary" href={adminPath(ward, "/ledger")}>帳簿</a></p>
+    <p><a class="button secondary" href={adminPath(ward, "/requests/city")}>行政の依頼</a> <a class="button secondary" href={adminPath(ward, "/inquiries")}>問い合わせと要望</a></p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     {projects.map((p) => <section class="panel"><h2><a href={adminPath(ward, `/projects/${p.projectId}`)}>{p.title}</a></h2>
       <p>{PROJECT_KIND_LABEL[p.kind]} / {p.year}年</p>
@@ -134,10 +134,6 @@ admin.get("/projects/:projectId", async (c) => {
   if (!project || !state) return c.notFound();
   const unknown = unknownYearContents(state);
   const unknownOriginalIds = new Set([...unknown.items, ...unknown.rows].map((value) => value.source.ref));
-  const ledgerRows: Array<{ rowId: string; data: RowData }> = [
-    ...state.tables.sponsors.filter((row) => row.scope === "current").map((row) => ({ rowId: row.rowId, data: { counterpart: row.data.name ?? "", direction: "income", amount: row.data.amount ?? "", date: "", note: row.data.reply ? `協賛の返事: ${displayFieldValue("sponsors", "reply", row.data.reply)}` : "" } })),
-    ...state.tables.ledger.filter((row) => row.scope === "current"),
-  ];
   return c.html(<Layout title="今年の中身" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/projects")}>行事一覧</a>}>
     <a class="back" href={adminPath(ward, `/projects/${projectId}/map`)}>← {project.title}の段取りへ</a>
     <h1>届いた資料を見る</h1><p class="lead">{project.title}に届いた資料と、そこから読み取った今年の中身が見られます。分かる質問があれば答えてください。</p>
@@ -176,9 +172,9 @@ admin.get("/projects/:projectId", async (c) => {
     <p>今年の中身がない項目には、去年までの資料を参考として並べます。</p>
     {state.items.map((item) => <section class="panel"><strong>{item.label}</strong><p>{item.current?.content ?? "まだ入っていません"}</p>{item.references.map((v) => <p>参考（{v.refYear === null ? "年不明" : `${v.refYear}年`}）: {v.content}</p>)}</section>)}
     <h2 id="ledger">運営メモ</h2>
-    <p>何に、どこに、いくらかけたか、来年のためのメモです。領収書や見積りの写真からも入ります。</p>
+    <p>何を頼み、どこに、いくらかけたかを残す、来年のための参考の記録です。段取りの「運営メモ」から書いたり、元の資料を見たりできます。</p>
     <div class="action-links"><a class="button secondary" href={adminPath(ward, `/projects/${projectId}/ledger`)}>運営メモを開く</a></div>
-    {ledgerRows.length === 0 ? <p>収支の記録はまだありません。領収書の写真を送ると、ここに入ります。</p> : <table class="stack"><thead><tr><th>相手</th><th>収入か支出</th><th>額</th><th>日付</th><th>メモ</th></tr></thead><tbody>{ledgerRows.map((row) => <tr><td class="link-line" data-label="相手"><a href={adminPath(ward, `/projects/${projectId}/ledger/${row.rowId}`)}>{row.data.counterpart}</a></td><td data-label="収入か支出">{displayFieldValue("ledger", "direction", row.data.direction)}</td><td data-label="額">{typeof row.data.amount === "number" ? displayFieldValue("ledger", "amount", row.data.amount) : "確かめ中"}</td><td data-label="日付">{displayFieldValue("ledger", "date", row.data.date)}</td><td data-label="メモ">{row.data.note}</td></tr>)}</tbody></table>}
+
     <h2>文書</h2>
     {state.documents.map((d) => <p>{DOCUMENT_KIND_LABEL[d.kind]} / {SCOPE_LABEL[d.scope]}{d.stale ? " / 新しい資料が入っています" : ""}</p>)}
     <a class="quiet" href={adminPath(ward, `/projects/${projectId}/draft`)}>下書きの一覧を開く</a>

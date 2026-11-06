@@ -6,10 +6,11 @@ const LINE_API = "https://api.line.me";
 export async function sendLineQuestion(token: string, input: {
   to: string; replyToken: string | null; text: string; batchId: string;
   options: Array<{ label: string; id: string }>;
+  quoteToken?: string | null; camera?: boolean;
 }, request: typeof fetch = fetch): Promise<string | null> {
-  const message = { type: "text", text: input.text, ...(input.options.length ? { quickReply: {
-    items: input.options.map((option) => ({ type: "action", action: { type: "postback", label: option.label.slice(0, 20),
-      displayText: option.label, data: new URLSearchParams({ clarification: option.id, answer: option.label }).toString() } })),
+  const message = { type: "text", text: input.text, ...(input.quoteToken ? { quoteToken: input.quoteToken } : {}), ...(input.options.length || input.camera ? { quickReply: {
+    items: [...(input.camera ? [{ type: "action", action: { type: "camera", label: "撮り直す" } }] : []), ...input.options.map((option) => ({ type: "action", action: { type: "postback", label: option.label.slice(0, 20),
+      displayText: option.label, data: new URLSearchParams({ clarification: option.id, answer: option.label }).toString() } }))],
   } } : {}) };
   const response = await request(`${LINE_API}/v2/bot/message/${input.replyToken ? "reply" : "push"}`, {
     method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json",
@@ -19,6 +20,17 @@ export async function sendLineQuestion(token: string, input: {
   if (!response.ok) throw new Error(`LINE API request failed (${response.status})`);
   const value = await response.json() as { sentMessages?: Array<{ id?: string }> };
   return value.sentMessages?.[0]?.id ?? null;
+}
+
+export class LineSendRejected extends Error {}
+
+/** 役員が書いた返事を、問い合わせが届いた場所へ届ける。 */
+export async function pushInquiryAnswer(token: string, userId: string, text: string, retryKey: string, request: typeof fetch = fetch): Promise<void> {
+  const response = await request(`${LINE_API}/v2/bot/message/push`, {
+    method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "X-Line-Retry-Key": retryKey },
+    body: JSON.stringify({ to: userId, messages: [{ type: "text", text }] }),
+  });
+  if (!response.ok) throw new LineSendRejected(`LINE API request failed (${response.status})`);
 }
 
 export async function replyLineText(token: string, replyToken: string, text: string, request: typeof fetch = fetch): Promise<void> {

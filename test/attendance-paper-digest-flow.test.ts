@@ -16,7 +16,7 @@ import { createProject } from "../src/project/api";
 import { recordLineInquiry } from "../src/project/followup";
 import { get, postForm, realApp, withEnv } from "./helpers";
 
-it("初年度の出欠を紙とWebとLINEで受け、締切後は未回答を欠席と見せ、18時に役員だけへ一度知らせる", async () => {
+it("初年度の出欠を紙とWebとLINEで受け、締切後は未回答を欠席と見せ、翌朝8時に役員だけへ一度知らせる", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2027-10-01T03:00:00Z"));
   try {
@@ -107,7 +107,7 @@ it("初年度の出欠を紙とWebとLINEで受け、締切後は未回答を欠
     } })).toBe("read");
     expect((await listAnswers(env.DB, ward.wardId, project.projectId)).find((entry) => entry.originalId === originalId)?.peopleCount).toBe(0);
     expect(await read(`${answers}?view=list`)).toContain("直して入れ直す");
-    expect(READ_PACK_VERSION.answer_sheet).toBe("read-answer-sheet@4");
+    expect(READ_PACK_VERSION.answer_sheet).toBe("read-answer-sheet@5");
     expect(LINE_ANSWER_PACK.version).toBe("line-answer@2");
     const ports = createLineIntakePorts(env, { waitUntil: () => undefined });
     for (const [index, text] of [`${fixture.secondHousehold}です。参加しません。`, `${fixture.phoneHousehold}です。不参加です。`].entries()) {
@@ -145,7 +145,7 @@ it("初年度の出欠を紙とWebとLINEで受け、締切後は未回答を欠
     expect((await postForm(realApp, `${answers}/deadline`, { due_on: "2027-10-04" }, cookie)).status).toBe(303);
     expect(await read(`${root}/`)).toContain("知らせを待たずに、ときどき見てください");
 
-    // Pushは全て偽物。残り通数、18時、重複実行、別の区、問い合わせ0件を同じ流れで確かめる。
+    // Pushは全て偽物。残り通数、翌朝8時、重複実行、別の区、問い合わせ0件を同じ流れで確かめる。
     const secrets = lineSecretNames(ward.wardId);
     const bindings = withEnv({ [secrets.accessTokenBinding]: fixture.passphrase,
       [`LINE_${ward.wardId.toUpperCase().replaceAll("-", "_")}_OFFICER_GROUP_ID`]: `C${ward.wardId}` });
@@ -162,12 +162,12 @@ it("初年度の出欠を紙とWebとLINEで受け、締切後は未回答を欠
       if (url.endsWith("/message/push")) { pushes.push(String(init?.body)); return Response.json({ sentMessages: [{ id: account.accountId }] }); }
       throw new Error("想定しない外への要求です。");
     };
-    const at = new Date("2027-10-02T09:00:00Z");
+    const at = new Date("2027-10-01T23:00:00Z");
     await sendOfficerDigest(bindings, ward.wardId, ward.slug, at, fakeFetch);
     expect(pushes).toHaveLength(0);
-    await recordLineInquiry(env.DB, ward.wardId, { eventId: crypto.randomUUID(), receivedAt: "2027-10-02T08:00:00Z",
+    await recordLineInquiry(env.DB, ward.wardId, { eventId: crypto.randomUUID(), receivedAt: "2027-10-01T08:00:00Z",
       text: fixture.previousMaterial, sourceType: "user", sourceId: account.accountId, senderLabel: null });
-    await sendOfficerDigest(bindings, ward.wardId, ward.slug, new Date("2027-10-02T08:55:00Z"), fakeFetch);
+    await sendOfficerDigest(bindings, ward.wardId, ward.slug, new Date("2027-10-01T22:55:00Z"), fakeFetch);
     expect(pushes).toHaveLength(0);
     await sendOfficerDigest(bindings, ward.wardId, ward.slug, at, fakeFetch);
     expect(pushes).toHaveLength(0);
@@ -175,7 +175,7 @@ it("初年度の出欠を紙とWebとLINEで受け、締切後は未回答を欠
     await sendOfficerDigest(bindings, ward.wardId, ward.slug, at, fakeFetch);
     expect(pushes).toHaveLength(1);
     expect(pushes[0]).toContain(`C${ward.wardId}`);
-    expect(pushes[0]).toContain("今日の問い合わせは1件です");
+    expect(pushes[0]).toContain("届いた問い合わせは1件です");
     expect(pushes[0]).toContain(`${ward.slug}/admin/inbox`);
     expect(pushes[0]).not.toContain(fixture.previousMaterial);
     await sendOfficerDigest(bindings, ward.wardId, ward.slug, at, fakeFetch);

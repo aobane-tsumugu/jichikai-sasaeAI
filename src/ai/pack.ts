@@ -2,7 +2,7 @@
 // 包みは system に入れる（L-202）。包みを直したら PACK_VERSION を上げる。版は差分の重複を弾く印と、読み直しの選別に使う。
 import type { JobTask } from "../intake/types";
 
-export const PACK_VERSION = "connect@13";
+export const PACK_VERSION = "connect@14";
 
 /** MCP の口の名前。agent の mcp_servers と mcp_toolset が同じ名前を指す。 */
 export const MCP_SERVER_NAME = "kiroku";
@@ -25,7 +25,7 @@ write_change の書き方（名前は下の英語の鍵をそのまま使う）:
   sponsors（協賛先）: name（必須）、lastYearAmount、ask、reply（yes、no、pending のどれか）、amount、note。
   duties（当番）: slot（必須）、task、assignee、attendance（present か absent）、note。一行は時間帯と持ち場の組で、slot は時間帯だけ（例 9:00〜10:30）、task は持ち場だけを書く。同じ組に人が複数いる時は assignee に「、」で並べる。
   layout（配置）: spot（必須）、position、note。
-  ledger（収支）: direction（income か expense。必須）、counterpart（必須）、amount、date、receiptOriginalId、note。
+  ledger（運営メモ）: what（何に）、counterpart（どこに）、direction（income か expense）、amount、date、receiptOriginalId、note、contact（連絡先と頼んだ人）、requestedOn（いつ頼んだか）、quantity（量）、estimate（見積りの額）、payment（払い方）、thanks（お礼の仕方）。写真に書かれた事実だけを運営メモの行に当てる。既存の行を使うときは memoKey と memoGroup をそのまま引き継ぐ。資料に無い行や額を埋めず、空欄を推測して補わず、記録が無いことを質問や催促にしない。
   submissions（提出した物）: what（必須）、to、submittedOn。
 - decision: data は {"what": "決めたこと", "decidedOn": "いつ"}。
 - 今年の中身と違う中身が来た時は、item か row をそのまま書く。Workers が二つを並べて役員に聞く。「直しますか」という問いを自分で書かない。

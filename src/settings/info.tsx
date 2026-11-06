@@ -1,3 +1,4 @@
+import { DigestFields, getDigestSettings, saveDigestSettings } from "./digest";
 import { AnswerLabelFields, getAnswerLabels, saveAnswerLabels } from "./answer-labels";
 import { Hono, type Context } from "hono";
 import { AdminPage } from "../core/admin-ui";
@@ -16,6 +17,7 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
   const contact = form?.contact ?? (await getPublicContact(c.env.DB, ward.wardId));
   const squads = form?.squads ?? (await getSquads(c.env.DB, ward.wardId)).join("\n");
   const lineUrl = form?.lineUrl ?? (await getOfficialLineUrl(c.env.DB, ward.wardId));
+  const digest = await getDigestSettings(c.env.DB, ward.wardId);
   const labels = await getAnswerLabels(c.env.DB, ward.wardId);
   c.header("Cache-Control", "no-store");
   return c.html(
@@ -41,6 +43,7 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
           {squads}
         </textarea>
         <AnswerLabelFields labels={labels} />
+        <DigestFields value={digest} />
         <div class="action-bar"><button type="submit">保存する</button></div>
       </form>
     </AdminPage>,
@@ -51,7 +54,7 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
 info.get("/", (c) => {
   if (c.req.query("done") !== "1") return show(c);
   return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="保存しました" back={{ href: adminPath(c.var.ward, "/settings"), label: "区の設定へ" }}>
-    <h1>保存しました</h1><div class="notice done"><strong>保存しました</strong><p>次に配る案内から、この内容で出ます。</p></div>
+    <h1>保存しました</h1><div class="notice done"><strong>保存しました</strong><p>次に配る案内と、これから送る問い合わせの知らせに使います。</p></div>
     <section class="next"><strong>次は</strong><p>ほかに直すものがなければ、最初の画面へ戻ってください。</p><a class="button" href={adminPath(c.var.ward, "/")}>最初の画面へ</a></section>
     <h2>間違えたときは</h2><p>もう一度、区の設定から開いて直し、保存してください。すでに配った案内は変わりません。</p><a class="quiet" href={adminPath(c.var.ward, "/settings/info")}>区の情報を直す</a>
   </AdminPage>);
@@ -87,6 +90,7 @@ info.post("/", async (c) => {
   if (typeof body.answer_label_0 === "string" || body.answer_labels_reset === "1") {
     if (!await saveAnswerLabels(c.env.DB, ward.wardId, body, account.accountId)) return show(c, { error: "人数の聞き方を三つとも入れてください。一つ80文字までです。" }, 400, { contact, squads: squadText, lineUrl });
   }
+  if (!await saveDigestSettings(c.env.DB, ward.wardId, body, account.accountId)) return show(c, { error: "知らせの時刻と日数を確かめてください。日数は0から365までです。" }, 400, { contact, squads: squadText, lineUrl });
   if (contact === "") await deleteSetting(c.env.DB, ward.wardId, SETTING_KEYS.publicContact);
   else await setSetting(c.env.DB, ward.wardId, SETTING_KEYS.publicContact, contact, account.accountId);
   if (squads.length === 0) await deleteSetting(c.env.DB, ward.wardId, SETTING_KEYS.squads);
