@@ -94,9 +94,6 @@ admin.get("/projects/today", async (c) => {
     for (const question of state.questions.filter((q) => q.state === "open" || q.state === "later")) {
       entries.push({ date: null, projectId: project.projectId, project: project.title, label: "質問", detail: questionShort(question), href: `/projects/${project.projectId}/questions#question-${question.questionId}` });
     }
-    for (const item of state.items) {
-      if (!item.current && item.references.length === 0) entries.push({ date: null, projectId: project.projectId, project: project.title, label: "まだ入っていないもの", detail: ITEM_SCREEN_LABEL[item.key], href: `/projects/${project.projectId}` });
-    }
   }
   entries.sort((a, b) => (a.date ?? "9999-99-99").localeCompare(b.date ?? "9999-99-99") || a.project.localeCompare(b.project, "ja"));
   return c.html(<Layout title="今やること" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
@@ -123,7 +120,7 @@ admin.post("/projects", async (c) => {
 
 admin.get("/projects/:projectId", async (c) => {
   const { ward } = c.var; const projectId = c.req.param("projectId");
-  const [project, state, jobs, changes] = await Promise.all([getProjectSummary(c.env.DB, ward.wardId, projectId), getProjectState(c.env.DB, ward.wardId, projectId), listJobs(c.env.DB, ward.wardId, { projectId, limit: 40 }), c.env.DB.prepare("SELECT kind, target, status, reason, source_locator, source_kind FROM project_changes WHERE ward_id = ? AND project_id = ? ORDER BY created_at DESC LIMIT 30").bind(ward.wardId, projectId).all<{ kind: string; target: string; status: string; reason: string | null; source_locator: string | null; source_kind: string | null }>()]);
+  const [project, state, jobs, changes] = await Promise.all([getProjectSummary(c.env.DB, ward.wardId, projectId), getProjectState(c.env.DB, ward.wardId, projectId), listJobs(c.env.DB, ward.wardId, { projectId, limit: 40 }), c.env.DB.prepare("SELECT kind, target, status, reason, source_locator, source_kind FROM project_changes WHERE ward_id = ? AND project_id = ? AND pack_version <> 'close-map-edit@1' ORDER BY created_at DESC LIMIT 30").bind(ward.wardId, projectId).all<{ kind: string; target: string; status: string; reason: string | null; source_locator: string | null; source_kind: string | null }>()]);
   if (!project || !state) return c.notFound();
   const unknown = unknownYearContents(state);
   const unknownOriginalIds = new Set([...unknown.items, ...unknown.rows].map((value) => value.source.ref));
