@@ -154,7 +154,7 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
   expect(noticeSaved).toContain("保存しました。まだ配っていません");
   expect(noticeSaved).toContain(fixture.rainAnnouncement);
   const noticeRestored = await follow(await postForm(realApp, `${noticePath}/restore/1`, {}, cookie));
-  expect(noticeRestored).toContain("前の下書きに戻しました。今の下書きも残ります。");
+  expect(noticeRestored).toContain("前の下書きに戻しました");
   expect(noticeRestored).toContain(`action="${noticePath}/save"`);
   expect(noticeRestored).toContain(`<textarea id="text" name="text" rows="10" maxlength="20000">${fixture.publicAnnouncement}</textarea>`);
   const city = await createProject(env.DB, ward.wardId, { kind: "city_request", title: fixture.draftTitle, year: fixture.eventYear, accountId: account.accountId });

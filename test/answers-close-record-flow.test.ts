@@ -26,7 +26,7 @@ it("資料なしで答えを入れ、一度で閉じ、紹介と記録から翌�
   expect((await getProjectState(env.DB, ward.wardId, project.projectId))?.questions).toHaveLength(0);
   expect(await read(answers)).toContain("名簿はまだありません");
   expect(await read(`${answers}?view=list`)).toContain("答えはまだありません");
-  expect(await read(`${answers}?view=helpers`)).toContain("手伝いの希望はまだありません");
+  expect(await read(`${answers}?view=helpers`)).toContain("まだ申し込みはありません");
   const send = await read(`${answers}?view=send`);
   expect(send).toContain(`action="${answers}/sheet"`);
   expect(send).toContain('name="part"');
@@ -117,5 +117,5 @@ it("資料なしで答えを入れ、一度で閉じ、紹介と記録から翌�
   expect((await postForm(realApp, `${nextClose}/finalize`, { body: fixture.reportText }, cookie)).status).toBe(303);
   expect(await read(`${root}/archive/${nextId}`)).toContain("残っている仕事はありません");
   const reopened = await postForm(realApp, `${nextClose}/reopen`, {}, cookie);
-  expect(await read(reopened.headers.get("location")!)).toContain("開き直しました");
+  expect(await read(reopened.headers.get("location")!)).toContain("もう一度開きました");
 });

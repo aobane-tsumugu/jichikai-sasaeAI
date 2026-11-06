@@ -30,7 +30,7 @@ it("閉じた段取りは変更せず、開き直してから仕事を直せる"
     expect(response.headers.get("location")).toContain(`${root}/close/${project.projectId}?error=`);
   }
   const closed = await (await get(realApp, path, cookie)).text();
-  expect(closed).toContain("直すときは「報告と閉じる」から「開き直す」を押してください。");
+  expect(closed).toContain("直すときは「報告を書いて閉じる」から「もう一度開く」を押してください。");
   expect(closed).not.toContain("時期や担当を直す");
   expect(closed).not.toContain("この仕事を段取りから外す");
   expect(closed).not.toContain('name="name"');

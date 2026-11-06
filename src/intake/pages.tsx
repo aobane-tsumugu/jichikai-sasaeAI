@@ -4,7 +4,7 @@ import { Hono, type Context } from "hono";
 import { adminPath } from "../core/auth";
 import { ErrorNotice, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
-import { assignProject, receiveOriginal, ReceiveError, retryJob, withdrawJob } from "./api";
+import { receiveOriginal, ReceiveError, retryJob, withdrawJob } from "./api";
 import { SEND_SCRIPT } from "./browser-script";
 import { projectDirectory } from "./project-port";
 import { getJob, getOriginal, getReadings, listJobs, type JobListItem } from "./store";
@@ -13,7 +13,7 @@ import { WardBucket } from "../core/storage";
 import type { ReceivePart } from "./receive";
 import type { Waitable } from "./types";
 import { lookupPrintQr } from "../print/qr";
-import { createProject, getProjectState } from "../project/api";
+import { getProjectState } from "../project/api";
 import { formatDateText } from "../core/time";
 import { pendingMaterialGroups, startMaterialGroup } from "./groups";
 import { PhotoCheckNotice, photoChecks } from "./photo-check";
@@ -41,14 +41,14 @@ export const STATUS_LABEL: Record<JobStatus, string> = {
 };
 
 const ERROR_MESSAGE: Record<ReceiveError["code"], (filename: string) => string> = {
-  empty: () => "送るものを選ぶか、一行の文を書いてください。",
+  empty: () => "送るものを選ぶか、書いたことを入れてください。",
   too_many: () => "一度に送れるのは30までです。分けて送ってください。",
   too_large: (f) => `${f ? `「${f}」` : "送ったもの"}が大きすぎます。小さくして送ってください。`,
   unsupported: (f) =>
     `${f ? `「${f}」` : "送ったもの"}は読めない形式です。写真、PDF、Word（.docx）、Excel（.xlsx）、文字のファイルを送ってください。`,
   needs_expansion: (f) =>
     `${f ? `「${f}」` : "WordやExcel"}は、この画面を開き直してから、ブラウザで送ってください（ブラウザが中身を開いて送ります）。`,
-  bad_text: () => "一行の文が長すぎます。2万文字までです。",
+  bad_text: () => "書いたことが長すぎます。2万文字までです。",
   no_project: () => "その行事には送れません。行事を選び直してください。",
 };
 
@@ -68,7 +68,7 @@ async function jobTitle(db: D1Database, wardId: string, job: JobListItem): Promi
     const text = readings.filter((r) => r.source === "direct")
       .flatMap((r) => "text_blocks" in r.body ? r.body.text_blocks.map((block) => block.text) : [])
       .join(" ").trim();
-    return text ? `${text.slice(0, 40)}${text.length > 40 ? "…" : ""}` : "一行の文";
+    return text ? `${text.slice(0, 40)}${text.length > 40 ? "…" : ""}` : "書いたこと";
   }
   const name = job.first_filename || (job.first_kind === "photo" ? "撮った写真" : "ファイル");
   return job.original_count > 1 ? `${name}ほか${job.original_count - 1}件` : name;
@@ -96,9 +96,9 @@ intakeAdmin.get("/intake", async (c) => {
   const back = returnPath(c, c.req.query("back") ?? c.req.header("referer"), adminPath(ward, project ? `/projects/${project.projectId}/map` : "/"));
   const query = new URLSearchParams({ back, ...(project ? { project: project.projectId } : {}) }).toString();
   return c.html(<Layout title={title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={back}>{project && back === adminPath(ward, `/projects/${project.projectId}/map`) ? `${project.title}の段取りへ` : "前の画面へ"}</a>
+    <a class="back" href={back}>← {project && back === adminPath(ward, `/projects/${project.projectId}/map`) ? `${project.title}の段取りへ` : "前の画面へ"}</a>
     <h1>{title}</h1>
-    <p class="lead">何枚でも一度に送れます。分類も名前付けもいりません。</p>
+    <p class="lead">去年の資料も今年の紙も送れます。何枚でも一度に送れます。分類も名前付けもいりません。</p>
     {c.req.query("n") === "withdrawn" ? <Notice>送るのを取り消しました。</Notice> : null}
     {c.req.query("n") === "retry" ? <Notice>もう一度読みます。</Notice> : null}
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
@@ -125,12 +125,26 @@ intakeAdmin.get("/intake/received", async (c) => {
   const project = projectId ? (await getProjectState(c.env.DB, ward.wardId, projectId))?.project : null;
   const back = returnPath(c, c.req.query("back"), adminPath(ward, project ? `/projects/${project.projectId}/map` : "/"));
   const sendHref = `${adminPath(ward, "/intake")}?${new URLSearchParams({ back, ...(project ? { project: project.projectId } : {}) })}`;
-  const jobs = (await listJobs(c.env.DB, ward.wardId, { projectId, limit: 100 })).filter((job) => !job.withdrawn_at);
+  const sentSince = Date.now() - 3_600_000;
+  const jobs = (await listJobs(c.env.DB, ward.wardId, { projectId, limit: 100 })).filter((job) => !job.withdrawn_at && (projectId || Date.parse(job.created_at) > sentSince));
   const slow = jobs.find((job) => job.status === "attention" || ((job.status === "received" || job.status === "reading") && Date.now() - Date.parse(job.created_at) > 90_000));
   const readHref = adminPath(ward, "/intake/read");
+  const backLabel = project && back === adminPath(ward, `/projects/${project.projectId}/map`) ? `← ${project.title}の段取りへ` : "← 前の画面へ";
+  if (c.req.query("n") === "withdrawn") return c.html(<Layout title="送るのを取り消しました" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <a class="back" href={back}>{backLabel}</a><h1>送るのを取り消しました</h1>
+    <div class="notice done" role="status"><strong>資料は入っていません</strong><p>段取りと下書きは変わりません。</p></div>
+    <section class="next"><strong>次は</strong><p>送り直すときは、もう一度送ってください。</p><a class="button" href={sendHref}>資料を送る</a></section>
+  </Layout>);
+  if (c.req.query("n") === "same") return c.html(<Layout title="同じ資料でした" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <a class="back" href={back}>{backLabel}</a><h1>同じ資料でした</h1>
+    <div class="notice" role="status"><strong>前に送ったものと同じでした</strong><p>二度は入れていません。</p></div>
+    <section class="next"><strong>次は</strong><p>このまま進められます。</p><a class="button" href={back}>{backLabel.replace("← ", "")}</a></section>
+    <h2>違う資料のときは</h2><p>もう一度送ってください。</p><a class="quiet" href={sendHref}>資料を送る</a>
+  </Layout>);
   return c.html(<Layout title="受け取りました" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>受け取りました</h1>
-    {project ? <><div class="notice done"><strong>{project.title}に資料を預かりました</strong><p>画面を閉じてもかまいません。AIが読み続けます。読み終わると、段取りと下書きに入ります。</p></div><section class="next"><strong>次は</strong><p>読み終わるのを待たずに、段取りを見られます。</p><a class="button" href={adminPath(ward, `/projects/${project.projectId}/map`)}>段取りへ</a></section>{slow ? <Notice>読み取りが遅れています。送った資料は預かっています。送り直す必要はありません。</Notice> : null}</> : slow ? <>
+    {c.req.query("n") === "retry" ? <div class="notice done" role="status"><strong>もう一度読みます</strong><p>読み終わると、段取りと下書きに入ります。</p></div> : null}
+    {project ? <><div class="notice done"><strong>{project.title}に資料を預かりました</strong><p>画面を閉じてもかまいません。AIが読み続けます。読み終わると、段取りと下書きに入ります。</p></div>{slow ? <div class="notice warn"><strong>読み取りが遅れています</strong><p>送った資料は預かっています。こちらで対応しているので、送り直す必要はありません。下書きを自分で書いて配ることもできます。</p><a class="quiet" href={adminPath(ward, `/projects/${project.projectId}/draft/announcement`)}>案内の下書きを書く</a></div> : null}<section class="next"><strong>次は</strong><p>読み終わるのを待たずに、段取りを見られます。</p><a class="button" href={adminPath(ward, `/projects/${project.projectId}/map`)}>段取りへ</a></section>{slow ? <Notice>読み取りが遅れています。送った資料は預かっています。送り直す必要はありません。</Notice> : null}</> : slow ? <>
       <div class="notice warn"><strong>読み取りが遅れています</strong><p>送った資料は預かっています。こちらで対応しているので、送り直す必要はありません。下書きを自分で書いて配ることもできます。</p></div>
       <section class="next"><strong>次は</strong><p>読み終わるのを待たずに、案内の下書きを書けます。</p>
         {slow.project_id ? <a class="button" href={adminPath(ward, `/projects/${slow.project_id}/draft/announcement`)}>案内の下書きを書く</a>
@@ -138,8 +152,6 @@ intakeAdmin.get("/intake/received", async (c) => {
       </section>
     </> : <><p class="lead">画面を閉じてもかまいません。AIが読み続けます。</p>
       <section class="next"><strong>次は</strong><p>読み終わった分から、段取りを作れます。</p><a class="button" href={readHref}>読み終わったものを見る</a></section></>}
-    {c.req.query("n") === "withdrawn" ? <Notice>送るのを取り消しました。</Notice> : null}
-    {c.req.query("n") === "retry" ? <Notice>もう一度読みます。</Notice> : null}
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     <h2>送ったもの</h2><ul class="rows">{await Promise.all(jobs.map(async (job) => <li class="panel">
       <b>{await jobTitle(c.env.DB, ward.wardId, job)}</b><p class="muted">{STATUS_LABEL[job.status]}</p>
@@ -149,9 +161,9 @@ intakeAdmin.get("/intake/received", async (c) => {
         <form method="post" action={adminPath(ward, `/intake/${job.job_id}/continue`)}><button class="quiet">このまま進める</button></form></> : null}
       {["received", "reading", "read", "failed"].includes(job.status) ? <form method="post" action={adminPath(ward, `/intake/${job.job_id}/withdraw`)}><button class="quiet">送るのを取り消す</button></form> : null}
     </li>))}</ul>
-    {jobs.length === 0 ? <p>送ったものはありません。</p> : null}
+    {jobs.length === 0 ? <p>{projectId ? "送ったものはありません。" : "この1時間に送ったものはありません。"}</p> : null}
     <div class="action-links"><a class="button secondary" href={sendHref}>続けて送る</a></div>
-    <h2>間違えて送ったときは</h2><p>読み終わる前なら、上の「送るのを取り消す」で取り消せます。</p>
+    <h2>間違えて送ったときは</h2><p>上の「送るのを取り消す」で取り消せます。</p>
     <a class="quiet" href={back}>{project && back === adminPath(ward, `/projects/${project.projectId}/map`) ? `${project.title}の段取りへ戻る` : "前の画面へ"}</a>
   </Layout>);
 });
@@ -162,9 +174,10 @@ intakeAdmin.get("/intake/read", async (c) => {
   const projects = await projectDirectory().listOpen(c.env.DB, ward.wardId);
   return c.html(<Layout title="読み終わったもの" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/intake/received")}>送ったものへ</a>
-    <h1>読み終わりました</h1><p class="lead">{groups.length > 1 ? "行事ごとに分けました。違っていても、あとで直せます。" : "資料をまとめました。違っていても、あとで直せます。"}</p>
+    <h1>{groups.length ? "読み終わりました" : "読み終わったものはまだありません"}</h1><p class="lead">{groups.length > 1 ? "行事ごとに分けました。違っていても、あとで直せます。" : groups.length ? "資料をまとめました。違っていても、あとで直せます。" : "読み終わると、ここに出ます。画面を閉じてもかまいません。"}</p>
     <ErrorNotice code={c.req.query("error")} messages={{ day: "今年の行事の日を入れ直してください。分からないときは空欄で進められます。" }} />
     {groups.map((group, index) => {
+      if (!group.title) return <ul class="rows"><li><a class="row-link" href={adminPath(ward, "/inbox")}><b>何の資料か分からないもの</b><span>{group.materials.length}件。そのままでかまいません</span></a></li></ul>;
       const ids = new Set(group.materials.map((m) => m.original.original_id));
       const fields = group.materials.flatMap((m) => m.readings.flatMap((r) => "fields" in r.body ? r.body.fields.filter((f) => ids.has(f.original_id)) : []));
       const suggestions = group.materials.flatMap((m) => m.readings.flatMap((r) => "fields" in r.body ? (r.body.project_suggestions ?? []).filter((s) => ids.has(s.original_id)) : []));
@@ -172,13 +185,12 @@ intakeAdmin.get("/intake/read", async (c) => {
       const oneValue = (values: (string | undefined)[]) => { const distinct = [...new Set(values.filter(Boolean))]; return distinct.length === 1 ? distinct[0] : undefined; };
       const date = oneValue([...fields.filter((f) => f.name === "日時").map((f) => f.value), ...suggestions.map((s) => s.date_text)]);
       const place = oneValue([...fields.filter((f) => f.name === "場所").map((f) => f.value), ...suggestions.map((s) => s.place)]);
-      return <section class="panel"><h2>{group.title ? `${group.title}の資料のようです` : "何の資料か分からないもの"}</h2>
+      return <section class="panel"><h2>{group.title}の資料のようです</h2>
         <dl class="facts"><dt>資料</dt><dd>{group.materials.length}件</dd>{date ? <><dt>資料の日付</dt><dd>{formatDateText(date)}</dd></> : null}{place ? <><dt>場所</dt><dd>{place}</dd></> : null}</dl>
         <form method="post" action={adminPath(ward, "/intake/start")}><input type="hidden" name="group" value={group.key} />
           <div class="field"><label for={`day-${index}`}>今年の行事の日（分かれば）</label><input id={`day-${index}`} name="eventDay" type="date" /><p class="help-text">段取りの日付に使います。あとでも直せます。</p></div>
-          <div class="action-links"><button class={index === 0 ? undefined : "secondary"}>{group.title ? `${group.title}を始める` : "このまま進める"}</button></div>
+          <div class="action-links"><button class={index === 0 ? undefined : "secondary"}>{group.title}を始める</button></div>
         </form>
-        {!group.title ? <p class="muted">そのままでかまいません。</p> : null}
       </section>;
     })}
     {groups.length === 0 ? <><p>まだ読み終わっていない資料は、送ったものから見られます。</p>
@@ -220,9 +232,8 @@ intakeAdmin.post("/intake/:jobId/continue", async (c) => {
   const { ward, account } = c.var;
   const job = await getJob(c.env.DB, ward.wardId, c.req.param("jobId"));
   if (!job || job.withdrawn_at) return c.notFound();
-  const projectId = job.project_id ?? (await createProject(c.env.DB, ward.wardId, { kind: "event", title: "行事", year: new Date(Date.now() + 9 * 3600_000).getUTCFullYear(), accountId: account.accountId })).projectId;
-  if (!job.project_id) await assignProject(c.env, waitableContext(c), ward.wardId, job.job_id, projectId);
-  return c.redirect(adminPath(ward, `/projects/${projectId}/draft/announcement`), 303);
+  if (!job.project_id) return c.redirect(adminPath(ward, "/projects"), 303);
+  return c.redirect(adminPath(ward, `/projects/${job.project_id}/draft/announcement`), 303);
 });
 
 intakeAdmin.post("/intake", async (c) => {
@@ -286,8 +297,10 @@ intakeAdmin.post("/intake", async (c) => {
     const back = returnPath(c, c.req.query("back"), adminPath(ward, projectId ? `/projects/${projectId}/map` : "/"));
     params.set("back", back);
     const receivedPath = `${adminPath(ward, "/intake/received")}?${params}`;
-    if (!wantsJson) return c.redirect(receivedPath, 303);
-    const nextPage = { redirectTo: receivedPath };
+    params.set("n", "same");
+    const samePath = `${adminPath(ward, "/intake/received")}?${params}`;
+    if (!wantsJson) return c.redirect(outcome.jobId ? receivedPath : samePath, 303);
+    const nextPage = { redirectTo: outcome.jobId ? receivedPath : samePath };
     if (!outcome.jobId) {
       return reply(true, "同じものでした。", { jobId: null, duplicates: outcome.duplicates.length, ...nextPage });
     }

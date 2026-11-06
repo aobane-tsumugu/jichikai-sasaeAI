@@ -19,6 +19,7 @@ import { openPublish } from "./publish-flow";
 import { rainDraft, rainSent, rainTemplate } from "./rain";
 import { checkPublicDraft } from "../publish/check";
 
+const SEE_LABEL: Record<Scope, string> = { public: "だれでも読める", space: "実行委員と班長だけ", staff: "役員だけ" };
 const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   "restore_failed": "前の下書きに戻せませんでした",
   "rain_input": "決まった知らせの文と会場、日時を入力してください",
@@ -44,13 +45,14 @@ admin.get("/projects/:projectId/draft", async (c) => {
   const { ward } = c.var; const id = c.req.param("projectId"); const project = await getProjectSummary(c.env.DB, ward.wardId, id);
   if (!project) return c.notFound();
   return c.html(<Layout title={`下書き: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, `/projects/${id}`)}>行事へ</a>}>
-    <h1>{project.title} の下書き</h1><p class="lead">作りたい文書を選んでください。今ある資料からAIに下書きを頼むか、自分で書き始められます。</p><p>文書を選び、必要ならAIに下書きを起こさせます。AIが止まっているときも、ここで書いて保存できます。</p>
+    <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {project.title}の段取りへ</a>
+    <h1>{project.title}の下書き</h1><p class="lead">作りたい文書を選んでください。今ある資料からAIに下書きを頼むか、自分で書き始められます。</p><p>文書を選び、必要ならAIに下書きを起こさせます。AIが止まっているときも、ここで書いて保存できます。</p>
     {c.req.query("notice") === "saved" ? <Notice>保存しました。今年の中身にも反映しました。</Notice> : null}
-    {c.req.query("notice") === "started" ? <Notice>下書きを起こす依頼を受けました。画面を閉じても処理は続きます。</Notice> : null}
+    {c.req.query("notice") === "started" ? <Notice>AIに下書きを頼みました。画面を閉じても続きます。</Notice> : null}
     {c.req.query("notice") === "restored" ? <Notice>前の下書きを戻して、新しい下書きとして保存しました。</Notice> : null}
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
-    {listDraftPacks().map((pack) => <section class="panel"><h2><a href={adminPath(ward, `/projects/${id}/draft/${pack.kind}`)}>{pack.title}</a></h2><p>範囲: {SCOPE_LABEL[pack.scope]}</p>
-      <form method="post" action={adminPath(ward, `/projects/${id}/draft/${pack.kind}/start`)}><button class="secondary">AIに下書きを起こしてもらう</button></form>
+    {listDraftPacks().map((pack) => <section class="panel"><h2><a href={adminPath(ward, `/projects/${id}/draft/${pack.kind}`)}>{pack.title}</a></h2><p>{SEE_LABEL[pack.scope]}</p>
+      <form method="post" action={adminPath(ward, `/projects/${id}/draft/${pack.kind}/start`)}><button class="secondary">AIに下書きを頼む</button></form>
     </section>)}
     <p class="link-line"><a href={adminPath(ward, `/publish/${id}`)}>配る</a></p>
   </Layout>);
@@ -67,7 +69,7 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
   const body: DraftBody = document ? parseBody(document.body) : { text: "", items: state.items.map((item) => {
     if (item.current?.content.trim()) return { key: item.key, content: item.current.content };
     const reference = item.references.find((ref) => ref.content.trim());
-    return { key: item.key, content: reference?.content ?? "", ...(reference ? { source: `参考（${reference.refYear === null ? "年不明" : `${reference.refYear}年`}）` } : {}) };
+    return { key: item.key, content: reference?.content ?? "", ...(reference ? { source: reference.refYear === null ? "年の分からない資料" : reference.refYear === project.year - 1 ? "去年の資料" : `${reference.refYear}年の資料` } : {}) };
   }) };
   const scope = document?.scope ?? pack.scope; const baseVersion = document?.stateVersion ?? project.stateVersion;
   const task = await c.env.DB.prepare(`SELECT status FROM jobs WHERE ward_id = ? AND project_id = ? AND task = 'draft'
@@ -75,13 +77,13 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
   const taskLabel: Record<string, string> = {
     read: "順番を待っています",
     connecting: "下書きを作っています",
-    done: "AIの依頼が終わりました。下書きの内容を確かめてください",
+    done: "AIの下書きができました。内容を見てください",
     attention: "AIの作業が止まりました。内容を確かめてください",
     failed: "AIの作業が止まりました。ここで書いて保存できます",
   };
   const taskNotice = task ? {
     status: task.status,
-    message: taskLabel[task.status] ?? "AIの作業状態を確認できません。ここで書いて保存できます",
+    message: taskLabel[task.status] ?? "AIの様子が分かりません。ここで書いて保存できます",
   } : null;
   const versions = document ? await c.env.DB.prepare("SELECT version_no, body, created_at, origin FROM document_versions WHERE ward_id = ? AND project_id = ? AND document_id = ? ORDER BY version_no DESC LIMIT 8").bind(ward.wardId, id, document.documentId).all<{ version_no: number; body: string; created_at: string; origin: string }>() : { results: [] };
   if (!body.text) body.text = body.items.find((item) => item.key === "content")?.content ?? "";
@@ -97,10 +99,12 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     const source = sourceValue?.source;
     const original = source?.ref ? originals.results.find((entry) => entry.original_id === source.ref) : undefined;
     const previous = item?.references.find((ref) => ref.refYear === project.year - 1 && ref.content !== value);
+    const conflict = state.questions.find((question) => question.kind === "conflict" && question.target === key && (question.state === "open" || question.state === "later"));
     return <div class="field"><label for={`item-${key}`}>{labels[key] ?? ITEM_LABEL[key]}</label>
       {key === "helper_slots" ? <textarea id={`item-${key}`} name={`item_${key}`} rows={3} maxlength={2000}>{value}</textarea> : <input id={`item-${key}`} name={`item_${key}`} value={value} maxlength={2000} />}
-      {original ? <p class="help-text">{original.filename || "送った資料"}{source?.locator ? `（${source.locator}）` : ""}から入れました。{previous ? `去年は${previous.content}でした。` : ""}</p> : draftItem?.source ? <p class="help-text">{draftItem.source}から入れました。</p> : previous ? <p class="help-text">去年は{previous.content}でした。</p> : null}
+      {original ? <p class="help-text">{original.filename || "送った資料"}{source?.locator ? `（${source.locator}）` : ""}から入れました。{previous ? `去年は${previous.content}でした。` : ""}</p> : draftItem?.source ? <p class="help-text">{draftItem.source}から入れました。今年も同じか見てください。</p> : previous ? <p class="help-text">去年は{previous.content}でした。</p> : null}
       {original ? <a class="quiet" href={adminPath(ward, `/intake/originals/${original.original_id}`)}>元の資料を見る</a> : null}
+      {conflict ? <a class="quiet" href={adminPath(ward, `/projects/${id}/questions/${conflict.questionId}/compare`)}>資料によって違います。見比べる</a> : null}
       {key === "public_contact" ? <p class="help-text">だれでも読める案内に出ます。</p> : null}
     </div>;
   };
@@ -112,12 +116,12 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     <h1>{pack.title}の下書きを直す</h1>
     <p class="lead">{kindRaw === "duty_roster" ? "実行委員と班長に見せる当番表です。" : kindRaw === "recruitment" && scope === "public" ? "区のページの「一回だけ手伝う」に出る募集です。" : scope === "public" ? "だれでも読める案内です。" : scope === "space" ? "実行委員と班長だけが読めます。" : "役員だけが読めます。"}直して保存しても、まだ配られません。</p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
-    {c.req.query("notice") === "saved" ? <section class="next"><strong>保存しました。まだ配っていません</strong><p>前の下書きにも戻せます。</p><a class="button secondary" href={adminPath(ward, `/publish/${id}/confirm?kind=${kindRaw}`)}>配る画面へ</a><a class="quiet" href="#previous-drafts">前の下書きに戻す</a></section> : null}
+    {c.req.query("notice") === "saved" ? <section class="next"><strong>保存しました。まだ配っていません</strong><p>前の下書きにも戻せます。</p>{scope === "public" || (scope === "space" && ["duty_roster", "procedure"].includes(kindRaw)) ? <a class="button secondary" href={adminPath(ward, `/publish/${id}/confirm?kind=${kindRaw}`)}>配る画面へ</a> : null}<a class="quiet" href="#previous-drafts">前の下書きに戻す</a></section> : null}
     {bodyCheck ? <Notice>{bodyCheck}</Notice> : null}
-    {c.req.query("notice") === "restored" ? <Notice>前の下書きに戻しました。今の下書きも残ります。</Notice> : null}
-    {taskNotice ? <Notice><span data-ai-status={taskNotice.status}>{taskNotice.message}</span> 画面を閉じても処理は続きます。ここで書いて保存することもできます。</Notice> : null}
+    {c.req.query("notice") === "restored" ? <section class="next"><strong>前の下書きに戻しました</strong><p>今の下書きも残ります。直して保存できます。</p></section> : null}
+    {taskNotice ? <Notice><span data-ai-status={taskNotice.status}>{taskNotice.message}</span>{taskNotice.status === "done" ? "" : " 画面を閉じても続きます。ここで書いて保存することもできます。"}</Notice> : null}
     {document?.stale ? <div class="notice warn"><strong>新しい資料が届きました</strong><p>このまま直して配れます。</p><a class="quiet" href="#redo">新しい資料を入れて作り直す</a></div> : null}
-    {project.closedAt ? <Notice>この行事は閉じました。開き直すと下書きを直せます。</Notice> : null}
+    {project.closedAt ? <Notice>この行事は閉じました。もう一度開くと下書きを直せます。</Notice> : null}
     <form id="draft-form" method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/save`)}>
       <input type="hidden" name="based_on" value={baseVersion} />
       <div class="field"><label for="title">題</label><input id="title" name="title" value={document?.title ?? pack.title} maxlength={100} required /></div>

@@ -48,6 +48,9 @@ export function helpTimeChoices(body: string): string[] {
 }
 
 export async function addHelpOffer(db: D1Database, wardId: string, projectId: string, name: string, times: string): Promise<boolean> {
+  const same = await db.prepare(`SELECT 1 FROM project_help_offers WHERE ward_id = ? AND project_id = ? AND name = ? AND times = ? LIMIT 1`)
+    .bind(wardId, projectId, name, times).first();
+  if (same) return true;
   const result = await db.prepare(`INSERT INTO project_help_offers (offer_id, ward_id, project_id, name, times, created_at)
     SELECT ?, ?, p.project_id, ?, ?, ? FROM projects p
     WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL

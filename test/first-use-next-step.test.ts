@@ -19,9 +19,9 @@ it("初めての役員に行事・資料・実行委員と班長のページの�
   const projectEntry = await get(realApp, `${root}/projects`, cookie);
   expect(projectEntry.status).toBe(200);
   const projectEntryHtml = await projectEntry.text();
-  expect(projectEntryHtml).toContain("<h2>行事を開く</h2>");
+  expect(projectEntryHtml).toContain("<h1>新しく始める</h1>");
   expect(projectEntryHtml).toContain(`<form method="post" action="${root}/projects">`);
-  expect(projectEntryHtml).toContain('<button type="submit">開く</button>');
+  expect(projectEntryHtml).toContain('<button type="submit">始める</button>');
 
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "最初の行事（架空）", year: 2026, accountId: account.accountId,

@@ -42,8 +42,8 @@ const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   "invalid_kind": "行事の種類が合いません",
   "invalid_title": "題は1文字から100文字にしてください",
   "invalid_year": "年が合いません",
-  "invalid_day": "行事の日はYYYY-MM-DDで入れてください",
-  "seed_missing": "種にする行事が見つかりません",
+  "invalid_day": "行事の日を入れ直してください",
+  "seed_missing": "もとにする行事が見つかりません",
   "material_failed": "今年の資料として入れ直せませんでした。資料を確かめて、もう一度お試しください。"
 };
 
@@ -55,29 +55,18 @@ admin.route("/", questionPages);
 admin.get("/projects", async (c) => {
   const { ward } = c.var;
   const allProjects = await listProjects(c.env.DB, ward.wardId, { includeClosed: true });
-  const projects = allProjects.filter((project) => !project.closedAt);
   const seeds = allProjects.filter((project) => project.closedAt);
-  return c.html(<Layout title="行事" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>行事</h1><p class="lead">行事や総会、市からの依頼を始める画面です。去年の段取りがあればそこから、なければ下の欄から開いてください。</p>
-    <p><a class="button secondary" href={adminPath(ward, "/projects/today")}>今やること</a></p>
-    <p><a class="button secondary" href={adminPath(ward, "/requests/city")}>行政の依頼</a> <a class="button secondary" href={adminPath(ward, "/inquiries")}>問い合わせと要望</a></p>
+  return c.html(<Layout title="新しく始める" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a>
+    <h1>新しく始める</h1><p class="lead">去年の記録があれば、そこから始められます。ないときは、種類を選ぶと、ふつうの仕事の並びを用意します。</p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
-    {projects.map((p) => <section class="panel"><h2><a href={adminPath(ward, `/projects/${p.projectId}`)}>{p.title}</a></h2>
-      <p>{PROJECT_KIND_LABEL[p.kind]} / {p.year}年</p>
-      {Object.entries(p.deadlines).map(([kind, date]) => <p>{DEADLINE_LABEL[kind as keyof typeof DEADLINE_LABEL]}: {formatJstDate(date)}</p>)}
-    </section>)}
-    {projects.length === 0 ? <p>まだ行事はありません。</p> : null}
-    {seeds.length ? <section class="panel">
-      <h2>去年の段取りから開く</h2>
-      <ul>{seeds.map((project) => <li class="link-line"><a href={adminPath(ward, `/archive/${project.projectId}`)}>{project.year}年{project.title} の段取りから開く</a></li>)}</ul>
-    </section> : null}
-    <h2>行事を開く</h2>
+    {seeds.length ? <><h2>去年の記録から始める</h2><ul class="rows">{seeds.map((project) => <li><a class="row-link" href={adminPath(ward, `/archive/${project.projectId}`)}><b>{project.year}年 {project.title}</b></a></li>)}</ul></> : null}
     <form method="post" action={adminPath(ward, "/projects")}>
-      <label for="kind">種類</label><select id="kind" name="kind" required>{PROJECT_KINDS.map((kind) => <option value={kind}>{PROJECT_KIND_LABEL[kind]}</option>)}</select>
-      <label for="title">題（あとで直せます）</label><input id="title" name="title" maxlength={100} placeholder="秋の収穫祭" />
-      <label for="eventDay">行事の日（分かれば。段取りの時期に使います）</label><input id="eventDay" name="eventDay" type="date" />
+      <fieldset><legend>種類</legend><div class="choice">{PROJECT_KINDS.map((kind, index) => <label><input type="radio" name="kind" value={kind} checked={index === 0} required /> {PROJECT_KIND_LABEL[kind]}</label>)}</div></fieldset>
+      <div class="field"><label for="title">名前（あとで直せます）</label><input id="title" name="title" maxlength={100} placeholder="秋の収穫祭" /></div>
+      <div class="field"><label for="eventDay">行事の日（分かれば）</label><input id="eventDay" name="eventDay" type="date" /><p class="help-text">入れると、仕事の時期を置きます。</p></div>
       <input type="hidden" name="year" value={new Date().getFullYear()} />
-      <p class="action-bar page-action"><button type="submit">開く</button></p><p class="help-text">選んだ仕事の段取りを用意します。</p>
+      <div class="action-links"><button type="submit">始める</button></div>
     </form>
   </Layout>);
 });

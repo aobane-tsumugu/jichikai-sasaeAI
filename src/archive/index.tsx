@@ -170,7 +170,7 @@ admin.get("/archive/:projectId", async (c) => {
     const task = current[0] ?? open.filter((task) => task.periodStart && task.periodStart > today).sort((a, b) => a.periodStart!.localeCompare(b.periodStart!))[0];
     const questions = next.questions.some((question) => question.state === "open" || question.state === "later");
     const label = questions ? "質問に答える" : task?.name ?? (open.length ? "段取りへ" : "報告を書いて閉じる");
-    const href = questions ? adminPath(ward, `/projects/${next.project.projectId}`) : task ? `${mapHref}#task-${task.taskId}` : open.length ? mapHref : adminPath(ward, `/close/${next.project.projectId}`);
+    const href = questions ? adminPath(ward, `/projects/${next.project.projectId}/questions`) : task ? `${mapHref}/${task.taskId}` : open.length ? mapHref : adminPath(ward, `/close/${next.project.projectId}`);
     return c.html(<AdminPage ward={ward} account={c.var.account} title="新しく始めました" back={{ href: root, label: `← ${project.year}年の記録へ` }}>
       <h1>{next.project.title}を始めました</h1><p class="lead">去年の段取りを新しい日に置き直しました</p><section class="next"><strong>次は</strong><p>段取りから準備を進められます。</p><a class="button" href={href}>{label}</a></section><p><a class="quiet" href={mapHref}>段取りへ</a></p><p>仕事の時期は、段取りから直せます。去年の記録は変わりません。</p>
     </AdminPage>);
@@ -217,7 +217,7 @@ admin.get("/archive/:projectId", async (c) => {
     {!map.results.length ? <p>残っている仕事はありません。</p> : null}
     <h2>配ったもの</h2>
     {documents.results.map((document) => <details class="fold"><summary>{document.title}</summary><div>
-      <p>{formatJstDate(document.published_at)} / {document.scope === "public" ? "公開" : document.scope === "space" ? "実行委員と班長向け" : "役員向け"}{document.unpublished_at ? " / 公開を下げました" : ""}</p>
+      <p>{formatJstDate(document.published_at)} / {document.scope === "public" ? "だれでも読める" : document.scope === "space" ? "実行委員と班長向け" : "役員向け"}{document.unpublished_at ? " / 区のページから下げました" : ""}</p>
       <ArticleBody body={document.body} />
       {document.scope === "space" && (document.kind === "duty_roster" || document.kind === "procedure") ? <>
         <h4>配ったときの当番表と配置図</h4>
@@ -230,7 +230,7 @@ admin.get("/archive/:projectId", async (c) => {
       <ul class="links"><li class="link-line"><a href="#report">報告を読む</a></li><li class="link-line"><a href="#answers">答えの一覧を読む</a></li><li class="link-line"><a href="#orig">元の資料を読む（{originals.results.length}件）</a></li></ul>
       <details class="hint"><summary>ほかの記録を探す</summary><div><form method="get" action={adminPath(ward, "/archive/search")}><label for="q">探す言葉</label><input id="q" name="q" type="text" minlength={2} required /><button class="secondary">探す</button></form></div></details>
     </aside></div>
-    <h2 id="report">報告</h2>{reports.results?.map((report) => <section class="panel"><h3>{report.scope === "public" ? "公開する部分" : "役員だけの部分"}</h3><p style="white-space:pre-wrap">{report.body || "まだ記入されていません"}</p></section>)}
+    <h2 id="report">報告</h2>{reports.results?.map((report) => <section class="panel"><h3>{report.scope === "public" ? "だれでも読める部分" : "役員だけの部分"}</h3><p style="white-space:pre-wrap">{report.body || "まだ書いていません"}</p></section>)}
     <h2 id="answers">答えの一覧</h2><p>紙、電話、スマホの答えを合わせた数です。</p>
     <p>参加すると答えた人数{answers.reduce((sum, answer) => sum + answer.peopleCount, 0)}人 / 手伝いの申し出{answers.filter((answer) => answer.helperName).length}件</p>
     {answers.some((answer) => answer.childrenCount != null || answer.adultsCount != null || answer.seniorsCount != null) ? <p>参加する人の内訳: {answerLabels.map((label, index) => `${label}${answers.reduce((sum, answer) => sum + ([answer.childrenCount, answer.adultsCount, answer.seniorsCount][index] ?? 0), 0)}人`).join("、")}。内訳のない答えは合計だけに含めています。</p> : null}

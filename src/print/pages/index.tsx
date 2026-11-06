@@ -51,9 +51,9 @@ admin.get("/print/:projectId", async (c) => {
     FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
     WHERE d.ward_id = ? AND d.project_id = ? GROUP BY d.document_id ORDER BY d.created_at`).bind(ward.wardId, id)
     .all<{ document_id: string; kind: string; title: string; latest: number; published: number | null }>();
-  return c.html(<AdminPage ward={ward} account={account} title="紙を印刷する" back={{ href: adminPath(ward, `/projects/${id}/map`), label: "段取りへ戻る" }}>
+  return c.html(<AdminPage ward={ward} account={account} title="紙を印刷する" back={{ href: adminPath(ward, `/projects/${id}/map`), label: "← 段取りへ" }}>
     <h1>紙を印刷する</h1>
-    <p class="lead">行事で使う紙を、ここから印刷できます。配る紙と、書き込んで撮って送る紙があります。</p>
+    <p class="lead">行事で使う紙を、全部ここから印刷できます。配る紙と、書き込んで撮って送る紙があります。</p>
     <p>{project.title}</p>
     <h2>配る紙</h2><ul class="rows">{papers.results.map((paper) => {
       const base = `/print/${id}/${paper.document_id}/${paper.published ?? paper.latest}`;
@@ -65,6 +65,7 @@ admin.get("/print/:projectId", async (c) => {
     <ul class="rows">{(["meeting", "sponsors"] as const).map((kind) => <li><a class="row-link" href={adminPath(ward, `/print/${id}/paper/${kind}`)}><b>{kindLabel(kind)}</b></a></li>)}</ul>
     <p class="link-line"><a href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>書いた紙を撮って送る</a></p>
     <p class="link-line"><a href={adminPath(ward, `/publish/${id}`)}>配った案内や回答票を印刷する</a></p>
+    <details class="fold"><summary>家にプリンタがないとき</summary><div><p>紙を開いて、スマホやパソコンの印刷の画面でPDFに保存します。保存したPDFは、コンビニのコピー機の案内に沿って送ると印刷できます。</p></div></details>
   </AdminPage>);
 });
 

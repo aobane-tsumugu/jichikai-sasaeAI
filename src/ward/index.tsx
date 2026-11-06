@@ -112,20 +112,22 @@ pub.get("/", async (c) => {
   const uniqueItems = new Map<string, PublicProject>();
   for (const item of items) if (!uniqueItems.has(item.document_id)) uniqueItems.set(item.document_id, item);
   const unique = [...uniqueItems.values()];
+  const isCurrent = (item: PublicProject) => !item.closed_at && (item.kind === "announcement" || item.kind === "notice");
+  const current = unique.filter(isCurrent);
+  const past = unique.filter((item) => !isCurrent(item));
+  const row = (item: PublicProject) => <li key={item.document_id}><a class="row-link" href={`/${c.var.ward.slug}/p/${encodeURIComponent(item.project_id)}`}><b>{item.kind === "announcement" ? `${item.title}のご案内` : paperHeading(item.title, item.document_title)}</b><span>{formatJstDate(item.published_at)}に載せました</span></a></li>;
   return c.html(<Layout title={`${c.var.ward.name}のお知らせ`} siteName={c.var.ward.name}>
     <h1>{c.var.ward.name}のお知らせ</h1>
     <p class="lead">{c.var.ward.name}は、この地域の自治会です。入っていなくても、登録しなくても読めます。</p>
     {c.env.DEMO_NOTICE ? <p class="muted">{c.env.DEMO_NOTICE}</p> : null}
+    {current.length ? <ul class="rows">{current.map(row)}</ul> : null}
     {opportunities.length ? <section class="panel">
       <h2><a href={`/${c.var.ward.slug}/help`}>一回だけ手伝う</a></h2><p class="lead">自治会に加入していない人も、名前と手伝える時間帯だけで申し込めます。</p>
       <p>自治会に入っていなくても手伝えます。お名前と手伝える時間帯を教えてください。</p>
       <p class="link-line"><a href={`/${c.var.ward.slug}/help`}>手伝いを申し込む</a></p>
     </section> : null}
     <h2>これまでのお知らせと報告</h2>
-    {unique.length === 0 ? <p>公開中のお知らせはありません。</p> : unique.map((item) => <section class="panel" key={item.document_id}>
-      <h2><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(item.project_id)}`}>{item.kind === "announcement" ? `${item.title}のご案内` : paperHeading(item.title, item.document_title)}</a></h2>
-      <p>更新: {formatJstDate(item.published_at)}</p>
-    </section>)}
+    {past.length === 0 ? <p>{current.length ? "これまでのお知らせはありません。" : "公開中のお知らせはありません。"}</p> : <ul class="rows">{past.map(row)}</ul>}
     <h2>自治会の仕事を知る</h2>
     {activities.results.length === 0 ? <p>載せている活動紹介はありません。</p> : activities.results.map((item) => <section class="panel" key={item.project_id}>
       <h3><a href={`/${c.var.ward.slug}/work/${encodeURIComponent(item.project_id)}`}>{item.title}で役員がしたこと</a></h3>
@@ -225,12 +227,11 @@ pub.get("/p/:projectId", async (c) => {
       </article>;
     };
   return c.html(<Layout title={items[0]!.title} siteName={c.var.ward.name}>
-    <p class="link-line"><a href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のお知らせ</a></p>
+    <a class="back" href={`/${c.var.ward.slug}/`}>← お知らせの一覧へ</a>
     <h1>{items[0]!.title}のご案内</h1>
     {ordered.filter(({ latest }) => latest.kind === "notice").map(renderDocument)}
     {activeAnnouncement ? <>
-      {!newerNotice ? <EventDetails item={context.item} /> : null}
-      {deadline ? <p>答えの締切{formatJstDate(deadline)}まで</p> : null}
+      {!newerNotice ? <EventDetails item={context.item} due={deadline} /> : deadline ? <p>答えの締切 {formatJstDate(deadline)}まで</p> : null}
       {closed ? <ReceptionClosed closed={!!items[0]!.closed_at} due={deadline} /> : <><p><a class="button" href={`/${c.var.ward.slug}/answer/${encodeURIComponent(projectId)}${suffix}`}>出欠を答える</a></p><p>参加しないときも、答えてください。答えがないときは、欠席として数えます。紙の回答票を班長に渡しても答えられます。</p></>}
     </> : null}
     {ordered.filter(({ latest }) => latest.kind !== "notice").map(renderDocument)}

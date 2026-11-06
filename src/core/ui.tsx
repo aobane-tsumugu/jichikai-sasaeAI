@@ -39,9 +39,9 @@ export const Layout: FC<
 
 /** 画面の一行の知らせ。 */
 export const Notice: FC<PropsWithChildren<{ error?: boolean }>> = ({ error, children }) => (
-  <p class={error ? "notice error" : "notice"} role={error ? "alert" : "status"}>
+  <div class={error ? "notice error" : "notice"} role={error ? "alert" : "status"}>
     {children}
-  </p>
+  </div>
 );
 
 /** 作ったばかりのパスワードを一度だけ見せる枠。保存は要約だけなので、後から見ることはできない。 */

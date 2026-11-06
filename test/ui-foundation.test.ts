@@ -16,7 +16,7 @@ it("入力の誤りから戻って行事を開き、住民も書き直して答�
   expect(guidance).toContain(`${ward.name} 役員の画面`);
   expect(guidance).toContain('>最初の画面</a>');
   expect(guidance).toContain('<body ontouchstart="">');
-  expect(guidance).toContain('<p class="lead">行事や総会、市からの依頼を始める画面です。');
+  expect(guidance).toContain('<p class="lead">去年の記録があれば');
   const unknown = "URLに書いた文を表示しない";
   const ignored = await (await get(realApp, `${root}/projects?error=${encodeURIComponent(unknown)}`, cookie)).text();
   expect(ignored).not.toContain(unknown);

@@ -41,11 +41,17 @@ export function CountFields({ labels, answer, prefix = "count", disabled = false
   </fieldset>;
 }
 
+/** 回答票の人数が読めなかった答え。参加しないの 0 人と分ける。 */
+export function countUnread(answer: Counts): boolean {
+  return answer.peopleCount === 0 && answer.childrenCount == null && answer.adultsCount == null && answer.seniorsCount == null;
+}
+
 export function countText(answer: Counts, labels: AnswerLabels): string {
+  if (countUnread(answer)) return "人数が読めませんでした";
   if (answer.peopleCount === 0) return "参加しない";
   const values = [answer.childrenCount, answer.adultsCount, answer.seniorsCount];
   if (values.every((value) => value == null)) return `${answer.peopleCount}人`;
-  return `${answer.peopleCount}人（${values.map((value, index) => `${labels[index]}${value ?? 0}人`).join("、")}）`;
+  return values.flatMap((value, index) => value ? [`${labels[index]!.replace(/（.*）/, "")}${value}人`] : []).join("、");
 }
 
 export function labelsFromBody(body: string): AnswerLabels {
