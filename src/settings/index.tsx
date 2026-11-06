@@ -53,6 +53,7 @@ admin.get("/", async (c) => {
           <a class="button secondary" href={adminPath(ward, "/ledger")}>帳簿</a>
         </nav>
       </details>
+      <form method="post" action={adminPath(ward, "/logout")}><button type="submit" class="secondary">このスマホやパソコンから出る</button></form>
     </AdminPage>,
   );
 });

@@ -11,6 +11,11 @@ it("入った物を名前と文で見分け、材料の文を読み、今やる�
   const jstNow = Date.now() + 9 * 60 * 60 * 1000;
   const yesterday = new Date(jstNow - 86400000).toISOString().slice(0, 10);
   const tomorrow = new Date(jstNow + 86400000).toISOString().slice(0, 10);
+  const displayDate = (iso: string): string => {
+    const date = new Date(`${iso}T00:00:00Z`);
+    const weekday = ["日", "月", "火", "水", "木", "金", "土"][date.getUTCDay()];
+    return `${date.getUTCMonth() + 1}月${date.getUTCDate()}日（${weekday}）`;
+  };
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "済んだ行事（架空）", year: 2026, eventDay: yesterday, accountId: account.accountId,
   });
@@ -36,9 +41,9 @@ it("入った物を名前と文で見分け、材料の文を読み、今やる�
   expect(beforeReadings).toContain(text);
   const today = await get(realApp, `${root}/projects/today`, cookie);
   const todayHtml = await today.text();
-  expect(todayHtml).not.toContain(`${yesterday}　行事の日`);
-  expect(todayHtml).toContain(`${tomorrow}　行事の日`);
-  expect(todayHtml).toContain(`${yesterday}　回答の締切`);
+  expect(todayHtml).not.toContain(`${displayDate(yesterday)}　行事の日`);
+  expect(todayHtml).toContain(`${displayDate(tomorrow)}　行事の日`);
+  expect(todayHtml).toContain(`${displayDate(yesterday)}　回答の締切`);
 });
 
 it("AI に頼んだ下書きの仕事は、入った物の一覧に出さない", async () => {

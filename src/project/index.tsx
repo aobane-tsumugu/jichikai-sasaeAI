@@ -1,7 +1,8 @@
+import { formatJstDate } from "../core/time";
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
-import { Hint, Layout, Notice } from "../core/ui";
+import { ErrorNotice, Hint, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { listUnansweredByDistrict } from "../answers/api";
 import { getReadings, listOriginals, listJobs } from "../intake/store";
@@ -35,6 +36,17 @@ function changeTargetLabel(kind: string, target: string): string {
   return target.replaceAll("|", " ");
 }
 
+const ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  "choose_kind": "種類を選んでください",
+  "open_failed": "プロジェクトを開けませんでした",
+  "invalid_kind": "プロジェクトの種類が合いません",
+  "invalid_title": "題は 1 文字から 100 文字にしてください",
+  "invalid_year": "年が合いません",
+  "invalid_day": "行事の日は YYYY-MM-DD で入れてください",
+  "seed_missing": "種にするプロジェクトが見つかりません",
+  "material_failed": "今年の資料として入れ直せませんでした。材料を確かめて、もう一度お試しください。"
+};
+
 const admin = new Hono<AdminEnv>();
 setProjectApi(agentApi);
 admin.route("/", followupAdmin);
@@ -48,10 +60,10 @@ admin.get("/projects", async (c) => {
     <h1>プロジェクト <Hint text="行事や総会など、仕事ごとのプロジェクトを開く画面です。去年の地図があればそこから、無ければ下の欄から開いてください。" /></h1>
     <p><a class="button secondary" href={adminPath(ward, "/projects/today")}>今やること</a></p>
     <p><a class="button secondary" href={adminPath(ward, "/requests/city")}>行政の依頼</a> <a class="button secondary" href={adminPath(ward, "/inquiries")}>問い合わせと要望</a> <a class="button secondary" href={adminPath(ward, "/ledger")}>帳簿</a></p>
-    {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}
+    <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     {projects.map((p) => <section class="panel"><h2><a href={adminPath(ward, `/projects/${p.projectId}`)}>{p.title}</a></h2>
       <p>{PROJECT_KIND_LABEL[p.kind]} / {p.year}年</p>
-      {Object.entries(p.deadlines).map(([kind, date]) => <p>{DEADLINE_LABEL[kind as keyof typeof DEADLINE_LABEL]}: {date}</p>)}
+      {Object.entries(p.deadlines).map(([kind, date]) => <p>{DEADLINE_LABEL[kind as keyof typeof DEADLINE_LABEL]}: {formatJstDate(date)}</p>)}
     </section>)}
     {projects.length === 0 ? <p>まだプロジェクトはありません。</p> : null}
     {seeds.length ? <section class="panel">
@@ -77,7 +89,7 @@ admin.get("/projects/today", async (c) => {
   for (const project of projects) {
     for (const [kind, date] of Object.entries(project.deadlines)) {
       if (kind === "event_day" && date < today) continue;
-      entries.push({ date, projectId: project.projectId, project: project.title, label: DEADLINE_LABEL[kind as keyof typeof DEADLINE_LABEL], detail: date, href: `/projects/${project.projectId}/map` });
+      entries.push({ date, projectId: project.projectId, project: project.title, label: DEADLINE_LABEL[kind as keyof typeof DEADLINE_LABEL], detail: formatJstDate(date), href: `/projects/${project.projectId}/map` });
     }
     const state = await getProjectState(c.env.DB, ward.wardId, project.projectId);
     if (!state) continue;
@@ -98,7 +110,7 @@ admin.get("/projects/today", async (c) => {
     <h1>今やること <Hint text="期限の近い仕事や、残っている問いを見る画面です。取りかかる項目のプロジェクト名を押してください。" /></h1>
     <p>期限の近い順に並べています。期限のない問いと足りない物は後ろに表示します。</p>
     {entries.map((entry) => <article class="panel">
-      <p>{entry.date ?? "日付なし"}　{entry.label}</p>
+      <p>{entry.date ? formatJstDate(entry.date) : "日付なし"}　{entry.label}</p>
       <h2><a href={adminPath(ward, entry.href)}>{entry.project}</a></h2>
       <p>{entry.detail}</p>
     </article>)}
@@ -110,13 +122,15 @@ admin.get("/projects/today", async (c) => {
 admin.post("/projects", async (c) => {
   const { ward, account } = c.var; const form = await c.req.formData();
   const kind = String(form.get("kind"));
-  if (!(PROJECT_KINDS as readonly string[]).includes(kind)) return c.redirect(`${adminPath(ward, "/projects")}?error=${encodeURIComponent("種類を選んでください")}`, 303);
+  if (!(PROJECT_KINDS as readonly string[]).includes(kind)) return c.redirect(`${adminPath(ward, "/projects")}?error=choose_kind`, 303);
   try {
     const project = await createProject(c.env.DB, ward.wardId, { kind: kind as (typeof PROJECT_KINDS)[number], title: String(form.get("title") ?? "").trim() || PROJECT_KIND_LABEL[kind as (typeof PROJECT_KINDS)[number]], year: Number(form.get("eventDay") ? String(form.get("eventDay")).slice(0, 4) : form.get("year")), ...(form.get("eventDay") ? { eventDay: String(form.get("eventDay")) } : {}), accountId: account.accountId });
     return c.redirect(adminPath(ward, `/projects/${project.projectId}/map`), 303);
   } catch (e) {
-    const msg = e instanceof ProjectInputError ? e.message : "プロジェクトを開けませんでした";
-    return c.redirect(`${adminPath(ward, "/projects")}?error=${encodeURIComponent(msg)}`, 303);
+    const code = e instanceof ProjectInputError
+      ? Object.entries(ERROR_MESSAGES).find(([, message]) => message === e.message)?.[0] ?? "open_failed"
+      : "open_failed";
+    return c.redirect(`${adminPath(ward, "/projects")}?error=${code}`, 303);
   }
 });
 
@@ -150,7 +164,7 @@ admin.get("/projects/:projectId", async (c) => {
       <a class="button" href={adminPath(ward, `/publish/${projectId}`)}>配る</a>
     </nav>
     <p>{PROJECT_KIND_LABEL[project.kind]} / {project.year}年</p>
-    {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}
+    <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     <details><summary>題を直す</summary><form method="post" action={adminPath(ward, `/projects/${projectId}/title`)}><label for="title">題</label><input id="title" name="title" value={project.title} maxlength={100} required /> <button class="secondary">保存</button></form></details>
     <h2>問い</h2>
     {firstQuestions.map(questionPanel)}
@@ -196,7 +210,7 @@ admin.post("/projects/:projectId/materials/:originalId/this-year", async (c) => 
   const projectId = c.req.param("projectId");
   const ok = await markMaterialThisYear(c.env.DB, ward.wardId, projectId, c.req.param("originalId"), account.accountId);
   const path = adminPath(ward, `/projects/${projectId}`);
-  return c.redirect(ok ? `${path}#materials` : `${path}?error=${encodeURIComponent("今年の資料として入れ直せませんでした。材料を確かめて、もう一度お試しください。")}`, 303);
+  return c.redirect(ok ? `${path}#materials` : `${path}?error=material_failed`, 303);
 });
 admin.post("/projects/:projectId/questions/:questionId", async (c) => { const { ward, account } = c.var; const f = await c.req.formData(); const action = f.get("action") ? String(f.get("action")) : "answer"; if (["answer", "unknown", "later"].includes(action)) await answerQuestion(c.env.DB, ward.wardId, c.req.param("projectId"), c.req.param("questionId"), action as "answer" | "unknown" | "later", String(f.get("answer") ?? ""), account.accountId); return c.redirect(adminPath(ward, `/projects/${c.req.param("projectId")}`), 303); });
 

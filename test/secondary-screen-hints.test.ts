@@ -12,8 +12,8 @@ it("消す求めの画面で用途とプロジェクトを消す操作の説明�
   const page = await get(realApp, `/${ward.slug}/admin/settings/deletion`, cookie);
   expect(page.status).toBe(200);
   const html = await page.text();
-  expect(html).toContain('aria-label="説明"');
-  expect(html).toContain('popover="auto"');
+  expect(html).toContain('<summary>説明を読む</summary>');
+  expect(html).toContain('<details class="hint">');
   expect(html).toContain("消してほしいと頼まれた記録や、不要なプロジェクトを消す画面です。題や日時で対象を選んでください。");
   expect(html).toContain("原本、回答、配った案内などをプロジェクトごと消し、元には戻せません。");
 });

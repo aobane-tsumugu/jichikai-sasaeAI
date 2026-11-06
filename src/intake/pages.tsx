@@ -2,7 +2,7 @@
 // 画面に出す言葉は CLAUDE.md の表に従う（札、列、セッション、包み、版、差分は出さない）。
 import { Hono } from "hono";
 import { adminPath } from "../core/auth";
-import { Hint, Layout, Notice } from "../core/ui";
+import { ErrorNotice, Hint, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { receiveOriginal, ReceiveError, retryJob, withdrawJob } from "./api";
 import { SEND_SCRIPT } from "./browser-script";
@@ -51,6 +51,11 @@ const ERROR_MESSAGE: Record<ReceiveError["code"], (filename: string) => string> 
   no_project: () => "そのプロジェクトには送れません。プロジェクトを選び直してください。",
 };
 
+const ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  ...Object.fromEntries(Object.entries(ERROR_MESSAGE).map(([code, message]) => [code, message("")])),
+  withdraw_failed: "取り下げられませんでした。消す時は区の設定の「消す求め」から対象を選んでください。",
+};
+
 function isKind(value: string): value is OriginalKind {
   return value === "photo" || value === "file" || value === "text";
 }
@@ -89,7 +94,7 @@ intakeAdmin.get("/intake", async (c) => {
       <p class="muted">持っている形のまま送ってください。分類も名前付けも要りません。</p>
       {notice === "withdrawn" ? <Notice>取り下げました。</Notice> : null}
       {notice === "retry" ? <Notice>もう一度読みます。</Notice> : null}
-      {c.req.query("error") ? <Notice error>{c.req.query("error")}</Notice> : null}
+      <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
       <form id="send-form" method="post" action={adminPath(ward, "/intake")} enctype="multipart/form-data">
         {choices.length > 0 ? (
           <>
@@ -157,10 +162,10 @@ intakeAdmin.get("/intake", async (c) => {
 intakeAdmin.post("/intake", async (c) => {
   const { ward, account } = c.var;
   const wantsJson = (c.req.header("accept") ?? "").includes("application/json");
-  const reply = (ok: boolean, message: string, extra: Record<string, unknown> = {}, status: 200 | 400 = 200) => {
+  const reply = (ok: boolean, message: string, extra: Record<string, unknown> = {}, status: 200 | 400 = 200, code?: ReceiveError["code"]) => {
     if (wantsJson) return c.json({ ok, message, ...extra }, status);
     const back = adminPath(ward, "/intake");
-    return c.redirect(`${back}${ok ? "" : `?error=${encodeURIComponent(message)}`}`, 303);
+    return c.redirect(`${back}${ok ? "" : `?error=${code ?? "empty"}`}`, 303);
   };
 
   const form = await c.req.formData();
@@ -171,7 +176,7 @@ intakeAdmin.post("/intake", async (c) => {
   const qrProjects = [...new Set(qrMatches.map((value) => value.projectId))];
   const projectId = qrProjects.length === 1 ? qrProjects[0] as string : qrProjects.length > 1 ? null : projectIdRaw === "" ? null : projectIdRaw;
   if (projectId && !(await projectDirectory().isOpen(c.env.DB, ward.wardId, projectId))) {
-    return reply(false, "そのプロジェクトには送れません。プロジェクトを選び直してください。", {}, 400);
+    return reply(false, ERROR_MESSAGE.no_project(""), {}, 400, "no_project");
   }
 
   const files = form.getAll("part").filter((v): v is File => typeof v !== "string" && v.size > 0);
@@ -187,7 +192,7 @@ intakeAdmin.post("/intake", async (c) => {
       try {
         parsed = JSON.parse(json);
       } catch {
-        return reply(false, ERROR_MESSAGE.needs_expansion(file.name), {}, 400);
+        return reply(false, ERROR_MESSAGE.needs_expansion(file.name), {}, 400, "needs_expansion");
       }
     }
     parts.push({
@@ -217,7 +222,7 @@ intakeAdmin.post("/intake", async (c) => {
     const dup = outcome.duplicates.length > 0 ? `（${outcome.duplicates.length} 件は同じ物でした）` : "";
     return reply(true, `${RECEIVED_MESSAGE}${dup}`, { jobId: outcome.jobId, duplicates: outcome.duplicates.length, ...nextPage });
   } catch (err) {
-    if (err instanceof ReceiveError) return reply(false, ERROR_MESSAGE[err.code](err.filename), {}, 400);
+    if (err instanceof ReceiveError) return reply(false, ERROR_MESSAGE[err.code](err.filename), {}, 400, err.code);
     throw err;
   }
 });
@@ -225,8 +230,7 @@ intakeAdmin.post("/intake", async (c) => {
 intakeAdmin.post("/intake/:jobId/withdraw", async (c) => {
   const { ward } = c.var;
   if (!(await withdrawJob(c.env, ward.wardId, c.req.param("jobId")))) {
-    const message = "取り下げられませんでした。消す時は区の設定の「消す求め」から対象を選んでください。";
-    return c.redirect(`${adminPath(ward, "/intake")}?error=${encodeURIComponent(message)}`, 303);
+    return c.redirect(`${adminPath(ward, "/intake")}?error=withdraw_failed`, 303);
   }
   return c.redirect(`${adminPath(ward, "/intake")}?n=withdrawn`, 303);
 });

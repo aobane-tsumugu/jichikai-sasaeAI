@@ -1,3 +1,4 @@
+import { formatDateText, formatJstDate } from "../core/time";
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
@@ -38,7 +39,7 @@ admin.get("/archive", async (c) => {
   return c.html(<Layout title="記録" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")} headerRight={<a href={adminPath(ward, "/projects")}>プロジェクト一覧</a>}>
     <h1>記録 <Hint text="閉じたプロジェクトの報告や地図を読みます。去年の記録を選ぶと、そこから来年の準備も始められます。" /></h1>
     <nav class="action-links"><a class="button secondary" href={adminPath(ward, "/archive/map")}>区の地図</a><a class="button secondary" href={adminPath(ward, "/archive/search")}>記録を探す</a></nav>
-    {[...byMonth.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([month, entries]) => <section><h2>{month}</h2>{entries.map((p) => <article class="panel">
+    {[...byMonth.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([month, entries]) => <section><h2>{month.replace(/^(\d{4})-(\d{2})$/, (_, year: string, month: string) => `${year}年${Number(month)}月`)}</h2>{entries.map((p) => <article class="panel">
       <h3><a href={adminPath(ward, `/archive/${p.projectId}`)}>{p.title}</a></h3><p>{p.year}年 / {PROJECT_KIND_LABEL[p.kind]}</p>
       <p><a href={adminPath(ward, `/archive/${p.projectId}`)}>地図と報告を開く</a></p>
     </article>)}</section>)}
@@ -62,10 +63,10 @@ admin.get("/archive/map", async (c) => {
     <h1>区の地図 <Hint text="区の仕事を月ごとに見ます。行事の名前から、その仕事の地図や閉じた後の記録を開けます。" /></h1>
     <p>プロジェクトの仕事を月ごとに並べています。去年の記録を開くと、その地図から次の年のプロジェクトを始められます。</p>
     {[...months.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([month, entries]) => <section>
-      <h2>{month}</h2>{entries.map((entry) => <article class="panel">
+      <h2>{month.replace(/^(\d{4})-(\d{2})$/, (_, year: string, month: string) => `${year}年${Number(month)}月`)}</h2>{entries.map((entry) => <article class="panel">
         <p>{entry.year}年 / {entry.closed_at ? "記録" : "進行中"}</p>
         <h3><a href={adminPath(ward, entry.closed_at ? `/archive/${entry.project_id}` : `/projects/${entry.project_id}/map`)}>{entry.title}</a></h3>
-        <p>{entry.name} / {entry.period_start ?? "時期未定"}{entry.period_end ? ` から ${entry.period_end}` : ""}</p>
+        <p>{entry.name} / {entry.period_start ? formatJstDate(entry.period_start) : "時期未定"}{entry.period_end ? ` から ${formatJstDate(entry.period_end)}` : ""}</p>
         {entry.closed_at ? <p><a href={adminPath(ward, `/archive/${entry.project_id}`)}>この地図を開き、次の年の種にする</a></p> : null}
       </article>)}</section>)}
     {rows.results.length === 0 ? <p>地図に載っているプロジェクトはありません。</p> : null}
@@ -184,13 +185,13 @@ admin.get("/archive/:projectId", async (c) => {
   }
   return c.html(<Layout title={`記録: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>{project.title} <Hint text="この仕事で残した地図や報告を読めます。次の年の準備を始める時は、下の「来年の種」を使ってください。" /></h1><p>{project.year}年に閉じたプロジェクト</p>
-    <h2>地図</h2>{map.results?.map((task) => <section class="panel"><h3>{task.name}</h3><p>{task.period} / {MAP_PROGRESS_LABEL[task.progress as MapProgress] ?? "これから"}</p>
+    <h2>地図</h2>{map.results?.map((task) => <section class="panel"><h3>{task.name}</h3><p>{formatDateText(task.period)} / {MAP_PROGRESS_LABEL[task.progress as MapProgress] ?? "これから"}</p>
       {task.requested_by ? <p>頼んだ人: {task.requested_by}</p> : null}{task.difficulty ? <p>困ったこと: {task.difficulty}</p> : null}{task.next_year ? <p>来年変えること: {task.next_year}</p> : null}</section>)}
     <h2>報告</h2>{reports.results?.map((report) => <section class="panel"><h3>{report.scope === "public" ? "公開する部分" : "役員だけの部分"}</h3><p style="white-space:pre-wrap">{report.body || "まだ記入されていません"}</p></section>)}
     <h2>配った物 <Hint text="配った時の本文を読み返せます。変更前の内容や、公開を下げた物も役員の記録として残っています。" /></h2>
     {documents.results.map((document) => <section class="panel">
       <h3>{document.title}</h3>
-      <p>{document.published_at.slice(0, 10)} / {document.scope === "public" ? "公開" : document.scope === "space" ? "実行委員と班長向け" : "役員向け"}{document.unpublished_at ? " / 公開を下げました" : ""}</p>
+      <p>{formatJstDate(document.published_at)} / {document.scope === "public" ? "公開" : document.scope === "space" ? "実行委員と班長向け" : "役員向け"}{document.unpublished_at ? " / 公開を下げました" : ""}</p>
       <ArticleBody body={document.body} />
       {document.scope === "space" && (document.kind === "duty_roster" || document.kind === "procedure") ? <>
         <h4>配った時の当番表と配置図</h4>
