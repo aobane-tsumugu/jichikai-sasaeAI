@@ -4,6 +4,7 @@ import { type AnswerLabels } from "../settings/answer-labels";
 import { EventDetails, ReceptionClosed, ResidentContact, residentContext } from "./resident";
 import { PrintDocument, Sheet } from "../print/a4";
 import { formatJstDate } from "../core/time";
+import { newId, nowIso } from "../core/ids";
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { Layout, Notice } from "../core/ui";
@@ -547,6 +548,11 @@ function isAnswerClosed(project: { closed_at: string | null; due_on: string | nu
   return project.closed_at !== null || (project.due_on !== null && project.due_on < today);
 }
 
+pub.use("/answer/*", async (c, next) => {
+  c.header("Cache-Control", "private, no-store");
+  await next();
+});
+
 function AnswerForm({ wardName, slug, projectId, title, squads, labels, selected = "", values = {}, error, choices = [] }: {
   wardName: string; slug: string; projectId: string; title: string; squads: string[]; labels: AnswerLabels;
   selected?: string; values?: Record<string, unknown>; error?: string; choices?: string[];
@@ -558,6 +564,7 @@ function AnswerForm({ wardName, slug, projectId, title, squads, labels, selected
     <h1>{title}の出欠を教えてください</h1><p class="lead">参加するかどうかを教えてください。答えがないときは、欠席として数えます。登録はいりません。</p>
     {error ? <Notice error>{error} 入れた人数は残っています。</Notice> : null}
     <form method="post" action={`/${slug}/answer/${encodeURIComponent(projectId)}${selected ? `?s=${encodeURIComponent(selected)}` : ""}`}>
+      <input type="hidden" name="submission_id" value={asString(values.submission_id) || newId()} />
       <label for="household">代表者のお名前</label><p class="muted">ふつうは世帯主の方のお名前です。ご家族のどなたが答えてもかまいません。例: 山田 太郎</p>
       <input id="household" name="household" type="text" maxlength={120} value={asString(values.household)} required />
       {selected ? <><dl class="facts"><dt>班</dt><dd>{selected}</dd></dl><details class="fold" open={!!error}><summary>班が違うときは選び直す</summary><div><DistrictSelect districts={squads} selected={district} /></div></details></>
@@ -592,7 +599,22 @@ pub.post("/answer/:projectId", async (c) => {
   const project = await answerProject(c.env.DB, c.var.ward.wardId, projectId);
   if (!project) return c.notFound();
   const context = await residentContext(c.env.DB, c.var.ward.wardId, projectId);
-  if (isAnswerClosed(project)) return c.html(<Layout title="答えの受付は終わりました" siteName={c.var.ward.name}><h1>答えの受付は終わりました</h1><ReceptionClosed closed={!!project.closed_at} due={project.due_on} /><ResidentContact contact={context.contact} /><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>案内を読む</a></Layout>, 400);
+  const wardId = c.var.ward.wardId;
+  const submissionId = asString(form.submission_id);
+  const received = (answer: AnswerRow | null) => c.html(<Layout title="答えを受け付けました" siteName={c.var.ward.name}>
+    <h1>答えを受け付けました</h1><p>ありがとうございました。この画面は閉じてかまいません。</p>
+    {answer ? <dl><dt>代表者</dt><dd>{answer.household}</dd><dt>班</dt><dd>{answer.district || "班が分からない"}</dd><dt>{answer.peopleCount === 0 ? "答え" : "人数"}</dt><dd>{countText(answer, context.labels)}</dd></dl> : null}
+    {answer && answer.peopleCount > 0 ? <section class="notice"><h2>次は</h2><EventDetails item={context.item} /><p>変更は案内で確かめられます。</p></section> : null}
+    <h2>間違えたときは</h2><p>もう一度送らず、下の連絡先にお知らせください。役員が直します。</p><ResidentContact contact={context.contact} />
+    <p class="link-line"><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>案内へ戻る</a></p>
+  </Layout>);
+  const closed = () => c.html(<Layout title="答えの受付は終わりました" siteName={c.var.ward.name}><h1>答えの受付は終わりました</h1><ReceptionClosed closed={!!project.closed_at} due={project.due_on} /><ResidentContact contact={context.contact} /><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>案内を読む</a></Layout>, 400);
+  const submission = () => c.env.DB.prepare("SELECT answer_id FROM project_answer_submissions WHERE ward_id = ? AND project_id = ? AND submission_id = ?")
+    .bind(wardId, projectId, submissionId).first<{ answer_id: string }>();
+  // 保存後の再読み込みは、締切後や役員の訂正・削除後も新しい答えにしない。
+  const previous = submissionId ? await submission() : null;
+  if (previous) return received(await getAnswer(c.env.DB, wardId, projectId, previous.answer_id));
+  if (isAnswerClosed(project)) return closed();
   const household = asString(form.household).trim();
   const district = asString(form.district).trim();
   const counts = parseAnswerCounts(form);
@@ -601,14 +623,27 @@ pub.post("/answer/:projectId", async (c) => {
   const squads = await getSquads(c.env.DB, c.var.ward.wardId);
   const error = !household ? "お名前が入っていません。お名前を入れて、もう一度送ってください。" : household.length > 120 || district.length > 80 || !counts || helperName.length > 120 || helperTimes.length > 240 ? "入力を確認してください。お名前と人数を書き直してください。" : district && squads.length && !squads.includes(district) ? "班を選び直してください。分からないときは「分からない」を選べます。" : "";
   if (error) return c.html(<AnswerForm wardName={c.var.ward.name} slug={c.var.ward.slug} projectId={projectId} title={project.title} squads={squads} labels={context.labels} selected={squads.includes(c.req.query("s") ?? "") ? c.req.query("s") : ""} values={form} error={error} choices={helpTimeChoices(context.documents.find((document) => document.kind === "recruitment")?.body ?? "")} />, 400);
-  await addAnswer(c.env.DB, c.var.ward.wardId, { projectId, household, district, ...counts!, helperName, helperTimes, source: "web" });
-  return c.html(<Layout title="答えを受け付けました" siteName={c.var.ward.name}>
-    <h1>答えを受け付けました</h1><p>ありがとうございました。この画面は閉じてかまいません。</p>
-    <dl><dt>代表者</dt><dd>{household}</dd><dt>班</dt><dd>{district || "班が分からない"}</dd><dt>{counts!.peopleCount === 0 ? "答え" : "人数"}</dt><dd>{countText(counts!, context.labels)}</dd></dl>
-    {counts!.peopleCount > 0 ? <section class="notice"><h2>次は</h2><EventDetails item={context.item} /><p>変更は案内で確かめられます。</p></section> : null}
-    <h2>間違えたときは</h2><p>もう一度送らず、下の連絡先にお知らせください。役員が直します。</p><ResidentContact contact={context.contact} />
-    <p class="link-line"><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>案内へ戻る</a></p>
-  </Layout>);
+  if (!submissionId) {
+    // 既に開いている旧画面からの答えも受け付ける。
+    const id = await addAnswer(c.env.DB, wardId, { projectId, household, district, ...counts!, helperName, helperTimes, source: "web" });
+    return received(await getAnswer(c.env.DB, wardId, projectId, id));
+  }
+  const answerId = newId();
+  // 答えと処理済みの番号を同じ書き込みで残す。同時の再送も別の答えにしない。
+  await c.env.DB.batch([
+    c.env.DB.prepare(`INSERT INTO project_answers
+      (answer_id, ward_id, project_id, household, district, people_count, children_count, adults_count, seniors_count, helper_name, helper_times, source, created_at)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'web', ?
+      WHERE EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL)
+        AND NOT EXISTS (SELECT 1 FROM project_answer_submissions WHERE ward_id = ? AND project_id = ? AND submission_id = ?)`)
+      .bind(answerId, wardId, projectId, household, district, counts!.peopleCount, counts!.childrenCount ?? null,
+        counts!.adultsCount ?? null, counts!.seniorsCount ?? null, helperName, helperTimes, nowIso(), wardId, projectId, wardId, projectId, submissionId),
+    c.env.DB.prepare(`INSERT INTO project_answer_submissions (ward_id, project_id, submission_id, answer_id)
+      SELECT ward_id, project_id, ?, answer_id FROM project_answers WHERE ward_id = ? AND project_id = ? AND answer_id = ?`)
+      .bind(submissionId, wardId, projectId, answerId),
+  ]);
+  const saved = await submission();
+  return saved ? received(await getAnswer(c.env.DB, wardId, projectId, saved.answer_id)) : closed();
 });
 
 function DistrictSelect({ districts, selected = "" }: { districts: string[]; selected?: string }) {
