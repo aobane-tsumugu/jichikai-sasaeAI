@@ -187,9 +187,11 @@
 
 ## 日次の写しから戻す
 
-写しはDAILYのCronで毎日作られます。区ごとに `snapshots/daily/YYYY-MM-DD.json` へ保存され、元の資料や配布記録などの正本を含みます。読み取り結果、実行記録、検索用の索引など、元の情報から作り直せる内容は含みません。元の資料ファイル本体は写しのJSONではなく、同じ区のR2にある元の資料のままです。
+写しはDAILYのCronで毎日作られます。区ごとに`snapshots/daily/YYYY-MM-DD.json`へ保存されます。元の資料の所在、読み取った内容、実行記録、実行委員名簿を含む表、配布記録、紙の番号、記録を探すための情報も含みます。全文索引の本体と、写真を当てる間だけ使う前後の文は含みません。元の資料ファイル本体はJSONではなく、同じ区のR2にある元の資料のままです。
 
-SQL変換は、前年から始めた行事や変更記録を持つ項目、相互に参照する役員の記録を含め、架空の写しを空のSQLiteへ復元する試験で確認しています。実際のD1への適用と、元の資料ファイルのR2への復旧は未確認です。これらの実機確認と適用はPMが担当します。
+提供側への問い合わせは、区の一覧とは別に`provider-contacts/snapshots/daily/YYYY-MM-DD.json`へ保存されます。受付・本文・連続送信の記録が入ります。区のJSONと同じ道具でSQLに変換できます。問い合わせを戻すときはこちらのJSONを使います。
+
+以下の実機操作と適用はPMが担当します。保存対象の全表に架空の記録を持つ写しをローカルSQLiteへ戻し、行と参照が保たれることを確認しています。ローカルD1でも、日次の写しから役員画面、実行委員名簿、答え、元の資料、問い合わせ、紙の番号を読み、全文索引を作り直す試験を通しています。本物のD1への適用とR2からの復旧は未確認です。
 
 1. 戻し先のD1とR2を用意し、現在の `migrations/` を適用します。区のデータが空であることを確かめます。既存データへそのまま流すと重複や衝突になります。
 2. 使う区のIDと日付を選び、次の形でR2からJSONを取得します。`<ward-id>` と日付は実値に置き換えます。
@@ -208,12 +210,23 @@ SQL変換は、前年から始めた行事や変更記録を持つ項目、相�
 4. 新しい空のデータベースへ実行します。
 
    ```powershell
-   npx wrangler d1 execute jichikai-sasae-staging --remote --file .\ward-restore.sql
+   npx wrangler d1 execute <restore-database> --remote --file .\ward-restore.sql
    ```
 
-5. 件数と代表的な行事、役員アカウント、公開記録を確認します。別のD1に戻す場合は、その区の元の資料R2も同じ区IDのキーを保って復元してください。元の資料の写しも必要な場合は `originals` 表の `r2_path` を参照し、対象キーだけを同じ `WardBucket` の区内に戻します。
+   `<restore-database>`は手順1で用意した空の戻し先のD1名へ置き換えます。
+5. 元の資料R2を、同じ区IDのキーを保って戻します。`originals`表の`r2_path`を参照し、対象キーを同じ区内に戻します。提供側の問い合わせの添付写真は`provider_contact_messages.photo_key`を参照し、`provider-contacts`の区画に戻します。SQLにファイル本体は入っていません。
+6. 戻した役員の入り方で入り、行事、名簿、答え、元の資料、配った記録を開きます。既に配った紙の番号の指す先を確かめます。提供側の受付を戻した場合は、やりとりの画面で本文を読めることも確認します。パスワードや専用の入口は確認記録へ写しません。
 
-復元したあとに `readings`、実行記録、検索索引は空です。検索索引は記録の再構築処理で作り直します。日次写しと復元は、この作業区ではまだ実機で確認していません。
+読み取った内容や実行記録も戻ります。全文索引は、戻した`archive_search_entries`から自動で作られます。あとから索引を作り直す必要があるときは、`<ward-id>`を戻した区IDに置き換え、戻し先のD1で次を実行します。ほかの区の索引は消しません。
+
+```sql
+DELETE FROM archive_search_fts
+WHERE rowid IN (SELECT entry_id FROM archive_search_entries WHERE ward_id = '<ward-id>');
+INSERT INTO archive_search_fts (rowid, content)
+SELECT entry_id, content FROM archive_search_entries WHERE ward_id = '<ward-id>';
+```
+
+道具の試験は`node --test scripts/snapshot-to-sql.test.mjs`、役員画面までの復元試験は`npx vitest run test/snapshot-restore-flow.test.ts`です。どちらも架空の記録とローカルDBを使い、本物のD1には流しません。
 
 画面の確かめ: `npm run check-screens -- --base <URL> --ward <区のURLの名前> --creds <資格情報のファイル> --out <フォルダ>`（資格情報は`screens`と同じ「名前:」「パスワード:」の形式）。
 `--project <行事のID>`を省くと開いている行事を一つ選び、同じ区の読むだけの画面を最大200まで幅390pxと1280pxで確認します。ログインのPOST一回による端末の記録を除き、GETだけを使います。

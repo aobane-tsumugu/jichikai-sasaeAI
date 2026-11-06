@@ -1,4 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 function sqlValue(value, table) {
   if (value === null) return "NULL";
@@ -19,6 +21,7 @@ const SELF_REFERENCES = {
 const TABLE_PARENTS = {
   accounts: ["seats"],
   devices: ["accounts"], sign_in_methods: ["accounts"], sign_in_links: ["accounts"],
+  provider_contact_messages: ["provider_contacts"],
   ward_settings: ["accounts"], projects: ["accounts"], jobs: ["accounts"],
   originals: ["jobs"], readings: ["jobs", "projects"], job_runs: ["jobs"], job_tool_calls: ["jobs"],
   paper_reading_slices: ["jobs"], intake_photo_checks: ["originals", "jobs"],
@@ -32,6 +35,7 @@ const TABLE_PARENTS = {
   project_activity_pages: ["projects", "accounts"], inquiry_records: ["accounts"],
   city_request_details: ["projects", "accounts"], ward_annual_budgets: ["accounts"],
   project_answers: ["projects", "accounts"], project_help_offers: ["projects"],
+  project_answer_submissions: ["projects"],
   project_spaces: ["projects", "accounts"], project_space_invites: ["projects", "accounts"],
   project_space_members: ["projects"], line_photo_items: ["line_photo_batches", "jobs"],
   line_clarifications: ["line_photo_batches", "jobs", "originals", "project_questions"],
@@ -42,12 +46,8 @@ const TABLE_PARENTS = {
   archive_search_entries: ["projects", "readings"],
 };
 
-const [inputPath, outputPath] = process.argv.slice(2);
-if (!inputPath || !outputPath) {
-  console.error("使い方: node scripts/snapshot-to-sql.mjs <写し.json> <復元.sql>");
-  process.exitCode = 2;
-} else {
-  const snapshot = JSON.parse(readFileSync(inputPath, "utf8"));
+/** CLIとローカルの復元試験で同じ変換を使う。ここではDBやファイルへ書かない。 */
+export function snapshotToSql(snapshot) {
   if (snapshot.format !== 1 || typeof snapshot.wardId !== "string" || typeof snapshot.tables !== "object" || snapshot.tables === null) {
     throw new Error("写しの形式が合いません。");
   }
@@ -90,6 +90,17 @@ if (!inputPath || !outputPath) {
       }
     }
   }
-  writeFileSync(outputPath, `${[...statements, ...referenceUpdates].join("\n")}\n`, { encoding: "utf8" });
-  console.log(`${statements.length}件の復元用の文と${referenceUpdates.length}件の参照などを戻すUPDATE文を出力しました。空のD1にだけ実行してください。`);
+  return { sql: `${[...statements, ...referenceUpdates].join("\n")}\n`, statements: statements.length, referenceUpdates: referenceUpdates.length };
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  const [inputPath, outputPath] = process.argv.slice(2);
+  if (!inputPath || !outputPath) {
+    console.error("使い方: node scripts/snapshot-to-sql.mjs <写し.json> <復元.sql>");
+    process.exitCode = 2;
+  } else {
+    const converted = snapshotToSql(JSON.parse(readFileSync(inputPath, "utf8")));
+    writeFileSync(outputPath, converted.sql, { encoding: "utf8" });
+    console.log(`${converted.statements}件の復元用の文と${converted.referenceUpdates}件の参照などを戻すUPDATE文を出力しました。空のD1にだけ実行してください。`);
+  }
 }

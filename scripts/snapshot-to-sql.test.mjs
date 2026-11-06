@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { providerSnapshotRecords, snapshotRecords } from "../test/fixtures/snapshot-records.ts";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 // 日次の書き手と同じ表・SELECTの順を使い、復元側の並べ方には依存しない。
@@ -60,16 +61,17 @@ function roundTrip(t, data) {
   assert.deepEqual(restored.prepare("PRAGMA foreign_key_check").all(), []);
   for (const [table, rows] of Object.entries(data.tables)) {
     const canonical = (entries) => entries.map((row) => JSON.stringify(row)).sort();
-    assert.deepEqual(canonical(restored.prepare(`SELECT * FROM ${table} WHERE ward_id = ?`).all(wardId)), canonical(rows), table);
+    assert.deepEqual(canonical(restored.prepare(`SELECT * FROM ${table} WHERE ward_id = ?`).all(data.wardId)), canonical(rows), table);
   }
 }
 
-test("前年の記録をもとに始めた行事を、日次の行順のまま戻せる", (t) => {
+test("前年の記録をもとに始めた行事を、新しい行事が先にあっても戻せる", (t) => {
   const db = fixture(t);
   project(db, "z-oldest", 2024);
   project(db, "m-previous", 2025, "z-oldest");
   project(db, "a-current", 2026, "m-previous");
   const data = snapshot(db);
+  data.tables.projects.sort((a, b) => a.project_id.localeCompare(b.project_id));
   assert.equal(data.tables.projects[0].project_id, "a-current");
   roundTrip(t, data);
 });
@@ -120,4 +122,32 @@ test("別の区の行を含む写しではSQLを出力しない", (t) => {
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /別の区の行/);
   assert.throws(() => readFileSync(output), { code: "ENOENT" });
+});
+
+function insertRecords(db, records) {
+  for (const { table, data } of records) {
+    const columns = Object.keys(data);
+    db.prepare(`INSERT INTO ${table} (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`).run(...Object.values(data));
+  }
+}
+
+test("全ての保存対象に記録を持つ区を、紙番号・実行委員名簿・総会の委任を保って戻す", (t) => {
+  const db = fixture(t);
+  project(db, "fixture-project", 2026);
+  insertRecords(db, snapshotRecords(wardId, "fixture-project", "z-creator"));
+  const data = snapshot(db);
+  const providerTables = new Set(providerSnapshotRecords().map((record) => record.table));
+  for (const [table, rows] of Object.entries(data.tables)) {
+    if (!providerTables.has(table)) assert.ok(rows.length > 0, `${table}の記録が試験にありません`);
+  }
+  data.tables = Object.fromEntries(Object.entries(data.tables).reverse());
+  roundTrip(t, data);
+});
+
+test("提供側の受付の写しを、実在する区が無くても本文と一緒に戻す", (t) => {
+  const db = database(t);
+  insertRecords(db, providerSnapshotRecords());
+  const data = { format: 1, wardId: "provider-contacts", tables: Object.fromEntries(
+    [...providerSnapshotRecords()].reverse().map(({ table }) => [table, db.prepare(`SELECT * FROM ${table}`).all()])) };
+  roundTrip(t, data);
 });
