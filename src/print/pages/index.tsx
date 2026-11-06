@@ -150,7 +150,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   const kind = (c.req.method === "POST" ? "leader" : c.req.param("kind")) as PrintKind;
   const versionNo = Number(c.req.param("versionNo"));
   if (!printKinds.includes(kind) || !Number.isInteger(versionNo)) return c.notFound();
-  const row = await c.env.DB.prepare(`SELECT p.project_id, p.title, p.kind AS project_kind, p.closed_at, d.document_id, COALESCE(v.title, d.title) AS document_title,
+  const row = await c.env.DB.prepare(`SELECT p.project_id, COALESCE(v.project_title, p.title) AS title, p.kind AS project_kind, p.closed_at, d.document_id, COALESCE(v.title, d.title) AS document_title,
       v.version_id, v.version_no, v.body, d.kind, v.scope, v.tables_snapshot,
       COALESCE(r.published_at, v.published_at) AS published_at, r.distribution
     FROM document_versions v JOIN projects p ON p.ward_id = v.ward_id AND p.project_id = v.project_id

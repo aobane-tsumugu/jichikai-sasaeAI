@@ -136,9 +136,16 @@ export function saveCommitteeRow(db: D1Database, wardId: string, projectId: stri
 export async function renameProject(db: D1Database, wardId: string, projectId: string, title: string): Promise<boolean> {
   const value = title.trim();
   if (!value || value.length > 100) return false;
-  const r = await db.prepare("UPDATE projects SET title = ?, state_version = state_version + 1 WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL")
-    .bind(value, wardId, projectId).run();
-  return (r.meta.changes ?? 0) > 0;
+  const results = await db.batch([
+    // 古い配布記録や写しには題が無い。名前を変える前の題を一度だけ残す。
+    db.prepare(`UPDATE document_versions SET project_title = (SELECT title FROM projects WHERE ward_id = ? AND project_id = ?)
+      WHERE ward_id = ? AND project_id = ? AND published_at IS NOT NULL AND project_title IS NULL
+        AND EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL)`)
+      .bind(wardId, projectId, wardId, projectId, wardId, projectId),
+    db.prepare("UPDATE projects SET title = ?, state_version = state_version + 1 WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL")
+      .bind(value, wardId, projectId),
+  ]);
+  return (results[1]?.meta.changes ?? 0) > 0;
 }
 
 export async function answerQuestion(db: D1Database, wardId: string, projectId: string, questionId: string, action: "answer" | "unknown" | "later", answer: string, accountId: string): Promise<boolean> {
