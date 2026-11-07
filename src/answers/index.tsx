@@ -319,7 +319,7 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
   return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title={title}
     back={view === "summary" ? { href: adminPath(c.var.ward.slug, `/projects/${projectId}/map`), label: `← ${project.title}の段取りへ` } : back}>
     <h1 class={view === "summary" || view === "list" || view === "helpers" ? "answers-wide" : undefined}>{title}</h1>
-    {closed ? <Notice>この行事は閉じました。答えを直すときは<a href={adminPath(c.var.ward.slug, `/close/${projectId}`)}>閉じた画面から、もう一度開いてください</a>。</Notice> : null}
+    {closed ? <Notice>この行事は閉じました。答えを直すときは<a class="quiet" href={adminPath(c.var.ward.slug, `/close/${projectId}`)}>閉じた画面から、もう一度開いてください</a>。</Notice> : null}
     {view === "summary" ? <>
       <p class="lead">{answers.length ? "紙、電話、スマホの答えを合わせた数です。" : ""}{deadline ? `答えの締切は${formatJstDate(deadline)}です。` : "答えの締切はまだ決まっていません。"}</p>
       {!answers.length ? <div class="notice"><strong>まだ答えはありません</strong><p>紙、電話、スマホの答えが、ここに集まります。</p></div> : null}
