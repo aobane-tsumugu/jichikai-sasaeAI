@@ -401,6 +401,9 @@ function report(options: Options, results: Result[], project: string, capped: bo
     ...basicOnly.map((path) => `- 主なボタンの位置・数は未判定: ${cell(path)}`), "",
     "| 画面のURL | 幅 | 落ちた項目 | 場所と内容 |", "|---|---:|---|---|",
     ...results.flatMap((row) => row.failures.map((failure) => `| ${cell(row.path)} | ${cell(row.width)} | ${cell(failure.item)} | ${cell(failure.detail)} |`)), "",
+    // 前の回と比べて、どこからも届かなくなった画面を見つけるために、確かめた画面を並べる。ID は形だけにする。
+    "", "## 確かめた画面", "",
+    ...paths.map((path) => `- ${cell(path.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, "<id>"))}`).sort(),
   ];
   mkdirSync(resolve(options.out), { recursive: true });
   writeFileSync(resolve(options.out, "report.md"), lines.join("\n"), "utf8");
