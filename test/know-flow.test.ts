@@ -1,3 +1,4 @@
+import { redirectedTalkPage } from "./fixtures/line-u83-page";
 import { env } from "cloudflare:workers";
 import { expect, it } from "vitest";
 import { fictionalPaperPhoto } from "../fixtures/test-photo";
@@ -101,19 +102,20 @@ it("行き先のない写真は聞かずに自治会の資料へ残し、名簿�
   };
   await photo(1, "other");
   const rosterJob = await photo(2, "roster");
-  const inbox = await read(`${root}/inbox`, cookie);
-  expect(inbox).toContain("AIからの質問があります（1件）");
+  const list = await read(`${root}/inbox`, cookie);
+  expect(list).toContain("名前の分からない人");
+  const inbox = await redirectedTalkPage(`${root}/inbox/item-1/pick`, cookie);
   expect(inbox).toContain("この資料で、世帯の名簿を入れ直しますか？");
-  expect(inbox).toContain("まだどれの資料にもしていません");
+  expect(inbox).toContain("自治会の資料にしました。");
   expect(inbox).toContain("架空の紙1");
   expect(await read(`${root}/`, cookie)).toContain("届いた写真やファイルのうち1件は、どれの資料かをAIが決められませんでした");
   expect(await read(`${root}/files`, cookie)).toContain("架空の紙1");
   await postForm(realApp, `${root}/inbox/roster/${rosterJob}/skip`, {}, cookie);
-  const after = await read(`${root}/inbox`, cookie);
+  const after = await redirectedTalkPage(`${root}/inbox/item-1/pick`, cookie);
   expect(after).not.toContain("この資料で、世帯の名簿を入れ直しますか？");
   expect(after).toContain("架空の紙2");
-  const pick = await read(`${root}/inbox/item-1/pick`, cookie);
-  expect(pick).toContain("自治会の基本情報につなげる");
+  const pick = await redirectedTalkPage(`${root}/inbox/item-1/pick`, cookie);
+  expect(pick).toContain("自治会の基本情報にするとき");
   expect(pick).toContain("総会");
 });
 
@@ -207,17 +209,18 @@ it("紙は行事から外して自治会の資料だけに置け、移しても�
   const second = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の秋祭り", year: 2026, accountId: account.accountId });
   const got = await receive(env, { wardId: ward.wardId, projectId: first.projectId, via: "admin", parts: [{ kind: "photo", filename: "架空の紙.jpg", mediaType: "image/jpeg", bytes: new Uint8Array(fictionalPaperPhoto()) }] });
   await env.DB.prepare("UPDATE jobs SET status = 'done' WHERE ward_id = ? AND job_id = ?").bind(ward.wardId, got.jobId).run();
-  const pick = await read(`${root}/inbox/city/${got.jobId}/pick`, cookie);
-  expect(pick).toContain("の資料から外す");
+  const pick = await redirectedTalkPage(`${root}/inbox/city/${got.jobId}/pick`, cookie);
+  expect(pick).toContain("どうするか");
+  expect(pick).toContain("自治会の資料");
   const moved = await postForm(realApp, `${root}/inbox/city/${got.jobId}`, { operation: "assign", projectId: second.projectId }, cookie);
   const movedPage = await read(moved.headers.get("location")!, cookie);
   expect(movedPage).toContain("架空の秋祭りの資料にしました");
-  expect(movedPage).toContain("架空の夏祭りの下書きに、ここから入った内容が残っていることがあります");
+  expect(movedPage).toContain("すでに下書きに入った内容は残ることがあります");
   // 繋いでいる間は動かせない。繋ぎ終わった後に外す。
   await env.DB.prepare("UPDATE jobs SET status = 'done' WHERE ward_id = ? AND job_id = ?").bind(ward.wardId, got.jobId).run();
   const detached = await postForm(realApp, `${root}/inbox/city/${got.jobId}`, { operation: "detach" }, cookie);
   const detachedPage = await read(detached.headers.get("location")!, cookie);
-  expect(detachedPage).toContain("「架空の秋祭り」の資料から外しました。「自治会の資料」に残っています。");
+  expect(detachedPage).toContain("自治会の資料にしました。");
   expect((await env.DB.prepare("SELECT project_id FROM jobs WHERE ward_id = ? AND job_id = ?").bind(ward.wardId, got.jobId).first<{ project_id: string | null }>())?.project_id).toBeNull();
   expect(await read(`${root}/files`, cookie)).toContain("架空の紙.jpg");
   await applyWardReading(env.DB, ward.wardId, { document_kind: "year_plan", original_years: [], summary: "", text_blocks: [], fields: [], tables: [], decisions: [], unreadable: [], ward_facts: [], year_entries: [{ original_id: got.received[0]!.originalId, title: "架空の読み違えた行事", month: 7, date_text: "" }] } as never);

@@ -1,3 +1,4 @@
+import { redirectedTalkPage } from "./fixtures/line-u83-page";
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "cloudflare:workers";
 import { expect, it, vi } from "vitest";
@@ -171,8 +172,8 @@ it("U82: 役員の参考は原本と読み取りを残し、今年の日時・�
       .bind(s.ward.wardId, received.original.original_id).first()).toBeNull();
     expect((await listClarifications(env.DB, s.ward.wardId))).toHaveLength(0);
     expect(s.prompts.some((prompt) => prompt.includes("指定された役員グループ") && prompt.includes("こんなデザインで作りたい"))).toBe(true);
-    const html = await (await get(realApp, `/${s.ward.slug}/admin/inbox/${received.item_id}/pick`, s.cookie, s.runtime)).text();
-    expect(html).toContain("参考資料として残しました。");
+    const html = await redirectedTalkPage(`/${s.ward.slug}/admin/inbox/${received.item_id}/pick`, s.cookie, s.runtime);
+    expect(html).toContain("架空の秋の集まりの参考にしました。");
   } finally { s.cleanup(); }
 });
 
@@ -182,7 +183,7 @@ it("U82: 一対一の知らせてほしいは写真付きの問い合わせの�
     const received = await s.photo(await s.send(null, "user"));
     await s.send("住民に知らせてほしい", "user");
     await s.settle();
-    expect(await getBundleDecision(env.DB, s.ward.wardId, received.bundle_id)).toBeNull();
+    expect(await getBundleDecision(env.DB, s.ward.wardId, received.bundle_id)).toMatchObject({ action: "inquiry", decided_by: "ai" });
     const inquiries = await env.DB.prepare("SELECT subject FROM inquiry_records WHERE ward_id = ? AND line_bundle_id = ?")
       .bind(s.ward.wardId, received.bundle_id).all<{ subject: string }>();
     expect(inquiries.results).toEqual([{ subject: "住民に知らせてほしい" }]);

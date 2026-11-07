@@ -26,6 +26,10 @@ export function snapshotRecords(wardId: string, projectId: string, accountId: st
     row("ward_year_items", { item_id: id("year-item"), title: "架空の清掃", month: 11, date_text: "11月", added: 1, source_original_id: id("original") }),
     // 閲覧を確かめる資料とは別に、写しから除く消去待ちの資料を持たせる。
     row("jobs", { job_id: id("deleted-job"), project_id: null, via: "admin", account_id: accountId, status: "done", created_at: stamp, updated_at: stamp, read_at: stamp }),
+    row("line_talk_admin_topics", { job_id: id("job"), bundle_id: id("admin-bundle") }),
+    row("line_talk_admin_topics", { job_id: id("deleted-job"), bundle_id: id("deleted-admin-bundle") }),
+    row("line_talk_inquiry_posts", { event_id: id("inquiry-event"), bundle_id: id("inquiry-bundle"), destination: id("destination"),
+      source_type: "user", source_id: id("sender"), sender_id: id("sender"), received_at: stamp, text: "架空の問い合わせの元の文" }),
     row("originals", { original_id: id("deleted-original"), job_id: id("deleted-job"), position: 1, kind: "text", content_hash: id("deleted-content-hash"), media_type: "text/plain", byte_size: 0,
       filename: "架空の消去待ち.txt", r2_path: `originals/${id("deleted-original")}`, received_at: stamp }),
     row("readings", { reading_id: id("reading"), job_id: id("job"), source: "direct", pack_version: "fixture-restore@1", body: reading, created_at: stamp }),

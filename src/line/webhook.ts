@@ -311,6 +311,11 @@ export async function acceptLineWebhook(
           await db.prepare("UPDATE inquiry_records SET line_replied_at = ? WHERE ward_id = ? AND line_bundle_id = ?")
             .bind(now.toISOString(), wardId, bundleId).run();
         } catch { /* 到達不明でも重ねて送らない。問い合わせは残す。 */ }
+        await db.prepare(`INSERT OR IGNORE INTO line_talk_inquiry_posts
+          (ward_id, event_id, bundle_id, destination, source_type, source_id, sender_id, sender_name, received_at, text)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          .bind(wardId, eventId, bundleId, payload.destination!, source.type, source.id, original.senderId,
+            original.senderDisplayName ?? null, original.receivedAt, original.text ?? "").run();
         continue;
       }
       const jobId = await ports.receiveOriginal(wardId, original);

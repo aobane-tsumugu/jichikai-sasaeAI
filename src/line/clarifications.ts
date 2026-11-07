@@ -15,7 +15,8 @@ import { createLineIntakePorts, refreshLineBundleInquiry, removeLineInquiryYearI
 async function batchIsInquiry(db: D1Database, wardId: string, batchId: string): Promise<boolean> {
   return Boolean(await db.prepare(`SELECT 1 FROM line_photo_items p JOIN line_inbox_items i
     ON i.ward_id = p.ward_id AND i.job_id = p.job_id JOIN inquiry_records q
-    ON q.ward_id = i.ward_id AND q.line_bundle_id = i.bundle_id WHERE p.ward_id = ? AND p.batch_id = ? LIMIT 1`)
+    ON q.ward_id = i.ward_id AND q.line_bundle_id = i.bundle_id WHERE p.ward_id = ? AND p.batch_id = ?
+    AND NOT EXISTS (SELECT 1 FROM line_bundle_decisions d WHERE d.ward_id = i.ward_id AND d.bundle_id = i.bundle_id AND d.action <> 'inquiry') LIMIT 1`)
     .bind(wardId, batchId).first());
 }
 
@@ -92,7 +93,8 @@ export async function listClarifications(db: D1Database, wardId: string, batchId
     JOIN jobs j ON j.ward_id = c.ward_id AND j.job_id = c.job_id
     WHERE c.ward_id = ? AND j.withdrawn_at IS NULL
     AND NOT EXISTS (SELECT 1 FROM line_inbox_items i JOIN inquiry_records q ON q.ward_id = i.ward_id AND q.line_bundle_id = i.bundle_id
-      WHERE i.ward_id = c.ward_id AND i.job_id = c.job_id)
+      WHERE i.ward_id = c.ward_id AND i.job_id = c.job_id AND NOT EXISTS (SELECT 1 FROM line_bundle_decisions d
+        WHERE d.ward_id = i.ward_id AND d.bundle_id = i.bundle_id AND d.action <> 'inquiry'))
     ${batchId ? "AND c.batch_id = ?" : ""} ORDER BY j.created_at, c.original_id, CASE c.topic WHEN 'unreadable' THEN 0 WHEN 'year' THEN 1 ELSE 2 END, c.clarification_id`)
     .bind(...(batchId ? [wardId, batchId] : [wardId])).all<Omit<ClarificationRow, "options"> & { options: string }>();
   return result.results.map((row) => ({ ...row, options: JSON.parse(row.options) as string[] }));

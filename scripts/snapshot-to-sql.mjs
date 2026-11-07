@@ -39,6 +39,7 @@ const TABLE_PARENTS = {
   project_answer_submissions: ["projects"],
   project_spaces: ["projects", "accounts"], project_space_invites: ["projects", "accounts"],
   project_space_members: ["projects"], line_photo_items: ["line_photo_batches", "jobs"],
+  line_talk_admin_topics: ["jobs"],
   line_clarifications: ["line_photo_batches", "jobs", "originals", "project_questions"],
   line_clarification_answers: ["line_clarifications", "jobs"], line_photo_sources: ["projects"],
   project_close_map: ["projects", "project_map_tasks", "accounts"],
