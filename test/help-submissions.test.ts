@@ -134,3 +134,34 @@ it("締切後も保存済みの受付結果へ戻し、新規申し込みと閉�
   expect(await closed.text()).not.toContain(input.helper_name);
   expect(await listHelpOffers(env.DB, ward.wardId, project.projectId)).toHaveLength(0);
 });
+
+it("役員が入れた手伝いも締切後の再送で元の保存結果へ戻り、取り消した申し込みは復活させない", async () => {
+  const { ward, account, cookie, project } = await fixture();
+  const root = `/${ward.slug}/admin/answers/${project.projectId}/help`;
+  const form = { ...input, submission_id: number(await (await get(realApp, root, cookie)).text()) };
+  const first = await postForm(realApp, root, form, cookie);
+  expect(first.status).toBe(303);
+  const location = first.headers.get("location");
+  if (!location) throw new Error("架空の申し込みの保存結果がありません。");
+  const saved = await listHelpOffers(env.DB, ward.wardId, project.projectId);
+  expect(saved).toHaveLength(1);
+
+  await setAnswerDeadline(env.DB, ward.wardId, project.projectId, "2000-01-01", account.accountId);
+  for (const values of [form, { ...form, helper_name: "", helper_times: "" }]) {
+    const replay = await postForm(realApp, root, values, cookie);
+    expect(replay.status).toBe(303);
+    expect(replay.headers.get("location")).toBe(location);
+    const receipt = await get(realApp, replay.headers.get("location")!, cookie);
+    expect(receipt.status).toBe(200);
+    const html = await receipt.text();
+    expect(html).toContain(input.helper_name);
+    expect(html).toContain(input.helper_times);
+  }
+  expect(await listHelpOffers(env.DB, ward.wardId, project.projectId)).toEqual(saved);
+  expect((await postForm(realApp, root, { ...form, submission_id: crypto.randomUUID() }, cookie)).status).toBe(409);
+  expect(await listHelpOffers(env.DB, ward.wardId, project.projectId)).toEqual(saved);
+
+  expect((await postForm(realApp, `${root}/${saved[0]!.offerId}/cancel`, {}, cookie)).status).toBe(200);
+  expect((await postForm(realApp, root, form, cookie)).status).toBe(409);
+  expect(await listHelpOffers(env.DB, ward.wardId, project.projectId)).toHaveLength(0);
+});

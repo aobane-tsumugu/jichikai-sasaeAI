@@ -5,7 +5,7 @@ import { adminPath } from "../core/auth";
 import { newId } from "../core/ids";
 import { Notice } from "../core/ui";
 import {
-  addHelpOffer, cancelHelpOffer, getHelpOffer, helpTimeChoices, listHelpOpportunities,
+  addHelpOffer, cancelHelpOffer, getHelpOffer, getHelpOfferBySubmission, helpTimeChoices, listHelpOpportunities,
   restoreHelpOffer, updateHelpOffer, type HelpOpportunity,
 } from "./help";
 
@@ -56,6 +56,8 @@ export function installHelpAdminRoutes(admin: Hono<AdminEnv>) {
     const name = str(form.helper_name).trim();
     const times = str(form.helper_times).trim();
     const submissionId = str(form.submission_id) || newId();
+    const previous = await getHelpOfferBySubmission(c.env.DB, ward.wardId, projectId, submissionId);
+    if (previous) return c.redirect(`${root}/help/${encodeURIComponent(previous.offerId)}?done=added`, 303);
     const [opportunity] = await listHelpOpportunities(c.env.DB, ward.wardId, projectId);
     if (!opportunity) return adminResult(c, "手伝いの受付は終わりました。", 409, { href: `${root}?view=helpers`, label: "手伝いの一覧へ" }, "募集と締切を確かめてください。");
     const choices = helpTimeChoices(opportunity.body);
