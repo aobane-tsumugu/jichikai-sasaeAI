@@ -16,6 +16,7 @@ import { WardBucket } from "../core/storage";
 import { recordLineInquiry } from "../project/followup";
 import { newId } from "../core/ids";
 import { lineBundleContents, lineBundlePhotoSummaries } from "./photo-context";
+import { bundleAction, saveAiBundleDecision, isOfficerSource, getBundleDecision } from "./bundle-decisions";
 
 /** 当てるAIが出欠の答えと判断した文から、人数を読む。 */
 export const LINE_ANSWER_PACK = { version: "line-answer@2", notAttending: /参加しません|参加しない|不参加|欠席/ } as const;
@@ -31,6 +32,7 @@ export interface LineOriginal {
   bytes?: ArrayBuffer;
   contentType?: string;
   officialAddressed?: boolean;
+  officerGroup?: boolean;
   aiLimitReason?: "monthly" | "sender";
   bundleId?: string;
   photoSummaries?: string[];
@@ -69,6 +71,7 @@ export async function resumeLimitedLineText(env: Env, wardId: string, jobId: str
   const original: LineOriginal = { eventId: item.event_id, senderId: item.sender_id, senderDisplayName: item.sender_display_name,
     sourceType: item.source_type, receivedAt: item.received_at, kind: "text", text: await object.text(), officialAddressed: item.official_addressed === 1,
     ...(item.bundle_id ? { bundleId: item.bundle_id, photoSummaries: await lineBundlePhotoSummaries(env.DB, wardId, item.bundle_id) } : {}) };
+  original.officerGroup = await isOfficerSource(env, wardId, item.source_type, item.source_id);
   const pending: Promise<unknown>[] = [];
   const ports = createLineIntakePorts(env, { waitUntil: (promise) => { pending.push(promise); } });
   const result = await ports.matchInboxItem(wardId, original);
@@ -145,6 +148,7 @@ export async function saveLineBundleInquiry(db: D1Database, wardId: string, bund
 
 /** 言葉が先に届いた場合も、写真の読みができたところで同じ内容を見直す。 */
 export async function refreshLineBundleInquiry(db: D1Database, wardId: string, bundleId: string, ports: LineIntakePorts): Promise<void> {
+  if (await getBundleDecision(db, wardId, bundleId)) return;
   if ((await getWardAiLimits(db, wardId)).monthlyBlocked) return;
   const contents = await lineBundleContents(db, wardId, bundleId);
   if (!contents.photos.length || !contents.text) return;
@@ -157,7 +161,7 @@ export async function refreshLineBundleInquiry(db: D1Database, wardId: string, b
       event_id: string; sender_id: string; sender_display_name: string | null; source_type: LineOriginal["sourceType"];
       source_id: string; received_at: string; official_addressed: number; read_photos: number; bundle_checked_photos: number;
     }>();
-  const text = texts.results.find((r) => r.official_addressed && r.read_photos > r.bundle_checked_photos);
+  const text = texts.results.find((r) => r.read_photos > r.bundle_checked_photos);
   if (!text) return;
   const original: LineOriginal = { eventId: text.event_id, senderId: text.sender_id, senderDisplayName: text.sender_display_name,
     sourceType: text.source_type, receivedAt: text.received_at, kind: "text", text: contents.text, officialAddressed: true,
@@ -273,7 +277,7 @@ export function createLineIntakePorts(
           bytes,
         }],
       };
-      const outcome = original.kind === "image" || original.aiLimitReason || original.inquiry ? await receive(env, input) : await receiveIntakeOriginal(env, ctx, input);
+      const outcome = original.kind === "image" || original.aiLimitReason || original.inquiry || original.officerGroup ? await receive(env, input) : await receiveIntakeOriginal(env, ctx, input);
       if (outcome.jobId && original.aiLimitReason) await env.DB.prepare(`UPDATE jobs SET ai_limit_reason = ?,
         status = 'received', read_at = NULL WHERE ward_id = ? AND job_id = ?`)
         .bind(original.aiLimitReason, wardId, outcome.jobId).run();
@@ -302,10 +306,22 @@ export function createLineIntakePorts(
         ...(item.kind === "text" && item.text ? { excerpt: item.text } : {}),
         senderLabel: item.senderDisplayName || item.senderId,
         officialAddressed: item.officialAddressed,
+        officerGroup: item.officerGroup,
         photoSummaries: item.photoSummaries,
         accompanyingText: item.accompanyingText,
       })))(wardId, original);
       await recordAiMatchUsage(env.DB, wardId, result.usage);
+      if (original.officerGroup && original.bundleId) {
+        const project = open.find((candidate) => candidate.projectId === result.choice);
+        const action = result.choice === MATCH_UNRELATED && result.intent === "material" && !original.photoSummaries?.length && !result.knowTopic
+          ? "unrelated" : bundleAction(result);
+        // 写真があるまとまりは、読む手が全体をそろえてからつなぐ。
+        const decision = await saveAiBundleDecision(env.DB, wardId, original.bundleId, result.reason,
+          action, project?.projectId ?? null, new Date());
+        if (action !== "material" || original.photoSummaries?.length || decision.decided_by === "officer") {
+          return { disposition: "unmatched", reason: decision.summary, inquiry: false };
+        }
+      }
       if (result.choice === MATCH_UNRELATED && !result.knowTopic) return { disposition: original.kind === "text" ? "unrelated" : "unmatched", reason: result.reason, inquiry: false };
       const knowTopic = result.knowTopic ? { knowTopic: result.knowTopic } : {};
       // 出欠の答えは、一対一でも問い合わせに回さず数える。

@@ -13,7 +13,7 @@ import type { Env } from "../env";
 import { createAnthropic, MODEL } from "../ai/anthropic";
 import { applyWardReading } from "../know/apply";
 import { dispatchProject } from "../ai/session";
-import { matchProject, MATCH_NEW, MATCH_MULTIPLE, MATCH_UNRELATED, MATCH_UNCERTAIN, MATCH_PACK_VERSION } from "../ai/match";
+import { matchProject, MATCH_NEW, MATCH_MULTIPLE, MATCH_UNRELATED, MATCH_UNCERTAIN, MATCH_PACK_VERSION, OFFICER_MATCH_PACK_VERSION } from "../ai/match";
 import { projectApi } from "../ai/project-binding";
 import { suggestProjects, SUGGEST_PACK_VERSION } from "../ai/suggest";
 import { fixOriginalIds, ReadError, readOriginals, type ReadableOriginal } from "../ai/read";
@@ -39,6 +39,9 @@ import type { Waitable } from "./types";
 import { attachClarificationQuestions, processPhotoBatches } from "../line/clarifications";
 import { clearPhotoTexts, photoContextProject, photoMatchCandidates, PHOTO_AFTER_MS, type PhotoBatchContext } from "../line/photo-context";
 import { completePhotoMaterial } from "./material";
+import { applyLineWardReading, bundleAction, ensureBundleQuestion, getBundleDecision, jobBundleDecision,
+  removeReferenceYearItems, saveAiBundleDecision, type BundleDecision } from "../line/bundle-decisions";
+import { lineBundleContents, lineBundlePhotoSummaries } from "../line/photo-context";
 
 export interface PipelineDeps {
   /** 試験で差し替える。既定は署名鍵から作る本物のクライアント */
@@ -171,11 +174,18 @@ async function performRead(
       model: result.model,
       body: fixOriginalIds(result.body, readable.map((original) => original.originalId)),
     });
-    if (placed) {
+    if (placed && !await jobBundleDecision(env.DB, wardId, jobId)) {
       await applyWardReading(env.DB, wardId, fixOriginalIds(result.body, readable.map((original) => original.originalId))).catch((error) => console.error("区の情報を入れられませんでした", describe(error)));
       if (direct) await applyWardReading(env.DB, wardId, direct.body).catch((error) => console.error("区の情報を入れられませんでした", describe(error)));
     }
     await endRun(env.DB, run, wardId, { ok: true, usage: { input_tokens: result.usage.input_tokens + directUsage.input_tokens, output_tokens: result.usage.output_tokens + directUsage.output_tokens, cache_read_input_tokens: result.usage.cache_read_input_tokens + directUsage.cache_read_input_tokens }, error: placed ? "" : "置く前に取り下げられました" });
+    const officerDecision = placed ? await jobBundleDecision(env.DB, wardId, jobId) : null;
+    if (officerDecision) {
+      // QRや写真の日時よりも、同じまとまりに添えられた目的を先に使う。
+      await matchOfficerLineBundle(env, wardId, officerDecision, client, new Date());
+      await processPhotoBatches(env, wardId).catch(() => undefined);
+      return "read";
+    }
     // 読み終わった。プロジェクトが決まっていれば、繋げる順番に入る（同じプロジェクトでは一つずつ）
     // 読みの間に当て先が付いた場合も、最新の入った物から当て先を拾う。
     let latest = placed ? await getJob(env.DB, wardId, jobId) : null;
@@ -354,6 +364,11 @@ async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, 
 /** 同時に届いた写真全体で一回当てる。10分後の文で決まらなければ既存の質問へ進む。 */
 async function matchLinePhotoBatch(env: Env, wardId: string, jobId: string, client: Anthropic, now = new Date()): Promise<void> {
   if (!await canStartJobAi(env.DB, wardId, jobId)) return;
+  const officerDecision = await jobBundleDecision(env.DB, wardId, jobId);
+  if (officerDecision) {
+    await matchOfficerLineBundle(env, wardId, officerDecision, client, now);
+    return;
+  }
   const batch = await env.DB.prepare(`SELECT b.* FROM line_photo_batches b JOIN line_photo_items i
     ON i.ward_id = b.ward_id AND i.batch_id = b.batch_id WHERE b.ward_id = ? AND i.job_id = ?`)
     .bind(wardId, jobId).first<PhotoBatchContext & { expected_count: number | null }>();
@@ -413,6 +428,90 @@ async function matchLinePhotoBatch(env: Env, wardId: string, jobId: string, clie
       match_claimed_until = NULL, match_reason = ?, match_pack_version = ? WHERE ward_id = ? AND batch_id = ?`)
       .bind(now.toISOString(), resolved || final ? now.toISOString() : null, reason, MATCH_PACK_VERSION, wardId, batch.batch_id).run();
     if (resolved || final) await clearPhotoTexts(env.DB, wardId, batch);
+  }
+}
+
+/** 役員グループは写真の束でなく、言葉も含むまとまり全体で目的を読む。 */
+async function matchOfficerLineBundle(env: Env, wardId: string, previous: BundleDecision, client: Anthropic, now: Date): Promise<void> {
+  const latest = await env.DB.prepare(`SELECT MAX(received_at) AS received_at FROM line_webhook_receipts
+    WHERE ward_id = ? AND bundle_id = ?`).bind(wardId, previous.bundle_id).first<{ received_at: string | null }>();
+  if (!latest?.received_at || now.getTime() <= Date.parse(latest.received_at) + PHOTO_AFTER_MS) return;
+  const contents = await lineBundleContents(env.DB, wardId, previous.bundle_id);
+  if (!contents.photos.length) return;
+  const jobs = await env.DB.prepare(`SELECT j.job_id, j.read_at, j.ai_limit_reason FROM jobs j JOIN line_inbox_items i
+    ON i.ward_id = j.ward_id AND i.job_id = j.job_id WHERE j.ward_id = ? AND i.bundle_id = ?
+    AND i.original_kind = 'image' AND j.withdrawn_at IS NULL`)
+    .bind(wardId, previous.bundle_id).all<{ job_id: string; read_at: string | null; ai_limit_reason: string | null }>();
+  if (!jobs.results.length || jobs.results.some((job) => !job.read_at || job.ai_limit_reason === "sender")) return;
+  const incomplete = await env.DB.prepare(`SELECT 1 FROM line_photo_batches b JOIN line_photo_items p
+    ON p.ward_id = b.ward_id AND p.batch_id = b.batch_id JOIN line_inbox_items i
+    ON i.ward_id = p.ward_id AND i.job_id = p.job_id WHERE b.ward_id = ? AND i.bundle_id = ?
+    AND b.expected_count IS NOT NULL AND b.expected_count >
+      (SELECT COUNT(*) FROM line_photo_items x WHERE x.ward_id = b.ward_id AND x.batch_id = b.batch_id) LIMIT 1`)
+    .bind(wardId, previous.bundle_id).first();
+  if (incomplete) return;
+  const unfinished = await env.DB.prepare(`SELECT 1 FROM line_photo_batches b JOIN line_photo_items p
+    ON p.ward_id = b.ward_id AND p.batch_id = b.batch_id JOIN line_inbox_items i
+    ON i.ward_id = p.ward_id AND i.job_id = p.job_id WHERE b.ward_id = ? AND i.bundle_id = ?
+    AND b.match_finished_at IS NULL LIMIT 1`).bind(wardId, previous.bundle_id).first();
+  if (!unfinished) return;
+  let decision = previous;
+  if (decision.decided_by !== "officer") {
+    const candidates = await photoMatchCandidates(env.DB, wardId);
+    const summaries = await lineBundlePhotoSummaries(env.DB, wardId, previous.bundle_id);
+    const result = await matchProject(client, { candidates, summary: JSON.stringify(summaries), photoSummaries: summaries,
+      accompanyingText: contents.text, officerGroup: true, photo: true });
+    await recordAiMatchUsage(env.DB, wardId, result.usage);
+    let chosen = result.confident ? candidates.find((candidate) => candidate.id === result.choice) : undefined;
+    if (!chosen) {
+      // 紙の番号は行き先だけに使う。参考かどうかは、添えた言葉から読んだ目的を守る。
+      const codes = new Set<string>();
+      for (const job of jobs.results) for (const reading of await getReadings(env.DB, wardId, job.job_id)) {
+        const fields = "fields" in reading.body ? reading.body.fields : reading.body.rows;
+        for (const field of fields) if (field.paper_code) codes.add(field.paper_code);
+      }
+      const routes = await Promise.all([...codes].map((code) => lookupPaperCode(env.DB, wardId, code)));
+      const ids = new Set(routes.flatMap((route) => route ? [route.projectId] : []));
+      if (routes.length && routes.every(Boolean) && ids.size === 1) chosen = candidates.find((candidate) => ids.has(candidate.id));
+    }
+    decision = await saveAiBundleDecision(env.DB, wardId, previous.bundle_id, result.reason,
+      bundleAction(result), chosen ? chosen.id : null, now);
+  }
+  await removeReferenceYearItems(env.DB, wardId);
+  await ensureBundleQuestion(env.DB, wardId, decision);
+  await connectOfficerBundle(env, wardId, decision);
+  await env.DB.prepare(`UPDATE line_photo_batches SET match_finished_at = ?, match_reason = ?, match_pack_version = ?
+    WHERE ward_id = ? AND batch_id IN (SELECT p.batch_id FROM line_photo_items p JOIN line_inbox_items i
+      ON i.ward_id = p.ward_id AND i.job_id = p.job_id WHERE p.ward_id = ? AND i.bundle_id = ?)`)
+    .bind(now.toISOString(), decision.summary, OFFICER_MATCH_PACK_VERSION, wardId, wardId, previous.bundle_id).run();
+}
+
+/** 目的が分かった資料だけを準備へつなぐ。確認待ちは原本と読み取りを保つ。 */
+export async function connectOfficerBundle(env: Env, wardId: string, decision: BundleDecision): Promise<void> {
+  const saved = await getBundleDecision(env.DB, wardId, decision.bundle_id);
+  if (!saved || (saved.action !== "material" && saved.action !== "reference")) return;
+  const jobs = await env.DB.prepare(`SELECT j.job_id, j.project_id FROM jobs j JOIN line_inbox_items i
+    ON i.ward_id = j.ward_id AND i.job_id = j.job_id WHERE j.ward_id = ? AND i.bundle_id = ?
+    AND i.original_kind = 'image' AND j.read_at IS NOT NULL AND j.withdrawn_at IS NULL AND j.status = 'read'`)
+    .bind(wardId, saved.bundle_id).all<{ job_id: string; project_id: string | null }>();
+  for (const job of jobs.results) {
+    if (saved.action === "reference") {
+      // 参考は原本と読み取りを準備に結ぶ。今年の内容を作るエージェントへは渡さない。
+      if (saved.project_id && await setJobProject(env.DB, wardId, job.job_id, saved.project_id)) {
+        await env.DB.batch([
+          env.DB.prepare(`UPDATE jobs SET status = 'done', finished_at = ?, stop_reason = '参考資料として残しました。',
+            ai_match_reason = ? WHERE ward_id = ? AND job_id = ? AND project_id = ? AND withdrawn_at IS NULL`)
+            .bind(nowIso(), saved.summary, wardId, job.job_id, saved.project_id),
+          env.DB.prepare(`UPDATE line_inbox_items SET disposition = 'matched', matched_project_id = ?,
+            matched_project_name = (SELECT title FROM projects WHERE ward_id = ? AND project_id = ?),
+            match_reason = ? WHERE ward_id = ? AND job_id = ?`)
+            .bind(saved.project_id, wardId, saved.project_id, "参考資料として残しました。", wardId, job.job_id),
+        ]);
+      }
+      continue;
+    }
+    if (saved.action === "material") await applyLineWardReading(env.DB, wardId, job.job_id);
+    if (saved.project_id && !job.project_id) await assignReadJob(env, wardId, job.job_id, saved.project_id, saved.summary, true);
   }
 }
 

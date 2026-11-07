@@ -7,7 +7,8 @@ import { addQuestion } from "../project/api";
 import { lineChannelCredentials, replyLineText, pushInquiryAnswer, inquiryPushAllowance, sendLineQuestion } from "./api";
 import { photoCheckMessage } from "../intake/photo-check";
 import { sha256Hex } from "../intake/media";
-import { matchPendingLinePhotos } from "../intake/pipeline";
+import { matchPendingLinePhotos, connectOfficerBundle } from "../intake/pipeline";
+import { isPurposeQuestion, jobBundleDecision, removeReferenceYearItems, type BundleDecision } from "./bundle-decisions";
 import { PHOTO_AFTER_MS, purgePhotoTexts, claimLineBundleReply } from "./photo-context";
 import { createLineIntakePorts, refreshLineBundleInquiry, removeLineInquiryYearItems } from "./intake";
 
@@ -105,6 +106,8 @@ export async function attachClarificationQuestions(db: D1Database, wardId: strin
     WHERE c.ward_id = ? AND c.job_id = ? AND c.question_id IS NULL AND j.withdrawn_at IS NULL AND p.closed_at IS NULL`)
     .bind(wardId, jobId).all<{ clarification_id: string; original_id: string; text: string; options: string; answer: string | null; answered_unknown: number; project_id: string }>();
   for (const row of rows.results) {
+    // 使い道の一問はこの保存先で答える。準備の内容を聞く質問へ複製しない。
+    if (isPurposeQuestion(row.text)) continue;
     const question = await addQuestion(db, wardId, row.project_id, {
       kind: "unreadable", text: row.text.length <= 500 ? row.text : "送った写真に読めないところがあります。届いたものの「送った資料についての質問」で、元の資料と詳しい内容を見られます。", target: "送った資料の確認", options: JSON.parse(row.options) as string[],
       source: { kind: "original", ref: row.original_id, locator: "写真の確認" }, packVersion: "line-clarification@1",
@@ -131,6 +134,8 @@ async function prepareQuestions(env: Env, wardId: string, batch: Batch, now: Dat
     WHERE i.ward_id = ? AND i.batch_id = ? AND j.withdrawn_at IS NULL ORDER BY i.image_index, j.created_at, i.job_id`)
     .bind(wardId, batch.batch_id).all<{ job_id: string; image_index: number | null; read_at: string | null; project_id: string | null; status: string }>();
   if (!items.results.length || items.results.some((item) => !item.read_at)) return false;
+  const decision = await jobBundleDecision(env.DB, wardId, items.results[0]!.job_id);
+  if (decision && decision.action !== "material") return false;
   if (batch.expected_count !== null && items.results.length < batch.expected_count) return false;
   if (batch.expected_count === null && now.getTime() - Date.parse(batch.last_received_at) < PHOTO_GROUP_GAP_MS) return false;
   if (items.results.some((item) => !item.project_id) &&
@@ -285,7 +290,7 @@ async function deliverNextQuestion(env: Env, wardId: string, batch: Batch, reply
   const questions = await listClarifications(env.DB, wardId, batch.batch_id);
   if (questions.some((q) => q.sent_at && !q.answer)) return;
   const question = questions.find((q) => !q.answer && !q.sent_at);
-  if (!question) return;
+  if (!question || isPurposeQuestion(question.text)) return;
   // 別のまとまりで聞いている間も、同じ場所に次の質問を重ねない。
   const open = await env.DB.prepare(`SELECT c.clarification_id FROM line_clarifications c JOIN line_photo_batches b
     ON b.ward_id = c.ward_id AND b.batch_id = c.batch_id WHERE c.ward_id = ? AND b.destination = ?
@@ -394,6 +399,7 @@ async function resolveRetakes(env: Env, wardId: string, deps: QuestionDeliveryDe
 
 /** 画面で答えがそろったときも、質問を送った場所へ完了を一度書く。 */
 export async function completeScreenClarifications(env: Env, wardId: string, deps: QuestionDeliveryDeps = {}): Promise<void> {
+  await resolveBundlePurposeAnswers(env, wardId, deps.now ?? new Date());
   const batches = await env.DB.prepare(`SELECT b.batch_id, b.destination, b.source_type, b.source_id FROM line_photo_batches b
     WHERE b.ward_id = ? AND b.screen_answered_at IS NOT NULL AND b.completed_at IS NULL
       AND EXISTS (SELECT 1 FROM line_clarifications c WHERE c.ward_id = b.ward_id AND c.batch_id = b.batch_id AND c.sent_at IS NOT NULL)
@@ -415,6 +421,30 @@ export async function completeScreenClarifications(env: Env, wardId: string, dep
   }
 }
 
+/** 既存の質問フォームに残った役員の答えを、そのまとまりの判断へ戻す。 */
+async function resolveBundlePurposeAnswers(env: Env, wardId: string, now: Date): Promise<void> {
+  const answered = await env.DB.prepare(`SELECT d.*, c.answer FROM line_bundle_decisions d
+    JOIN line_clarifications c ON c.ward_id = d.ward_id AND c.clarification_id = d.clarification_id
+    JOIN jobs j ON j.ward_id = c.ward_id AND j.job_id = c.job_id
+    WHERE d.ward_id = ? AND d.decided_by = 'ai' AND d.action IN ('confirm_purpose', 'confirm_share')
+    AND c.answer IS NOT NULL AND c.answered_unknown = 0 AND j.withdrawn_at IS NULL`)
+    .bind(wardId).all<BundleDecision & { answer: string }>();
+  for (const decision of answered.results) {
+    const action = decision.action === "confirm_share"
+      ? decision.answer === "知らせる" || decision.answer === "今回は知らせない" ? "reference" : null
+      : decision.answer === "この準備の資料" ? "material" : decision.answer === "参考資料" || decision.answer === "参考" ? "reference" : null;
+    if (!action) continue;
+    const summary = decision.action === "confirm_share"
+      ? decision.answer === "知らせる" ? "住民に知らせたい資料です。役員が知らせると答えました。" : "役員が今回は知らせないと答えました。参考資料として残しています。"
+      : decision.summary;
+    const changed = await env.DB.prepare(`UPDATE line_bundle_decisions SET action = ?, summary = ?, decided_by = 'officer',
+      decided_at = ?, updated_at = ? WHERE ward_id = ? AND bundle_id = ? AND decided_by = 'ai' AND action = ?`)
+      .bind(action, summary, now.toISOString(), now.toISOString(), wardId, decision.bundle_id, decision.action).run();
+    if (changed.meta.changes) await connectOfficerBundle(env, wardId, { ...decision, action, decided_by: "officer" });
+  }
+  await removeReferenceYearItems(env.DB, wardId);
+}
+
 export async function processPhotoBatches(env: Env, wardId: string, deps: QuestionDeliveryDeps = {}): Promise<void> {
   const now = deps.now ?? new Date();
   await purgePhotoTexts(env.DB, wardId, now);
@@ -422,7 +452,7 @@ export async function processPhotoBatches(env: Env, wardId: string, deps: Questi
     ON j.ward_id = i.ward_id AND j.job_id = i.job_id WHERE i.ward_id = ? AND i.bundle_id IS NOT NULL
     AND i.original_kind = 'image' AND j.read_at IS NOT NULL AND j.withdrawn_at IS NULL
     AND EXISTS (SELECT 1 FROM line_inbox_items t WHERE t.ward_id = i.ward_id AND t.bundle_id = i.bundle_id
-      AND t.original_kind = 'text' AND t.official_addressed = 1 AND t.bundle_checked_photos <
+      AND t.original_kind = 'text' AND t.bundle_checked_photos <
         (SELECT COUNT(*) FROM line_inbox_items p JOIN jobs r ON r.ward_id = p.ward_id AND r.job_id = p.job_id
           WHERE p.ward_id = i.ward_id AND p.bundle_id = i.bundle_id AND p.original_kind = 'image' AND r.read_at IS NOT NULL AND r.withdrawn_at IS NULL))`)
     .bind(wardId).all<{ bundle_id: string }>();
@@ -432,6 +462,7 @@ export async function processPhotoBatches(env: Env, wardId: string, deps: Questi
   });
   // 言葉が先の問い合わせも、写真の読み取りや後日の再処理で予定にしない。
   await removeLineInquiryYearItems(env.DB, wardId);
+  await removeReferenceYearItems(env.DB, wardId);
   await matchPendingLinePhotos(env, wardId, now);
   await completeScreenClarifications(env, wardId, deps);
   await resolveRetakes(env, wardId, deps);

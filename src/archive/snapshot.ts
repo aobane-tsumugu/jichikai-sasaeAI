@@ -70,6 +70,7 @@ export const WARD_TABLE_POLICY: readonly WardTablePolicy[] = [
   { table: "line_channels", snapshot: true, export: true, deletion: true },
   { table: "line_webhook_receipts", snapshot: true, export: true, deletion: true },
   { table: "line_inbox_items", snapshot: true, export: true, deletion: true },
+  { table: "line_bundle_decisions", snapshot: true, export: true, deletion: true },
   { table: "line_unrelated_daily_counts", snapshot: true, export: true, deletion: true },
   { table: "line_group_notices", snapshot: true, export: true, deletion: true },
   { table: "line_officer_digests", snapshot: true, export: true, deletion: { cascade: "wards" } },

@@ -9,6 +9,7 @@ import { getClient } from "../ai/deps";
 import { matchClarificationAnswer } from "../ai/clarification";
 import { isUnknownAnswer, replyAfterClarification, PHOTO_GROUP_GAP_MS, processPhotoBatches, registerLinePhoto, replyPhotoReceipt, replyQuickPhotoChecks, saveClarificationAnswers, sentQuestionsForSource, type ClarificationRow, type PhotoSource } from "./clarifications";
 import { rememberPhotoSource, rememberPhotoText, purgePhotoTexts, rememberPhotoRetake, selectedPhotoRetake, forgetPhotoRetake, joinLineBundle, claimLineBundleReply, lineBundleContents, lineBundlePhotoSummaries } from "./photo-context";
+import { holdOfficerBundle, isOfficerSource, isPurposeQuestion } from "./bundle-decisions";
 
 const RECEIPT_RETENTION_DAYS = 30;
 
@@ -215,7 +216,10 @@ export async function acceptLineWebhook(
       };
       const bundleId = await joinLineBundle(db, wardId, payload.destination!, eventId, source, original.receivedAt);
       original.bundleId = bundleId;
+      original.officerGroup = await isOfficerSource(env, wardId, source.type, source.id);
+      if (original.officerGroup && original.kind === "image") await holdOfficerBundle(db, wardId, bundleId, now);
       const bundle = await lineBundleContents(db, wardId, bundleId);
+      if (!original.officerGroup && bundle.photos.length) original.officialAddressed = true;
       const bundleInquiry = await db.prepare("SELECT inquiry_id FROM inquiry_records WHERE ward_id = ? AND line_bundle_id = ?")
         .bind(wardId, bundleId).first();
       if (event.message.type === "image") {
@@ -248,7 +252,7 @@ export async function acceptLineWebhook(
           eventId, receivedAt: original.receivedAt, text: original.text ?? "" }, now);
         // 写真の当ての資料として一時に持つほか、文そのものも普段どおり受ける。
         const questions = activeQuestions;
-        const projectQuestion = questions.find((question) => question.topic === "project");
+        const projectQuestion = questions.find((question) => question.topic === "project" && !isPurposeQuestion(question.text));
         // 選択肢は公開の行事だけだが、送った質問への行事名の答えはAIが止まっていても受ける。
         const named = projectQuestion && !isUnknownAnswer(original.text ?? "")
           ? await db.prepare("SELECT project_id FROM projects WHERE ward_id = ? AND closed_at IS NULL AND title = ?")
@@ -276,7 +280,7 @@ export async function acceptLineWebhook(
         if (answers.length) {
           const projectIds = [...new Set(answers.flatMap((answer) => answer.question.project_id ? [answer.question.project_id] : []))];
           match = projectIds.length === 1 ? { disposition: "matched", projectId: projectIds[0] } : { disposition: "unmatched" };
-          if (!projectIds.length && answers.some((answer) => answer.question.topic === "project")) {
+          if (!projectIds.length && answers.some((answer) => answer.question.topic === "project" && !isPurposeQuestion(answer.question.text))) {
             if (namedProjectId) match = { disposition: "matched", projectId: namedProjectId };
             else try { match = await matchLineText(ports, wardId, { ...matchOriginal, officialAddressed: false }); } catch { /* 行事が分からなくても受ける。 */ }
           }
@@ -287,7 +291,7 @@ export async function acceptLineWebhook(
           match = { disposition: "unmatched", reason: "当て先を確認できませんでした" };
         }
         // 出欠と無関係の判定を先に使う。文の形による問い合わせ判定は、判定が得られないときだけ。
-        if (original.officialAddressed && match?.attendanceAnswer !== true && match?.disposition !== "unrelated" &&
+        if (!original.officerGroup && original.officialAddressed && match?.attendanceAnswer !== true && match?.disposition !== "unrelated" &&
           (match?.inquiry ?? (!answers.length && looksLikeInquiry(original.text ?? "")))) {
           original.inquiry = true;
         }
@@ -377,7 +381,7 @@ export async function acceptLineWebhook(
       if (answers.length) {
         await saveClarificationAnswers(db, wardId, eventId, itemId, original.senderDisplayName || "LINEで答えた人", answers, now);
         await replyAfterClarification(env, wardId, answers[0]!.question.batch_id, event.replyToken, { fetch: fetcher, now });
-        if (match?.projectId && answers.some((answer) => answer.question.topic === "project")) {
+        if (match?.projectId && answers.some((answer) => answer.question.topic === "project" && !isPurposeQuestion(answer.question.text))) {
           const batchIds = [...new Set(answers.filter((answer) => answer.question.topic === "project").map((answer) => answer.question.batch_id))];
           for (const batchId of batchIds) {
             const photos = await db.prepare("SELECT job_id FROM line_photo_items WHERE ward_id = ? AND batch_id = ?").bind(wardId, batchId).all<{ job_id: string }>();

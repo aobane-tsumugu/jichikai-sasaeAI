@@ -72,6 +72,9 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
         VALUES (?, ?, ?, ?, ?, 'year', '架空の年の質問')`).bind(w, w, w, w, w),
       env.DB.prepare(`INSERT INTO line_clarification_answers (ward_id, event_id, clarification_id, job_id, answer_text, sender_label)
         VALUES (?, 'fictional-event', ?, ?, '架空の返事', '架空の役員')`).bind(w, w, w),
+      env.DB.prepare(`INSERT INTO line_bundle_decisions
+        (ward_id, bundle_id, summary, action, project_id, decided_by, clarification_id, created_at, updated_at, decided_at)
+        VALUES (?, 'fictional-bundle', '架空の参考資料の判断', 'reference', ?, 'officer', ?, '2026-11-06', '2026-11-06', '2026-11-06')`).bind(w, p, w),
       env.DB.prepare(`INSERT INTO line_officer_digests (ward_id, day, claimed_at, recipients, usage_before, inquiry_count)
         VALUES (?, '2026-11-06', '2026-11-06', 1, 0, 1)`).bind(w),
       env.DB.prepare(`INSERT INTO line_photo_sources (ward_id, destination, source_type, source_id, project_id)
@@ -158,6 +161,12 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
     otherCounts.set(entry.table, count!.n);
   }
   expect(snapshot.tables.line_photo_items).toContainEqual(expect.objectContaining({ quote_token: "fictional-quote-token" }));
+  expect(snapshot.tables.line_bundle_decisions).toEqual([expect.objectContaining({
+    ward_id: target.ward.wardId, bundle_id: "fictional-bundle", summary: "架空の参考資料の判断",
+    action: "reference", decided_by: "officer", clarification_id: target.ward.wardId,
+  })]);
+  expect(exported.tables.line_bundle_decisions).toEqual(snapshot.tables.line_bundle_decisions);
+  expect(otherCounts.get("line_bundle_decisions")).toBe(1);
   expect(snapshot.tables).not.toHaveProperty("line_photo_context_texts");
   expect(exported.tables).not.toHaveProperty("line_photo_context_texts");
   expect(otherCounts.get("line_photo_context_texts")).toBe(1);
