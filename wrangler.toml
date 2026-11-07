@@ -57,14 +57,3 @@ crons = ["*/5 * * * *", "0 18 * * *"]
 # 鍵のファイルから入れるには scripts/put-secrets.ts、ローカルは .dev.vars（git に入らない）を
 # scripts/make-dev-vars.ts で作る。
 
-# 顔の処理。PMがDockerと測定結果を確かめてから下の設定を有効にする。
-# [[containers]]
-# class_name = "FaceMaskContainer"
-# image = "./containers/face-mask/Dockerfile"
-# max_instances = 2
-# [[durable_objects.bindings]]
-# name = "FACE_MASK"
-# class_name = "FaceMaskContainer"
-# [[migrations]]
-# tag = "u34-face-mask-v1"
-# new_sqlite_classes = ["FaceMaskContainer"]

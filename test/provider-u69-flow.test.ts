@@ -11,7 +11,7 @@ import { AI_CREDENTIAL_ALERT, AI_CREDENTIAL_MESSAGE } from "../src/ops/ai-alert"
 import { OPS_COOKIE } from "../src/ops/session";
 import { cookieFrom, get, OPS_ID, OPS_PASSWORD, opsEnv, postForm, realApp } from "./helpers";
 
-it("提供側が写真の設定に入り、署名済みの鍵の失敗に対応し、指定の受付と写真を消す", async () => {
+it("提供側が署名済みの鍵の失敗に対応し、指定の受付と写真を消す", async () => {
   const owner = await seedAdmin(env.DB), other = await seedAdmin(env.DB);
   const contact = await receiveContact(env.DB, { ...sample, kind: "access" });
   const kept = await receiveContact(env.DB, { ...sample, kind: "usage" });
@@ -31,7 +31,6 @@ it("提供側が写真の設定に入り、署名済みの鍵の失敗に対応�
 
   const photoPath = `/ops/photo-settings/${owner.ward.wardId}`;
   const deletionPath = `/ops/contact-deletions/${contact.id}`;
-  expect((await get(realApp, photoPath, owner.cookie, opsEnv)).status).toBe(303);
   expect((await postForm(realApp, deletionPath, {}, owner.cookie, opsEnv)).status).toBe(303);
   expect(await contactById(env.DB, contact.id)).not.toBeNull();
   const login = await postForm(realApp, "/ops/login", { id: OPS_ID, password: OPS_PASSWORD }, undefined, opsEnv);
@@ -41,20 +40,10 @@ it("提供側が写真の設定に入り、署名済みの鍵の失敗に対応�
   const home = await (await get(realApp, "/ops/", cookie, opsEnv)).text();
   expect(home).toContain('href="/ops/contact-deletions"');
   const wardPage = await (await get(realApp, `/ops/wards/${owner.ward.slug}`, cookie, opsEnv)).text();
-  expect(wardPage).toContain(`href="${photoPath}"`);
-  const settings = await get(realApp, photoPath, cookie, opsEnv);
-  expect(settings.status).toBe(200);
-  expect(settings.headers.get("cache-control")).toContain("no-store");
-  expect(await settings.text()).toContain(owner.ward.name);
-  const savePhoto = await postForm(realApp, photoPath, { qualityReportSha256: "a".repeat(64) }, cookie, opsEnv);
-  expect(savePhoto.status).toBe(303);
-  expect(savePhoto.headers.get("location")).toBe(`${photoPath}?saved=1`);
-  expect(await env.DB.prepare("SELECT enabled FROM ward_photo_policy WHERE ward_id = ?").bind(owner.ward.wardId).first("enabled")).toBe(0);
+  expect(wardPage).not.toContain(`href="${photoPath}"`);
+  expect((await get(realApp, photoPath, cookie, opsEnv)).status).toBe(404);
+  expect((await postForm(realApp, photoPath, {}, cookie, opsEnv)).status).toBe(404);
   expect((await get(realApp, `/hooks/photo-settings/${owner.ward.wardId}`, cookie, opsEnv)).status).toBe(404);
-  const crossSite = await realApp.request(photoPath, { method: "POST", headers: {
-    cookie, origin: "https://example.invalid", "content-type": "application/x-www-form-urlencoded",
-  }, body: new URLSearchParams({ qualityReportSha256: "a".repeat(64) }) }, opsEnv);
-  expect(crossSite.status).toBe(403);
 
   const vaultId = "vault-fictional-u69", credentialId = "credential-fictional-u69";
   await env.DB.prepare("INSERT INTO ward_ai (ward_id, vault_id, credential_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
