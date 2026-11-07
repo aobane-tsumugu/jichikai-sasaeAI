@@ -236,3 +236,12 @@ it('日付のない行事も、名前の似た仮の行に重ねて二重に出�
   expect(home).not.toContain('<b>防災訓練</b>');
   expect(home).toContain('<b>夏の行事</b>');
 });
+
+it("進めている行事は作った順に新しい物から出し、来年の行事に押し出されない", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  for (let index = 0; index < 6; index += 1) await createProject(env.DB, ward.wardId, { kind: "general_meeting", title: `架空の来年の総会${index}`, year: 2027, accountId: account.accountId });
+  const fresh = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の今年作った行事", year: 2026, accountId: account.accountId });
+  await env.DB.prepare("UPDATE projects SET created_at = '2099-01-01T00:00:00.000Z' WHERE ward_id = ? AND project_id = ?").bind(ward.wardId, fresh.projectId).run();
+  const home = await read(`/${ward.slug}/admin/`, cookie);
+  expect(home).toContain(`/projects/${fresh.projectId}/map`);
+});

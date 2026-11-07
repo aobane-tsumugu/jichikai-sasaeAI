@@ -119,6 +119,9 @@ admin.get("/", async (c) => {
     .map((task) => ({ project, task })))
     .sort((a, b) => Number(b.task.seatId === account.seatId && Boolean(account.seatId)) - Number(a.task.seatId === account.seatId && Boolean(account.seatId)) || (a.task.periodEnd ?? "9999").localeCompare(b.task.periodEnd ?? "9999")).slice(0, 5);
   const nowRows = running.length ? running : chosen ? [chosen] : [];
+  // 進めている行事は作った順に新しい物から出す。年の順にすると、来年の行事に今年作った行事が押し出される。
+  const order = (await c.env.DB.prepare("SELECT project_id FROM projects WHERE ward_id = ? AND closed_at IS NULL ORDER BY created_at DESC, project_id LIMIT 5").bind(ward.wardId).all<{ project_id: string }>()).results.map((row) => row.project_id);
+  const recent = order.flatMap((id) => projects.filter((project) => project.projectId === id));
   return c.html(<AdminPage ward={ward} account={account} title="最初の画面" home>
     {!projects.length && !records.length ? <>
       {about}{questionCard}
@@ -143,7 +146,7 @@ admin.get("/", async (c) => {
       {nowRows.length ? <><h2>今の時期の仕事</h2><ul class="year-list">{nowRows.map(({ project, task }) => <li><a class="year-row fact" href={adminPath(ward, mapTaskPath(project.projectId, project.kind, task))}><b>{project.title}　{task.name}</b><span class="note">{task.seatId && task.seatId === account.seatId ? "あなたの担当です。" : ""}{task.periodEnd ? `${shortDate(task.periodEnd)}まで。${daysRemaining(task.periodEnd)}` : ""}</span></a></li>)}</ul></> : !undecided ? <section class="next"><strong>{next.title}</strong><p>{next.body}</p><a class="button" href={adminPath(ward, next.href)}>{next.label}</a></section> : null}
       {knowRow}
       <h2>進めている行事</h2>
-      <ul class="year-list">{projects.slice(0, 5).map((project, index) => { const task = states[index] ? nextMapTask(states[index]!.mapTasks, today) : undefined; return <li><a class="year-row fact" href={adminPath(ward, `/projects/${project.projectId}/map`)}><b>{project.title}</b><span class="note">{task ? `次は ${task.name}` : "段取りを開く"}</span></a></li>; })}</ul>
+      <ul class="year-list">{recent.map((project) => { const index = projects.indexOf(project); const task = states[index] ? nextMapTask(states[index]!.mapTasks, today) : undefined; return <li><a class="year-row fact" href={adminPath(ward, `/projects/${project.projectId}/map`)}><b>{project.title}</b><span class="note">{task ? `次は ${task.name}` : "段取りを開く"}</span></a></li>; })}</ul>
       {projects.length > 5 ? <p class="link-line"><a href={adminPath(ward, "/year")}>ほかの行事（{projects.length - 5}件）は一年の画面で見る</a></p> : null}
       {memory}
       {received}
