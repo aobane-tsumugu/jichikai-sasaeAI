@@ -36,6 +36,10 @@ it("前提 1: 一度に送った資料のうち、名前の合う準備中のも
   expect(placed.results.map((row) => row.original_id)).toEqual([harvest.original_id]);
   const left = await pendingMaterialGroups(env.DB, ward.wardId);
   expect(left.map((group) => group.title)).toEqual(["架空の防災の集まり"]);
+  // トップは、まだ始めていない予定の資料として書き、どの準備に入れるかとは聞かない
+  const top = await (await get(realApp, `${root}/`, cookie)).text();
+  expect(top).toContain("「架空の防災の集まり」の資料を、AIが読み終わりました。まだ準備を始めていません。");
+  expect(top).not.toContain("準備に入れられそうな資料");
   // 残った分を新しく始める時も、種類は聞かない
   const read = await (await get(realApp, `${root}/intake/read`, cookie)).text();
   expect(read).toContain("この資料は、次の準備のものですか？");

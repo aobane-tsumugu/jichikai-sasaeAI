@@ -64,6 +64,9 @@ admin.get("/", async (c) => {
   const [materialGroups, rosterAsk] = await Promise.all([pendingMaterialGroups(c.env.DB, ward.wardId), rosterCandidates(c.env.DB, ward.wardId)]);
   // 読み終わって、どの準備の資料かの見当が付いたもの。AI が決められなかった物とは呼ばない。
   const readyTitles = [...new Set(materialGroups.filter((group) => group.title).map((group) => group.joins?.title ?? group.title))];
+  // まだ準備を始めていない予定の資料と、進めている準備に足せそうな資料は、することが違うので分けて書く。
+  const newTitles = [...new Set(materialGroups.filter((group) => group.title && !group.joins).map((group) => `「${group.title}」`))];
+  const joinTitles = [...new Set(materialGroups.filter((group) => group.title && group.joins).map((group) => `「${group.joins!.title}」`))];
   const lastYearDay = new Date(Date.now() + 9 * 3600_000 - 365 * 86400_000).toISOString().slice(0, 10);
   const lastYearSoon = new Date(Date.now() + 9 * 3600_000 - 351 * 86400_000).toISOString().slice(0, 10);
   const lastYearTasks = records.length ? (await c.env.DB.prepare(`SELECT t.task_id, t.name, t.period_start, t.period_end, p.project_id, p.title
@@ -93,6 +96,12 @@ admin.get("/", async (c) => {
   const unseeded = records.find((record) => !record.continued);
   const year = await wardYear(c.env.DB, ward, projects, states, today);
   const yearRows = nearToday(year.rows, year.today);
+  // 年間の予定などを読んだあとは、仮の一年とは書かない。分かった予定を、今日から近い順に名前で書く。
+  const ahead = (row: { from: number }) => (row.from / 100 - year.today + 1) % 1;
+  const known = year.rows.filter((row) => row.state !== "example").sort((a, b) => ahead(a) - ahead(b)).map((row) => `「${row.title}」`);
+  const yearLead = known.length
+    ? `届いた資料から、${known.slice(0, 4).join("、")}${known.length > 4 ? "など" : ""}が、この自治会の予定だと分かりました。ほかの予定は、よくある自治会の例を仮に置いています。`
+    : "今は、よくある自治会の一年を仮に置いています。資料が届くと、この自治会の予定に変わります。";
   const yearMap = <><YearLegend /><YearMap rows={yearRows} today={year.today} />{yearRows.length < year.rows.length ? <p class="link-line"><a href={adminPath(ward, "/year")}>一年を全部見る（{year.rows.length}行）</a></p> : null}</>;
   const sheets = (await c.env.DB.prepare("SELECT COUNT(*) AS n FROM originals WHERE ward_id = ? AND withdrawn_at IS NULL").bind(ward.wardId).first<{ n: number }>())?.n ?? 0;
   const GOAL = 10;
@@ -149,7 +158,8 @@ admin.get("/", async (c) => {
     ...(openInquiries.length > 3 ? [<li><p>ほかにも、まだ返事をしていない問い合わせがあります。</p><a class="quiet" href={adminPath(ward, "/inquiries")}>問い合わせを全部見る</a></li>] : []),
     ...(near.length ? [<li><p>{near[0]}。{inquiryNotice(digest)}</p><a class="quiet" href={adminPath(ward, "/inquiries")}>問い合わせを見る</a></li>] : []),
     ...leftOpen.slice(0, 3).map((project) => <li><p>{whenText(project)}まだ終わりにしていません。</p><a class="quiet" href={adminPath(ward, `/close/${project.projectId}`)}>{project.title}の報告をまとめて終わりにする</a></li>),
-    ...(readyTitles.length && (projects.length || records.length) ? [<li><p>AIが読み終わった資料に、{readyTitles.map((title) => `「${title}」`).join("、")}の資料のようなものがあります。どの準備に入れるかを決めると、やることと下書きに使えます。</p><a class="quiet" href={adminPath(ward, "/intake/read")}>読み終わった資料を見て決める</a></li>] : []),
+    ...(newTitles.length && (projects.length || records.length) ? [<li><p>{newTitles.join("、")}の資料を、AIが読み終わりました。まだ準備を始めていません。準備を始めると、その資料から、いつ何をするかと案内の下書きを用意します。</p><a class="quiet" href={adminPath(ward, "/intake/read")}>読み終わった資料を見て、準備を始める</a></li>] : []),
+    ...(joinTitles.length ? [<li><p>{joinTitles.join("、")}の準備に入れられそうな資料が、新しく届いています。入れるかを決めると、やることと下書きに使えます。</p><a class="quiet" href={adminPath(ward, "/intake/read")}>読み終わった資料を見て決める</a></li>] : []),
     ...(rosterAsk.length ? [<li><p>世帯の名簿のような資料が届いています。名簿に入れ直すかを決めてください。</p><a class="quiet" href={adminPath(ward, "/inbox")}>届いたものを見て決める</a></li>] : []),
     ...asking.slice(0, 1).map((item) => <li><p>自治会の基本情報の「{item.title}」について、届いた資料に違うことが書かれていました。どちらが今の内容か教えてください。</p><a class="quiet" href={adminPath(ward, `/know/${item.id}`)}>見て答える</a></li>),
     ...stale.slice(0, 1).map((item) => <li><p>自治会の基本情報の「{item.title}」は、入れてから時間がたっています。今も合っているか見てください。</p><a class="quiet" href={adminPath(ward, `/know/${item.id}`)}>見て直す</a></li>),
@@ -202,7 +212,7 @@ admin.get("/", async (c) => {
       <details class="hint"><summary>手元に資料がないとき</summary><div><p>前の役員の家や、公民館の棚にあることが多いです。見つからないときは、名前を入れると、よくあるやることの一覧から始められます。</p><p><a class="quiet" href={adminPath(ward, "/projects")}>資料なしで準備を始める</a></p></div></details>
       {waiting.length ? <><h2>役員が見ないと進まないこと</h2><ul class="rows">{waiting}</ul></> : null}
       <h2>{ward.name}の一年</h2>
-      <p>今は、よくある自治会の一年を仮に置いています。資料が届くと、この自治会の予定に変わります。</p>
+      <p>{yearLead}</p>
       {yearMap}
       {links}
     </> : <>
