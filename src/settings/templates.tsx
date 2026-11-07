@@ -20,7 +20,13 @@ const DONE: Record<string, string> = {
 
 const base = (c: Context<AdminEnv>, rest = "") => adminPath(c.var.ward, `/settings/templates${rest}`);
 
-async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: string } = {}, status: 200 | 400 | 404 = 200) {
+type SubmittedTemplate = { id?: string; name: string; body: string };
+
+function submittedTemplate(form: Record<string, unknown>, id?: string): SubmittedTemplate {
+  return { id, name: typeof form.name === "string" ? form.name : "", body: typeof form.body === "string" ? form.body : "" };
+}
+
+async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: string; retry?: SubmittedTemplate } = {}, status: 200 | 400 | 404 = 200) {
   const { ward, account } = c.var;
   const list = await getTemplates(c.env.DB, ward.wardId);
   c.header("Cache-Control", "no-store");
@@ -31,14 +37,14 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
         {"{会場}"} のように波括弧で囲んだ言葉は、知らせを出すときに会場や日時などの中身に置き換わります。
       </p>
       {extra.notice ? <Notice>{extra.notice}</Notice> : null}
-      {extra.error ? <Notice error>{extra.error}</Notice> : null}
+      {extra.error ? <Notice error>{extra.error}{extra.retry ? " 入れた内容は残っています。" : ""}</Notice> : null}
       {list.map((t) => (
         <form method="post" action={base(c, `/${t.id}`)} class="panel">
           <label for={`name-${t.id}`}>名前</label>
-          <input id={`name-${t.id}`} name="name" type="text" required maxlength={LIMITS.templateName} value={t.name} />
+          <input id={`name-${t.id}`} name="name" type="text" required maxlength={LIMITS.templateName} value={extra.retry?.id === t.id ? extra.retry.name : t.name} />
           <label for={`body-${t.id}`}>本文</label>
           <textarea id={`body-${t.id}`} name="body" rows={5} required maxlength={LIMITS.templateBody}>
-            {t.body}
+            {extra.retry?.id === t.id ? extra.retry.body : t.body}
           </textarea>
           <div class="action-links">
             <button type="submit" class="secondary">保存する</button>{" "}
@@ -56,9 +62,9 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
       ))}
       <form method="post" action={base(c)} class="panel">
         <label for="new-name">決まった知らせの文を足す（名前）</label>
-        <input id="new-name" name="name" type="text" required maxlength={LIMITS.templateName} />
+        <input id="new-name" name="name" type="text" required maxlength={LIMITS.templateName} value={extra.retry?.id === undefined ? extra.retry?.name ?? "" : ""} />
         <label for="new-body">本文</label>
-        <textarea id="new-body" name="body" rows={5} required maxlength={LIMITS.templateBody}></textarea>
+        <textarea id="new-body" name="body" rows={5} required maxlength={LIMITS.templateBody}>{extra.retry?.id === undefined ? extra.retry?.body ?? "" : ""}</textarea>
         <p class="action-bar page-action">
           <button type="submit">足す</button>
         </p>
@@ -93,10 +99,11 @@ function readFields(form: Record<string, unknown>): { name: string; body: string
 }
 
 templates.post("/", async (c) => {
-  const fields = readFields(await c.req.parseBody());
-  if ("error" in fields) return show(c, { error: fields.error }, 400);
+  const form = await c.req.parseBody();
+  const fields = readFields(form);
+  if ("error" in fields) return show(c, { error: fields.error, retry: submittedTemplate(form) }, 400);
   const list = await getTemplates(c.env.DB, c.var.ward.wardId);
-  if (list.length >= LIMITS.templateCount) return show(c, { error: `決まった知らせの文は${LIMITS.templateCount}個までです。` }, 400);
+  if (list.length >= LIMITS.templateCount) return show(c, { error: `決まった知らせの文は${LIMITS.templateCount}個までです。`, retry: submittedTemplate(form) }, 400);
   list.push({ id: `t${newId().slice(0, 8)}`, ...fields });
   await saveTemplates(c.env.DB, c.var.ward.wardId, list, c.var.account.accountId);
   return c.redirect(base(c, "?done=saved"), 303);
@@ -108,8 +115,9 @@ templates.post("/reset", async (c) => {
 });
 
 templates.post("/:id", async (c) => {
-  const fields = readFields(await c.req.parseBody());
-  if ("error" in fields) return show(c, { error: fields.error }, 400);
+  const form = await c.req.parseBody();
+  const fields = readFields(form);
+  if ("error" in fields) return show(c, { error: fields.error, retry: submittedTemplate(form, c.req.param("id")) }, 400);
   const list = await getTemplates(c.env.DB, c.var.ward.wardId);
   const target = list.find((t) => t.id === c.req.param("id"));
   if (!target) return show(c, { error: "その決まった知らせの文は見つかりません。" }, 404);
