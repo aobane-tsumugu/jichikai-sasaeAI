@@ -175,3 +175,13 @@ it("地図の行から種類と名前を選んだ状態で行事を始められ�
   expect(start).toContain('value="定期総会"');
   expect(start).toMatch(/value="general_meeting" checked/);
 });
+
+it("行事が増えてもトップの地図は今に近い行に絞り、全部は一年の画面で見る", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const root = `/${ward.slug}/admin`;
+  for (let index = 0; index < 30; index += 1) await createProject(env.DB, ward.wardId, { kind: "event", title: `架空の集まり${index}`, year: 2026, accountId: account.accountId });
+  const home = await read(`${root}/`, cookie);
+  expect(home.match(/class="map-row /g)?.length).toBe(14);
+  expect(home).toContain("一年を全部見る");
+  expect((await read(`${root}/year`, cookie)).match(/class="map-row /g)!.length).toBeGreaterThan(30);
+});

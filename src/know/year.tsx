@@ -96,6 +96,13 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
   return { rows, today: position(month, day) / 100 };
 }
 
+/** トップの地図は今に近い行だけにする。行事が増えても画面が伸びないように。全部は一年の画面で見る。 */
+export function nearToday(rows: YearRow[], today: number, limit = 14): YearRow[] {
+  if (rows.length <= limit) return rows;
+  const distance = (row: YearRow) => { const gap = Math.abs(row.order - today * 100); return Math.min(gap, 100 - gap); };
+  return [...rows].sort((a, b) => distance(a) - distance(b)).slice(0, limit).sort((a, b) => a.order - b.order);
+}
+
 export function YearLegend() {
   return <div class="state-legend"><span class="state example">仮の内容</span><span class="state checking">質問があります</span><span class="state fact">この区の内容</span><span class="state old">見直す時期です</span></div>;
 }
