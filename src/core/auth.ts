@@ -33,9 +33,9 @@ export function deviceLabel(userAgent: string | undefined): string {
           : /Linux/.test(ua)
             ? "Linux"
             : "不明な機器";
-  const browser = /Edg\//.test(ua)
+  const browser = /(?:Edg|EdgiOS|EdgA)\//.test(ua)
     ? "Edge"
-    : /Firefox\//.test(ua)
+    : /(?:Firefox|FxiOS)\//.test(ua)
       ? "Firefox"
       : /Chrome\/|CriOS\//.test(ua)
         ? "Chrome"

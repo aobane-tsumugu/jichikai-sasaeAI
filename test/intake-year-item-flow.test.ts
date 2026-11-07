@@ -136,3 +136,29 @@ it("外した行と別の自治会の行を候補にせず、知らない印か�
   expect(group.yearItem).toBeUndefined();
   expect(materialGroupTemplate(group, [], candidates).from).toBe("short");
 });
+
+it("同じ名前の行事の資料は、AI が当てた一年の予定の行が違っても一つにまとまり、自治会の行を優先する", async () => {
+  // 年間の予定の写真を読む前は型の行（秋の行事）、読んだ後は自治会の行（秋の収穫祭）が当たる。試験用のデータ。
+  const { ward, account } = await seedAdmin(env.DB);
+  await env.DB.prepare("INSERT INTO ward_year_items (ward_id, item_id, title, added) VALUES (?, 'ward-harvest', '秋の収穫祭', 1)").bind(ward.wardId).run();
+  await saveReading(ward.wardId, account.accountId, [
+    { title: "2025年度 秋の収穫祭", yearItem: "autumn" },
+    { title: "秋の収穫祭", yearItem: "ward-harvest" },
+    { title: "秋の収穫祭の当番表", yearItem: "ward-harvest" },
+  ]);
+  const groups = (await pendingMaterialGroups(env.DB, ward.wardId)).filter((group) => group.title);
+  expect(groups).toHaveLength(1);
+  expect(groups[0]!.materials).toHaveLength(3);
+  expect(groups[0]!.yearItem).toBe("ward-harvest");
+});
+
+it("列の名前が「担当の世帯」のような当番表でも、短い型に「担当を決める」を足す", async () => {
+  const { ward, account } = await seedAdmin(env.DB);
+  await env.DB.prepare("INSERT INTO ward_year_items (ward_id, item_id, title, added) VALUES (?, 'ward-patrol', '年末の見回り', 1)").bind(ward.wardId).run();
+  await saveReading(ward.wardId, account.accountId, [
+    { title: "年末の見回りの当番表", yearItem: "ward-patrol", documentKind: "other", columns: ["日", "回る班", "担当の世帯"] },
+  ]);
+  const [group] = (await pendingMaterialGroups(env.DB, ward.wardId)).filter((entry) => entry.title);
+  const template = materialGroupTemplate(group!, await listProjects(env.DB, ward.wardId, { includeClosed: true }), await yearItemsForStart(env.DB, ward.wardId));
+  expect(template.taskKeys).toEqual(["announcement", "assign", "day", "report"]);
+});

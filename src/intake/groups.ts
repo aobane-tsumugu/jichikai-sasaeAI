@@ -4,7 +4,7 @@ import { newId, nowIso } from "../core/ids";
 import type { Env } from "../env";
 import { createProject, listOpenProjects, listProjects, normalizeKey } from "../project/api";
 import { normalizeStartTitle, startTemplate } from "../project/start-template";
-import { yearItemsForStart } from "../know/year";
+import { YEAR_BASE, yearItemsForStart } from "../know/year";
 import { MAP_TEMPLATES, templatePeriod } from "../map/template";
 import { copySeed } from "../archive";
 import type { ProjectKind } from "../project/model";
@@ -61,14 +61,16 @@ export async function pendingMaterialGroups(db: D1Database, wardId: string): Pro
       const suggestion = suggestions.find((s) => s.original_id === original.original_id);
       if (!suggestion) { unknown.push(material); continue; }
       const item = yearItems.find((entry) => entry.key === suggestion.year_item || entry.title === suggestion.year_item);
-      let group = groups.find((g) => g.title && (item && g.yearItem === item.key
-        || (!item || !g.yearItem || g.yearItem === item.key) && sameEvent(g.title, suggestion.title)));
+      // 同じ名前の行事は、AI が当てた一年の予定の行が違っても一つにまとめる。年間の予定の写真を読む前は型の行（秋の行事）、
+      // 読んだ後は自治会の行（秋の収穫祭）を当てるので、行で分けると同じ行事の資料が二つに割れ、食い違いの質問が出なくなる。
+      let group = groups.find((g) => g.title && (sameEvent(g.title, suggestion.title) || (item && g.yearItem === item.key)));
       if (!group) {
         group = { key: `material:${normalizeKey(suggestion.title)}`, title: suggestion.title, kind: "event", yearItem: item?.key, materials: [], joins: null };
         groups.push(group);
       } else {
         if (suggestion.title.length > group.title.length) group.title = suggestion.title;
-        if (item) group.yearItem = item.key;
+        // 自治会の一年の予定の行（届いた年間の予定から読んだ物）を、型の行より優先する。
+        if (item && (!group.yearItem || YEAR_BASE.some((base) => base.key === group!.yearItem))) group.yearItem = item.key;
       }
       group.materials.push(material);
       inThisSend.add(group);
@@ -148,9 +150,10 @@ export function materialGroupTemplate(group: MaterialGroup, past: Parameters<typ
   const template = startTemplate(item?.title ?? title, past, yearItems);
   const hasRota = group.materials.some((material) => material.readings.some(({ body }) => "fields" in body && (
     body.document_kind === "rota" || body.tables.some((table) => table.original_id === material.original.original_id
-      && table.columns.some((column) => /^(日|日付|日時|実施日|当番日)$/.test(column.trim()))
-      && table.columns.some((column) => /^(班|班名)$/.test(column.trim()))
-      && table.columns.some((column) => /^(担当|担当者|当番|担当の人)$/.test(column.trim())))
+      // 列の名前は資料ごとに違う（「担当の世帯」「回る班」など）ので、言葉を含むかで見る。
+      && table.columns.some((column) => /日|日付|日時/.test(column))
+      && table.columns.some((column) => /班|組/.test(column))
+      && table.columns.some((column) => /担当|当番|世帯/.test(column)))
   )));
   return hasRota && template.taskKeys?.join(",") === "announcement,day,report"
     ? { ...template, taskKeys: ["announcement", "assign", "day", "report"] } : template;
