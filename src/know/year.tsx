@@ -2,10 +2,10 @@ import { taskFeatures } from "../project/task-features";
 // 区の一年の地図。一般の自治会の一年を仮に置き、行事と届いた資料でこの区の内容に変えていく。
 import { adminPath } from "../core/auth";
 import { newId } from "../core/ids";
-import { eventPeriodText, seasonText } from "../core/time";
+import { eventPeriodText, formatDateText, seasonText } from "../core/time";
 import type { WardInfo } from "../env";
 import type { ProjectState, ProjectSummary } from "../project/types";
-import type { ProjectKind } from "../project/model";
+import { countWord, type ProjectKind } from "../project/model";
 import { Hono } from "hono";
 import { AdminPage } from "../core/admin-ui";
 import { cleanName } from "../core/password";
@@ -131,10 +131,15 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
       // 一年の予定に足した時期があればそこに、無ければ今の時期に置く。進めている準備は必ず表に出す。
       const base = YEAR_BASE.find((entry) => !used.has(entry.key) && similar(entry.title, project.title));
       if (base) used.add(base.key);
-      const added = overrides.results.find((row) => row.added && !row.removed_at && row.month && row.title === project.title);
+      const sameName = (a: string, b: string) => { const clean = (s: string) => s.replace(/\s+/g, "").replace(/^(令和\d+|20\d{2})年度?の?/, ""); return clean(a) === clean(b); };
+      const added = overrides.results.find((row) => row.added && !row.removed_at && row.month && sameName(row.title, project.title));
+      // 日が決まる前も、年間の予定の月と、届いた資料にある前の年の日を書く。何も分からない時だけ「まだ決まっていません」とだけ書く。
+      const before = state?.items.find((item) => item.key === "date_time")?.references[0];
+      const beforeText = before ? `${before.refYear && before.refYear === project.year - 1 ? "去年" : before.refYear ? `${before.refYear}年` : "前"}の資料では${formatDateText(before.content)}でした。` : "";
+      const undecided = `${added ? `年間の予定では${added.month}月です。` : ""}日はまだ決まっていません。${beforeText}`;
       const from = base ? position(base.from) : added ? position(added.month!) : position(monthOf(today), dayOf(today));
       const taskless = state && !state.mapTasks.length;
-      rows.push({ key: project.projectId, title: project.title, note: taskless ? "仕事はまだありません。やることから足せます" : "日はまだ決まっていません", state: "fact", level: levelOf(materialsOf(project.projectId) + answersOf(project.projectId)), from, to: base ? position(base.to, 30) + 1 : from + 4, href: adminPath(ward, `/projects/${project.projectId}/map`), order: from });
+      rows.push({ key: project.projectId, title: project.title, note: taskless ? "仕事はまだありません。やることから足せます" : undecided, state: "fact", level: levelOf(materialsOf(project.projectId) + answersOf(project.projectId)), from, to: base ? position(base.to, 30) + 1 : from + 4, href: adminPath(ward, `/projects/${project.projectId}/map`), order: from });
       return;
     }
     const month = monthOf(day);
@@ -226,8 +231,8 @@ const knowKeyOf = (title: string) => dutyTitle(title) ? "duties" : /市報|回�
 function yearLead(rows: YearRow[]): string {
   const facts = [...new Set(rows.filter((row) => row.state !== "example").map((row) => row.title))];
   const examples = rows.filter((row) => row.state === "example").length;
-  if (!facts.length) return `今は、よくある自治会の例を${examples}つ仮に置いています。この自治会の予定は、まだ届いた資料から分かっていません。規約や去年の総会の資料を送ると、この自治会の予定に変わります。`;
-  return `${facts.slice(0, 6).join("、")}${facts.length > 6 ? "など" : ""}は、届いた資料や準備中のものから分かった、この自治会の予定です。${examples ? `ほかの${examples}つは、よくある自治会の例を仮に置いています。` : ""}`;
+  if (!facts.length) return `今は、よくある自治会の例を${countWord(examples)}仮に置いています。この自治会の予定は、まだ届いた資料から分かっていません。規約や去年の総会の資料を送ると、この自治会の予定に変わります。`;
+  return `${facts.slice(0, 6).join("、")}${facts.length > 6 ? "など" : ""}は、届いた資料や準備中のものから分かった、この自治会の予定です。${examples ? `ほかの${countWord(examples)}は、よくある自治会の例を仮に置いています。` : ""}`;
 }
 
 /** 通年の画面は一年の処理に置き、既存の役員用の差し込み口から登録する。 */
@@ -254,7 +259,7 @@ yearRecurringAdmin.get("/year", async (c) => {
         <div class="field"><label for="year-recurrence">くり返し（通年のとき）</label><input id="year-recurrence" name="recurrence" maxlength={200} placeholder="毎週月曜、毎月、随時など" /><p class="help-text">月を選ぶと、表のその月に置きます。通年を選ぶと、表の一年を通した帯にし、ここに書いたくり返しを添えます。</p></div>
         <button class="secondary">この予定を足す</button>
       </form></div></details>
-    {taken.length ? <details class="fold"><summary>外した予定（{taken.length}つ）</summary><div>{taken.map((base) => <form method="post" action={adminPath(ward, `/year/${base.key}/restore`)}><p>{base.title}</p><button class="secondary">この予定を戻す</button></form>)}</div></details> : null}
+    {taken.length ? <details class="fold"><summary>外した予定（{countWord(taken.length)}）</summary><div>{taken.map((base) => <form method="post" action={adminPath(ward, `/year/${base.key}/restore`)}><p>{base.title}</p><button class="secondary">この予定を戻す</button></form>)}</div></details> : null}
   </AdminPage>);
 });
 
