@@ -8,7 +8,15 @@ import { lineChannelCredentials, replyLineText, pushInquiryAnswer, inquiryPushAl
 import { photoCheckMessage } from "../intake/photo-check";
 import { sha256Hex } from "../intake/media";
 import { matchPendingLinePhotos } from "../intake/pipeline";
-import { PHOTO_AFTER_MS, purgePhotoTexts } from "./photo-context";
+import { PHOTO_AFTER_MS, purgePhotoTexts, claimLineBundleReply } from "./photo-context";
+import { createLineIntakePorts, refreshLineBundleInquiry } from "./intake";
+
+async function batchIsInquiry(db: D1Database, wardId: string, batchId: string): Promise<boolean> {
+  return Boolean(await db.prepare(`SELECT 1 FROM line_photo_items p JOIN line_inbox_items i
+    ON i.ward_id = p.ward_id AND i.job_id = p.job_id JOIN inquiry_records q
+    ON q.ward_id = i.ward_id AND q.line_bundle_id = i.bundle_id WHERE p.ward_id = ? AND p.batch_id = ? LIMIT 1`)
+    .bind(wardId, batchId).first());
+}
 
 // 実測前の仮の値。夜の質問、催促、無制限の通知を作らない。
 export const PHOTO_GROUP_GAP_MS = 5000;
@@ -81,7 +89,10 @@ export async function listClarifications(db: D1Database, wardId: string, batchId
   const result = await db.prepare(`SELECT c.clarification_id AS id, c.batch_id, c.job_id, c.original_id, c.topic, c.text,
     c.options, c.question_id, c.answer, c.sent_at, c.message_text, c.sent_message_id, c.answered_unknown, j.project_id FROM line_clarifications c
     JOIN jobs j ON j.ward_id = c.ward_id AND j.job_id = c.job_id
-    WHERE c.ward_id = ? AND j.withdrawn_at IS NULL ${batchId ? "AND c.batch_id = ?" : ""} ORDER BY j.created_at, c.original_id, CASE c.topic WHEN 'unreadable' THEN 0 WHEN 'year' THEN 1 ELSE 2 END, c.clarification_id`)
+    WHERE c.ward_id = ? AND j.withdrawn_at IS NULL
+    AND NOT EXISTS (SELECT 1 FROM line_inbox_items i JOIN inquiry_records q ON q.ward_id = i.ward_id AND q.line_bundle_id = i.bundle_id
+      WHERE i.ward_id = c.ward_id AND i.job_id = c.job_id)
+    ${batchId ? "AND c.batch_id = ?" : ""} ORDER BY j.created_at, c.original_id, CASE c.topic WHEN 'unreadable' THEN 0 WHEN 'year' THEN 1 ELSE 2 END, c.clarification_id`)
     .bind(...(batchId ? [wardId, batchId] : [wardId])).all<Omit<ClarificationRow, "options"> & { options: string }>();
   return result.results.map((row) => ({ ...row, options: JSON.parse(row.options) as string[] }));
 }
@@ -114,6 +125,7 @@ export async function attachClarificationQuestions(db: D1Database, wardId: strin
 }
 
 async function prepareQuestions(env: Env, wardId: string, batch: Batch, now: Date): Promise<boolean> {
+  if (await batchIsInquiry(env.DB, wardId, batch.batch_id)) return false;
   const items = await env.DB.prepare(`SELECT i.job_id, i.image_index, j.read_at, j.project_id, j.status FROM line_photo_items i
     JOIN jobs j ON j.ward_id = i.ward_id AND j.job_id = i.job_id
     WHERE i.ward_id = ? AND i.batch_id = ? AND j.withdrawn_at IS NULL ORDER BY i.image_index, j.created_at, i.job_id`)
@@ -227,6 +239,9 @@ export async function replyPhotoReceipt(env: Env, wardId: string, jobId: string,
   if (!item?.receipt_reply_token) return;
   const credentials = await lineChannelCredentials(env, wardId, item.destination);
   if (!credentials?.accessToken || !(await claimPhotoReply(env.DB, wardId, item.receipt_reply_token, deps.now ?? new Date()))) return;
+  const inbox = await env.DB.prepare("SELECT bundle_id, event_id FROM line_inbox_items WHERE ward_id = ? AND job_id = ?")
+    .bind(wardId, jobId).first<{ bundle_id: string | null; event_id: string }>();
+  if (inbox?.bundle_id && !await claimLineBundleReply(env.DB, wardId, inbox.bundle_id, inbox.event_id, deps.now ?? new Date())) return;
   try {
     await replyLineText(credentials.accessToken, item.receipt_reply_token,
       item.project_id ? "受け取りました。" : "受け取りました。役員が確かめます。", deps.fetch ?? fetch);
@@ -240,6 +255,7 @@ export async function replyQuickPhotoChecks(env: Env, wardId: string, deps: Ques
   const batches = await env.DB.prepare(`SELECT * FROM line_photo_batches WHERE ward_id = ? AND prepared_at IS NULL
     AND send_claimed_at IS NULL AND reply_at >= ?`).bind(wardId, new Date(now.getTime() - 45_000).toISOString()).all<Batch>();
   for (const batch of batches.results) {
+    if (await batchIsInquiry(env.DB, wardId, batch.batch_id)) continue;
     const items = await env.DB.prepare(`SELECT i.job_id, i.retake_clarification_id, c.original_id, c.readability, c.reason, c.paper_kind AS paperKind
       FROM line_photo_items i JOIN intake_photo_checks c ON c.ward_id = i.ward_id AND c.job_id = i.job_id
       JOIN jobs j ON j.ward_id = i.ward_id AND j.job_id = i.job_id
@@ -262,6 +278,7 @@ export async function replyQuickPhotoChecks(env: Env, wardId: string, deps: Ques
 
 /** 次は答えのReplyでだけ聞く。答えがない物への催促は置かない。 */
 async function deliverNextQuestion(env: Env, wardId: string, batch: Batch, replyToken: string | null, deps: QuestionDeliveryDeps, fromLineAnswer = false): Promise<void> {
+  if (await batchIsInquiry(env.DB, wardId, batch.batch_id)) return;
   if (batch.screen_answered_at && !fromLineAnswer) return;
   const now = deps.now ?? new Date();
   if (!isQuestionTime(now)) return;
@@ -401,6 +418,18 @@ export async function completeScreenClarifications(env: Env, wardId: string, dep
 export async function processPhotoBatches(env: Env, wardId: string, deps: QuestionDeliveryDeps = {}): Promise<void> {
   const now = deps.now ?? new Date();
   await purgePhotoTexts(env.DB, wardId, now);
+  const bundles = await env.DB.prepare(`SELECT DISTINCT i.bundle_id FROM line_inbox_items i JOIN jobs j
+    ON j.ward_id = i.ward_id AND j.job_id = i.job_id WHERE i.ward_id = ? AND i.bundle_id IS NOT NULL
+    AND i.original_kind = 'image' AND j.read_at IS NOT NULL AND j.withdrawn_at IS NULL
+    AND EXISTS (SELECT 1 FROM line_inbox_items t WHERE t.ward_id = i.ward_id AND t.bundle_id = i.bundle_id
+      AND t.original_kind = 'text' AND t.official_addressed = 1 AND t.bundle_checked_photos <
+        (SELECT COUNT(*) FROM line_inbox_items p JOIN jobs r ON r.ward_id = p.ward_id AND r.job_id = p.job_id
+          WHERE p.ward_id = i.ward_id AND p.bundle_id = i.bundle_id AND p.original_kind = 'image' AND r.read_at IS NOT NULL AND r.withdrawn_at IS NULL))`)
+    .bind(wardId).all<{ bundle_id: string }>();
+  const ports = createLineIntakePorts(env, { waitUntil: () => undefined });
+  for (const bundle of bundles.results) await refreshLineBundleInquiry(env.DB, wardId, bundle.bundle_id, ports).catch(() => {
+    console.error("写真と一緒に届いた言葉を確認できませんでした", wardId);
+  });
   await matchPendingLinePhotos(env, wardId, now);
   await completeScreenClarifications(env, wardId, deps);
   await resolveRetakes(env, wardId, deps);
