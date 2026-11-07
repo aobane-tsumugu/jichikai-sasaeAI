@@ -15,8 +15,8 @@ async function lineItem(wardId: string, itemId: string, text: string | null) {
 it("届いたものが無い時は、知らせと次にすることだけを出す", async () => {
   const { ward, cookie } = await seedAdmin(env.DB);
   const page = await (await get(realApp, `/${ward.slug}/admin/inbox`, cookie)).text();
-  expect(page).toContain("届いたものはありません");
-  expect(page).toContain("資料を送る");
+  expect(page).toContain("まだ何も届いていません。");
+  expect(page).toContain("写真やファイルを送る");
   expect(page).toContain("← 最初の画面へ");
   expect(page).not.toContain("どの行事か分からないもの");
   expect(page).not.toContain("行事に入れたもの");

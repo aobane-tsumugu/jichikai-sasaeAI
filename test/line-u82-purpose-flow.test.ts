@@ -221,6 +221,13 @@ it.each(["参考資料", "この準備の資料"])("U82: 目的不明には一�
     expect(question.text).toBe(PURPOSE_QUESTION);
     expect(question.options).toEqual(["参考資料", "この準備の資料"]);
     expect(question.sent_at).toBeNull();
+    // 保存した文と答えの値はそのままにし、画面では何を聞くのかと、押すと何が起きるかを書く。
+    const talk = await redirectedTalkPage(`/${s.ward.slug}/admin/inbox/${received.item_id}/pick`, s.cookie, s.runtime);
+    expect(talk).toContain("自治会が使うもの（自分たちのチラシや当番表など）ですか。それとも、よその催しのチラシのように、作るときの参考にするものですか。");
+    expect(talk).toMatch(/value="この準備の資料">[^<]+で使う<\/button>/);
+    expect(talk).toContain('value="参考資料">参考にする</button>');
+    expect(talk).toContain("「参考にする」を選ぶと、写真に書かれた日時や場所を");
+    expect(talk).not.toContain(PURPOSE_QUESTION);
     expect((await s.state()).project.deadlines.event_day).toBeUndefined();
     expect((await s.state()).items.find((item) => item.key === "place")?.current).toBeNull();
     expect(await env.DB.prepare("SELECT item_id FROM ward_year_items WHERE ward_id = ? AND source_original_id = ?")
@@ -252,6 +259,9 @@ it("U82: 役員の住民に知らせたいは確認だけにし、下書きを�
     expect((await s.state()).project.deadlines.event_day).toBeUndefined();
     const question = (await listClarifications(env.DB, s.ward.wardId))[0];
     if (!question) throw new Error("知らせる前の確認がありません");
+    const talk = await redirectedTalkPage(`/${s.ward.slug}/admin/inbox/${received.item_id}/pick`, s.cookie, s.runtime);
+    expect(talk).toContain("住民に知らせたいという言葉と一緒に届いた写真です。住民に知らせますか。");
+    expect(talk).toContain("どちらを選んでも、ここからは住民に届きません。");
     expect((await postForm(realApp, `/${s.ward.slug}/admin/inbox/questions/${question.id}`, { answer: "知らせる" }, s.cookie, s.runtime)).status).toBe(303);
     expect(await getBundleDecision(env.DB, s.ward.wardId, received.bundle_id)).toMatchObject({ action: "reference", decided_by: "officer" });
     expect(s.dispatch).not.toHaveBeenCalled();

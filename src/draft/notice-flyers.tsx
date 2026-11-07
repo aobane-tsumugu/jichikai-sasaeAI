@@ -63,8 +63,8 @@ export function FlyerPanel({ c, projectId, state }: {
   const { current, previous, materials } = state;
   const ask = previous && !current;
   return <fieldset><legend>チラシの画像を付ける</legend>
-    <p>画像を一枚送るか、自分たちの資料の写真を選んでください。日時と場所は文にも書いてください。</p>
-    {ask ? <p>前の知らせにはチラシの画像が付いていました。付け直しますか</p> : null}
+    <p>知らせる文のあとに、チラシの画像を一枚付けられます。付けると、住民向けのページと自治会のLINEの知らせに、文と一緒に画像が出ます。</p>
+    {ask ? <p>前の知らせにはチラシの画像が付いていました。付け直しますか？</p> : null}
     {current?.flyer_id ? <><img src={adminPath(c.var.ward, `/projects/${projectId}/flyer/${current.version_id}`)} alt="付けたチラシ" style="max-width:100%;height:auto" />
       <label><input type="radio" name="flyer_choice" value="keep" checked />付けた画像を使う</label></> : null}
     <label><input type="radio" name="flyer_choice" value="none" checked={!ask && !current?.flyer_id} required={ask} />{current?.flyer_id ? "画像を外す" : "画像を付けない"}</label>
