@@ -66,7 +66,9 @@ it("U38: 署名した架空の文をローカルのWorkersへ送り、D1と原�
     expect(posts).toBe(0);
     await expect(runSimulation({ ...options, wardId: other.ward.wardId }, LOCAL_FLOW, ports)).rejects.toThrow("区とチャネル");
     expect(posts).toBe(0);
-    const result = await runSimulation(options, LOCAL_FLOW, ports);
+    // 別の用件を独立した送信者で流す。同じ人の続けての投稿はU78で確かめる。
+    const independentFlow = { ...LOCAL_FLOW, scenes: LOCAL_FLOW.scenes.map((scene) => ({ ...scene, talk: scene.id })) };
+    const result = await runSimulation(options, independentFlow, ports);
     expect(result).toEqual({ matched: 8, total: 8 });
     expect(posts).toBe(8);
     expect(replyFailures).toBe(1);

@@ -40,3 +40,26 @@ export function formatJstDate(iso: string): string {
 export function formatDateText(text: string): string {
   return text.replace(/\b\d{4}-\d{2}-\d{2}\b/g, (date) => formatJstDate(date) || date);
 }
+
+/** 資料の日時から日を読む。年がなければ行事の年を使い、存在しない日は返さない。 */
+export function parseEventDay(text: string, projectYear: number): string | null {
+  const value = text.normalize("NFKC");
+  const dated = value.match(/(?:^|[^\d])(?:(\d{4})\s*[年/\-]\s*|(令和|平成|昭和)\s*(元|\d{1,2})\s*年\s*)(\d{1,2})\s*[月/\-]\s*(\d{1,2})(?:\s*日)?(?!\d)/);
+  let year = projectYear;
+  let month: string;
+  let day: string;
+  if (dated) {
+    const eraYear = dated[3] === "元" ? 1 : Number(dated[3]);
+    year = dated[1] ? Number(dated[1]) : (dated[2] === "令和" ? 2018 : dated[2] === "平成" ? 1988 : 1925) + eraYear;
+    if (!dated[1] && eraYear < 1) return null;
+    month = dated[4]!;
+    day = dated[5]!;
+  } else {
+    const undated = value.match(/(?:^|[^\d/年\-])(\d{1,2})\s*(?:月\s*(\d{1,2})\s*日|\/\s*(\d{1,2}))(?!\d)/);
+    if (!undated) return null;
+    month = undated[1]!;
+    day = (undated[2] ?? undated[3])!;
+  }
+  const iso = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  return /^\d{4}-\d{2}-\d{2}$/.test(iso) && Number.isFinite(Date.parse(iso)) && new Date(iso).toISOString().slice(0, 10) === iso ? iso : null;
+}

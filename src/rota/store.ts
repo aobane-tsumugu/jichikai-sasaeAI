@@ -16,7 +16,11 @@ export interface Exemption extends RosterEntry {
 }
 export const householdKey = (entry: RosterEntry) => JSON.stringify([normalizeHousehold(entry.district), normalizeHousehold(entry.household)]);
 export const householdLabel = (entry: RosterEntry) => `${entry.district} ${entry.household}`;
-export const rotaDate = (iso: string) => `${iso.slice(0, 4)}年${formatJstDate(iso)}`;
+const jstYear = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", year: "numeric" });
+export function rotaDate(iso: string): string {
+  const date = formatJstDate(iso);
+  return date ? `${jstYear.format(new Date(iso))}${date}` : "";
+}
 
 export async function exemptions(db: D1Database, wardId: string): Promise<Exemption[]> {
   return (await db.prepare(`SELECT exemption_id, household, district, reason, starts_on, ends_on, recorded_at, withdrawn_at
@@ -181,6 +185,15 @@ export async function prepareRota(db: D1Database, wardId: string, projectId: str
         .bind(entry.rowId, wardId, projectId, matchKey, JSON.stringify(entry.data), preparationId, proposal.comparison.year,
           now, now, wardId, projectId, project.stateVersion));
     }
+  }
+  const proposedRowIds = new Set(proposal.comparison.entries.map((entry) => entry.rowId));
+  for (const row of current.results) {
+    if (proposedRowIds.has(row.row_id) || row.source_kind !== "ai_proposal" || row.source_locator !== "rota" || row.person_fields !== "[]") continue;
+    // 名簿などから外れた未編集の行だけを下書きから外す。役員の入力と配った表は保つ。
+    statements.push(db.prepare(`UPDATE project_rows SET removed_at = ?, updated_at = ?
+      WHERE ward_id = ? AND project_id = ? AND row_id = ? AND source_kind = 'ai_proposal' AND source_locator = 'rota' AND person_fields = '[]'
+        AND EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND state_version = ? AND closed_at IS NULL)`)
+      .bind(now, now, wardId, projectId, row.row_id, wardId, projectId, project.stateVersion));
   }
   statements.push(db.prepare(`INSERT INTO rota_preparations
     (preparation_id, ward_id, project_id, roster_json, comparison_json, recorded_at, recorded_by_account_id)

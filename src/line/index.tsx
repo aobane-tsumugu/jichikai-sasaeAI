@@ -23,11 +23,12 @@ import { pendingMaterialGroups } from "../intake/groups";
 import { WhichProject } from "../intake/which-project";
 import { adminPath } from "../core/auth";
 import { formatJst, formatJstDate } from "../core/time";
-import { rememberPhotoSource, purgePhotoTexts } from "./photo-context";
+import { rememberPhotoSource, purgePhotoTexts, lineBundleContents } from "./photo-context";
 import { STATUS_LABEL } from "../intake/pages";
 import { senderText } from "./sender";
 
 interface InboxRow {
+  bundle_id: string | null;
   item_id: string;
   job_id: string | null;
   original_kind: "text" | "image";
@@ -49,10 +50,11 @@ const shortLine = (text: string, max = 36) => {
 
 export async function listInboxItems(db: D1Database, wardId: string): Promise<InboxRow[]> {
   const result = await db.prepare(`
-    SELECT i.item_id, i.job_id, i.original_kind, i.original_text, i.received_at, i.disposition, i.sender_display_name, i.sender_label,
+    SELECT i.bundle_id, i.item_id, i.job_id, i.original_kind, i.original_text, i.received_at, i.disposition, i.sender_display_name, i.sender_label,
       i.matched_project_name, i.match_reason, j.project_id AS job_project_id
     FROM line_inbox_items i LEFT JOIN jobs j ON j.ward_id = i.ward_id AND j.job_id = i.job_id
-    WHERE i.ward_id = ?
+    WHERE i.ward_id = ? AND (i.job_id IS NULL OR j.withdrawn_at IS NULL)
+      AND NOT EXISTS (SELECT 1 FROM inquiry_records q WHERE q.ward_id = i.ward_id AND q.line_bundle_id = i.bundle_id)
     ORDER BY i.received_at DESC, i.item_id
   `).bind(wardId).all<InboxRow>();
   return result.results;
@@ -66,7 +68,7 @@ const openProjects = async (db: D1Database, wardId: string) => (await db.prepare
   .bind(wardId).all<{ project_id: string; name: string }>()).results;
 
 /** 届いたものの一件。写真か文と、だれがいつ送ったかを、一覧と開いた画面で同じに見せる。 */
-interface Received { key: string; job: string; href: string; action: string; photo: string | null; isText: boolean; title: string; note: string; project: string | null; at: string; state: string }
+interface Received { key: string; job: string; href: string; action: string; photo: string | null; photos?: string[]; words?: string; isText: boolean; title: string; note: string; project: string | null; at: string; state: string }
 
 function ClarificationForm({ ward, question, back }: { ward: AdminEnv["Variables"]["ward"]; question: { id: string; text: string; options: string[] }; back: string }) {
   const action = adminPath(ward, `/inbox/questions/${question.id}`);
@@ -78,9 +80,9 @@ function ClarificationForm({ ward, question, back }: { ward: AdminEnv["Variables
 }
 
 /** 写真を大きく見て、その場で行事を決める画面。LINE で届いたものと、この画面から送ったものの両方で使う。 */
-function InboxPick({ ward, title, noun, facts, photos, files, summary, reason, questions, back, action, projects, current, suggested, suggestedName, suggestedKind, removable, answered, originalId, know }: {
+function InboxPick({ ward, title, noun, facts, photos, files, words, summary, reason, questions, back, action, projects, current, suggested, suggestedName, suggestedKind, removable, answered, originalId, know }: {
   ward: AdminEnv["Variables"]["ward"]; title: string; noun: string; facts: [string, string][]; photos: { src: string; alt: string }[]; files: { href: string; label: string }[];
-  summary: string; reason: string | null; questions: { id: string; text: string; options: string[] }[]; back: string; action: string;
+  words?: string; summary: string; reason: string | null; questions: { id: string; text: string; options: string[] }[]; back: string; action: string;
   projects: { project_id: string; name: string }[]; current: string | null; suggested: string | null; suggestedName: string; suggestedKind: string; removable: boolean; answered: boolean; originalId: string; know: { id: string; title: string }[];
 }) {
   const others = projects.filter((project) => project.project_id !== current);
@@ -89,8 +91,10 @@ function InboxPick({ ward, title, noun, facts, photos, files, summary, reason, q
     <a class="back" href={adminPath(ward, "/inbox")}>← 届いたものへ</a>
     {answered ? <Notice>答えを残しました。</Notice> : null}
     <h1>{title}</h1>
+    <p class="lead">届いた写真と言葉を見て、つなげる行事を選べます。</p>
     {photos.map((photo) => <a href={photo.src}><img class="photo-full" src={photo.src} alt={photo.alt} /></a>)}
     {photos.length ? <p class="muted">写真を押すと、元の大きさで開きます。</p> : null}
+    {words ? <><h2>一緒に送られた言葉</h2><p class="preserve-lines">{words}</p></> : null}
     {files.map((file) => <p class="link-line"><a href={file.href}>{file.label}</a></p>)}
     <dl class="facts">{facts.map(([name, value]) => <><dt>{name}</dt><dd>{value}</dd></>)}</dl>
     {summary ? <><h2>AIが読んだこと</h2><p class="preserve-lines">{summary}</p></> : null}
@@ -118,18 +122,28 @@ const admin = new Hono<AdminEnv>();
 admin.get("/inbox", async (c) => {
   const { ward } = c.var;
   const db = c.env.DB;
-  const [items, jobs, projects, groups, inquiries, clarifications, summaries, rosterJobs] = await Promise.all([
+  const [items, jobs, projects, materialGroups, inquiries, clarifications, summaries, rosterJobs] = await Promise.all([
     listInboxItems(db, ward.wardId), listJobs(db, ward.wardId, { limit: 100 }), openProjects(db, ward.wardId),
     pendingMaterialGroups(db, ward.wardId), openInquiries(db, ward.wardId), listClarifications(db, ward.wardId), jobSummaries(db, ward.wardId), rosterCandidates(db, ward.wardId),
   ]);
+  const allLineJobs = new Set((await db.prepare("SELECT job_id FROM line_inbox_items WHERE ward_id = ?").bind(ward.wardId)
+    .all<{ job_id: string | null }>()).results.map((i) => i.job_id));
+  const groups = materialGroups.filter((g) => !g.materials.some((m) => allLineJobs.has(m.jobId)));
   const adminJobs = jobs.filter((j) => j.via === "admin" && !j.withdrawn_at);
   // 閉じた行事に入れたものも、行事の名前で読む。
   const names = new Map((await db.prepare("SELECT project_id, title FROM projects WHERE ward_id = ?").bind(ward.wardId).all<{ project_id: string; title: string }>()).results.map((row) => [row.project_id, row.title]));
-  const lineRows = await Promise.all(items.map(async (item) => ({ item, job: item.job_id ? await getJob(db, ward.wardId, item.job_id) : null })));
-  const fromLine = ({ item, job }: (typeof lineRows)[number]): Received => {
+  const byBundle = new Map<string, InboxRow>();
+  for (const item of items) {
+    const key = item.bundle_id ?? item.item_id;
+    if (!byBundle.has(key) || (byBundle.get(key)!.original_kind !== "image" && item.original_kind === "image")) byBundle.set(key, item);
+  }
+  const lineRows = await Promise.all([...byBundle.values()].map(async (item) => ({ item, job: item.job_id ? await getJob(db, ward.wardId, item.job_id) : null,
+    contents: item.bundle_id ? await lineBundleContents(db, ward.wardId, item.bundle_id) : null })));
+  const fromLine = ({ item, job, contents }: (typeof lineRows)[number]): Received => {
     const reading = job && !job.project_id && ["received", "reading", "attention", "failed"].includes(job.status);
     return { key: item.item_id, job: item.job_id ?? "", href: adminPath(ward, `/inbox/${item.item_id}/pick`), action: adminPath(ward, `/inbox/${item.item_id}`),
       photo: item.original_kind === "image" && item.job_id ? adminPath(ward, `/inbox/${item.item_id}/original`) : null, isText: item.original_kind === "text",
+      photos: contents?.photos.map((p) => adminPath(ward, `/inbox/${p.item_id}/original`)), words: contents?.text,
       title: item.original_text ? `「${shortLine(item.original_text, 30)}」` : shortLine(summaries.get(item.job_id ?? "") ?? "") || "届いた写真",
       note: `送った人: ${senderText(item.sender_display_name, item.sender_label)}`, project: item.matched_project_name ?? names.get(job?.project_id ?? "") ?? null, at: item.received_at, state: reading ? STATUS_LABEL[job.status] : "" };
   };
@@ -144,12 +158,13 @@ admin.get("/inbox", async (c) => {
   const readingJobs = adminJobs.filter((j) => !j.project_id && j.status !== "read");
   // 行き先のない資料は区の資料に入っている。候補がある物だけを聞く。
   const lineRowsAsked = lineRows.filter(({ item }) => !inGroups.has(item.job_id ?? ""));
-  const decided = [...await Promise.all(adminJobs.filter((j) => j.status === "read" || j.project_id).filter((j) => !inGroups.has(j.job_id)).map(fromJob)), ...lineRowsAsked.map(fromLine)]
+  const received = [...await Promise.all(adminJobs.filter((j) => j.status === "read" || j.project_id).filter((j) => !inGroups.has(j.job_id)).map(fromJob)), ...lineRowsAsked.map(fromLine)]
     .sort((a, b) => b.at.localeCompare(a.at));
   const rosterAsk = rosterJobs.filter((jobId) => !inGroups.has(jobId)).map((jobId) => {
     const row = lineRows.find(({ item }) => item.job_id === jobId);
-    return row ? fromLine(row) : decided.find((entry) => entry.key === jobId);
+    return row ? fromLine(row) : received.find((entry) => entry.key === jobId);
   }).filter((row): row is Received => Boolean(row));
+  const decided = received.filter((row) => !rosterAsk.some((asked) => asked.key === row.key));
   const asked = inquiries.filter(({ group }) => group[0]!.kind === "inquiry");
   const open = clarifications.filter((question) => !question.answer);
   const nothing = !groups.length && !readingJobs.length && !asked.length && !decided.length && !clarifications.length;
@@ -191,6 +206,7 @@ admin.get("/inbox", async (c) => {
     {asked.length ? <><h2>役員に届いた問い合わせ</h2>
       <p class="muted">{asked.some(({ group }) => group.some((row) => row.line_replied_at)) ? "AIは答えていません。送った人には「役員に伝えて、内容を確認します」と返しました。" : "AIは答えていません。"}</p>
       <ul class="rows">{asked.slice(0, 2).map(({ group, project }) => { const record = group[0]!; const words = dateWords(record.subject); return <li><a class="row-link" href={adminPath(ward, `/inquiries/${encodeURIComponent(record.inquiry_id)}`)}><b>「{inquirySubject(record.subject)}」</b>
+        {record.photos?.map((id) => <img class="photo" src={adminPath(ward, `/inbox/${id}/original`)} alt="一緒に届いた写真" loading="lazy" />)}
         {record.line_source_type ? <span>送った人: {record.line_sender_label || "名前は分かりません"}（{record.line_source_type === "user" ? "自治会のLINEに個別に送った人" : "LINEグループ"}）</span> : null}
         <span>{words.length ? `急ぎかもしれません（${words.map((word) => `「${word}」`).join("")}とあります）。` : ""}{group.length > 1 ? `同じ内容が${group.length}件あります` : `${formatJstDate(record.received_at)}に届きました`}</span>
         {project ? <span>{project.title}の話のようです</span> : null}
@@ -198,7 +214,8 @@ admin.get("/inbox", async (c) => {
       {asked.length > 2 ? <li><a class="row-link" href={adminPath(ward, "/inquiries")}><b>ほかの問い合わせ {asked.length - 2}件</b><span>問い合わせと要望の画面で見られます</span></a></li> : null}</ul></> : null}
     {decided.length ? <><h2>届いたもの（{decided.length}件）</h2><p class="muted">どれも自治会の資料に入っています。押すと大きく見られ、どれかの資料にしたり、自治会の基本情報につなげたりできます。</p>
       <ul class="photo-grid">{decided.map((row) => <li><a href={row.href}>
-        {row.photo ? <img class="photo" src={row.photo} alt={`${row.title}の写真`} loading="lazy" /> : <span class="photo-none">{row.title}</span>}
+        {row.photos?.length ? row.photos.map((src) => <img class="photo" src={src} alt="一緒に届いた写真" loading="lazy" />) : row.photo ? <img class="photo" src={row.photo} alt={`${row.title}の写真`} loading="lazy" /> : <span class="photo-none">{row.title}</span>}
+        {row.words ? <><b>一緒に送られた言葉</b><span class="preserve-lines">{row.words}</span></> : null}
         {row.photo ? <b>{row.title}</b> : null}<span>{row.project ? `${row.project}の資料にしています` : "まだどれの資料にもしていません"}</span><span>{`${formatJst(row.at)}に届きました`}</span><span>{row.note}</span>
       </a></li>)}</ul></> : null}
     {clarifications.length ? <p class="link-line"><a href={adminPath(ward, "/inbox/questions")}>{open.length ? `読めなかったところの質問（${open.length}件）を見る` : "読めなかったところの質問を見る"}</a></p> : null}
@@ -310,12 +327,16 @@ admin.get("/inbox/:itemId/pick", async (c) => {
   const { ward } = c.var;
   const itemId = c.req.param("itemId");
   const [item, projects, summaries, questions, groups] = await Promise.all([
-    c.env.DB.prepare(`SELECT i.job_id, i.original_kind, i.original_text, i.received_at, i.matched_project_id, i.matched_project_name, i.match_reason, i.sender_display_name, i.sender_label, j.project_id AS job_project_id
+    c.env.DB.prepare(`SELECT i.bundle_id, i.job_id, i.original_kind, i.original_text, i.received_at, i.matched_project_id, i.matched_project_name, i.match_reason, i.sender_display_name, i.sender_label, j.project_id AS job_project_id
       FROM line_inbox_items i LEFT JOIN jobs j ON j.ward_id = i.ward_id AND j.job_id = i.job_id WHERE i.ward_id = ? AND i.item_id = ?`)
-      .bind(ward.wardId, itemId).first<{ job_id: string | null; original_kind: string; original_text: string | null; received_at: string; matched_project_id: string | null; matched_project_name: string | null; match_reason: string | null; sender_display_name: string | null; sender_label: string | null; job_project_id: string | null }>(),
+      .bind(ward.wardId, itemId).first<{ bundle_id: string | null; job_id: string | null; original_kind: string; original_text: string | null; received_at: string; matched_project_id: string | null; matched_project_name: string | null; match_reason: string | null; sender_display_name: string | null; sender_label: string | null; job_project_id: string | null }>(),
     openProjects(c.env.DB, ward.wardId), jobSummaries(c.env.DB, ward.wardId), listClarifications(c.env.DB, ward.wardId), pendingMaterialGroups(c.env.DB, ward.wardId),
   ]);
   if (!item) return c.notFound();
+  const contents = item.bundle_id ? await lineBundleContents(c.env.DB, ward.wardId, item.bundle_id) : null;
+  const inquiry = item.bundle_id ? await c.env.DB.prepare("SELECT inquiry_id FROM inquiry_records WHERE ward_id = ? AND line_bundle_id = ?")
+    .bind(ward.wardId, item.bundle_id).first<{ inquiry_id: string }>() : null;
+  if (inquiry) return c.redirect(adminPath(ward, `/inquiries/${inquiry.inquiry_id}`), 303);
   const [originals, know] = await Promise.all([item.job_id ? listOriginals(c.env.DB, ward.wardId, item.job_id) : [], listKnowItems(c.env.DB, ward.wardId)]);
   const summary = summaries.get(item.job_id ?? "") ?? "";
   const current = item.matched_project_id ?? item.job_project_id;
@@ -324,7 +345,8 @@ admin.get("/inbox/:itemId/pick", async (c) => {
   const group = groups.find((g) => g.title && g.materials.some((m) => m.jobId === item.job_id));
   return c.html(<InboxPick ward={ward} originalId={originals.find((o) => !o.withdrawn_at)?.original_id ?? ""} know={know.items} answered={c.req.query("n") === "answered"} noun={item.original_kind === "text" ? "文" : "写真"} suggested={group?.joins?.projectId ?? null} suggestedName={group && !group.joins ? group.title : ""} suggestedKind={group?.kind ?? "event"} title={item.original_text ? `「${shortLine(item.original_text, 30)}」` : shortLine(summary) || "届いた写真"}
     facts={[["送った人", item.sender_display_name ? `${senderText(item.sender_display_name)}（自治会のLINE）` : senderText(null, item.sender_label)], ["届いた日", formatJst(item.received_at)], ["どれの資料か", name ? `${name}の資料にしています` : "まだどれの資料にもしていません（自治会の資料には残っています）"]]}
-    photos={image ? [{ src: adminPath(ward, `/inbox/${itemId}/original`), alt: shortLine(summary) || "届いた写真" }] : []} files={[]}
+    photos={contents?.photos.length ? contents.photos.map((p) => ({ src: adminPath(ward, `/inbox/${p.item_id}/original`), alt: "一緒に届いた写真" })) : image ? [{ src: adminPath(ward, `/inbox/${itemId}/original`), alt: shortLine(summary) || "届いた写真" }] : []} files={[]}
+    words={contents?.text}
     summary={item.original_text ? "" : summary} reason={current ? item.match_reason : null} questions={questions.filter((q) => q.job_id === item.job_id && !q.answer)} back={adminPath(ward, `/inbox/${itemId}/pick`)}
     action={adminPath(ward, `/inbox/${itemId}`)} projects={projects} current={current} removable={Boolean(item.job_id)} />);
 });
@@ -356,19 +378,30 @@ admin.post("/inbox/:itemId", async (c) => {
   const form = await c.req.parseBody();
   const operation = form.operation;
   const itemId = c.req.param("itemId");
-  const before = await c.env.DB.prepare(`SELECT i.job_id, COALESCE(i.matched_project_id, j.project_id) AS current FROM line_inbox_items i
-    LEFT JOIN jobs j ON j.ward_id = i.ward_id AND j.job_id = i.job_id WHERE i.ward_id = ? AND i.item_id = ?`).bind(wardId, itemId).first<{ job_id: string | null; current: string | null }>();
+  const before = await c.env.DB.prepare(`SELECT i.bundle_id, i.job_id, COALESCE(i.matched_project_id, j.project_id) AS current FROM line_inbox_items i
+    LEFT JOIN jobs j ON j.ward_id = i.ward_id AND j.job_id = i.job_id WHERE i.ward_id = ? AND i.item_id = ?`).bind(wardId, itemId).first<{ bundle_id: string | null; job_id: string | null; current: string | null }>();
+  if (!before) return c.notFound();
+  const members = before.bundle_id ? (await lineBundleContents(c.env.DB, wardId, before.bundle_id)).items
+    : [{ item_id: itemId, job_id: before.job_id }];
+  const move = async (projectId: string | null, name: string | null): Promise<boolean> => {
+    for (const item of members) {
+      if (item.job_id && !await assignProject(c.env, safeContext(c), wardId, item.job_id, projectId)) return false;
+      if (item.job_id && projectId) await rememberPhotoSource(c.env.DB, wardId, item.job_id, projectId);
+      await c.env.DB.prepare(`UPDATE line_inbox_items SET disposition = ?, matched_project_id = ?, matched_project_name = ?, match_reason = NULL
+        WHERE ward_id = ? AND item_id = ?`).bind(projectId ? "matched" : "unmatched", projectId, name, wardId, item.item_id).run();
+    }
+    return true;
+  };
   const from = (next: string | null) => before?.current && before.current !== next ? `&from=${before.current}` : "";
   if (operation === "detach") {
-    if (!before) return c.notFound();
-    if (before.job_id && !(await assignProject(c.env, safeContext(c), wardId, before.job_id, null))) return c.redirect(`/${c.var.ward.slug}/admin/inbox?error=busy`, 303);
-    await c.env.DB.prepare("UPDATE line_inbox_items SET disposition = 'unmatched', matched_project_id = NULL, matched_project_name = NULL, match_reason = NULL WHERE ward_id = ? AND item_id = ?").bind(wardId, itemId).run();
+    if (!await move(null, null)) return c.redirect(`/${c.var.ward.slug}/admin/inbox?error=busy`, 303);
     return c.redirect(`/${c.var.ward.slug}/admin/inbox?n=detached${from(null)}`, 303);
   }
   if (operation === "unrelated") {
-    const item = await c.env.DB.prepare("SELECT job_id FROM line_inbox_items WHERE ward_id = ? AND item_id = ?").bind(wardId, itemId).first<{ job_id: string | null }>();
-    if (!item?.job_id || !(await withdrawJob(c.env, wardId, item.job_id))) return c.redirect(`/${c.var.ward.slug}/admin/inbox?error=busy`, 303);
-    await markInboxItemUnrelated(c.env.DB, wardId, itemId);
+    for (const item of members) {
+      if (item.job_id && !await withdrawJob(c.env, wardId, item.job_id)) return c.redirect(`/${c.var.ward.slug}/admin/inbox?error=busy`, 303);
+      await markInboxItemUnrelated(c.env.DB, wardId, item.item_id);
+    }
     return c.redirect(`/${c.var.ward.slug}/admin/inbox?n=removed`, 303);
   } else if (operation === "assign") {
     const projectId = typeof form.projectId === "string" ? form.projectId : "";
@@ -377,17 +410,7 @@ admin.post("/inbox/:itemId", async (c) => {
     `).bind(wardId, projectId).first<{ name: string }>();
     if (!project) return c.redirect(`/${c.var.ward.slug}/admin/inbox?error=input`, 303);
     {
-      const item = await c.env.DB.prepare("SELECT job_id FROM line_inbox_items WHERE ward_id = ? AND item_id = ?")
-        .bind(wardId, itemId).first<{ job_id: string | null }>();
-      if (!item) return c.redirect(`/${c.var.ward.slug}/admin/inbox?error=busy`, 303);
-      if (item.job_id) {
-        if (!(await assignProject(c.env, safeContext(c), wardId, item.job_id, projectId))) return c.redirect(`/${c.var.ward.slug}/admin/inbox?error=busy`, 303);
-        await rememberPhotoSource(c.env.DB, wardId, item.job_id, projectId);
-      }
-      await c.env.DB.prepare(`
-        UPDATE line_inbox_items SET disposition = 'matched', matched_project_id = ?,
-          matched_project_name = ?, match_reason = NULL WHERE ward_id = ? AND item_id = ?
-      `).bind(projectId, project.name, wardId, itemId).run();
+      if (!await move(projectId, project.name)) return c.redirect(`/${c.var.ward.slug}/admin/inbox?error=busy`, 303);
       return c.redirect(`/${c.var.ward.slug}/admin/inbox?n=assigned&project=${projectId}${from(projectId)}`, 303);
     }
   } else if (operation === "new-project") {
@@ -397,16 +420,7 @@ admin.post("/inbox/:itemId", async (c) => {
     if (!projectName || projectName.length > 100 || !PROJECT_KINDS.some((value) => value === kind) || !Number.isInteger(year) || year < 2000 || year > 2100) return c.redirect(`/${c.var.ward.slug}/admin/inbox?error=input`, 303);
     {
       const created = await createProject(c.env.DB, wardId, { kind: kind as ProjectKind, title: projectName, year, accountId: c.var.account.accountId });
-      const item = await c.env.DB.prepare("SELECT job_id FROM line_inbox_items WHERE ward_id = ? AND item_id = ?")
-        .bind(wardId, itemId).first<{ job_id: string | null }>();
-      if (item?.job_id) {
-        await assignProject(c.env, safeContext(c), wardId, item.job_id, created.projectId);
-        await rememberPhotoSource(c.env.DB, wardId, item.job_id, created.projectId);
-      }
-      await c.env.DB.prepare(`
-        UPDATE line_inbox_items SET disposition = 'matched', matched_project_id = ?,
-          matched_project_name = ?, match_reason = NULL WHERE ward_id = ? AND item_id = ?
-      `).bind(created.projectId, projectName, wardId, itemId).run();
+      if (!await move(created.projectId, projectName)) return c.redirect(`/${c.var.ward.slug}/admin/inbox?error=busy`, 303);
       return c.redirect(`/${c.var.ward.slug}/admin/inbox?n=assigned&project=${created.projectId}${from(created.projectId)}`, 303);
     }
   }

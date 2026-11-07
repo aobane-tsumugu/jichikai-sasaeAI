@@ -2,9 +2,9 @@ import { newId, nowIso } from "../core/ids";
 import { applyChange } from "./apply";
 import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, ITEM_SCREEN_LABEL, TABLES, cleanRowData, isItemKey, isTableKey, rowMatchKey, type DocumentKind, type ProjectKind, type Scope, type ItemKey, type RowData } from "./model";
 import { hashOf, stableStringify } from "./util";
-import { getProjectState } from "./state";
+import { eventDayStatements, getProjectState } from "./state";
+import { parseEventDay } from "../core/time";
 import { reconcileDocumentBody, type DocumentBody } from "./document-body";
-import { addDays, MAP_TEMPLATES } from "../map/template";
 import { getDraftPack } from "../draft/packs";
 
 type MaterialTable = "duties" | "committee";
@@ -209,6 +209,12 @@ export async function answerQuestion(db: D1Database, wardId: string, projectId: 
         const result = await applyChange(db, wardId, projectId, { kind: "item", itemKey: detail.itemKey as ItemKey, value,
           source, confidence: "high", packVersion: "person-conflict@1", requestId: questionId });
         if (result.status === "rejected" || result.status === "dropped") return false;
+        // 日時の食い違いを人が選んだときは、行事の日と段取りもその日にそろえる。
+        if (detail.itemKey === "date_time") {
+          const state = await getProjectState(db, wardId, projectId);
+          const day = state ? parseEventDay(value, state.project.year) : null;
+          if (day && !(await setEventDay(db, wardId, projectId, day, accountId))) return false;
+        }
         applied = true;
       } else if (detail.table && isTableKey(detail.table) && detail.rowId && detail.field && detail.values?.[index] !== undefined) {
         const row = await db.prepare("SELECT data FROM project_rows WHERE ward_id = ? AND project_id = ? AND row_id = ? AND removed_at IS NULL")
@@ -272,23 +278,7 @@ export async function setEventDay(db: D1Database, wardId: string, projectId: str
   if (!state || state.project.closedAt) return false;
   const oldDay = state.project.deadlines.event_day;
   if (oldDay === day) return true;
-  const shift = oldDay ? Math.round((Date.parse(day) - Date.parse(oldDay)) / 86400000) : 0;
-  const template = MAP_TEMPLATES[state.project.kind] ?? [];
-  const statements = [db.prepare(`INSERT INTO project_deadlines (ward_id, project_id, kind, due_on, updated_at, updated_by_account_id)
-    VALUES (?, ?, 'event_day', ?, ?, ?)
-    ON CONFLICT (ward_id, project_id, kind) DO UPDATE SET due_on = excluded.due_on,
-      updated_at = excluded.updated_at, updated_by_account_id = excluded.updated_by_account_id`)
-    .bind(wardId, projectId, day, nowIso(), accountId)];
-  for (const task of state.mapTasks) {
-    if (task.progress === "done") continue;
-    const offsets = template.find((entry) => entry.key === task.taskKey);
-    const start = oldDay ? task.periodStart ? addDays(task.periodStart, shift) : null : offsets ? addDays(day, offsets.start) : task.periodStart;
-    const end = oldDay ? task.periodEnd ? addDays(task.periodEnd, shift) : null : offsets ? addDays(day, offsets.end) : task.periodEnd;
-    statements.push(db.prepare(`UPDATE project_map_tasks SET period_start = ?, period_end = ?
-      WHERE ward_id = ? AND project_id = ? AND task_id = ? AND progress <> 'done' AND removed_at IS NULL`)
-      .bind(start, end, wardId, projectId, task.taskId));
-  }
-  await db.batch(statements);
+  await db.batch(eventDayStatements(db, wardId, projectId, state, day, accountId, nowIso()));
   return true;
 }
 

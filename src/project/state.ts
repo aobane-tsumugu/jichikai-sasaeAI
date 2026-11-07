@@ -69,6 +69,32 @@ function groupDeadlines(rows: { project_id: string; kind: string; due_on: string
   return map;
 }
 
+/** 行事の日と、済んでいない仕事の時期を同じ書き込みで置く。資料からは既存の日を保つ。 */
+export function eventDayStatements(
+  db: D1Database, wardId: string, projectId: string, state: Pick<ProjectState, "project" | "mapTasks">,
+  day: string, accountId: string | null, now: string, onlyIfMissing = false,
+): D1PreparedStatement[] {
+  const oldDay = state.project.deadlines.event_day;
+  const shift = oldDay ? Math.round((Date.parse(day) - Date.parse(oldDay)) / 86400000) : 0;
+  const template = MAP_TEMPLATES[state.project.kind] ?? [];
+  const statements = [db.prepare(`INSERT INTO project_deadlines (ward_id, project_id, kind, due_on, updated_at, updated_by_account_id)
+    VALUES (?, ?, 'event_day', ?, ?, ?)
+    ON CONFLICT (ward_id, project_id, kind) DO ${onlyIfMissing ? "NOTHING" : `UPDATE SET due_on = excluded.due_on,
+      updated_at = excluded.updated_at, updated_by_account_id = excluded.updated_by_account_id`}`)
+    .bind(wardId, projectId, day, now, accountId)];
+  for (const task of state.mapTasks) {
+    if (task.progress === "done") continue;
+    const offsets = template.find((entry) => entry.key === task.taskKey);
+    const start = oldDay ? task.periodStart ? addDays(task.periodStart, shift) : null : offsets ? addDays(day, offsets.start) : task.periodStart;
+    const end = oldDay ? task.periodEnd ? addDays(task.periodEnd, shift) : null : offsets ? addDays(day, offsets.end) : task.periodEnd;
+    statements.push(db.prepare(`UPDATE project_map_tasks SET period_start = ?, period_end = ?
+      WHERE ward_id = ? AND project_id = ? AND task_id = ? AND progress <> 'done' AND removed_at IS NULL
+        AND EXISTS (SELECT 1 FROM project_deadlines WHERE ward_id = ? AND project_id = ? AND kind = 'event_day' AND due_on = ?)`)
+      .bind(start, end, wardId, projectId, task.taskId, wardId, projectId, day));
+  }
+  return statements;
+}
+
 /**
  * プロジェクトを開く。種類（行事、総会、市の依頼…）と題と年を受け、種類ごとの一般の地図を置く。
  * 題は後で直せる。去年の地図を種にする時の日付の置き直しは、束 7 の来年の種で行う。

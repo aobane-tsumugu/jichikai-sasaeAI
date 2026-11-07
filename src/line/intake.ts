@@ -14,6 +14,8 @@ import { canStartJobAi, getWardAiLimits, recordAiMatchUsage } from "../ops/metri
 import { sha256Hex } from "../intake/media";
 import { WardBucket } from "../core/storage";
 import { recordLineInquiry } from "../project/followup";
+import { newId } from "../core/ids";
+import { lineBundleContents, lineBundlePhotoSummaries } from "./photo-context";
 
 /** 当てるAIが出欠の答えと判断した文から、人数を読む。 */
 export const LINE_ANSWER_PACK = { version: "line-answer@2", notAttending: /参加しません|参加しない|不参加|欠席/ } as const;
@@ -30,6 +32,10 @@ export interface LineOriginal {
   contentType?: string;
   officialAddressed?: boolean;
   aiLimitReason?: "monthly" | "sender";
+  bundleId?: string;
+  photoSummaries?: string[];
+  accompanyingText?: string;
+  inquiry?: boolean;
 }
 
 /** 既存の受信記録を使って一回だけ数える。文の雑談判定で原本を消しても数は残る。 */
@@ -50,18 +56,19 @@ export async function lineAiLimitReason(db: D1Database, wardId: string, eventId:
 
 /** 月の上限で預かった文を、元の文のままいつもの当て先・出欠・問い合わせの道へ戻す。 */
 export async function resumeLimitedLineText(env: Env, wardId: string, jobId: string): Promise<boolean> {
-  const item = await env.DB.prepare(`SELECT i.event_id, i.sender_id, i.sender_display_name, i.source_type, i.source_id,
+  const item = await env.DB.prepare(`SELECT i.bundle_id, i.event_id, i.sender_id, i.sender_display_name, i.source_type, i.source_id,
     i.received_at, i.official_addressed, o.r2_path FROM line_inbox_items i JOIN originals o
     ON o.ward_id = i.ward_id AND o.job_id = i.job_id WHERE i.ward_id = ? AND i.job_id = ?
     AND i.original_kind = 'text' AND o.withdrawn_at IS NULL ORDER BY o.position LIMIT 1`)
-    .bind(wardId, jobId).first<{ event_id: string; sender_id: string; sender_display_name: string | null;
+    .bind(wardId, jobId).first<{ bundle_id: string | null; event_id: string; sender_id: string; sender_display_name: string | null;
       source_type: LineOriginal["sourceType"]; source_id: string; received_at: string; official_addressed: number; r2_path: string }>();
   if (!item) return false;
   if (!await canStartJobAi(env.DB, wardId, jobId)) return true;
   const object = await new WardBucket(env.ORIGINALS, wardId).get(item.r2_path);
   if (!object) return false;
   const original: LineOriginal = { eventId: item.event_id, senderId: item.sender_id, senderDisplayName: item.sender_display_name,
-    sourceType: item.source_type, receivedAt: item.received_at, kind: "text", text: await object.text(), officialAddressed: item.official_addressed === 1 };
+    sourceType: item.source_type, receivedAt: item.received_at, kind: "text", text: await object.text(), officialAddressed: item.official_addressed === 1,
+    ...(item.bundle_id ? { bundleId: item.bundle_id, photoSummaries: await lineBundlePhotoSummaries(env.DB, wardId, item.bundle_id) } : {}) };
   const pending: Promise<unknown>[] = [];
   const ports = createLineIntakePorts(env, { waitUntil: (promise) => { pending.push(promise); } });
   const result = await ports.matchInboxItem(wardId, original);
@@ -69,7 +76,8 @@ export async function resumeLimitedLineText(env: Env, wardId: string, jobId: str
     await ports.discard(wardId, jobId);
     await markInboxItemUnrelated(env.DB, wardId, jobId);
   } else if (original.officialAddressed && result.attendanceAnswer !== true && result.inquiry) {
-    await recordLineInquiry(env.DB, wardId, { eventId: item.event_id, receivedAt: item.received_at, text: original.text ?? "",
+    if (item.bundle_id) await saveLineBundleInquiry(env.DB, wardId, item.bundle_id, original, item.source_id);
+    else await recordLineInquiry(env.DB, wardId, { eventId: item.event_id, receivedAt: item.received_at, text: original.text ?? "",
       sourceType: item.source_type, sourceId: item.source_id, userId: item.sender_id, senderLabel: item.sender_display_name });
     await env.DB.prepare("UPDATE jobs SET status = 'done', finished_at = ? WHERE ward_id = ? AND job_id = ? AND status = 'read'")
       .bind(new Date().toISOString(), wardId, jobId).run();
@@ -102,6 +110,69 @@ export interface LineIntakePorts {
   assignProject: (wardId: string, jobId: string, projectId: string) => Promise<void>;
   discard: (wardId: string, jobId: string) => Promise<void>;
   saveAnswerReply?: (wardId: string, projectId: string, original: LineOriginal, jobId: string) => Promise<void>;
+}
+
+/** 問い合わせの添付写真から自動で足された予定を外す。写真と読み取りはそのまま残す。 */
+export async function removeLineInquiryYearItems(db: D1Database, wardId: string): Promise<void> {
+  await db.prepare(`DELETE FROM ward_year_items WHERE ward_id = ? AND added = 1 AND removed_at IS NULL
+    AND source_original_id IN (SELECT o.original_id FROM originals o JOIN line_inbox_items i
+      ON i.ward_id = o.ward_id AND i.job_id = o.job_id JOIN inquiry_records q
+      ON q.ward_id = i.ward_id AND q.line_bundle_id = i.bundle_id
+      WHERE o.ward_id = ? AND i.original_kind = 'image' AND o.withdrawn_at IS NULL)`)
+    .bind(wardId, wardId).run();
+}
+
+/** 問い合わせの文と添えた写真を、同じ一件に残す。写真の当て先を住民に聞かない。 */
+export async function saveLineBundleInquiry(db: D1Database, wardId: string, bundleId: string, original: LineOriginal, sourceId: string): Promise<void> {
+  const contents = await lineBundleContents(db, wardId, bundleId);
+  const existing = await db.prepare("SELECT line_event_id FROM inquiry_records WHERE ward_id = ? AND line_bundle_id = ?")
+    .bind(wardId, bundleId).first<{ line_event_id: string | null }>();
+  const included = contents.items.some((i) => i.event_id === original.eventId) || existing?.line_event_id === original.eventId;
+  const text = original.kind === "text" && !included ? [contents.text, original.text].filter(Boolean).join("\n") : contents.text || original.text || "";
+  await db.prepare(`INSERT INTO inquiry_records (inquiry_id, ward_id, received_at, kind, subject, answer,
+    submitted_to_city, created_by_account_id, created_at, line_event_id, line_source_type, line_source_id,
+    line_sender_label, line_user_id, line_bundle_id) VALUES (?, ?, ?, 'inquiry', ?, '', 0, NULL, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (ward_id, line_bundle_id) DO UPDATE SET subject = excluded.subject`)
+    .bind(newId(), wardId, contents.items[0]?.received_at ?? original.receivedAt, text, new Date().toISOString(),
+      original.eventId, original.sourceType, sourceId, original.senderDisplayName ?? null,
+      original.sourceType !== "user" && original.senderId === sourceId ? null : original.senderId || null, bundleId).run();
+  await db.prepare(`UPDATE line_photo_batches SET match_finished_at = COALESCE(match_finished_at, ?)
+    WHERE ward_id = ? AND batch_id IN (SELECT p.batch_id FROM line_photo_items p JOIN line_inbox_items i
+      ON i.ward_id = p.ward_id AND i.job_id = p.job_id WHERE p.ward_id = ? AND i.bundle_id = ?)`)
+    .bind(new Date().toISOString(), wardId, wardId, bundleId).run();
+  await removeLineInquiryYearItems(db, wardId);
+}
+
+/** 言葉が先に届いた場合も、写真の読みができたところで同じ内容を見直す。 */
+export async function refreshLineBundleInquiry(db: D1Database, wardId: string, bundleId: string, ports: LineIntakePorts): Promise<void> {
+  if ((await getWardAiLimits(db, wardId)).monthlyBlocked) return;
+  const contents = await lineBundleContents(db, wardId, bundleId);
+  if (!contents.photos.length || !contents.text) return;
+  const texts = await db.prepare(`SELECT i.*, (SELECT COUNT(*) FROM line_inbox_items p JOIN jobs j
+    ON j.ward_id = p.ward_id AND j.job_id = p.job_id WHERE p.ward_id = i.ward_id AND p.bundle_id = i.bundle_id
+    AND p.original_kind = 'image' AND j.read_at IS NOT NULL AND j.withdrawn_at IS NULL) AS read_photos
+    FROM line_inbox_items i WHERE i.ward_id = ? AND i.bundle_id = ? AND i.original_kind = 'text'
+    AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.ward_id = i.ward_id AND j.job_id = i.job_id AND (j.ai_limit_reason = 'sender' OR j.withdrawn_at IS NOT NULL))
+    ORDER BY i.received_at, i.created_at, i.event_id`).bind(wardId, bundleId).all<{
+      event_id: string; sender_id: string; sender_display_name: string | null; source_type: LineOriginal["sourceType"];
+      source_id: string; received_at: string; official_addressed: number; read_photos: number; bundle_checked_photos: number;
+    }>();
+  const text = texts.results.find((r) => r.official_addressed && r.read_photos > r.bundle_checked_photos);
+  if (!text) return;
+  const original: LineOriginal = { eventId: text.event_id, senderId: text.sender_id, senderDisplayName: text.sender_display_name,
+    sourceType: text.source_type, receivedAt: text.received_at, kind: "text", text: contents.text, officialAddressed: true,
+    bundleId, photoSummaries: await lineBundlePhotoSummaries(db, wardId, bundleId) };
+  const existing = await db.prepare("SELECT inquiry_id FROM inquiry_records WHERE ward_id = ? AND line_bundle_id = ?")
+    .bind(wardId, bundleId).first();
+  if (existing) await saveLineBundleInquiry(db, wardId, bundleId, original, text.source_id);
+  else {
+    const result = await ports.matchInboxItem(wardId, original);
+    if (result.inquiry && !result.attendanceAnswer && result.disposition !== "unrelated") {
+      await saveLineBundleInquiry(db, wardId, bundleId, original, text.source_id);
+    }
+  }
+  await db.prepare("UPDATE line_inbox_items SET bundle_checked_photos = ? WHERE ward_id = ? AND bundle_id = ? AND original_kind = 'text'")
+    .bind(text.read_photos, wardId, bundleId).run();
 }
 
 async function saveLineAnswer(db: D1Database, wardId: string, projectId: string, original: LineOriginal, jobId: string): Promise<void> {
@@ -202,7 +273,7 @@ export function createLineIntakePorts(
           bytes,
         }],
       };
-      const outcome = original.kind === "image" || original.aiLimitReason ? await receive(env, input) : await receiveIntakeOriginal(env, ctx, input);
+      const outcome = original.kind === "image" || original.aiLimitReason || original.inquiry ? await receive(env, input) : await receiveIntakeOriginal(env, ctx, input);
       if (outcome.jobId && original.aiLimitReason) await env.DB.prepare(`UPDATE jobs SET ai_limit_reason = ?,
         status = 'received', read_at = NULL WHERE ward_id = ? AND job_id = ?`)
         .bind(original.aiLimitReason, wardId, outcome.jobId).run();
@@ -231,6 +302,8 @@ export function createLineIntakePorts(
         ...(item.kind === "text" && item.text ? { excerpt: item.text } : {}),
         senderLabel: item.senderDisplayName || item.senderId,
         officialAddressed: item.officialAddressed,
+        photoSummaries: item.photoSummaries,
+        accompanyingText: item.accompanyingText,
       })))(wardId, original);
       await recordAiMatchUsage(env.DB, wardId, result.usage);
       if (result.choice === MATCH_UNRELATED && !result.knowTopic) return { disposition: original.kind === "text" ? "unrelated" : "unmatched", reason: result.reason, inquiry: false };

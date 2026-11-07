@@ -87,7 +87,9 @@ describe("自治会のLINEと届いたもの", () => {
     expect(duplicate.status).toBe(200);
     const inbox = await listInboxItems(env.DB, ward.wardId);
     expect(inbox).toHaveLength(2);
-    expect(inbox.every((item) => item.original_text === null)).toBe(true);
+    // U78では、写真と一緒に届いた言葉をあとからも読めるよう本文を残す。
+    const expectedTexts = fixture.events.flatMap(({ message }) => message.text.includes("特売") ? [] : [message.text]);
+    expect(inbox.map((item) => item.original_text).sort()).toEqual(expectedTexts.sort());
     expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM jobs WHERE ward_id = ? AND via = 'line_direct'").bind(ward.wardId).first<{ count: number }>())?.count).toBe(2);
     expect((await env.DB.prepare("SELECT item_count FROM line_unrelated_daily_counts WHERE ward_id = ?").bind(ward.wardId).first<{ item_count: number }>())?.item_count).toBe(1);
     await Promise.all(pending);

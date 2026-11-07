@@ -30,18 +30,23 @@ export function documentText(raw: string): string {
   return "";
 }
 
-/** 議事録の「決めていないこと」の節を、そのまま未決として読む。AI は呼ばない。 */
+/** 議事録の決まらなかったことの節を、そのまま未決として読む。AIは呼ばない。 */
 export function pendingFromMinutes(text: string): string[] {
   const pending: string[] = [];
   let inside = false;
   for (const raw of text.split("\n")) {
     const line = raw.trim();
     if (!line) continue;
-    if (line.startsWith("#") || (line.length <= 20 && !line.includes("。"))) {
-      inside = /決めていない|決まっていない|決まらなかった|続けること|持ち越/.test(line);
+    const bullet = /^[-・*]\s*/.test(line);
+    const markedHeading = /^(?:■|#)/.test(line) || /^【.*】$/.test(line);
+    if (!bullet && (markedHeading || (line.length <= 20 && !line.includes("。")))) {
+      const heading = line.replace(/^(?:■|#+)\s*/, "").replace(/^【(.*)】$/, "$1").trim();
+      // 開催予定だけの「次回」は、話し合いを持ち越した内容とは分ける。
+      inside = /決めていない|決まっていない|決まらなかった|続けること|持ち越|継続|保留|次回|未決/.test(heading)
+        && !/^次回(?:の(?:日時|日程|予定))?$/.test(heading);
       continue;
     }
-    if (inside) pending.push(line.replace(/^[-・]\s*/, ""));
+    if (inside) pending.push(line.replace(/^[-・*]\s*/, ""));
   }
   return pending;
 }
