@@ -585,7 +585,7 @@ else {
       const location = queued.headers.get("location");
       if (queued.status !== 303 || location !== admin + "/settings/deletion?queued=1") throw new Error("元の資料の消去を受け付けられません");
       const accepted = await get(location);
-      if (!accepted.response.ok || !accepted.html.includes("消去を受け付けました。処理は続きから進みます。")) throw new Error("元の資料の消去の受付を確認できません");
+      if (!accepted.response.ok || !accepted.html.includes("消す手続きを受け付けました。")) throw new Error("元の資料の消去の受付を確認できません");
       record(12, "元の資料を消す", "通過", "今回の回答票の記録を自治会の設定の消す求めから受け付けた。消去完了は未確認", accepted.response.status, start);
     }
   } catch (error) { fail(12, "元の資料を消す", error, start); }
