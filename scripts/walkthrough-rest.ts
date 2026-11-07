@@ -359,13 +359,13 @@ else {
         .map(match => match[1] ?? "")
         .filter(link => !/\/archive\/(?:map|search)$/.test(link));
       if (!links.length) throw new Error("閉じた記録を開けません");
-      // 記録の段取りはrecord-splitの中のpanelに、仕事の名前と時期を並べている。段取りの無い記録もある。
+      // 記録の画面は「〇〇年の動き」の下に、時期と仕事の名前を一行ずつ並べている（時期と名前は全角の空白で区切る）。動きの無い記録もある。
       let term = "";
       for (const link of links.slice(0, 40)) {
         const recordPage = await get(unescapeHtml(link));
-        const mapHtml = /<div\b[^>]*class="record-split"[^>]*>\s*<section>\s*<h2\b[^>]*>やること<\/h2>([\s\S]*?)(?=<h2\b)/.exec(recordPage.html)?.[1] ?? "";
-        const taskNames = [...mapHtml.matchAll(/<section\b[^>]*class="panel"[^>]*>\s*<h3\b[^>]*>([\s\S]*?)<\/h3>/g)]
-          .map((match) => unescapeHtml((match[1] ?? "").replace(/<[^>]*>/g, "")).trim());
+        const mapHtml = /<h2\b[^>]*>\d{4}年の動き<\/h2>([\s\S]*?)(?=<h2\b|$)/.exec(recordPage.html)?.[1] ?? "";
+        const taskNames = [...mapHtml.matchAll(/<li\b[^>]*class="panel"[^>]*>\s*<p>\s*<b>([\s\S]*?)<\/b>/g)]
+          .map((match) => unescapeHtml((match[1] ?? "").replace(/<[^>]*>/g, "")).trim().split("\u3000").pop()!.trim());
         term = taskNames.find((name) => name.length >= 2) ?? "";
         if (term) break;
       }
