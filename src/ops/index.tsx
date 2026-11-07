@@ -20,7 +20,6 @@ import { lifecyclePages } from "./lifecycle-pages";
 import { contactOpsRoutes } from "./contacts";
 import { alertsRoutes } from "./alerts";
 import { contactDeletionRoutes } from "./contact-deletion";
-import { photoProvider } from "../photos/provider";
 import { PrivateWardContact, getPrivateWardContact, savePrivateWardContact } from "./private-contact";
 import { readSpacePaper } from "../space/receive-paper";
 import { backupStatus } from "../archive/backup";
@@ -326,7 +325,6 @@ opsRoutes.get("/wards/:slug", async (c) => {
       <form method="post" action={`/ops/wards/${ward.slug}/digest`}><DigestFields value={digest} /><button class="secondary">通知の時刻と日数を保存する</button></form>
       <h2>この自治会のほかの画面</h2>
       <nav class="action-links" aria-label="運用の画面">
-        <a class="row-link" href={`/ops/photo-settings/${encodeURIComponent(ward.wardId)}`}><b>報告の写真の設定</b><span>写真を処理する準備と測定の結果を確かめます</span></a>
         <a class="row-link" href={`/ops/wards/${ward.slug}/costs`}><b>費用</b><span>月ごとに、AIに読んでもらった費用を見ます</span></a>
         <a class="row-link" href={`/ops/wards/${ward.slug}/budget`}><b>予算とLINEの受付</b><span>自治会ごとにAIを動かす上限を決めます</span></a>
         <a class="row-link" href={`/ops/wards/${ward.slug}/queue`}><b>読み取りの状況</b><span>失敗したものを、もう一度動かします</span></a>
@@ -618,7 +616,6 @@ opsRoutes.post("/wards/:slug/queue/:jobId/retry", async (c) => {
 
 opsRoutes.route("/contacts", contactOpsRoutes);
 opsRoutes.route("/contact-deletions", contactDeletionRoutes);
-opsRoutes.route("/", photoProvider);
 opsRoutes.route("/alerts", alertsRoutes);
 opsRoutes.route("/", lifecyclePages);
 

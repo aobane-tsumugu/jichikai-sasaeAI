@@ -8,8 +8,6 @@ import { exportWard, requestWardDeletion, runDeletionCron } from "../src/ops/lif
 import { createProject } from "../src/project/api";
 import { CONTACT_WARD, contactByToken, messages, receiveContact } from "../src/contact/store";
 import { PROVIDER_CONTACT_FIXTURE } from "../fixtures/provider-contact";
-import { saveWardPhotoPolicy, activePhotoPolicy, PHOTO_MODEL_SHA256, PHOTO_PROFILE } from "../src/photos/policy";
-import { photoHash, photoPublicationStatements, type PreparedPhoto } from "../src/photos/server";
 import { saveDocument } from "../src/project/actions";
 import { SOURCE_PNG, MASKED_PNG } from "./fixtures/report-photo";
 
@@ -48,7 +46,7 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
     const project = await createProject(env.DB, w, { kind: "event", title: "架空の控え確認会", year: 2026, accountId: account.accountId });
     const p = project.projectId;
     const sourceBytes = Uint8Array.from(atob(SOURCE_PNG), (character) => character.charCodeAt(0));
-    const sourceHash = await photoHash(sourceBytes);
+    const sourceHash = "b".repeat(64);
     // ここで使うIDと本文と認証の値は全て試験用の架空のもの。
     await env.DB.batch([
       env.DB.prepare(`INSERT INTO jobs (ward_id, job_id, project_id, via, task, status, created_at, updated_at)
@@ -95,15 +93,12 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
     ]);
     const bucket = new WardBucket(env.ORIGINALS, w);
     await bucket.put("originals/fictional.jpg", sourceBytes);
-    // 写真の3表も実際に行を持たせ、公開の条件を通った写しの書き出しと連動消去を確かめる。
-    await saveWardPhotoPolicy(env.DB, w, { enabled: true, authorApprovedAt: "2026-11-06T00:00:00Z",
-      qualityReportSha256: "a".repeat(64), providerId: "fictional-provider" });
-    const policy = await activePhotoPolicy(env, w);
-    if (!policy) throw new Error("架空の写真の設定を作れませんでした");
-    const photo: PreparedPhoto = { photoId: w, originalId: w, sourceHash,
-      maskedHash: await photoHash(Uint8Array.from(atob(MASKED_PNG), (character) => character.charCodeAt(0))),
-      png: MASKED_PNG, width: 128, height: 128, faces: 1, policy, mode: "auto",
-      masks: [{ x: 0, y: 0, width: 1, height: 1 }] };
+    // 機能を外したあとも残る旧写真の3表に行を入れ、書き出しと連動消去を確かめる。
+    const model = "fictional-legacy-model", profile = "fictional-legacy-profile";
+    await env.DB.prepare(`INSERT INTO ward_photo_policy
+      (ward_id, enabled, revision, author_approved_at, quality_report_sha256, model_sha256, profile, updated_by_provider)
+      VALUES (?, 1, ?, '2026-11-06T00:00:00Z', ?, ?, ?, 'fictional-provider')`)
+      .bind(w, w, "a".repeat(64), model, profile).run();
     expect(await saveDocument(env.DB, w, p, account.accountId, {
       kind: "report", title: "架空の写真の報告", scope: "public", body: JSON.stringify({ text: "架空の報告です。", items: [] }), basedOn: 0,
     })).toBe(true);
@@ -119,8 +114,12 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
       env.DB.prepare(`INSERT INTO report_photo_drafts
         (ward_id, project_id, original_id, revision, state, mode, masks, prepared, updated_at)
         VALUES (?, ?, ?, ?, 'ready', 'auto', ?, ?, '2026-11-06')`)
-        .bind(w, p, w, w, JSON.stringify(photo.masks), JSON.stringify(photo)),
-      ...photoPublicationStatements(env.DB, w, p, w, [photo]),
+        .bind(w, p, w, w, JSON.stringify([{ x: 0, y: 0, width: 1, height: 1 }]), JSON.stringify({ png: MASKED_PNG })),
+      env.DB.prepare(`INSERT INTO publication_photos
+        (ward_id, project_id, publication_id, photo_id, original_id, source_hash, masked_hash, masked_png,
+         width, height, faces, model_sha256, profile, policy_revision)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 128, 128, 1, ?, ?, ?)`)
+        .bind(w, p, w, w, w, sourceHash, "c".repeat(64), MASKED_PNG, model, profile, w),
     ]);
     return { ward, bucket };
   }
@@ -178,7 +177,7 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
   expect(exported.tables).not.toHaveProperty("ward_photo_policy");
   expect(exported.tables).not.toHaveProperty("report_photo_drafts");
   expect(exported.tables.publication_photos).toEqual([expect.objectContaining({
-    photo_id: target.ward.wardId, masked_png: MASKED_PNG, model_sha256: PHOTO_MODEL_SHA256, profile: PHOTO_PROFILE,
+    photo_id: target.ward.wardId, masked_png: MASKED_PNG, model_sha256: "fictional-legacy-model", profile: "fictional-legacy-profile",
   })]);
   expect(exported.objects.map((object) => object.key)).toEqual(["originals/fictional.jpg"]);
 
