@@ -8,8 +8,9 @@ import { exportWard, requestWardDeletion, runDeletionCron } from "../src/ops/lif
 import { createProject } from "../src/project/api";
 import { CONTACT_WARD, contactByToken, messages, receiveContact } from "../src/contact/store";
 import { PROVIDER_CONTACT_FIXTURE } from "../fixtures/provider-contact";
-import { saveDocument } from "../src/project/actions";
+import { getEditableDocument, saveDocument } from "../src/project/actions";
 import { SOURCE_PNG, MASKED_PNG } from "./fixtures/report-photo";
+import { noticeFlyerJpeg } from "./fixtures/notice-flyer";
 
 it("区の全表を控えと写しの方針に含め、秘密を渡さず、他の区を残して消去できる", async () => {
   // 表の追加時に方針への記入を忘れたら、この一本で分かる。
@@ -129,7 +130,19 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 128, 128, 1, ?, ?, ?)`)
         .bind(w, p, w, w, w, sourceHash, "c".repeat(64), MASKED_PNG, model, profile, w),
     ]);
-    return { ward, bucket };
+    // チラシも実際の行と画像を用意し、写し・書き出し・連動消去を空の表で済ませない。
+    expect(await saveDocument(env.DB, w, p, account.accountId, {
+      kind: "announcement", title: "架空の確認会の案内", scope: "public",
+      body: JSON.stringify({ text: "架空の案内です。", items: [] }), basedOn: 0,
+    })).toBe(true);
+    const announcement = await getEditableDocument(env.DB, w, p, "announcement");
+    if (!announcement?.versionId) throw new Error("架空の案内を作れませんでした");
+    const flyerPaths = ["notice-flyers/fictional.jpg", "notice-flyers/fictional-preview.jpg"] as const;
+    await env.DB.prepare(`INSERT INTO notice_flyers (ward_id, project_id, version_id, flyer_id, r2_path, preview_r2_path)
+      VALUES (?, ?, ?, ?, ?, ?)`)
+      .bind(w, p, announcement.versionId, w, ...flyerPaths).run();
+    for (const path of flyerPaths) await bucket.put(path, noticeFlyerJpeg(), { httpMetadata: { contentType: "image/jpeg" } });
+    return { ward, bucket, flyerPaths };
   }
   const target = await records();
   const other = await records();
@@ -206,7 +219,7 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
   expect(exported.tables.publication_photos).toEqual([expect.objectContaining({
     photo_id: target.ward.wardId, masked_png: MASKED_PNG, model_sha256: "fictional-legacy-model", profile: "fictional-legacy-profile",
   })]);
-  expect(exported.objects.map((object) => object.key)).toEqual(["originals/fictional.jpg"]);
+  expect(exported.objects.map((object) => object.key).sort()).toEqual([...target.flyerPaths, "originals/fictional.jpg"].sort());
 
   await requestWardDeletion(env.DB, target.ward.wardId);
   for (let step = 0; step < 5; step++) {
@@ -225,6 +238,9 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
   expect((await target.bucket.list("")).keys.length).toBe(0);
   expect(new Uint8Array(await (await other.bucket.get("originals/fictional.jpg"))!.arrayBuffer()))
     .toEqual(Uint8Array.from(atob(SOURCE_PNG), (character) => character.charCodeAt(0)));
+  for (const path of other.flyerPaths) {
+    expect(new Uint8Array(await (await other.bucket.get(path))!.arrayBuffer())).toEqual(noticeFlyerJpeg());
+  }
   // 区の消去で提供側の写しを失わず、その行を親から戻すと同じ受付を開ける。
   expect(await providerBucket.head("snapshots/daily/2026-11-06.json")).not.toBeNull();
   await env.DB.prepare("DELETE FROM provider_contacts WHERE ward_id = ? AND contact_id = ?").bind(CONTACT_WARD, received.id).run();

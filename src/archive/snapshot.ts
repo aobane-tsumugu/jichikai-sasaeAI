@@ -51,6 +51,7 @@ export const WARD_TABLE_POLICY: readonly WardTablePolicy[] = [
   { table: "report_photo_drafts", snapshot: "作り直せる写真の下書き。原本から選び直す。", export: "準備中の写真。", deletion: { cascade: "projects" } },
   { table: "publication_photos", snapshot: "隠した写しは作り直せるので日次の写しに入れない。復旧後の自動再公開もしない。", export: true, deletion: { cascade: "projects" } },
   { table: "publication_records", snapshot: true, export: true, deletion: true },
+  { table: "notice_flyers", snapshot: true, export: true, deletion: { cascade: "projects" } },
   { table: "project_activity_pages", snapshot: true, export: true, deletion: true },
   { table: "inquiry_records", snapshot: true, export: true, deletion: true },
   { table: "city_request_details", snapshot: true, export: true, deletion: true },
