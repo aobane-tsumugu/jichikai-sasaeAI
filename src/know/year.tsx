@@ -46,9 +46,9 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
   ]);
   const removed = new Set(overrides.results.filter((row) => row.removed_at).map((row) => row.item_id));
   const used = new Set<string>();
+  const similar = (a: string, b: string) => Array.from({ length: Math.max(a.length - 1, 0) }, (_, index) => a.slice(index, index + 2)).some((part) => b.includes(part));
   const rows: YearRow[] = [];
   // 名前の似た仮の行を先に置き換える。無ければ同じ種類の行。どちらも無ければ足すだけにする。
-  const similar = (a: string, b: string) => Array.from({ length: Math.max(a.length - 1, 0) }, (_, index) => a.slice(index, index + 2)).some((part) => b.includes(part));
   const claim = (kind: string, month: number, title: string) => {
     const open = YEAR_BASE.filter((entry) => !used.has(entry.key) && inRange(month, entry));
     const base = open.find((entry) => similar(entry.title, title)) ?? (kind ? open.find((entry) => entry.kind === kind) : undefined);
@@ -59,7 +59,7 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
     const state = states[index];
     if (!day) {
       // 同じ種類の行があれば重ね、無ければ今の時期に置く。進めている行事は必ず地図に出す。
-      const base = YEAR_BASE.find((entry) => !used.has(entry.key) && entry.kind === project.kind);
+      const base = YEAR_BASE.find((entry) => !used.has(entry.key) && similar(entry.title, project.title)) ?? YEAR_BASE.find((entry) => !used.has(entry.key) && entry.kind === project.kind);
       if (base) used.add(base.key);
       const from = base ? position(base.from) : position(monthOf(today), dayOf(today));
       const taskless = state && !state.mapTasks.length;

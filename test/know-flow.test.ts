@@ -227,3 +227,12 @@ it("紙は行事から外して区の資料だけに置け、移しても前の�
   await postForm(realApp, `${root}/year/${id}/restore`, {}, cookie);
   expect(await read(`${root}/year`, cookie)).toContain("<b>架空の読み違えた行事</b>");
 });
+
+it('日付のない行事も、名前の似た仮の行に重ねて二重に出さない', async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  await createProject(env.DB, ward.wardId, { kind: 'event', title: '架空の防災訓練', year: 2026, accountId: account.accountId });
+  const home = await read(`/${ward.slug}/admin/`, cookie);
+  expect(home).toContain('架空の防災訓練');
+  expect(home).not.toContain('<b>防災訓練</b>');
+  expect(home).toContain('<b>夏の行事</b>');
+});
