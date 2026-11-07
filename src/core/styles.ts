@@ -178,6 +178,10 @@ details.fold > div { padding: 0 var(--space-3) var(--space-3); }
 .photo-grid b { display: block; margin-top: var(--space-1); line-height: 1.4; overflow-wrap: anywhere; }
 .photo-grid span { display: block; color: var(--muted); font-size: var(--text-note); line-height: 1.4; overflow-wrap: anywhere; }
 .photo-grid .photo-none { display: flex; align-items: center; min-height: 6rem; padding: var(--space-2); border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel); color: var(--fg); }
+.received-head { display: flex; gap: var(--space-3); align-items: flex-start; }
+.received-head > a { flex: 0 0 7rem; }
+.received-head p { margin: 0 0 var(--space-1); line-height: 1.5; overflow-wrap: anywhere; }
+h2.tight { margin-top: var(--space-3); }
 .which-project fieldset { margin: var(--space-3) 0 0; padding: 0; border: 0; }
 .which-project legend { padding: 0; font-weight: 700; }
 .which-project .action-links { margin: var(--space-2) 0; }
