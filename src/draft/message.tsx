@@ -14,6 +14,7 @@ import { type DocumentKind } from "../project/model";
 import type { ProjectSummary } from "../project/types";
 import { getDraftPack } from "./packs";
 import { requestDraft } from "./request";
+import { projectTasks, taskDocumentKind, type FeatureTask } from "../project/task-features";
 
 /**
  * 住民へのメッセージを作る入口（決定ログ L-311）。何を伝えるかと、どの準備のことかの二つだけを選び、
@@ -36,11 +37,14 @@ const projectNote = async (db: D1Database, wardId: string, project: ProjectSumma
 };
 
 /** 住民向けにならない組み合わせ（役員会の文書、当番の連絡など）は、ここでは作らない。 */
-const forResidents = (project: ProjectSummary, kind: DocumentKind) => getDraftPack(kind, project.kind).scope === "public";
+const forResidents = (tasks: readonly FeatureTask[], kind: DocumentKind) => getDraftPack(kind, taskDocumentKind(tasks, kind)).scope === "public";
 
 async function picker(c: Context<AdminEnv>, error?: string, chosen: { kind?: string; projectId?: string } = {}) {
   const { ward, account } = c.var;
-  const projects = (await listOpenProjects(c.env.DB, ward.wardId)).filter((project) => MESSAGE_KINDS.some((entry) => forResidents(project, entry.kind)));
+  const choices = await Promise.all((await listOpenProjects(c.env.DB, ward.wardId)).map(async (project) => ({
+    project, tasks: await projectTasks(c.env.DB, ward.wardId, project.projectId),
+  })));
+  const projects = choices.filter(({ tasks }) => MESSAGE_KINDS.some((entry) => forResidents(tasks, entry.kind))).map(({ project }) => project);
   const notes = new Map(await Promise.all(projects.map(async (project) => [project.projectId, await projectNote(c.env.DB, ward.wardId, project)] as const)));
   const kind = chosen.kind ?? c.req.query("kind") ?? "";
   const projectId = chosen.projectId ?? c.req.query("project") ?? (!projects.length ? WITHOUT_PROJECT : projects.length === 1 ? projects[0]!.projectId : "");
@@ -86,7 +90,7 @@ export function mountMessageRoutes(admin: Hono<AdminEnv>) {
       : (await listOpenProjects(c.env.DB, ward.wardId)).find((entry) => entry.projectId === projectId);
     if (!project) return picker(c, "どの準備のことかを選んでください。", { kind });
     const label = MESSAGE_KINDS.find((entry) => entry.kind === kind)!.title;
-    if (!forResidents(project, kind)) return picker(c, `${project.title}の${label}は、住民ではなく役員や当番の担当に向けたものなので、ここでは作れません。ほかの準備を選んでください。`, { kind, projectId });
+    if (!forResidents(await projectTasks(c.env.DB, ward.wardId, project.projectId), kind)) return picker(c, `${project.title}の${label}は、住民ではなく役員や当番の担当に向けたものなので、ここでは作れません。ほかの準備を選んでください。`, { kind, projectId });
     projectId = project.projectId;
     // event の連絡事項は、下書きが無いと雨の変更の画面になる。ここから来た時はいつもの下書きを開く。
     const path = `${adminPath(ward, `/projects/${projectId}/draft/${kind}`)}?edit=1`;

@@ -5,7 +5,7 @@ import { getRoster, replaceRoster } from "../src/answers/api";
 import { SNAPSHOT_TABLES, WARD_TABLE_POLICY } from "../src/archive/snapshot";
 import { seedAdmin } from "../src/core/testing";
 import { getKnowItem } from "../src/know/store";
-import { wardYear, YEAR_BASE } from "../src/know/year";
+import { SHORT_TEMPLATE, wardYear, YEAR_BASE } from "../src/know/year";
 import { createProject, getProjectState, listOpenProjects } from "../src/project/api";
 import { addExemption } from "../src/rota/store";
 import { get, postForm, realApp } from "./helpers";
@@ -128,14 +128,45 @@ it("kakuuの見本に月曜のごみ当番と毎月の市報を入れ、ほか�
   expect(await listOpenProjects(env.DB, ward.wardId)).toHaveLength(1);
 });
 
-it("通年の曜日を空や範囲外で送っても表を作らず、別の種類にも設定しない", async () => {
+it("通年の曜日を空や範囲外で送っても表を作らず、当番の仕事がない準備にも設定しない", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   await replaceRoster(env.DB, ward.wardId, KAKUU_YEAR_RECURRING.roster, { household: 0, district: 1 });
   const duty = await createProject(env.DB, ward.wardId, { kind: "duty", title: "集会所の掃除", year: 2026, accountId: account.accountId });
-  const event = await createProject(env.DB, ward.wardId, { kind: "event", title: "清掃の日", year: 2026, accountId: account.accountId });
+  // 種類ではなくやることで決まるため、当番の仕事を含まない実際の短い型を使う。
+  const event = await createProject(env.DB, ward.wardId, {
+    kind: "event", title: "清掃の日", year: 2026, taskKeys: SHORT_TEMPLATE.tasks, accountId: account.accountId,
+  });
   const root = `/${ward.slug}/admin`;
   for (const weekday of ["", "7", "-1", "1.5"]) expect((await postForm(realApp, `${root}/rota/${duty.projectId}/weekly`, { weekday }, cookie)).status).toBe(400);
   expect((await postForm(realApp, `${root}/rota/${event.projectId}/weekly`, { weekday: "1" }, cookie)).status).toBe(404);
   expect((await getProjectState(env.DB, ward.wardId, duty.projectId))?.tables.duties).toHaveLength(0);
+  expect((await getProjectState(env.DB, ward.wardId, event.projectId))?.tables.duties).toHaveLength(0);
   expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM rota_schedules WHERE ward_id = ?").bind(ward.wardId).first<number>("n")).toBe(0);
+});
+
+it.each(["担当を決める", "当番表と配置を決める"])("eventのまま%sを足すと通年の曜日と当番表を保存できる", async (taskName) => {
+  // この試験の世帯と準備は全て架空。
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  await replaceRoster(env.DB, ward.wardId, KAKUU_YEAR_RECURRING.roster, { household: 0, district: 1 });
+  const roster = await getRoster(env.DB, ward.wardId);
+  expect(roster).toHaveLength(3);
+  const event = await createProject(env.DB, ward.wardId, {
+    kind: "event", title: "清掃の日", year: 2026, taskKeys: SHORT_TEMPLATE.tasks, accountId: account.accountId,
+  });
+  const root = `/${ward.slug}/admin`;
+  expect((await postForm(realApp, `${root}/projects/${event.projectId}/map/add`, { name: taskName }, cookie)).status).toBe(303);
+  expect((await postForm(realApp, `${root}/rota/${event.projectId}/weekly`, { weekday: "1" }, cookie)).status).toBe(303);
+  const state = await getProjectState(env.DB, ward.wardId, event.projectId);
+  if (!state) throw new Error("当番表のある準備がありません");
+  expect(state.project.kind).toBe("event");
+  const duties = state.tables.duties.filter((row) => row.scope === "current");
+  expect(duties).toHaveLength(52);
+  expect(duties.every((row) => {
+    const slot = String(row.data.slot);
+    return slot >= "2026-04-01" && slot < "2027-04-01" && new Date(`${slot}T00:00:00Z`).getUTCDay() === 1;
+  })).toBe(true);
+  expect(duties.map((row) => row.data.assignee)).toEqual(Array.from({ length: 52 }, (_, index) =>
+    roster[index % roster.length]!.household));
+  expect(await env.DB.prepare("SELECT weekday FROM rota_schedules WHERE ward_id = ? AND project_id = ?")
+    .bind(ward.wardId, event.projectId).first<number>("weekday")).toBe(1);
 });

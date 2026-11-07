@@ -1,4 +1,4 @@
-import { projectFeatures, taskFeatures } from "../project/task-features";
+import { projectFeatures, taskFeatures, ROTA_TASK_SQL } from "../project/task-features";
 import { getRoster, normalizeHousehold, type RosterEntry } from "../answers/api";
 import { newId, nowIso } from "../core/ids";
 import { getProjectState, getProjectSummary } from "../project/api";
@@ -76,7 +76,7 @@ export async function lastPreparation(db: D1Database, wardId: string, projectId:
 /** 元の資料は読み直さず、去年の同じ当番の記録か、この仕事に届いた去年の表を使う。 */
 export async function compareRota(db: D1Database, wardId: string, projectId: string, weekday?: number): Promise<{ comparison: Comparison; roster: RosterEntry[] } | null> {
   const state = await getProjectState(db, wardId, projectId);
-  if (!state || !taskFeatures(state.mapTasks).has("assign")) return null;
+  if (!state || !taskFeatures(state.mapTasks).rota) return null;
   const project = state.project;
   const schedule = await rotaSchedule(db, wardId, projectId);
   const day = weekday ?? schedule?.weekday;
@@ -95,9 +95,9 @@ export async function compareRota(db: D1Database, wardId: string, projectId: str
   }
   const seed = await db.prepare(`SELECT seed_project_id FROM projects WHERE ward_id = ? AND project_id = ?`)
     .bind(wardId, projectId).first<{ seed_project_id: string | null }>();
-  const candidates = await db.prepare(`SELECT project_id, title FROM projects
-    WHERE ward_id = ? AND kind = 'duty' AND year = ? AND closed_at IS NOT NULL
-      AND (project_id = ? OR title = ?) ORDER BY created_at DESC`)
+  const candidates = await db.prepare(`SELECT p.project_id, p.title FROM projects p
+    WHERE p.ward_id = ? AND ${ROTA_TASK_SQL} AND p.year = ? AND p.closed_at IS NOT NULL
+      AND (p.project_id = ? OR p.title = ?) ORDER BY p.created_at DESC`)
     .bind(wardId, project.year - 1, seed?.seed_project_id ?? "", project.title).all<{ project_id: string; title: string }>();
   const previous = candidates.results.find((row) => row.project_id === seed?.seed_project_id)
     ?? (candidates.results.length === 1 ? candidates.results[0] : undefined);
@@ -172,7 +172,7 @@ export async function compareRota(db: D1Database, wardId: string, projectId: str
 /** 下書きを表の行に入れる。役員が直した行は保ち、配った内容には触れない。 */
 export async function prepareRota(db: D1Database, wardId: string, projectId: string, accountId: string, weekday?: number): Promise<boolean> {
   const project = await getProjectSummary(db, wardId, projectId);
-  if (!project || project.closedAt || !(await projectFeatures(db, wardId, projectId)).has("assign")) return false;
+  if (!project || project.closedAt || !(await projectFeatures(db, wardId, projectId)).rota) return false;
   const proposal = await compareRota(db, wardId, projectId, weekday);
   if (!proposal) return false;
   const previous = await lastPreparation(db, wardId, projectId);

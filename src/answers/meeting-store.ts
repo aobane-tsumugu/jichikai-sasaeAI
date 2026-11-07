@@ -1,6 +1,7 @@
 import { newId, nowIso } from "../core/ids";
 import type { AnswerInput, AnswerRow } from "./api";
 import { isMeetingStatus } from "./meeting";
+import { DELEGATION_TASK_SQL } from "../project/task-features";
 
 export interface MeetingTotals { answered: number; attend: number; proxy: number; absent: number; }
 
@@ -30,7 +31,7 @@ export async function saveMeetingAnswer(db: D1Database, wardId: string, input: A
       people_count = 0, children_count = NULL, adults_count = NULL, seniors_count = NULL
       WHERE ward_id = ? AND project_id = ? AND answer_id = ?
       AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = project_answers.ward_id AND p.project_id = project_answers.project_id
-        AND p.kind = 'general_meeting' AND p.closed_at IS NULL)`)
+        AND ${DELEGATION_TASK_SQL} AND p.closed_at IS NULL)`)
       .bind(input.household.trim(), input.district.trim(), input.meetingStatus, proxyName, wardId, input.projectId, answerId).run();
     return result.meta.changes === 1 ? answerId : null;
   }
@@ -40,7 +41,7 @@ export async function saveMeetingAnswer(db: D1Database, wardId: string, input: A
     (answer_id, ward_id, project_id, household, district, people_count, meeting_status, proxy_name,
       source, original_id, sheet_row_index, created_at, created_by_account_id)
     SELECT ?, p.ward_id, p.project_id, ?, ?, 0, ?, ?, ?, ?, ?, ?, ? FROM projects p
-    WHERE p.ward_id = ? AND p.project_id = ? AND p.kind = 'general_meeting' AND p.closed_at IS NULL
+    WHERE p.ward_id = ? AND p.project_id = ? AND ${DELEGATION_TASK_SQL} AND p.closed_at IS NULL
     AND NOT EXISTS (SELECT 1 FROM project_answer_submissions WHERE ward_id = ? AND project_id = ? AND submission_id = ?)`)
     .bind(id, input.household.trim(), input.district.trim(), input.meetingStatus, proxyName, input.source,
       input.originalId ?? null, input.sheetRowIndex ?? null, nowIso(), input.accountId ?? null,

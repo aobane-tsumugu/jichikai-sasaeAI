@@ -3,6 +3,7 @@ import { latestSpaceTables, readPublicationTables } from "../space/publication-t
 import type { RowData } from "../project/model";
 import { exemptions, householdKey, rotaDate, type Exemption } from "./store";
 import { splitAssignees } from "./assignees";
+import { ROTA_TASK_SQL } from "../project/task-features";
 
 export interface HistoryEntry {
   who: string;
@@ -23,7 +24,7 @@ export async function householdHistory(db: D1Database, wardId: string): Promise<
     getRoster(db, wardId), exemptions(db, wardId),
     db.prepare(`SELECT p.project_id, p.title, p.year, p.closed_at, d.due_on FROM projects p
       LEFT JOIN project_deadlines d ON d.ward_id = p.ward_id AND d.project_id = p.project_id AND d.kind = 'event_day'
-      WHERE p.ward_id = ? AND (p.kind = 'event' OR (p.kind = 'duty' AND p.closed_at IS NOT NULL)) ORDER BY p.year DESC, p.created_at DESC`)
+      WHERE p.ward_id = ? AND ${ROTA_TASK_SQL} ORDER BY p.year DESC, p.created_at DESC`)
       .bind(wardId).all<{ project_id: string; title: string; year: number; closed_at: string | null; due_on: string | null }>(),
     db.prepare(`SELECT a.account_id, a.name, s.title, s.removed_at FROM accounts a
       JOIN seats s ON s.ward_id = a.ward_id AND s.seat_id = a.seat_id
