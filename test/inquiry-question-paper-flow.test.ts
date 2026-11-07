@@ -96,7 +96,7 @@ it("混ざった送り先の返事を残った場所へだけ送り直し、時�
     expect(sendError.status).toBe(303);
     expect(calls.at(-1)?.to).toBe(group);
     expect((await postForm(realApp, `${root}/inquiries/${noUser.inquiry_id}`, { operation: "wish" }, cookie, runtime)).status).toBe(303);
-    expect(await (await get(realApp, `${root}/inquiries/${noUser.inquiry_id}?wish=1`, cookie, runtime)).text()).toContain("要望として残しました");
+    expect(await (await get(realApp, `${root}/inquiries/${noUser.inquiry_id}?wish=1`, cookie, runtime)).text()).toContain("市に伝える要望にしました");
     expect((await get(realApp, `/${other.ward.slug}/admin/inquiries/${row.inquiry_id}`, other.cookie, runtime)).status).toBe(404);
 
     used = 0;

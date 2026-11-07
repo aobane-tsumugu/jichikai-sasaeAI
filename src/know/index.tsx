@@ -218,7 +218,7 @@ admin.get("/year/:key", async (c) => {
     <h1>{added.title}</h1>
     <p class="lead">{added.month ? `${added.month}月` : ""}{added.date_text ? `　${added.date_text}` : ""}</p>
     {added.source_original_id ? <p class="link-line"><a href={adminPath(ward, `/intake/originals/${added.source_original_id}`)}>読み取った元の資料を見る</a></p> : null}
-    <div class="action-links"><a class="button secondary" href={`${adminPath(ward, "/projects")}?title=${encodeURIComponent(added.title)}`}>「{added.title}」を始める</a></div>
+    <div class="action-links"><a class="button secondary" href={`${adminPath(ward, "/projects")}?title=${encodeURIComponent(added.title)}`}>今年の{added.title}の準備を始める</a></div>
     {added.removed_at ? <form method="post" action={adminPath(ward, `/year/${added.item_id}/restore`)}><button class="secondary">一年に戻す</button></form>
       : <details class="fold"><summary>この行を外す</summary><div><p>違う行や、この区にない行は外せます。外しても、一年の画面の「外した行」から戻せます。</p><form method="post" action={adminPath(ward, `/year/${added.item_id}/remove`)}><button class="secondary">外す</button></form></div></details>}
   </AdminPage>);
@@ -227,7 +227,7 @@ admin.get("/year/:key", async (c) => {
   return c.html(<AdminPage ward={ward} account={account} title={base.title} back={{ href: adminPath(ward, "/year"), label: "この区の一年へ" }}>
     <h1>{base.title}</h1>
     <p class="lead">一般の自治会の例を仮に置いています。この区のことはまだ入っていません。</p>
-    <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>この行事の写真やファイルを送る</a><a class="button secondary" href={`${adminPath(ward, "/projects")}?kind=${base.kind || "event"}&title=${encodeURIComponent(base.title)}`}>「{base.title}」を始める</a></div>
+    <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>この行事の写真やファイルを送る</a><a class="button secondary" href={`${adminPath(ward, "/projects")}?kind=${base.kind || "event"}&title=${encodeURIComponent(base.title)}`}>今年の{base.title}の準備を始める</a></div>
     <details class="fold"><summary>この区にないので外す</summary><div><p>外しても、一年の画面の「外した行」から戻せます。</p><form method="post" action={adminPath(ward, `/year/${base.key}/remove`)}><button class="secondary">外す</button></form></div></details>
   </AdminPage>);
 });

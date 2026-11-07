@@ -160,7 +160,7 @@ it("写真を引用して一問ずつ聞き、撮り直しと分からないで�
     const noUserPath = `${root}/inquiries/${noUser.inquiry_id}`;
     const noUserHtml = await (await get(realApp, noUserPath, cookie, runtime)).text();
     expect(noUserHtml).toContain("1か所に送る");
-    expect(noUserHtml).not.toContain("送り先が分からないため送れません");
+    expect(noUserHtml).not.toContain("送り先が分からないため、LINEでは送れません");
     const beforeNoUserReply = sent.length;
     expect((await postForm(realApp, noUserPath, { answer: fixture.publicDayText, operation: "send" }, cookie, runtime)).status).toBe(303);
     expect(sent.slice(beforeNoUserReply)).toMatchObject([{ to: groupId, messages: [{ text: fixture.publicDayText }] }]);
@@ -175,7 +175,7 @@ it("写真を引用して一問ずつ聞き、撮り直しと分からないで�
     const noTarget = await env.DB.prepare("SELECT inquiry_id FROM inquiry_records WHERE ward_id = ? AND line_event_id = 'fictional-no-target'").bind(ward.wardId).first<{ inquiry_id: string }>();
     if (!noTarget) throw new Error("送り先が分からない問い合わせがありません");
     const noTargetPath = `${root}/inquiries/${noTarget.inquiry_id}`;
-    expect(await (await get(realApp, noTargetPath, cookie, runtime)).text()).toContain("送り先が分からないため送れません");
+    expect(await (await get(realApp, noTargetPath, cookie, runtime)).text()).toContain("送り先が分からないため、LINEでは送れません");
     const beforeNoTargetReply = sent.length;
     const noTargetReply = await postForm(realApp, noTargetPath, { answer: fixture.publicDayText, operation: "send" }, cookie, runtime);
     expect(noTargetReply.status).toBe(400);

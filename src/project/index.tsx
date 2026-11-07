@@ -42,7 +42,7 @@ function changeTargetLabel(kind: string, target: string, state: ProjectState): s
 }
 
 const ERROR_MESSAGES: Readonly<Record<string, string>> = {
-  "choose_kind": "種類を選んでください",
+  "choose_kind": "何の準備かを選んでください",
   "open_failed": "行事を開けませんでした",
   "invalid_kind": "行事の種類が合いません",
   "invalid_title": "題は1文字から100文字にしてください",
@@ -58,20 +58,34 @@ admin.route("/", followupAdmin);
 admin.route("/", questionPages);
 admin.route("/", committeePages);
 
+/** 何の準備かを選ぶ時の例。種類の名前だけでは初めての人に分からないので、身近な例を添える。 */
+const KIND_EXAMPLE: Record<(typeof PROJECT_KINDS)[number], string> = {
+  event: "祭り、清掃、敬老会など、人が集まるもの",
+  general_meeting: "年に一度の総会",
+  city_request: "市から頼まれた調査、推薦、配布など",
+  board_meeting: "役員の集まり",
+  duty: "ごみ当番のように、順番で回すもの",
+  request: "住民の声を、自治会から市に伝えるもの",
+};
+
 admin.get("/projects", async (c) => {
   const { ward } = c.var;
   const allProjects = await listProjects(c.env.DB, ward.wardId, { includeClosed: true });
   const seeds = allProjects.filter((project) => project.closedAt);
   const presetKind = PROJECT_KINDS.find((kind) => kind === c.req.query("kind")) ?? PROJECT_KINDS[0];
+  // 一年の表の行から来た時は、名前も何の準備かも決まっているので聞かない。
+  const presetTitle = c.req.query("title")?.slice(0, 100) ?? "";
+  const fromYear = Boolean(presetTitle && c.req.query("kind"));
   return c.html(<Layout title="新しく始める" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a>
-    <h1>新しく始める</h1><p class="lead">去年の記録があれば、そこから始められます。ないときは、種類を選ぶと、ふつうの仕事の並びを用意します。</p>
+    <h1>{fromYear ? `今年の${presetTitle}の準備を始める` : "新しく始める"}</h1><p class="lead">{fromYear ? "当日が分かれば入れてください。準備でふつうする仕事の一覧を用意します。あとで足したり外したりできます。" : "去年の同じものの記録があれば、そこから始められます。ないときは、何の準備かを選ぶと、その準備でふつうする仕事の一覧を用意します。あとで足したり外したりできます。"}</p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     {seeds.length ? <><h2>去年の記録から始める</h2><ul class="rows">{[...seeds].sort((a, b) => b.year - a.year).slice(0, 3).map((project) => <li><a class="row-link" href={adminPath(ward, `/archive/${project.projectId}`)}><b>{project.year}年 {project.title}</b></a></li>)}</ul>{seeds.length > 3 ? <p><a class="quiet" href={adminPath(ward, "/archive")}>ほかの記録から始める</a></p> : null}</> : null}
     <form method="post" action={adminPath(ward, "/projects")}>
-      <fieldset><legend>種類</legend><div class="choice">{PROJECT_KINDS.map((kind) => <label><input type="radio" name="kind" value={kind} checked={kind === presetKind} required /> {PROJECT_KIND_LABEL[kind]}</label>)}</div></fieldset>
-      <div class="field"><label for="title">名前（あとで直せます）</label><input id="title" name="title" maxlength={100} placeholder="秋の収穫祭" value={c.req.query("title")?.slice(0, 100) ?? ""} /></div>
-      <div class="field"><label for="eventDay">行事の日（分かれば）</label><input id="eventDay" name="eventDay" type="date" /><p class="help-text">入れると、仕事の時期を置きます。</p></div>
+      {fromYear ? <><input type="hidden" name="kind" value={presetKind} /><input type="hidden" name="title" value={presetTitle} /></> : <>
+      <fieldset><legend>何の準備ですか</legend><div class="choice">{PROJECT_KINDS.map((kind) => <label><input type="radio" name="kind" value={kind} checked={kind === presetKind} required /> {PROJECT_KIND_LABEL[kind]}（{KIND_EXAMPLE[kind]}）</label>)}</div></fieldset>
+      <div class="field"><label for="title">名前（あとで直せます）</label><input id="title" name="title" maxlength={100} placeholder="秋の収穫祭" value={presetTitle} /></div></>}
+      <div class="field"><label for="eventDay">当日（分かれば）</label><input id="eventDay" name="eventDay" type="date" /><p class="help-text">入れると、準備を始める時期と終わる時期を、当日から数えて置きます。あとで直せます。</p></div>
       <input type="hidden" name="year" value={new Date().getFullYear()} />
       <div class="action-bar page-action"><button type="submit">始める</button></div>
     </form>
