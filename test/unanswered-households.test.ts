@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { expect, it } from "vitest";
-import { listUnansweredByDistrict, replaceRoster } from "../src/answers/api";
+import { addAnswer, listAnswers, listUnansweredByDistrict, replaceRoster } from "../src/answers/api";
 import { seedAdmin } from "../src/core/testing";
 import { createProject } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
@@ -55,4 +55,35 @@ it.each(["event", "general_meeting"] as const)("%s: 同じ班の同名2世帯を
   await remaining(1);
   await answer("1班");
   await remaining(0);
+});
+
+it.each(["event", "general_meeting"] as const)("%s: 紙の答えと名簿の班が全角半角でも、一世帯ずつ照合する", async (kind) => {
+  // 班名と代表者名、紙の識別子は試験用の架空のもの。
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const project = await createProject(env.DB, ward.wardId, {
+    kind, title: "架空の班の照合", year: 2026, accountId: account.accountId,
+  });
+  const household = "架空の同名代表者";
+  await replaceRoster(env.DB, ward.wardId, [
+    { household, district: "１班" }, { household, district: "１班" }, { household, district: "２班" },
+  ], { household: 0, district: 1 });
+  const path = `/${ward.slug}/admin/answers/${project.projectId}?view=unanswered`;
+  for (const index of [0, 1]) {
+    await addAnswer(env.DB, ward.wardId, {
+      projectId: project.projectId, household, district: "1班", peopleCount: 2, source: "sheet",
+      originalId: "fictional-district-width-sheet", sheetRowIndex: index,
+      ...(kind === "general_meeting" ? { meetingStatus: "attend" as const, proxyName: "" } : {}),
+    });
+    expect(await listUnansweredByDistrict(env.DB, ward.wardId, project.projectId)).toEqual([
+      { district: "１班", households: index === 0 ? [household] : [] },
+      { district: "２班", households: [household] },
+    ]);
+    // 元の班名を画面と紙に保ち、別の班の同名世帯は残す。
+    for (const suffix of ["", "&print=1"]) {
+      const html = await (await get(realApp, `${path}${suffix}`, cookie)).text();
+      if (index === 0) expect(html).toContain("１班（1世帯）");
+      expect(html).toContain("２班（1世帯）");
+    }
+  }
+  expect((await listAnswers(env.DB, ward.wardId, project.projectId)).map((answer) => answer.district)).toEqual(["1班", "1班"]);
 });

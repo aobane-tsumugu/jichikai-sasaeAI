@@ -324,7 +324,7 @@ export function answerDeadlineFromDraft(body: string, projectYear: number): stri
 
 /** 同じ班の同名世帯も一件ずつ照合する。班が不明なときは名簿の候補が一つの場合だけ。 */
 export function unansweredRoster(roster: readonly RosterEntry[], answers: readonly RosterEntry[]): RosterEntry[] {
-  const keyOf = (entry: RosterEntry) => JSON.stringify([entry.district, normalizeHousehold(entry.household)]);
+  const keyOf = (entry: RosterEntry) => JSON.stringify([normalizeHousehold(entry.district), normalizeHousehold(entry.household)]);
   const answered = new Map<string, number>();
   for (const answer of answers) {
     let target = answer;
