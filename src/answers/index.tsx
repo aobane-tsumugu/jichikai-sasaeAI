@@ -17,7 +17,7 @@ import type { AnswerSheetReading } from "../ai/schema";
 import type { Reading } from "../ai/schema";
 import type { Waitable } from "../intake/types";
 import { receiveOriginal, getReadings } from "../intake/api";
-import { getJob, getOriginal } from "../intake/store";
+import { getJob, getOriginal, markRosterAnswered } from "../intake/store";
 import { SEND_SCRIPT } from "../intake/browser-script";
 import { getSquads } from "../settings/store";
 import { lookupPrintQr } from "../print/qr";
@@ -174,6 +174,7 @@ admin.post("/answers/roster/photo/import", async (c) => {
   const rows = [table.columns, ...table.rows.map((row) => row.cells)];
   const entries = rowsToRoster(rows, { household: householdColumn, district: districtColumn });
   await replaceRoster(c.env.DB, c.var.ward.wardId, entries, { household: householdColumn, district: districtColumn });
+  await markRosterAnswered(c.env.DB, c.var.ward.wardId, jobId, "imported");
   return c.redirect(`${adminPath(c.var.ward.slug, "/answers/roster")}?done=1`, 303);
 });
 

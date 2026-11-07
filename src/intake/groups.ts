@@ -44,10 +44,10 @@ function openProjectFor(group: Pick<MaterialGroup, "title" | "kind">, projects: 
 /** 役員に分類を求めない。読めた題の分だけ分け、題の無い資料は一緒に送った一番大きなまとまりに入れる。 */
 export async function pendingMaterialGroups(db: D1Database, wardId: string): Promise<MaterialGroup[]> {
   const jobs = await db.prepare(`SELECT job_id FROM jobs WHERE ward_id = ? AND project_id IS NULL
-    AND withdrawn_at IS NULL AND status = 'read' AND via IN ('admin', 'line_direct', 'line_group') ORDER BY created_at, job_id`)
+    AND withdrawn_at IS NULL AND status = 'read' AND via IN ('admin', 'line_direct', 'line_group') ORDER BY created_at DESC, job_id LIMIT 40`)
     .bind(wardId).all<{ job_id: string }>();
   const groups: MaterialGroup[] = [];
-  for (const job of jobs.results) {
+  for (const job of jobs.results.reverse()) {
     const [originals, readings] = await Promise.all([listOriginals(db, wardId, job.job_id), getReadings(db, wardId, job.job_id)]);
     const suggestions = cleanSuggestions(readings.flatMap((row) => "fields" in row.body ? row.body.project_suggestions ?? [] : []), originals.map((o) => o.original_id));
     const unknown: MaterialGroup["materials"] = [];

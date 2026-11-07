@@ -80,3 +80,34 @@ it("区の資料は行き先の無い紙も出し、項目につなげても一�
   expect((await postForm(realApp, `/${other.ward.slug}/admin/know/meeting/links`, { originalId }, other.cookie)).status).toBe(404);
   expect(await read(`/${other.ward.slug}/admin/files`, other.cookie)).not.toContain("架空の規約");
 });
+
+it("行き先のない写真は聞かずに区の資料へ残し、名簿と読めた写真だけを聞き、答えたら二度聞かない", async () => {
+  const { ward, cookie } = await seedAdmin(env.DB);
+  const root = `/${ward.slug}/admin`;
+  const photo = async (n: number, documentKind: string) => {
+    const got = await receive(env, { wardId: ward.wardId, via: "line_direct", parts: [{ kind: "photo", filename: `LINE写真${n}.jpg`, mediaType: "image/jpeg", bytes: new Uint8Array([...fictionalPaperPhoto(), n]) }] });
+    const now = new Date().toISOString();
+    await env.DB.prepare("UPDATE jobs SET status = 'read', read_at = ? WHERE ward_id = ? AND job_id = ?").bind(now, ward.wardId, got.jobId).run();
+    await env.DB.prepare("INSERT INTO readings (reading_id, ward_id, job_id, source, pack_version, model, body, created_at) VALUES (?, ?, ?, 'model', 'read-general@3', 'claude-sonnet-5-5', ?, ?)")
+      .bind(`reading-${n}`, ward.wardId, got.jobId, JSON.stringify({ document_kind: documentKind, original_years: [], summary: `架空の紙${n}`, project_suggestions: [], text_blocks: [], fields: [], tables: [], decisions: [], unreadable: [] }), now).run();
+    await env.DB.prepare("INSERT INTO line_inbox_items (ward_id, item_id, event_id, sender_id, original_kind, received_at, disposition, job_id) VALUES (?, ?, ?, 'U-fictional', 'image', ?, 'unmatched', ?)")
+      .bind(ward.wardId, `item-${n}`, `event-${n}`, now, got.jobId).run();
+    return got.jobId!;
+  };
+  await photo(1, "other");
+  const rosterJob = await photo(2, "roster");
+  const inbox = await read(`${root}/inbox`, cookie);
+  expect(inbox).toContain("質問があります（1件）");
+  expect(inbox).toContain("この紙で、世帯の名簿を入れ直しますか？");
+  expect(inbox).toContain("どこにもつながっていません");
+  expect(inbox).toContain("架空の紙1");
+  expect(await read(`${root}/`, cookie)).toContain("届いた紙に質問が1件あります");
+  expect(await read(`${root}/files`, cookie)).toContain("架空の紙1");
+  await postForm(realApp, `${root}/inbox/roster/${rosterJob}/skip`, {}, cookie);
+  const after = await read(`${root}/inbox`, cookie);
+  expect(after).not.toContain("この紙で、世帯の名簿を入れ直しますか？");
+  expect(after).toContain("架空の紙2");
+  const pick = await read(`${root}/inbox/item-1/pick`, cookie);
+  expect(pick).toContain("役員が知っておくことにつなげる");
+  expect(pick).toContain("総会");
+});

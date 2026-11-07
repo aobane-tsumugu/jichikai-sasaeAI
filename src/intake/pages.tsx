@@ -178,7 +178,7 @@ intakeAdmin.get("/intake/read", async (c) => {
     <h1>{groups.length ? "読み終わりました" : "読み終わったものはまだありません"}</h1><p class="lead">{groups.length > 1 ? "行事ごとに分けました。違っていても、あとで直せます。" : groups.length ? "資料をまとめました。違っていても、あとで直せます。" : "読み終わると、ここに出ます。画面を閉じてもかまいません。"}</p>
     <ErrorNotice code={c.req.query("error")} messages={{ day: "今年の行事の日を入れ直してください。分からないときは空欄で進められます。" }} />
     {groups.map((group, index) => {
-      if (!group.title) return <ul class="rows"><li><a class="row-link" href={adminPath(ward, "/inbox")}><b>何の資料か分からないもの</b><span>{group.materials.length}件。そのままでかまいません</span></a></li></ul>;
+      if (!group.title) return <ul class="rows"><li><a class="row-link" href={adminPath(ward, "/files")}><b>どこにもつながっていない資料</b><span>{group.materials.length}件。区の資料に入っています</span></a></li></ul>;
       const ids = new Set(group.materials.map((m) => m.original.original_id));
       const fields = group.materials.flatMap((m) => m.readings.flatMap((r) => "fields" in r.body ? r.body.fields.filter((f) => ids.has(f.original_id)) : []));
       const suggestions = group.materials.flatMap((m) => m.readings.flatMap((r) => "fields" in r.body ? (r.body.project_suggestions ?? []).filter((s) => ids.has(s.original_id)) : []));

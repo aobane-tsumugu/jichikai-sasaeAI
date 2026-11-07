@@ -9,9 +9,11 @@ import type { AdminEnv } from "../env";
 import { getProjectState, listOpenProjects } from "../project/api";
 import { dateWords, daysRemaining } from "../project/followup";
 import { countWord } from "../project/model";
-import { inboxDecided, listInboxItems } from "../line";
+import { listInboxItems } from "../line";
 import { mapTaskPath, nextMapTask } from "../map/next";
 import { listKnowItems } from "../know/store";
+import { pendingMaterialGroups } from "../intake/groups";
+import { rosterCandidates } from "../intake/store";
 import { nearInquiryDates } from "../line/digest";
 import { info } from "./info";
 import { formatJstDate, shortDate } from "../core/time";
@@ -54,11 +56,12 @@ admin.get("/", async (c) => {
   const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
   const digest = await getDigestSettings(c.env.DB, ward.wardId);
   const near = nearInquiryDates(projects, today, digest);
-  const undecided = lineInbox.filter((item) => !inboxDecided(item)).length;
+  const [materialGroups, rosterAsk] = await Promise.all([pendingMaterialGroups(c.env.DB, ward.wardId), rosterCandidates(c.env.DB, ward.wardId)]);
+  const undecided = materialGroups.filter((group) => group.title).length + rosterAsk.length;
   const photos = lineInbox.filter((item) => item.original_kind === "image" && item.job_id).slice(0, 3);
   const received = receivedCount ? <><h2>届いたもの</h2>
     {photos.length ? <div class="photo-strip">{photos.map((item) => <a href={adminPath(ward, `/inbox/${item.item_id}/pick`)}><img class="photo" src={adminPath(ward, `/inbox/${item.item_id}/original`)} alt="届いた写真" loading="lazy" /></a>)}</div> : null}
-    <p>{lineInbox.length ? `公式LINEに${lineInbox.length}件届いています。` : ""}{undecided ? `${undecided}件は、どの行事か確かめてください。` : lineInbox.length ? "AIが行事に入れました。" : ""}{inquiryCount ? `問い合わせが${countWord(inquiryCount)}あります。${inquiryWord ? `${countWord(inquiryWords.filter((words) => words.includes(inquiryWord)).length)}に「${inquiryWord}」と書かれています。` : ""}` : ""}</p>
+    <p>{lineInbox.length ? `公式LINEに${lineInbox.length}件届いています。` : ""}{undecided ? `${undecided}件に質問があります。` : ""}{inquiryCount ? `問い合わせが${countWord(inquiryCount)}あります。${inquiryWord ? `${countWord(inquiryWords.filter((words) => words.includes(inquiryWord)).length)}に「${inquiryWord}」と書かれています。` : ""}` : ""}</p>
     {undecided && projects.length ? null : <div class="action-links"><a class="button secondary" href={adminPath(ward, "/inbox")}>届いたものを見る</a></div>}</> : null;
   const explain = "SasaeAIは、自治会の役員の仕事を支えるサービスです。手元の紙や写真を送ると、AIが読んで、段取りと案内の下書きを用意します。案内を配り、答えを集め、記録を残すまで、ここで進められます。役員だけが見られる画面です。";
   const about = firstVisit ? <><h1>{ward.name}の自治会の仕事を進める画面です</h1><p class="lead">{explain}</p></> : null;
@@ -98,7 +101,7 @@ admin.get("/", async (c) => {
     .sort((a, b) => (a.task.periodEnd ?? "9999").localeCompare(b.task.periodEnd ?? "9999"))[0] : undefined;
   const chosen = mine ?? nearest;
   const unseeded = records.find((record) => !record.continued);
-  const next = undecided ? { title: `届いたもの${undecided}件の行事を決める`, body: "どの行事のものか、AIが決められなかったものです。中身を見て、入れる行事を選べます。", href: "/inbox", label: "届いたものを見る" }
+  const next = undecided ? { title: `届いた紙に質問が${undecided}件あります`, body: "答えると、行事や名簿に入ります。答えなくても、紙は区の資料に残ります。", href: "/inbox", label: "質問を見る" }
     : chosen ? { title: `${chosen.project.title}　${chosen.task.name}`, body: `${mine ? "あなたの担当の仕事です。" : ""}${chosen.task.periodEnd ? `${shortDate(chosen.task.periodEnd)}まで。${daysRemaining(chosen.task.periodEnd)}。` : ""}押すと、この仕事の画面が開きます。`, href: mapTaskPath(chosen.project.projectId, chosen.project.kind, chosen.task), label: "この仕事を開く" }
     : unseeded ? { title: `${unseeded.year}年の${unseeded.title}をもとに今年を始める`, body: "去年の段取りを、新しい日に合わせて置き直します。全部を見直す必要はありません。", href: `/archive/${unseeded.project_id}?view=seed`, label: "今年を始める" }
     : { title: "手元の紙や資料を送る", body: "案内の紙も、Wordも、写真も、そのまま送れます。AIが読んで、行事に入れます。", href: "/intake", label: "紙や資料を送る" };
@@ -110,7 +113,7 @@ admin.get("/", async (c) => {
       <div class="action-links"><a class="button secondary" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>新しい行事を始める</a></div>
       {received}{places}{aboutFold}
     </> : <>
-      {about}{heading("手元に去年の案内や資料はありますか")}
+      {about}{undecided ? <section class="next"><strong>{next.title}</strong><p>{next.body}</p><a class="button" href={adminPath(ward, next.href)}>{next.label}</a></section> : null}{heading("手元に去年の案内や資料はありますか")}
       <p>案内の紙でも、Wordでも、写真でも、そのまま送れます。整理はいりません。</p>
       <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>ある。そのまま送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>ない。何の準備かを選ぶ</a></div>
       <h2>送ると、こうなります</h2><ul>
