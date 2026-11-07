@@ -12,6 +12,8 @@
 //
 // 書き込みは db.batch（一つの取引）で行う。プロジェクトの中の差分は Workers が一つずつ送る前提（設計書 5.12）。
 import { newId, nowIso } from "../core/ids";
+import { formatJstDate, parseEventDay } from "../core/time";
+import { eventDayStatements, getProjectState } from "./state";
 import { materialExemptionQuestions } from "../rota/material-exemptions";
 import {
   CONFIDENCES,
@@ -364,6 +366,36 @@ function supersedeValueStatement(ctx: Ctx, valueId: string): D1PreparedStatement
 }
 
 async function planItem(ctx: Ctx, n: Normalized, change: ItemChange): Promise<Plan> {
+  const plan = await planItemValue(ctx, n, change);
+  // 過去・年不明の参考とAIの案は行事の日にしない。食い違う項目の中身も採らない。
+  if (change.itemKey !== "date_time" || n.source.kind !== "original" || placeSource(n.source, ctx.project.year).scope !== "current"
+    || (plan.status !== "applied" && plan.status !== "same")) return plan;
+  const day = parseEventDay(change.value, ctx.project.year);
+  if (!day) return plan;
+  const state = await getProjectState(ctx.db, ctx.wardId, ctx.projectId);
+  if (!state) return plan;
+  const oldDay = state.project.deadlines.event_day;
+  if (oldDay && oldDay !== day) {
+    const oldText = `${Number(oldDay.slice(0, 4))}年${formatJstDate(oldDay)}`;
+    return {
+      status: "conflict", statements: [], bump: false, staleKinds: [],
+      questions: [{
+        kind: "conflict",
+        text: `行事の日が食い違っています。今は「${oldText}」です。届いたものには「${quote(change.value.trim())}」とあります。どちらにしますか。`,
+        target: "date_time",
+        detail: { itemKey: "date_time", options: [oldText, change.value.trim()], changeId: ctx.changeId },
+        suffix: "conflict", source: n.source,
+      }],
+    };
+  }
+  if (oldDay) return plan;
+  return {
+    ...plan, status: "applied", bump: true,
+    statements: [...plan.statements, ...eventDayStatements(ctx.db, ctx.wardId, ctx.projectId, state, day, null, ctx.now, true)],
+  };
+}
+
+async function planItemValue(ctx: Ctx, n: Normalized, change: ItemChange): Promise<Plan> {
   const content = change.value.trim();
   const label = ITEM_SCREEN_LABEL[change.itemKey];
   const placement = placeSource(n.source, ctx.project.year);
