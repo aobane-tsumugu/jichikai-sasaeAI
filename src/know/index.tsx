@@ -3,7 +3,7 @@ import { AdminPage } from "../core/admin-ui";
 import { adminPath } from "../core/auth";
 import type { Bundle } from "../core/bundle";
 import { cleanName } from "../core/password";
-import { formatJst } from "../core/time";
+import { formatJst, formatJstDate } from "../core/time";
 import { Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { jobSummaries } from "../intake/store";
@@ -48,13 +48,13 @@ admin.get("/know", async (c) => {
   const first = needs[0];
   return c.html(<AdminPage ward={ward} account={account} title="自治会の基本情報" back={{ href: adminPath(ward, "/"), label: "最初の画面へ" }}>
     <h1>自治会の基本情報</h1>
-    <p class="lead">新しい役員が知っておきたい、この自治会の決まりや手順です。届いた資料からAIが読み取って入れ、役員が直せます。書かれていなくても、準備は進められます。</p>
+    <p class="lead">新しい役員が知っておきたい、この自治会の決まりや手順を、項目ごとに書いています。書かれていない項目があっても、準備は進められます。</p>
     {c.req.query("n") === "added" ? <Notice>項目を足しました。</Notice> : c.req.query("n") === "removed" ? <Notice>項目を外しました。下の「外した項目」から戻せます。</Notice> : c.req.query("n") === "restored" ? <Notice>項目を戻しました。</Notice> : null}
     {first ? <section class="next"><p>{first.state === "checking" ? `「${first.title}」について、新しく届いた資料に違うことが書かれていました。どちらが今の内容か教えてください。` : `「${first.title}」は、${first.note || "入れてから時間がたっています"}。今も合っているか見てください。`}{shown(first) ? `今の内容は「${shown(first)}」です。` : ""}</p>
       <a class="button" href={path(first)}>「{first.title}」を見て直す</a></section> : null}
     {needs.length > 1 ? <p>ほかに、{needs.slice(1).map((item) => `「${item.title}」`).join("、")}も、見直す時期か、AIからの質問があります。</p> : null}
     {written.length ? <><h2>書かれていること</h2><ul class="links">{written.map((item) => <li><a href={path(item)}>{item.title}</a>{shown(item) ? `　${shown(item)}` : ""}</li>)}</ul></> : null}
-    {empty.length ? <><h2>まだ書かれていないこと（{empty.length}）</h2>
+    {empty.length ? <><h2>まだ書かれていないこと</h2>
       <p>{empty.map((item, index) => <>{index ? "、" : ""}<a href={path(item)}>{item.title}</a></>)}。規約や去年の総会の資料を送ると、AIが読み取って入れます。押して書くこともできます。</p>
       <div class="action-links"><a class="button secondary" href={adminPath(ward, "/intake")}>写真やファイルを送る</a></div></> : null}
     <details class="fold"><summary>項目を足す</summary><div><form method="post" action={adminPath(ward, "/know")}>
@@ -178,7 +178,7 @@ admin.get("/files", async (c) => {
   const titles = new Map([...items, ...removed].map((item) => [item.id, item.title]));
   return c.html(<AdminPage ward={ward} account={account} title="自治会の資料" back={{ href: adminPath(ward, "/"), label: "最初の画面へ" }}>
     <h1>自治会の資料</h1>
-    <p class="lead">届いた写真やファイルは、全部ここに入ります。分けなくてもかまいません。押すと大きく見られ、どれの資料にするかや、自治会の基本情報につなげるかを決められます。決めなくても、ここに残ります。</p>
+    <p class="lead">{files.length ? `${formatJstDate(files[0]!.received_at)}までに届いた写真やファイルを、新しいものから並べています。押すと大きく見られ、どれの資料にするかを直せます。` : "届いた写真やファイルは、まだありません。役員の画面から送るか、自治会のLINEに送ると、ここに並びます。"}</p>
     <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>写真やファイルを送る</a></div>
     {files.length ? <ul class="photo-grid">{files.map((file) => {
       // 押した先で、どれの資料にするかを決められるようにする。元の資料の画面は見るだけで、決める所が無かった。

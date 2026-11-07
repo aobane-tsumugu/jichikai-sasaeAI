@@ -36,3 +36,13 @@ it("設定の画面は、要約の付いたリンクでなく、今の状態を�
   expect(templates).not.toContain("日ときは");
   expect(templates).toContain("を消します。元に戻せません。続けますか？");
 });
+
+it("年間の予定を読んだあとのトップは、仮の一年と書かず、分かった予定を名前で書く", async () => {
+  const { ward, cookie } = await seedAdmin(env.DB);
+  const top = async () => (await get(realApp, `/${ward.slug}/admin/`, cookie)).text();
+  expect(await top()).toContain("今は、よくある自治会の一年を仮に置いています。");
+  await env.DB.prepare("INSERT INTO ward_year_items (ward_id, item_id, title, month, added) VALUES (?, ?, ?, 12, 1)").bind(ward.wardId, crypto.randomUUID(), "年末の見回り").run();
+  const after = await top();
+  expect(after).toContain("届いた資料から、「年末の見回り」が、この自治会の予定だと分かりました。ほかの予定は、よくある自治会の例を仮に置いています。");
+  expect(after).not.toContain("今は、よくある自治会の一年を仮に置いています。");
+});

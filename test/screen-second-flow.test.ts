@@ -53,8 +53,8 @@ it("配っていない行事の返事の画面は、開けない案内へ戻さ�
   expect(form).not.toContain(`/${ward.slug}/p/${project.projectId}"`);
   expect(form).not.toMatch(/<input[^>]*name="district"[^>]*checked/);
   const list = await (await get(realApp, `/${ward.slug}/admin/answers`, cookie)).text();
-  expect(list).toContain("架空の配る前の行事（2026年）");
-  expect(list).toContain("0世帯が返事をしています");
+  expect(list).toContain("2026年の架空の配る前の行事");
+  expect(list).toContain("返事はまだ届いていません。");
 });
 
 it("質問の一行は短くし、年を聞く質問は見本の見出しにする", async () => {

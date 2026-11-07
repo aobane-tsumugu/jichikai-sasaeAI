@@ -62,7 +62,7 @@ it("募集の紙とWebから同じ手伝いに申し込み、役員が時間を�
   expect(await listHelpOffers(env.DB, ward.wardId, project.projectId)).toHaveLength(1);
   expect(await listAnswers(env.DB, ward.wardId, project.projectId)).toHaveLength(0);
   expect(await getAnswerTotals(env.DB, ward.wardId, project.projectId)).toEqual({ people: 0, helperRequests: 0 });
-  expect(await (await get(realApp, root, cookie)).text()).toContain("手伝いの申し出を見る（1人）");
+  expect(await (await get(realApp, root, cookie)).text()).toContain("手伝いを申し出た1人を見る");
   expect(await (await get(realApp, `${root}?view=helpers`, cookie)).text()).toContain(`href="${endpoint}"`);
 
   // Webからも世帯に混ぜず同じ一覧へ入る。

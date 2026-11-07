@@ -72,12 +72,9 @@ admin.get("/answers", async (c) => {
     <Layout title="出欠の返事を見る" siteName={c.var.ward.name} noindex adminHomeHref={adminPath(c.var.ward.slug, "/")}>
       <a class="back" href={adminPath(c.var.ward.slug, "/")}>← 最初の画面へ</a>
       <h1>出欠の返事を見る</h1><p class="lead">どの出欠の返事を見るか選んでください。紙、電話、スマホの返事が、同じ一覧に入っています。</p>
-      {rows.results.length === 0 ? <p>出欠を集めているものはまだありません。</p> : rows.results.map((row) => <section>
-        <h2>{row.title}（{row.year}年）</h2>
-        <ul class="rows two">
-          <li><a class="row-link" href={adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(row.project_id)}`)}><b>出欠の返事を見る</b><span>{row.answers}世帯が{row.closed_at ? "返事をしました" : "返事をしています"}</span></a></li>
-        </ul>
-      </section>)}
+      {/* 準備ごとに同じ「出欠の返事を見る」と件数を並べず、名前と、返事が届いているかを文で書く。 */}
+      {rows.results.length === 0 ? <p>出欠を集めているものはまだありません。</p> : <ul class="rows">{rows.results.map((row) => <li><a class="row-link" href={adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(row.project_id)}`)}><b>{row.year}年の{row.title}</b>
+        <span>{row.answers ? `${row.answers}世帯から返事が届いています。` : "返事はまだ届いていません。"}{row.closed_at ? "終わりにしました。" : ""}</span></a></li>)}</ul>}
       <div class="action-links"><a class="button secondary" href={adminPath(c.var.ward.slug, "/answers/roster")}>名簿を入れる</a></div>
       <p class="muted">名簿は、まだ返事のない世帯を出すために使います。</p>
     </Layout>,
@@ -345,7 +342,7 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
           : <><section class="next"><p>{project.title}は、まだ住民に案内を知らせていません。出欠の返事は、案内を知らせたあとに、ここに集まります。</p><a class="button" href={adminPath(c.var.ward.slug, `/projects/${projectId}/map`)}>{project.title}のやることを開く</a></section><p>先に電話で返事を聞いたときは、ここから入れられます。<a href={`${root}?view=hand`}>電話で聞いた返事を入れる</a></p></> : null}
         {!roster.length ? <p><a class="quiet" href={adminPath(c.var.ward.slug, "/answers/roster")}>世帯の名簿を入れる</a></p> : null}
         {deadlinePassed && remaining ? <p>返事のない{remaining}世帯は欠席として数えています。</p> : null}
-        {helperCount ? <p><a href={`${root}?view=helpers`}>手伝いの申し出を見る（{helperCount}人）</a></p> : null}
+        {helperCount ? <p><a href={`${root}?view=helpers`}>手伝いを申し出た{helperCount}人を見る</a></p> : null}
       </> : <>
         <p>{namesText}</p>
         {!closed ? <section class="next"><a class="button" href={`${root}?view=send`}>預かった回答票を撮って送る</a><p>撮って送ると、AIが読んで、上の数に入れます。電話で聞いた返事は、下の「電話で聞いた返事を入れる」から入れます。</p></section> : null}
@@ -355,7 +352,7 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
           <li><a href={`${root}?view=list`}>返事を一覧で見て直す</a></li>
           {roster.length ? <li><a href={`${root}?view=unanswered`}>まだ返事のない世帯を班ごとに見る</a></li> : null}
           <li><a href={`${root}?view=read`}>回答票の読み取りを見る</a></li>
-          <li><a href={`${root}?view=helpers`}>手伝いの申し出を見る（{helperCount}人）</a></li>
+          {helperCount ? <li><a href={`${root}?view=helpers`}>手伝いを申し出た{helperCount}人を見る</a></li> : null}
           <li><a href={adminPath(c.var.ward.slug, "/answers/roster")}>{roster.length ? "世帯の名簿を見る" : "世帯の名簿を入れる"}</a></li>
         </ul>
       </>}
