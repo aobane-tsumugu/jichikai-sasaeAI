@@ -142,6 +142,17 @@ describe("Excelの展開", () => {
     });
   }
 
+  it("インラインのセルも共有文字列と同じ本文を読み、ふりがなを混ぜない", async () => {
+    const text = `<r><t>架空</t></r><r><rPr><b/></rPr><t>花子 &amp; 担当</t></r><rPh sb="0" eb="2"><t>カクウ</t></rPh><rPh sb="2" eb="4"><t>ハナコ</t></rPh><phoneticPr fontId="1"/>`;
+    const workbook = {
+      ...XLSX,
+      "xl/sharedStrings.xml": `<sst><si>${text}</si></sst>`,
+      "xl/worksheets/sheet1.xml": `<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="inlineStr"><is>${text}</is></c></row></sheetData></worksheet>`,
+    };
+    const result = await extractOffice(await makeZip(workbook, false)) as { tables: { rows: string[][] }[] };
+    expect(result.tables[0]!.rows).toEqual([["架空花子 & 担当", "架空花子 & 担当"]]);
+  });
+
   it("要素に接頭辞が付いたExcelも同じに読む", async () => {
     const prefixed = Object.fromEntries(Object.entries(XLSX).map(([name, xml]) => [name, name.endsWith(".rels") ? xml : xml.replace(/<(\/?)(?=[a-zA-Z])/g, "<$1x:")]));
     const plain = await extractOffice((await makeZip(XLSX, false)).buffer as ArrayBuffer);
@@ -163,6 +174,20 @@ describe("Excelの展開", () => {
     const sheet = XLSX["xl/worksheets/sheet1.xml"].replace("</sheetData>", '<row r="9"><c r="A9" t="d"><v>2026-10-22T00:00:00.000Z</v></c></row></sheetData>');
     const result = await extractOffice(await makeZip({ ...XLSX, "xl/worksheets/sheet1.xml": sheet }, false)) as { tables: { rows: string[][] }[] };
     expect(JSON.stringify(result.tables)).toContain("2026-10-22");
+  });
+
+  it("ISO日時の時刻・秒・時差を落とさず、日付だけの値もそのまま読む", async () => {
+    const values = ["2099-10-24T09:30:00", "2099-10-24T00:15:30.500Z", "2099-10-24T00:00:00+09:00", "2099-10-24"];
+    const workbook = {
+      ...XLSX,
+      "xl/styles.xml": `<styleSheet><numFmts><numFmt numFmtId="164" formatCode="yyyy/m/d h:mm:ss"/></numFmts><cellXfs><xf numFmtId="0"/><xf numFmtId="164"/></cellXfs></styleSheet>`,
+      "xl/worksheets/sheet1.xml": `<worksheet><sheetData>
+        <row r="1"><c r="A1" t="inlineStr"><is><t>架空の日程</t></is></c></row>
+        ${values.map((value, index) => `<row r="${index + 2}"><c r="A${index + 2}" t="d" s="1"><v>${value}</v></c></row>`).join("")}
+      </sheetData></worksheet>`,
+    };
+    const result = await extractOffice(await makeZip(workbook, false)) as { tables: { rows: string[][] }[] };
+    expect(result.tables[0]!.rows).toEqual([["架空の日程"], ...values.map((value) => [value])]);
   });
 
   it("当番表の時刻には架空の日付を付けず、年月日と日ときはそのまま読む", async () => {
