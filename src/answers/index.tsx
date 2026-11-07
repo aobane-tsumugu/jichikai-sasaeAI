@@ -100,11 +100,11 @@ admin.get("/answers/roster", async (c) => {
     </> : jobId ? <>
       <h1>読み取った名簿</h1><RosterPhotoResult wardSlug={ward.slug} wardId={ward.wardId} db={c.env.DB} jobId={jobId} />
     </> : <>
-      <h1>世帯の名簿</h1><p class="lead">世帯の代表者（ふつうは世帯主）のお名前と班が入ります。返事の集計と、まだ返事のない世帯の一覧に使います。</p>
+      <h1>世帯の名簿</h1><p class="lead">世帯の名簿は、世帯の代表者（ふつうは世帯主）のお名前と班の一覧です。入れると、出欠の返事でまだ返事のない世帯を班ごとに出せます。案内を印刷するときの、班ごとの枚数にも使います。{entries.length ? `今は${entries.length}世帯、${copies.length}班の名簿が入っています。` : "今は名簿がありません。名簿が無くても、出欠の返事は受け付けられます。"}</p>
       {entries.length ? <div class="notice"><strong>今の名簿は{entries.length}世帯、{copies.length}班です</strong><p>新しく読み込むと、この名簿は入れ替わります。</p></div> : <p class="notice">名簿はまだありません。名簿がなくても返事を受け付けられます。手元に名簿があれば、下から送ってください。</p>}
       <form id="send-form" method="post" action={root} enctype="multipart/form-data">
         <h2>Excelの表があるとき</h2><div class="field"><label class="file-button">Excelの表を選ぶ<input id="files" name="part" type="file" accept=".csv,.xlsx" required /></label>
-          <p class="help-text">Excelのファイル（.xlsx）と、.csvのファイルを読めます。先頭の行の見出しから、世帯の代表者のお名前と班の列を見つけます。見つからないときだけ、列を選んでもらいます。</p></div>
+          <p class="help-text">Excelのファイルをそのまま選んでください。表の一番上の見出しから、お名前と班を見つけます。見つからないときだけ、どの見出しがお名前と班かを選んでもらいます。</p></div>
         <input type="hidden" name="text" value="" /><p id="send-status" class="notice" role="status"></p>
         <p>読み込むと、今の名簿は消えます。間違えたときは、正しい名簿をもう一度読み込むか、紙の名簿を撮り直して読み取ると、入れ替わります。</p>
         <div class="action-bar"><button id="send-button" type="submit">名簿を読み込む</button></div>
