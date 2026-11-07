@@ -1,7 +1,7 @@
 import { adminResult } from "../core/admin-ui";
 import { installMeetingRoutes } from "./meeting-routes";
 import { installHelpAdminRoutes } from "./help-admin";
-import { AttendanceFields, CountFields, countText, countUnread, parseAnswerCounts } from "./counts";
+import { AttendanceFields, CountFields, answerProblem, countText, countUnread, parseAnswerCounts } from "./counts";
 import { type AnswerLabels } from "../settings/answer-labels";
 import { EventDetails, ReceptionClosed, ResidentContact, residentContext } from "./resident";
 import { PENDING } from "../project/document-body";
@@ -351,7 +351,7 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
     </> : null}
     {view === "sent" ? <><p class="lead">読み取れた分から数えに入れます。読み違いは、返事の一覧で直せます。</p><section class="next"><strong>次は</strong><p>返事の数に入ったか見てください。</p><a class="button" href={root}>出欠の返事を見る</a></section><a class="quiet" href={`${root}?view=send`}>続けて撮って送る</a><p><a class="quiet" href={`${root}?view=list`}>返事の一覧で直す</a></p><p class="muted">写真が残るので、紙は名前が読めないようにして捨ててかまいません。班長から預かった紙も同じです。</p></> : null}
     {view === "hand" && !closed ? <><p class="lead">聞いた内容を入れてください。</p><p><a class="button secondary" href={`${root}/help`}>手伝いだけの申し込みを入れる</a></p><form method="post" action={`${root}/phone`}>
-      {retry ? <><Notice error>入力を確認してください。入れた内容は残っています。</Notice>
+      {retry ? <><Notice error>{answerProblem(retry)}入れた内容は残っています。</Notice>
         <section class="next"><strong>次は</strong><p>下の内容を直して、もう一度「この返事を入れる」を押してください。前の画面には、ブラウザの戻るボタンでも戻れます。</p><a class="quiet" href={root}>返事の画面に戻る</a></section>
       </> : null}
       <div class="field"><label for="household">世帯の代表者（ふつうは世帯主）のお名前</label><input id="household" name="household" required maxlength={120} value={asString(retry?.household)} /></div>
@@ -416,7 +416,7 @@ async function editAnswerPage(c: Context<AdminEnv>, retry?: Record<string, unkno
     <h1>{answer.household}の返事を直す</h1>{!project.closed_at ? <p class="lead">直したいところを書き換えて、保存してください。保存する前に戻ると、元のままです。</p> : null}
     {project.closed_at ? <><div class="notice warn"><strong>{project.title}は終わりにしました</strong><p>返事を直すときは、先に終わりを取り消してください。</p></div><div class="action-links"><a class="button" href={adminPath(ward.slug, `/close/${encodeURIComponent(projectId)}`)}>終わりを取り消す画面へ</a></div><p class="muted">終わりを取り消しても、これまでの記録は残ります。</p></> : <>
       <form method="post" action={`${endpoint}/edit`} class="panel">
-        {retry ? <Notice error>入力を確認してください。入れた内容は残っています。</Notice> : null}
+        {retry ? <Notice error>{answerProblem(retry)}入れた内容は残っています。</Notice> : null}
         <label for="edit-household">世帯の代表者（ふつうは世帯主）のお名前</label><input id="edit-household" name="household" type="text" value={asString(values.household)} required maxLength={120} />
         <fieldset><legend>班</legend><DistrictSelect districts={editDistricts} selected={district} /></fieldset>
         <AttendanceFields title={project.title} selected={asString(values.attend)} /><div class="admin-answer-counts"><CountFields labels={labels} answer={answer} prefix="edit" rawValues={retry} /></div>

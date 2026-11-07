@@ -41,7 +41,7 @@ it("見出しに名前と行き止まりの行事一覧を出さず、自治会�
   expect(home).not.toContain('<a href="/' + ward.slug + '/admin/">最初の画面</a>');
   expect(await (await get(realApp, `${root}/projects/today`, cookie)).text()).not.toContain("行事一覧");
   const settings = await (await get(realApp, `${root}/settings`, cookie)).text();
-  for (const word of ["この画面を使える人", "ログインの方法", "自治会の情報", "決まった連絡の文", "消す希望", "SasaeAIに問い合わせる", "ログアウトする"]) expect(settings).toContain(word);
+  for (const word of ["この画面を使える人", "ログインの方法", "自治会の情報", "決まった連絡の文", "住民から頼まれたものを消す", "SasaeAIに問い合わせる", "ログアウトする"]) expect(settings).toContain(word);
   expect(settings).toContain("← 最初の画面へ");
 });
 

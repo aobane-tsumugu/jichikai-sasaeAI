@@ -106,6 +106,10 @@ admin.get("/projects/:projectId/map", async (c) => {
           <div class="field"><label for="event-day-input">当日</label><input id="event-day-input" name="event_day" type="date" value={day ?? ""} required /></div>
           <p>済んでいない仕事の時期も動きます。案内の文は変わりません。</p><button class="secondary">当日を保存する</button>
         </form></div></details> : null}
+        <details class="fold"><summary>この準備を丸ごと消す</summary><div>
+          <p>{project.title}の資料、出欠の返事、知らせた案内、やることを全部消します。元に戻せません。間違えて作ったときや、住民から全部を消すよう頼まれたときだけ使ってください。</p>
+          <form method="post" action={adminPath(ward, `/settings/deletion/projects/${id}`)} onsubmit={`return confirm(${JSON.stringify(`「${project.title}」を丸ごと消します。元に戻せません。続けますか？`)})`}><button class="secondary danger">「{project.title}」を丸ごと消す</button></form>
+        </div></details>
       </aside></div>
     </div>
   </Layout>);

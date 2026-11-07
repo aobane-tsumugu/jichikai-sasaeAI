@@ -59,7 +59,7 @@ const ERROR_MESSAGE: Record<ReceiveError["code"], (filename: string) => string> 
 
 const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   ...Object.fromEntries(Object.entries(ERROR_MESSAGE).map(([code, message]) => [code, message("")])),
-  withdraw_failed: "取り下げられませんでした。資料は残っています。消すときは自治会の設定の「消す希望」から対象を選んでください。",
+  withdraw_failed: "取り下げられませんでした。資料は残っています。消すときは、自治会の設定の「住民から頼まれたものを消す」の「名前で見つからないとき」から選んでください。",
   retry_failed: "今は読み直せません。送ったものを見て、このまま進めることもできます。",
 };
 

@@ -52,6 +52,6 @@ it("行事を開き、当番の行を保存しても、主な操作と記録を�
   const search = await page("/archive/search");
   expect(primaryLabels(search)).toEqual(["探す"]);
   expect(search).toMatch(/<form\b[^>]*action="[^"]*\/archive\/search"[^>]*>[\s\S]*?<p class="action-bar page-action"><button>探す<\/button><\/p>\s*<\/form>/);
-  expect(primaryLabels(await page("/settings/deletion"))).toHaveLength(0);
+  expect(primaryLabels(await page("/settings/deletion"))).toEqual(["この名前で探す"]);
   expect(primaryLabels(await page("/settings/templates"))).toEqual(["足す"]);
 });

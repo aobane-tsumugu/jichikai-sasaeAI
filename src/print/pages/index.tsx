@@ -74,7 +74,7 @@ admin.get("/print/:projectId", async (c) => {
         </li>{extra.map((row) => <li><a class="row-link" href={adminPath(ward, row.href)}><b>{row.title}</b><span>{row.note}</span></a></li>)}</>;
     })}</ul>{!papers.results.length ? <p>下書きを保存すると、ここから紙を開けます。</p> : null}
     <h2>書き込んで撮って送る紙</h2><p>電話や役員会で決まったことを、紙に書いて撮って送れます。案内を住民に知らせる前から使えます。</p>
-    <ul class="rows">{(["meeting", "sponsors"] as const).map((kind) => <li><a class="row-link" href={adminPath(ward, `/print/${id}/paper/${kind}`)}><b>{kindLabel(kind)}</b></a></li>)}</ul>
+    <ul class="rows">{(["meeting", "sponsors"] as const).map((kind) => <li><a class="row-link" href={adminPath(ward, `/print/${id}/paper/${kind}`)}><b>{kindLabel(kind)}</b><span>{kind === "meeting" ? "準備中のもの一つにつき1枚ずつ出ます。この準備の紙が最初です。役員会で決まったことを、その準備の紙に書いてください。" : "この準備で協賛をお願いする先の一覧です。"}</span></a></li>)}</ul>
     <p class="link-line"><a href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>書いた紙を撮って送る</a></p>
     <details class="fold"><summary>家にプリンタがないとき</summary><div><p>紙を開いて、スマホやパソコンの印刷の画面でPDFに保存します。保存したPDFは、コンビニのコピー機の案内に沿って送ると印刷できます。</p></div></details>
   </AdminPage>);
@@ -90,13 +90,13 @@ admin.get("/print/:projectId/paper/:kind", async (c) => {
   const baseUrl = c.env.PUBLIC_BASE_URL || new URL(c.req.url).origin;
   if (kind === "meeting") {
     const projects = await c.env.DB.prepare(`SELECT project_id, title FROM projects
-      WHERE ward_id = ? AND (closed_at IS NULL OR project_id = ?) ORDER BY created_at, project_id`)
-      .bind(ward.wardId, id).all<{ project_id: string; title: string }>();
+      WHERE ward_id = ? AND (closed_at IS NULL OR project_id = ?) ORDER BY project_id = ? DESC, created_at, project_id`)
+      .bind(ward.wardId, id, id).all<{ project_id: string; title: string }>();
     const papers = await Promise.all(projects.results.map(async (project) => ({ ...project,
       code: await makeProjectPaperCode(c.env.DB, ward.wardId, project.project_id),
       url: projectPaperQrUrl(baseUrl, ward.slug, project.project_id),
     })));
-    return c.html(<PrintDocument title="役員会の記入欄" back={adminPath(ward, `/print/${id}`)}>{papers.map((paper) => <Sheet footer={<><span>{ward.name} 役員会の記入欄</span><span>{paperDate(new Date().toISOString()).replace("に知らせました", "に印刷しました")}　紙の番号{paper.code}</span></>}>
+    return c.html(<PrintDocument title="役員会の記入欄" back={adminPath(ward, `/print/${id}`)}>{papers.map((paper) => <Sheet footer={<><span>{ward.name} 役員会の記入欄</span><span>{paperDate(new Date().toISOString()).replace("に配りました", "に印刷しました")}　紙の番号{paper.code}</span></>}>
       <h1>{paper.title} 役員会の記入欄</h1>
       <p>役員会や電話で決まったことを、この紙に書いてください。書いたら、紙の番号が写るように撮って、役員の画面の「書いた紙を撮って送る」から送ってください。きれいに書かなくてかまいません。</p>
       <PaperField label="決めたこと" heightMm={66} code={paper.code} text={paper.url} />
@@ -115,7 +115,7 @@ admin.get("/print/:projectId/paper/:kind", async (c) => {
     rows.push({ ...entry, data: { name: entry.data.name ?? "", lastYearAmount: entry.data.amount ?? entry.data.lastYearAmount ?? "" } });
   }
   return c.html(<PrintDocument title={`${state.project.title}協賛先の一覧`} back={adminPath(ward, `/print/${id}`)}>
-    <Sheet footer={<><span>{ward.name} 協賛先の一覧</span><span>{paperDate(new Date().toISOString()).replace("に知らせました", "に印刷しました")}　紙の番号{code}</span></>}>
+    <Sheet footer={<><span>{ward.name} 協賛先の一覧</span><span>{paperDate(new Date().toISOString()).replace("に配りました", "に印刷しました")}　紙の番号{code}</span></>}>
       <div class="paper-header"><div><h1>{state.project.title} 協賛先の一覧</h1>
       <p>電話しながら、返事と額を書いてください。書いたら、紙の番号と一緒に撮って、役員の画面から送ってください。去年の額は、今年の返事ではありません。</p>
       </div><div class="paper-identity"><PrintQr text={url} sizeMm={24} /><span>紙の番号<br />{code}</span></div></div>

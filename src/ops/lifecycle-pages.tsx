@@ -58,7 +58,7 @@ lifecyclePages.get("/wards/:slug/lifecycle", async (c) => {
       <p><button class="danger">自治会を削除する</button></p>
     </form>
     <h2 id="deletion-progress">消去の進み具合</h2>
-    {queue.map((item) => <section class="panel"><p>{item.target_type === "ward" ? "自治会の削除" : "消す希望"} / {item.state === "complete" ? "完了" : item.state === "error" ? "要対応" : "処理中"}</p>
+    {queue.map((item) => <section class="panel"><p>{item.target_type === "ward" ? "自治会の削除" : "消す手続き"} / {item.state === "complete" ? "完了" : item.state === "error" ? "要対応" : "処理中"}</p>
       <p>受付: {item.requested_at}{item.completed_at ? ` / 完了: ${item.completed_at}` : ""}</p>{item.last_error ? <p class="notice error">{item.last_error}</p> : null}</section>)}
     {queue.length === 0 ? <p>いま、進めている消去はありません。</p> : null}
     <h2>消去が済んだ記録</h2>

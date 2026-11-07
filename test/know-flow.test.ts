@@ -74,6 +74,9 @@ it("自治会の資料は行き先の無い紙も出し、項目につなげて�
   const files = await read(`${root}/files`, cookie);
   expect(files).toContain("架空の規約.jpg");
   expect(files).toContain("まだどれの資料にもしていません");
+  // 押した先で、どれの資料にするかを決められる画面へ行く。
+  expect(files).toContain(`href="${root}/inbox/city/${received.jobId}/pick"`);
+  expect(await read(`${root}/inbox/city/${received.jobId}/pick`, cookie)).toContain("自治会の基本情報");
   await postForm(realApp, `${root}/know/meeting/links`, { originalId }, cookie);
   const linked = await read(`${root}/files`, cookie);
   expect(linked).toContain(KNOW_BASE.find((base) => base.key === "meeting")!.title);
@@ -284,4 +287,20 @@ it("一年の行から始めると何の準備かを聞かず、やることの�
   expect(datedMap).toContain("<dt>当日</dt>");
   expect(datedMap).toContain("<dt>終わる</dt>");
   expect(datedMap).not.toContain("当日がまだ決まっていません");
+});
+
+it("種類の決まっていない予定から始める時と、何もないところから始める時は、何の準備かを最初から選ばずに聞く", async () => {
+  const { ward, cookie } = await seedAdmin(env.DB);
+  const root = `/${ward.slug}/admin`;
+  const dues = await read(`${root}/year/dues`, cookie);
+  expect(dues).toContain(`/projects?title=${encodeURIComponent("会費の集金")}`);
+  expect(dues).not.toContain("kind=event");
+  const form = await read(`${root}/projects?title=${encodeURIComponent("会費の集金")}`, cookie);
+  expect(form).toContain("何の準備ですか");
+  expect(form).toContain('value="会費の集金"');
+  expect(form).not.toMatch(/name="kind" value="[a-z_]+" checked/);
+  const plain = await read(`${root}/projects`, cookie);
+  expect(plain).not.toMatch(/name="kind" value="[a-z_]+" checked/);
+  const meeting = await read(`${root}/projects?kind=general_meeting&title=${encodeURIComponent("定期総会")}`, cookie);
+  expect(meeting).toContain('<input type="hidden" name="kind" value="general_meeting"/>');
 });

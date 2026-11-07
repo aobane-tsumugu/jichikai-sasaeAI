@@ -58,3 +58,17 @@ export function labelsFromBody(body: string): AnswerLabels {
   try { return parseAnswerLabels((JSON.parse(body) as { answerLabels?: unknown }).answerLabels) ?? [...DEFAULT_ANSWER_LABELS]; }
   catch { return [...DEFAULT_ANSWER_LABELS]; }
 }
+
+/** 受け付けられなかった返事の、何を直せば通るかを一文で言う。「入力を確認してください」だけでは、どこを直すか分からない。 */
+export function answerProblem(form: Record<string, unknown>): string {
+  const household = typeof form.household === "string" ? form.household.trim() : "";
+  if (!household) return "世帯の代表者のお名前が入っていません。お名前を入れてください。";
+  if (form.attend !== undefined && form.attend !== "yes" && form.attend !== "no") return "参加するか、参加しないかを選んでください。";
+  if (form.attend !== "no") {
+    const values = [...COUNT_FIELDS.map((key) => String(form[key] ?? "").trim()), String(form.people_count ?? "").trim()];
+    if (values.some((value) => value !== "" && !/^\d+$/.test(value))) return "人数は数字で入れてください。";
+    if (values.some((value) => /^\d+$/.test(value) && Number(value) > 1000)) return "人数は1000人までで入れてください。";
+    if (!values.some((value) => /^\d+$/.test(value) && Number(value) > 0)) return "「参加する」のときは、参加する人数を入れてください。何人か分からないときは、ひとまず1と入れてかまいません。あとで直せます。";
+  }
+  return "入れた内容に、受け付けられないところがあります。";
+}

@@ -49,8 +49,8 @@ it("元の資料と答えと知らせた案内のある行事を列で消し、D
   expect(published.status).toBe(303);
   await writeDailyWardSnapshots(env, new Date("2026-11-05T00:00:00Z"));
   const root = `/${ward.slug}/admin/settings/deletion`;
-  const page = await get(realApp, root, cookie);
-  expect(await page.text()).toContain("」を消す");
+  const page = await get(realApp, `/${ward.slug}/admin/projects/${project.projectId}/map`, cookie);
+  expect(await page.text()).toContain("」を丸ごと消す");
   expect((await postForm(realApp, `${root}/projects/${project.projectId}`, {}, cookie)).status).toBe(303);
   expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM ops_deletion_queue WHERE ward_id = ? AND target_type = 'project'").bind(ward.wardId).first("n")).toBe(1);
   await drain(ward.wardId);
