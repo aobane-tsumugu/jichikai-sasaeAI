@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { AdminPage } from "../core/admin-ui";
 import { adminPath } from "../core/auth";
 import { Notice } from "../core/ui";
@@ -61,9 +61,16 @@ async function findByName(db: D1Database, wardId: string, name: string): Promise
   return found;
 }
 
-deletion.get("/", async (c) => {
+// 住民の名前は URL に入れない（ブラウザの履歴と記録に残るため）。探す時は送信の中身で受け、その場で結果を返す。
+deletion.get("/", (c) => deletionPage(c, ""));
+deletion.post("/search", async (c) => {
+  const form = await c.req.formData();
+  return deletionPage(c, String(form.get("name") ?? ""));
+});
+
+async function deletionPage(c: Context<AdminEnv>, rawName: string) {
   const { ward, account } = c.var;
-  const name = (c.req.query("name") ?? "").trim().slice(0, 40);
+  const name = rawName.trim().slice(0, 40);
   const found = name ? await findByName(c.env.DB, ward.wardId, name) : null;
   const jobs = await c.env.DB.prepare(`SELECT j.job_id, j.created_at, j.via, o.filename, o.kind, p.title,
       (SELECT i.sender_display_name FROM line_inbox_items i WHERE i.ward_id = j.ward_id AND i.job_id = j.job_id LIMIT 1) AS sender
@@ -91,14 +98,13 @@ deletion.get("/", async (c) => {
     {c.req.query("answer") === "1" ? <Notice>返事を消しました。毎日とっている予備の写しからも、続けて消します。</Notice> : null}
     {c.req.query("project") === "1" ? <Notice>準備を丸ごと消す手続きを受け付けました。この画面を閉じても続きます。</Notice> : null}
     {working || failed ? <p>{working ? `今、${working}件を消しているところです。` : ""}{failed ? `${failed}件は消せずに止まっています。SasaeAIの運営者が直します。` : ""}</p> : null}
-    <form method="get" action={adminPath(ward, "/settings/deletion")}>
+    <form method="post" action={adminPath(ward, "/settings/deletion/search")}>
       <div class="field"><label for="name">頼んだ方のお名前</label><input id="name" name="name" maxlength={40} value={name} /><p class="help-text">名字だけでも探せます。出欠の返事は世帯の代表者の名前で、LINEで届いたものと問い合わせは送った人の名前で探します。</p></div>
       <button class="button">この名前で探す</button>
     </form>
     {found ? found.length ? <section class="panel">
       <p>「{name}」で探すと、次の{found.length}つが見つかりました。似た名前の別の方の分が混ざっていたら、印を外してください。</p>
       <form method="post" action={adminPath(ward, "/settings/deletion/person")} onsubmit="return confirm('選んだものを消します。元に戻せません。続けますか？')">
-        <input type="hidden" name="name" value={name} />
         <div class="choice">{found.map((item) => <label><input type="checkbox" name="target" value={item.key} checked /> {item.text}</label>)}</div>
         <button class="secondary danger">選んだものを消す（元に戻せません）</button>
       </form>
@@ -126,12 +132,11 @@ deletion.get("/", async (c) => {
     <p>準備を丸ごと消すときは、その準備のやることの画面の一番下から消します。</p>
     <p class="link-line"><a href={adminPath(ward, "/settings")}>自治会の設定へ戻る</a></p>
   </AdminPage>);
-});
+}
 
 deletion.post("/person", async (c) => {
   const { ward } = c.var;
   const form = await c.req.formData();
-  const name = String(form.get("name") ?? "").slice(0, 40);
   const targets = form.getAll("target").map(String).slice(0, 200);
   for (const target of targets) {
     const [kind, id] = [target.slice(0, target.indexOf(":")), target.slice(target.indexOf(":") + 1)];
@@ -141,7 +146,7 @@ deletion.post("/person", async (c) => {
     // 問い合わせは、問い合わせの画面の「この問い合わせを消す」と同じ消し方にする。毎日の写しの消去はDB連動で引き受ける。
     else if (kind === "inquiry") await c.env.DB.prepare("DELETE FROM inquiry_records WHERE ward_id = ? AND inquiry_id = ?").bind(ward.wardId, id).run();
   }
-  return c.redirect(`${adminPath(ward, "/settings/deletion")}?queued=1&name=${encodeURIComponent(name)}`, 303);
+  return c.redirect(adminPath(ward, "/settings/deletion?queued=1"), 303);
 });
 
 deletion.post("/answers/:answerId", async (c) => {

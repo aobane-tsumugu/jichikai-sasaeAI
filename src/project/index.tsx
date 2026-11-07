@@ -160,8 +160,8 @@ admin.get("/projects/:projectId", async (c) => {
     <a class="back" href={adminPath(ward, `/projects/${projectId}/map`)}>← {project.title}のやることへ</a>
     <h1>{project.title}の届いた資料と今年の内容</h1><p class="lead">届いた資料と、そこから読み取った今年の内容が見られます。</p>
     <nav class="action-links">
-      <a class="button" href={adminPath(ward, `/projects/${projectId}/questions`)}>質問に答える</a>
-      <a class="button secondary" href={adminPath(ward, `/intake?project=${encodeURIComponent(projectId)}`)}>資料を送る</a>
+      {state?.questions.length ? <a class="button" href={adminPath(ward, `/projects/${projectId}/questions`)}>AIからの質問に答える</a> : null}
+      <a class={state?.questions.length ? "button secondary" : "button"} href={adminPath(ward, `/intake?project=${encodeURIComponent(projectId)}`)}>資料を送る</a>
     </nav>
     <p class="muted">{PROJECT_KIND_LABEL[project.kind]}　{project.year}年</p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
