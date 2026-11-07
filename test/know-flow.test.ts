@@ -245,3 +245,20 @@ it("進めている行事は作った順に新しい物から出し、来年の�
   const home = await read(`/${ward.slug}/admin/`, cookie);
   expect(home).toContain(`/projects/${fresh.projectId}/map`);
 });
+
+it("進めている行事の帯は、資料と答えの数で五段の濃さになり、数と凡例も添える", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const quiet = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の静かな行事", year: 2026, eventDay: "2026-07-10", accountId: account.accountId });
+  const busy = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空のにぎやかな行事", year: 2026, eventDay: "2026-10-10", accountId: account.accountId });
+  for (let index = 0; index < 10; index += 1) await env.DB.prepare(`INSERT INTO project_answers (answer_id, ward_id, project_id, household, district, people_count, source) VALUES (?, ?, ?, ?, '1班', 1, 'web')`).bind(`answer-${index}`, ward.wardId, busy.projectId, `架空の世帯${index}`).run();
+  const home = await read(`/${ward.slug}/admin/`, cookie);
+  expect(home).toMatch(new RegExp(`map-row fact l1" href="[^"]*${quiet.projectId}`));
+  expect(home).toMatch(new RegExp(`map-row fact l3" href="[^"]*${busy.projectId}`));
+  expect(home).toContain("答え10件");
+  expect(home).not.toContain("済んだ仕事");
+  expect(home).toContain("40件から");
+  expect(home).toContain("5〜14件");
+  expect(home).toContain('<i class="q">10</i>');
+  expect(home).toContain('<i class="q">4月</i>');
+  expect(home).toContain("<i>11</i>");
+});
