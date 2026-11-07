@@ -43,6 +43,7 @@ it("L-258: 写真をまとめて前後で当て、迷えば待ち、AIが止ま�
   const prompts: string[] = [];
   let matchCalls = 0;
   let textMatchCalls = 0;
+  let clarificationMatchCalls = 0;
   let readCalls = 0;
   let connectCalls = 0;
   const ai = new Anthropic({ apiKey: "fictional-photo-api-key", maxRetries: 0, fetch: async (url, init) => {
@@ -79,6 +80,7 @@ it("L-258: 写真をまとめて前後で当て、迷えば待ち、AIが止ま�
       result = { document_kind: "photo", summary: "", original_years: [{ original_id: originalId, year: null }],
         text_blocks: [], fields: [], tables: [], decisions: [], unreadable: [], project_suggestions: [] } satisfies Reading;
     } else {
+      if (request.system.includes("届いた文が、公式から既に尋ねた質問")) clarificationMatchCalls++;
       if (failMatch) return Response.json({ error: { type: "overloaded_error", message: "fictional failure" } }, { status: 529 });
       result = { text: "この写真は、どの行事のものですか。" };
     }
@@ -223,8 +225,16 @@ it("L-258: 写真をまとめて前後で当て、迷えば待ち、AIが止ま�
     expect(messages.some((m) => m.to === "fictional-failure-group" && m.messages[0]?.quoteToken === "fictional-quote-9")).toBe(true);
     await processPhotoBatches(runtime, ward.wardId, { fetch: fakeLine, now: new Date() });
     expect(messages.filter((m) => m.to === "fictional-failure-group")).toHaveLength(1);
+    const projectQuestion = (await listClarifications(env.DB, ward.wardId)).find((q) => q.job_id === jobId(failedGroup[0]) && q.topic === "project");
+    expect(projectQuestion).toMatchObject({ options: [], answer: null });
+    const beforeAnswerClarificationCalls = clarificationMatchCalls;
+    const beforeAnswerTextCalls = textMatchCalls;
     await text(fixture.draftTitle, "fictional-other-member", new Date(), "fictional-failure-group");
     expect((await getJob(env.DB, ward.wardId, jobId(failedGroup[0])))?.project_id).toBe(first.projectId);
+    expect(clarificationMatchCalls).toBe(beforeAnswerClarificationCalls);
+    expect(textMatchCalls).toBe(beforeAnswerTextCalls);
+    expect((await listClarifications(env.DB, ward.wardId)).find((q) => q.id === projectQuestion?.id)?.answer).toContain(fixture.draftTitle);
+    expect((await getJob(env.DB, ward.wardId, jobId(failed[0])))?.project_id).toBeNull();
     failMatch = false;
 
     // 回答票の符号はAIに渡さず、読めない人数は0人にしない。

@@ -240,11 +240,20 @@ export async function acceptLineWebhook(
           eventId, receivedAt: original.receivedAt, text: original.text ?? "" }, now);
         // 写真の当ての資料として一時に持つほか、文そのものも普段どおり受ける。
         const questions = activeQuestions;
+        const projectQuestion = questions.find((question) => question.topic === "project");
+        // 選択肢は公開の行事だけだが、送った質問への行事名の答えはAIが止まっていても受ける。
+        const named = projectQuestion && !isUnknownAnswer(original.text ?? "")
+          ? await db.prepare("SELECT project_id FROM projects WHERE ward_id = ? AND closed_at IS NULL AND title = ?")
+            .bind(wardId, (original.text ?? "").trim()).all<{ project_id: string }>()
+          : null;
+        const namedProjectId = named?.results.length === 1 ? named.results[0]!.project_id : undefined;
         if (event.message.quotedMessageId && questions.length) original.officialAddressed = true;
         if (postback) {
           const question = questions.find((question) => question.options.includes(original.text ?? ""));
           if (!question) continue;
           answers = [{ question, text: original.text ?? "" }];
+        } else if (projectQuestion && namedProjectId) {
+          answers = [{ question: projectQuestion, text: original.text ?? "" }];
         } else if (questions.length && (isUnknownAnswer(original.text ?? "") || questions[0]!.options.includes(original.text ?? ""))) {
           answers = [{ question: questions[0]!, text: original.text ?? "" }];
         } else if (questions.length && !looksLikeInquiry(original.text ?? "")) {
@@ -260,9 +269,7 @@ export async function acceptLineWebhook(
           const projectIds = [...new Set(answers.flatMap((answer) => answer.question.project_id ? [answer.question.project_id] : []))];
           match = projectIds.length === 1 ? { disposition: "matched", projectId: projectIds[0] } : { disposition: "unmatched" };
           if (!projectIds.length && answers.some((answer) => answer.question.topic === "project")) {
-            const named = await db.prepare("SELECT project_id FROM projects WHERE ward_id = ? AND closed_at IS NULL AND title = ?")
-              .bind(wardId, (original.text ?? "").trim()).all<{ project_id: string }>();
-            if (named.results.length === 1) match = { disposition: "matched", projectId: named.results[0]!.project_id };
+            if (namedProjectId) match = { disposition: "matched", projectId: namedProjectId };
             else try { match = await matchLineText(ports, wardId, { ...original, officialAddressed: false }); } catch { /* 行事が分からなくても受ける。 */ }
           }
         } else try {
