@@ -63,7 +63,6 @@ cloud のセッションにあるのはこのリポジトリです。資格情�
 - 役員画面に入る資格情報は環境変数 JICHIKAI_OFFICER_NAME と JICHIKAI_OFFICER_PASSWORD にあります（クロード区の架空の役員）。`--creds` に渡す時は `printf '名前: %s
 パスワード: %s
 ' ... > /tmp/creds.txt` のようにリポジトリの外へ書きます。値を表示しないでください。
-- 管理用の文書とデモ資料の原本は、staging の R2 の `_handoff/admin-docs.tgz` と `_handoff/mixed-harvest-inputs.zip` にあります。`npx wrangler r2 object get jichikai-sasae-staging/_handoff/admin-docs.tgz --remote --file /tmp/admin-docs.tgz` で取り、リポジトリの外に展開します。リポジトリに入れないでください。
 - 秘密の値を書かない、一斉送信をしない、GitHub を公開にしない、は cloud でも同じです。
 - 検査は `npm run typecheck` と `npx vitest run`。cloud の新しいセッションには node_modules が無いので、先に `npm ci` を走らせる。
 - HTTP で役員画面に入る時は、フォームの POST に `Origin: https://jichikai.aobane-tsumugu.com` を付ける（付けないと CSRF の検査で 403）。
