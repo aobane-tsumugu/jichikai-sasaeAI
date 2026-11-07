@@ -1,6 +1,6 @@
 import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
-import { pendingFromMinutes } from "../src/draft/meeting-materials";
+import { getMeetingMaterials, meetingMaterialInstruction, pendingFromMinutes } from "../src/draft/meeting-materials";
 import { expect, it, vi } from "vitest";
 import { FIRST_SLICE as fixture } from "../fixtures/first-slice";
 import * as session from "../src/ai/session";
@@ -188,6 +188,60 @@ it("役員会を2回閉じ、前回の決定と未決、年の決定と運営メ
   expect(nextAgenda).toContain(fixture.previousMaterial);
   expect(nextAgenda).toContain("収入: 記録はまだありません");
   expect(nextAgenda).not.toContain(`収入: ${fixture.sponsorAmount.toLocaleString("ja-JP")}円`);
+});
+
+it("議事録の見出しが違っても、決まらなかったことだけを次の議題の質問へ引き継ぐ", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const root = `/${ward.slug}/admin`;
+  for (const kind of ["board_meeting", "general_meeting"] as const) {
+    const pack = getDraftPack("report", kind);
+    expect(pack.instruction).toContain("見出しを必ず「■決まらなかったこと」");
+    expect(pack.version).toBe(`draft-report-${kind}@12`);
+  }
+
+  const headings = ["決まらなかったこと", "継続して話し合うこと", "保留", "次回に回すこと", "未決"];
+  for (const [index, heading] of headings.entries()) {
+    // 本文は既存の架空資料から使い、短い箇条書きも見出しと取り違えないことを確かめる。
+    const minutes = (title: string) => [
+      fixture.reportText, "■決まったこと", fixture.publicAnnouncement,
+      title, `・${fixture.nextYearTask}`,
+      "【決まったこと】", fixture.rainAnnouncement, "## 次回", fixture.eventDay,
+    ].join("\n");
+    for (const title of [heading, `■${heading}`, `## ${heading}`, `【${heading}】`]) {
+      expect(pendingFromMinutes(minutes(title))).toEqual([fixture.nextYearTask]);
+    }
+
+    const day = (month: number) => `${fixture.eventYear}-${String(month).padStart(2, "0")}-10`;
+    const previous = await createProject(env.DB, ward.wardId, {
+      kind: "board_meeting", title: fixture.draftTitle, year: fixture.eventYear,
+      eventDay: day(index * 2 + 1), accountId: account.accountId,
+    });
+    const body = new URLSearchParams();
+    body.append("body", "");
+    body.append("body", minutes(`【${heading}】`));
+    body.set("decisions", fixture.publicAnnouncement);
+    const closed = await realApp.request(`${root}/close/${previous.projectId}/finalize`, {
+      method: "POST", headers: { cookie, origin: "http://localhost", "content-type": "application/x-www-form-urlencoded" }, body,
+    }, env);
+    expect(closed.status).toBe(303);
+    expect(closed.headers.get("location")).not.toContain("error=");
+
+    const next = await createProject(env.DB, ward.wardId, {
+      kind: "board_meeting", title: fixture.nextYearTitle, year: fixture.eventYear,
+      eventDay: day(index * 2 + 2), accountId: account.accountId,
+    });
+    const materials = await getMeetingMaterials(env.DB, ward.wardId, next);
+    expect(materials?.previous?.projectId).toBe(previous.projectId);
+    expect(materials?.previous?.questions).toEqual([fixture.nextYearTask]);
+    expect(materials?.previous?.decisions.map((decision) => decision.text)).toEqual([fixture.publicAnnouncement]);
+    expect(meetingMaterialInstruction(materials)).toContain(`"questions":[${JSON.stringify(fixture.nextYearTask)}]`);
+    const response = await get(realApp, `${root}/projects/${next.projectId}/draft/procedure`, cookie);
+    expect(response.status).toBe(200);
+    const questions = (await response.text()).split("決まらなかったこと・残っている質問</h4>")[1]?.split("<h4>")[0];
+    expect(questions).toContain(fixture.nextYearTask);
+    expect(questions).not.toContain(fixture.publicAnnouncement);
+    expect(questions).not.toContain(fixture.rainAnnouncement);
+  }
 });
 
 it("議事録の決めていないことの節を未決として読み、決めたことを混ぜない", () => {
