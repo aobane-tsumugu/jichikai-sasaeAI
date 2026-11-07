@@ -42,6 +42,7 @@ import {
 import { checkSourceShape, normalizeSource, placeSource, markReferenceSource } from "./source";
 import type { ApplyOptions, ApplyResult, ChangeInput, ItemChange, MapTaskChange, RowChange } from "./types";
 import { dedupeKeyOf, hashOf, quote, sameText, stableStringify } from "./util";
+import { compareOriginals, comparisonText, originalCaption } from "../ai/compare-originals";
 
 type Db = D1Database;
 
@@ -368,6 +369,113 @@ function supersedeValueStatement(ctx: Ctx, valueId: string): D1PreparedStatement
     .bind(ctx.now, ctx.wardId, valueId);
 }
 
+/** 同じ原本の読み直し以外は、届いた順で参考を入れ替えない。 */
+async function planOriginalConflict(ctx: Ctx, n: Normalized, change: ItemChange, before: ValueRow,
+  placement: ReturnType<typeof placeSource>): Promise<Plan | null> {
+  if (n.source.kind !== "original" || !n.source.ref || before.source_kind !== "original" || !before.source_ref
+    || n.source.ref === before.source_ref) return null;
+  const pair = await compareOriginals(ctx.db, ctx.wardId, ctx.projectId, before.source_ref, n.source.ref);
+  if (!pair) return null;
+  const oldIndex = pair.originals.findIndex((original) => original.original_id === before.source_ref);
+  const newIndex = 1 - oldIndex;
+  const oldCaption = originalCaption(pair.originals[oldIndex]!, pair.result.descriptions[oldIndex]!);
+  const newCaption = originalCaption(pair.originals[newIndex]!, pair.result.descriptions[newIndex]!);
+  const previousQuestion = await ctx.db.prepare(`SELECT question_id FROM project_questions
+    WHERE ward_id = ? AND project_id = ? AND target = ? AND json_extract(detail, '$.comparisonKey') = ? LIMIT 1`)
+    .bind(ctx.wardId, ctx.projectId, change.itemKey, pair.key).first();
+  if (previousQuestion) return { status: "kept", statements: [], questions: [], bump: false, staleKinds: [] };
+
+  const reference = placement.scope === "reference";
+  const times = pair.originals.map((original) => original.document_date ? Date.parse(original.document_date) : NaN);
+  const datedNewer = Number.isFinite(times[0]) && Number.isFinite(times[1]) && times[0] !== times[1]
+    ? pair.originals[times[0]! > times[1]! ? 0 : 1]!.original_id : null;
+  const automatic = reference && datedNewer !== null && datedNewer === pair.result.newer;
+  const takeIncoming = reference && pair.result.newer === n.source.ref;
+  const chosenCaption = takeIncoming ? newCaption : oldCaption;
+  const reason = automatic
+    ? `${chosenCaption}を取りました（${pair.result.assessment.replace(/[。]+$/g, "")}）。`
+    : `${chosenCaption}をひとまず使います。どちらが最後のものか、役員に聞いています。`;
+  const statements: D1PreparedStatement[] = [];
+  if (reference) {
+    if (takeIncoming) {
+      statements.push(supersedeValueStatement(ctx, before.value_id), insertValueStatement(ctx, change.itemKey, change.value.trim(), placement,
+        { ...n, source: { ...n.source, locator: `${n.source.locator ?? "全体"}。${reason}` } }));
+    } else {
+      const locator = `${before.source_locator?.split("。資料を比べた結果：")[0] ?? "全体"}。資料を比べた結果：${reason}`;
+      statements.push(ctx.db.prepare("UPDATE project_item_values SET source_locator = ? WHERE ward_id = ? AND project_id = ? AND value_id = ?")
+        .bind(locator, ctx.wardId, ctx.projectId, before.value_id));
+    }
+  }
+  const label = ITEM_SCREEN_LABEL[change.itemKey];
+  const when = reference ? placement.refYear === ctx.project.year - 1 ? "去年の" : placement.refYear === null ? "年の分からない資料の" : `${placement.refYear}年の` : "今年の";
+  const questions: NewQuestion[] = automatic ? [] : [{
+    kind: "conflict", target: change.itemKey, suffix: "conflict", source: n.source,
+    text: `${when}「${label}」が、二つの資料で違います。${oldCaption}は「${before.content}」、${newCaption}は「${change.value.trim()}」です。`
+      + comparisonText(pair) + (reference ? "どちらが最後のものですか。答えるまでも下書きは作れます。" : "今年はどちらの中身にしますか。"),
+    detail: { itemKey: change.itemKey, options: [before.content, change.value.trim()], currentValueId: before.value_id,
+      changeId: ctx.changeId, comparisonKey: pair.key, ...(reference ? { scope: "reference", refYear: placement.refYear } : {}),
+      sources: [{ kind: "original", ref: before.source_ref, locator: before.source_locator ?? "全体", ...(before.source_year ? { year: before.source_year } : {}) }, n.source],
+      originals: pair.originals.map((original, index) => ({ originalId: original.original_id, description: originalCaption(original, pair.result.descriptions[index]!) })),
+    },
+  }];
+  const hasCurrent = reference && Boolean(await ctx.db.prepare(`SELECT value_id FROM project_item_values
+    WHERE ward_id = ? AND project_id = ? AND item_key = ? AND scope = 'current' AND superseded_at IS NULL LIMIT 1`)
+    .bind(ctx.wardId, ctx.projectId, change.itemKey).first());
+  return { status: takeIncoming ? "applied" : automatic ? "kept" : "conflict", statements, questions, bump: takeIncoming,
+    staleKinds: takeIncoming && !hasCurrent ? await documentsDependingOn(ctx, { item: change.itemKey }) : [] };
+}
+
+/** 去年の資料についての回答は今年の決定にせず、参考と誰が選んだかだけを残す。nullはこの問いの対象外。 */
+export async function answerOriginalReference(db: D1Database, wardId: string, projectId: string, questionId: string,
+  accountId: string, answer: string): Promise<boolean | null> {
+  const question = await db.prepare(`SELECT detail FROM project_questions
+    WHERE ward_id = ? AND project_id = ? AND question_id = ? AND kind = 'conflict' AND state IN ('open', 'later')`)
+    .bind(wardId, projectId, questionId).first<{ detail: string | null }>();
+  if (!question?.detail) return null;
+  const detail = JSON.parse(question.detail) as { scope?: string; refYear?: number | null; itemKey?: string; options?: string[]; sources?: Source[] };
+  if (detail.scope !== "reference") return null;
+  if (!detail.itemKey || !isItemKey(detail.itemKey) || !Array.isArray(detail.options) || !Array.isArray(detail.sources)
+    || !(detail.refYear === null || (typeof detail.refYear === "number" && Number.isInteger(detail.refYear)))) return false;
+  const index = detail.options.indexOf(answer);
+  const source = detail.sources[index];
+  if (index < 0 || source?.kind !== "original" || !source.ref) return false;
+  const project = await db.prepare("SELECT kind, year, closed_at, state_version FROM projects WHERE ward_id = ? AND project_id = ?")
+    .bind(wardId, projectId).first<ProjectRow>();
+  if (!project || project.closed_at) return false;
+  if (!(await db.prepare("SELECT account_id FROM accounts WHERE ward_id = ? AND account_id = ? AND removed_at IS NULL")
+    .bind(wardId, accountId).first())) return false;
+  if (!(await db.prepare("SELECT original_id FROM originals WHERE ward_id = ? AND original_id = ? AND withdrawn_at IS NULL")
+    .bind(wardId, source.ref).first())) return false;
+  const changeId = newId();
+  const now = nowIso();
+  const chosen = { ...source, locator: `${source.locator ?? "全体"}。二つの資料を比べ、役員が最後のものとして選びました。` };
+  const change: ItemChange = { kind: "item", itemKey: detail.itemKey, value: answer, source: chosen, confidence: "high", packVersion: "reference-answer@1", requestId: questionId };
+  const n: Normalized = { change, source: chosen, target: detail.itemKey };
+  const ctx: Ctx = { db, wardId, projectId, project, changeId, now, source: chosen, confidence: "high", dedupeKey: `reference-answer:${questionId}`, options: { actorAccountId: accountId } };
+  const hasCurrent = await db.prepare(`SELECT value_id FROM project_item_values WHERE ward_id = ? AND project_id = ?
+    AND item_key = ? AND scope = 'current' AND superseded_at IS NULL LIMIT 1`).bind(wardId, projectId, detail.itemKey).first();
+  const staleKinds = hasCurrent ? [] : await documentsDependingOn(ctx, { item: detail.itemKey });
+  const stored: StoredResult = { status: "applied", changeId, staleDocuments: staleKinds, questionIds: [] };
+  const fresh = insertValueStatement(ctx, detail.itemKey, answer, { scope: "reference", refYear: detail.refYear }, n);
+  await db.batch([
+    insertChangeStatement(ctx, n, true, "applied", "役員が最後の資料を選びました。", stored, await hashOf(change), ctx.dedupeKey, true),
+    db.prepare(`UPDATE project_item_values SET superseded_at = ? WHERE ward_id = ? AND project_id = ? AND item_key = ?
+      AND scope = 'reference' AND ref_year IS ? AND superseded_at IS NULL`).bind(now, wardId, projectId, detail.itemKey, detail.refYear),
+    fresh,
+    db.prepare(`UPDATE project_item_values SET created_by_account_id = ? WHERE ward_id = ? AND project_id = ? AND change_id = ?`)
+      .bind(accountId, wardId, projectId, changeId),
+    db.prepare("UPDATE projects SET state_version = state_version + 1 WHERE ward_id = ? AND project_id = ?").bind(wardId, projectId),
+    ...staleKinds.map((kind) => db.prepare(`UPDATE documents SET stale_since_version =
+      (SELECT state_version FROM projects WHERE ward_id = ? AND project_id = ?)
+      WHERE ward_id = ? AND project_id = ? AND kind = ? AND stale_since_version IS NULL`)
+      .bind(wardId, projectId, wardId, projectId, kind)),
+    db.prepare(`UPDATE project_questions SET state = 'answered', answer = ?, answered_at = ?, answered_by_account_id = ?
+      WHERE ward_id = ? AND project_id = ? AND question_id = ? AND state IN ('open', 'later')`)
+      .bind(answer, now, accountId, wardId, projectId, questionId),
+  ]);
+  return true;
+}
+
 async function planItem(ctx: Ctx, n: Normalized, change: ItemChange): Promise<Plan> {
   const plan = await planItemValue(ctx, n, change);
   // 過去・年不明の参考とAIの案は行事の日にしない。食い違う項目の中身も採らない。
@@ -431,10 +539,16 @@ async function planItemValue(ctx: Ctx, n: Normalized, change: ItemChange): Promi
           }]
         : []
       : lowQuestions();
-    // 参考の中身は年ごとに一つ。同じ年の新しい読みは古い読みに入れ替える（食い違いにはしない）
+    // 同じ資料の読み直しだけは入れ替える。別の資料の違いは中身全体を比べる。
     const sameYear = active.results.find((r) => r.scope === "reference" && (r.ref_year ?? 0) === (placement.refYear ?? 0));
     if (sameYear && sameText(sameYear.content, content)) {
       return { status: unknownYear && questions.length ? "conflict" : "same", statements: [], questions: unknownYear ? questions : [], bump: false, staleKinds: [] };
+    }
+    if (sameYear && sameYear.source_ref !== n.source.ref) {
+      const compared = await planOriginalConflict(ctx, n, change, sameYear, placement);
+      if (compared) return compared;
+      // 元の資料が消されているなど、比べられないときも黙って上書きしない。
+      return { status: "kept", statements: [], questions: [], bump: false, staleKinds: [] };
     }
     const statements: D1PreparedStatement[] = [];
     if (sameYear) statements.push(supersedeValueStatement(ctx, sameYear.value_id));
@@ -478,6 +592,8 @@ async function planItemValue(ctx: Ctx, n: Normalized, change: ItemChange): Promi
   }
   // 資料や Web の回答の中身。今ある中身が案なら入れ替え、決まった中身なら食い違いとして並べる
   if (current.source_kind === "ai_proposal" && !ctx.options.compareCurrent) return replace();
+  const compared = await planOriginalConflict(ctx, n, change, current, placement);
+  if (compared) return compared;
   return {
     status: "conflict",
     statements: [],

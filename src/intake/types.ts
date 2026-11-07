@@ -57,6 +57,8 @@ export interface JobRow {
 }
 
 export interface OriginalRow {
+  document_date?: string | null;
+  document_date_source?: string | null;
   original_id: string;
   ward_id: string;
   job_id: string;

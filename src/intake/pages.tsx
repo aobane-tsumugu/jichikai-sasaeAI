@@ -273,6 +273,7 @@ intakeAdmin.post("/intake", async (c) => {
   const kinds = form.getAll("part_kind").map(String);
   const extracted = form.getAll("part_extracted").map(String);
   const sourceHashes = form.getAll("part_source_hash");
+  const lastModified = form.getAll("part_last_modified");
   const parts: ReceivePart[] = [];
   for (let i = 0; i < files.length; i++) {
     const file = files[i] as File;
@@ -292,6 +293,7 @@ intakeAdmin.post("/intake", async (c) => {
       mediaType: file.type,
       bytes: new Uint8Array(await file.arrayBuffer()),
       sourceHash: photoSourceHash(sourceHashes[i]),
+      lastModified: String(lastModified[i] ?? ""),
       extracted: parsed,
     });
   }

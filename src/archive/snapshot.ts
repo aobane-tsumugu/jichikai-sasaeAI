@@ -34,6 +34,7 @@ export const WARD_TABLE_POLICY: readonly WardTablePolicy[] = [
   { table: "projects", snapshot: true, export: true, deletion: true },
   { table: "jobs", snapshot: true, export: true, deletion: true, omitExportColumns: ["ticket_hash"] },
   { table: "originals", snapshot: true, export: true, deletion: true },
+  { table: "original_comparisons", snapshot: true, export: true, deletion: { cascade: "originals" } },
   { table: "readings", snapshot: true, export: true, deletion: true },
   { table: "job_runs", snapshot: true, export: true, deletion: true },
   { table: "job_tool_calls", snapshot: true, export: true, deletion: true },
@@ -201,6 +202,9 @@ export function eraseSnapshotJob(snapshot: unknown, wardId: string, jobId: strin
   }
   remove("jobs", (row) => row.job_id === jobId);
   remove("originals", (row) => row.job_id === jobId || (typeof row.original_id === "string" && originalIds.has(row.original_id)));
+  remove("original_comparisons", (row) =>
+    (typeof row.first_original_id === "string" && originalIds.has(row.first_original_id)) ||
+    (typeof row.second_original_id === "string" && originalIds.has(row.second_original_id)));
   remove("ward_material_links", (row) => typeof row.original_id === "string" && originalIds.has(row.original_id));
   for (const table of ["readings", "job_runs", "job_tool_calls", "intake_photo_checks", "line_photo_items", "line_clarifications", "line_talk_admin_topics"]) remove(table, (row) => row.job_id === jobId);
   // 返事は写真とは別の受付で届く。実DBの連動削除に合わせ、消した確認への返事も外す。

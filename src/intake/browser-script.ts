@@ -238,9 +238,20 @@ export const SEND_SCRIPT = PHOTO_SCRIPT + String.raw`(function (root) {
 
   async function extractOffice(buffer) {
     var zip = await readZip(buffer);
-    if (zip.has('word/document.xml')) return extractDocx(zip);
-    if (zip.has('xl/workbook.xml')) return extractXlsx(zip);
-    throw new Error('office');
+    var result;
+    if (zip.has('word/document.xml')) result = await extractDocx(zip);
+    else if (zip.has('xl/workbook.xml')) result = await extractXlsx(zip);
+    else throw new Error('office');
+    var core = await zip.text('docProps/core.xml');
+    ['modified', 'created'].some(function (key) {
+      var match = new RegExp('<dcterms:' + key + '(?:\\s[^>]*)?>([^<]*)</dcterms:' + key + '>').exec(core);
+      var date = match ? unescapeXml(match[1]).trim() : '';
+      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/.test(date) || !Number.isFinite(Date.parse(date))) return false;
+      result.documentDate = date;
+      result.documentDateSource = 'office_' + key;
+      return true;
+    });
+    return result;
   }
 
   root.__sendOffice = { extractOffice: extractOffice };
@@ -300,6 +311,7 @@ export const SEND_SCRIPT = PHOTO_SCRIPT + String.raw`(function (root) {
         fd.append('part_kind', picked[i].kind);
         fd.append('part_extracted', extracted);
         fd.append('part_source_hash', prepared.sourceHash);
+        fd.append('part_last_modified', String(prepared.lastModified || ''));
       }
       var res = await fetch(form.action, { method: 'POST', body: fd, headers: { accept: 'application/json' }, credentials: 'same-origin' });
       if (!(res.headers.get('content-type') || '').toLowerCase().includes('application/json')) {
