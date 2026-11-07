@@ -304,6 +304,8 @@ async function check(options: Options): Promise<{ results: Result[]; project: st
     function enqueue(href: string, from: string) {
       const url = site.candidate(href, from);
       if (!url) return;
+      // 行き先を決める古い道は、トークの画面へ送るだけになった。着く先のトークの画面で確かめる。
+      if (/\/inbox\/(?:city\/)?[^/]+\/pick$/.test(url.pathname)) return;
       const shape = site.shape(url);
       if (seen.has(shape)) return;
       if (queue.length >= limit) { capped = true; return; }
