@@ -16,7 +16,6 @@ import { meetingTotalsText } from "../answers/meeting";
 import { getEditableDocument, saveDocument } from "../project/actions";
 import { MAP_PROGRESS_LABEL, type MapProgress, type ProjectKind } from "../project/model";
 import { reconcileDocumentBody, type DocumentBody } from "../project/document-body";
-import { copyPublicPhotoStatement, listPublicPhotos } from "../photos/public";
 import { checkPublicDraft } from "../check";
 import { getDraftPack } from "../draft/packs";
 import { getPublicContact } from "../settings/store";
@@ -111,7 +110,7 @@ async function generatedReportText(db: D1Database, wardId: string, projectId: st
   return row ? documentText(row.body) : "";
 }
 
-/** 本文だけの編集で、確認済みの項目と写真の対応を捨てない。 */
+/** 本文だけの編集で、確認済みの項目を捨てない。 */
 function reportBody(raw: string | undefined, text: string): string {
   if (!raw) return JSON.stringify({ text, items: [] });
   if (documentText(raw).replace(/\r\n/g, "\n").trim() === text.replace(/\r\n/g, "\n").trim()) return raw;
@@ -171,7 +170,6 @@ admin.get("/close/:projectId", async (c) => {
   const report = (scope: "public" | "staff") => scope === "public" && internalReport ? "" :
     reports.results.find((r) => r.scope === scope)?.body ||
     (scope === "public" ? generatedReport : internalDocument?.scope === "staff" ? documentText(internalDocument.body) : "");
-  const reportPhotos = !internalReport && project.kind === "event" ? await listPublicPhotos(c.env, ward.wardId, id) : [];
   const root = adminPath(ward, `/close/${id}`);
   const activityView = c.req.query("view") === "activity";
   if (activityView && ["saved", "published", "unpublished"].includes(c.req.query("activity") ?? "")) {
@@ -231,8 +229,7 @@ admin.get("/close/:projectId", async (c) => {
       {!report(internalReport ? "staff" : "public") && !status.results.some((job) => job.task === "report" && job.status !== "failed") ? <form method="post" action={`${root}/prepare`}><button class="secondary">{internalReport ? pack.title : "報告"}とやることの下書きを作る</button><p class="muted">AIが止まっていても、下の欄に直接書けます。</p></form> : null}
       <form method="post" action={`${root}/finalize`}>
         {internalReport ? <input type="hidden" name="body" value="" /> : <div class="field"><label for="report-public">住民への報告</label><p class="help-text">{report("public") ? "保存した報告です。直してかまいません。" : "ここに直接書けます。"}終わりにすると住民向けのページに載ります。</p><textarea id="report-public" name="body" rows={7} maxlength={12000}>{report("public")}</textarea>
-          {reportPhotos.map((photo) => <img style="max-width:100%;max-height:240px" src={`/${ward.slug}/photos/${id}/${photo.photo_id}`} alt="報告の写真" />)}
-          {reportPhotos.length ? <p>知らせた報告の写真も残ります。</p> : null}</div>}
+        </div>}
         {warnings.length ? <div class="notice warn"><strong>報告の中に見つかったもの</strong><ul>{warnings.map((warning) => <li>{warning}</li>)}</ul><p>書き直せます。このまま終わりにすることもできます。</p></div> : null}
         <div class="field"><label for="report-staff">{internalReport ? `${pack.title}（役員だけ）` : "役員だけの記録（書かなくてかまいません）"}</label><p class="help-text">住民向けのページには載りません。{minutes ? "下書きを直して終わりにすると、次の会議で読めます。" : internalReport ? "終わりにしても、提出したことにはなりません。" : ""}</p><textarea id="report-staff" name="body" rows={internalReport ? 8 : 4} maxlength={12000}>{report("staff")}</textarea></div>
         {decisions ? <div class="field"><label for="meeting-decisions">決めたこと</label><p class="help-text">{decisions.proposal ? "AIが資料から拾った下書きを含みます。" : ""}1行に一つずつ書けます。違うところは直すか消してください。終わりにすると、ここに書いたことが次の役員会と総会の資料に残ります。</p>
@@ -418,20 +415,7 @@ admin.post("/close/:projectId/finalize", async (c) => {
   });
   if (publicText.trim()) {
     let report = await latestReport(c.env.DB, ward.wardId, id, "public");
-    const sourcePublication = await c.env.DB.prepare(`SELECT r.publication_id, r.unpublished_at, v.body FROM publication_records r
-      JOIN document_versions v ON v.ward_id = r.ward_id AND v.project_id = r.project_id AND v.version_id = r.version_id
-      JOIN documents d ON d.ward_id = r.ward_id AND d.document_id = r.document_id
-      WHERE r.ward_id = ? AND r.project_id = ? AND d.kind = 'report' AND v.scope = 'public'
-      ORDER BY r.version_no DESC LIMIT 1`).bind(ward.wardId, id).first<{ publication_id: string; unpublished_at: string | null; body: string }>();
-    let publicationBody = reportBody(report?.body, publicText);
-    // 別の下書きを経た場合も、最後に配った写真の出どころを写しへ残す。
-    if (sourcePublication?.unpublished_at === null) {
-      const source = JSON.parse(sourcePublication.body) as { publicPhotoInputs?: unknown };
-      const current = JSON.parse(publicationBody) as Record<string, unknown>;
-      if (source.publicPhotoInputs && JSON.stringify(current.publicPhotoInputs) !== JSON.stringify(source.publicPhotoInputs)) {
-        publicationBody = JSON.stringify({ ...current, publicPhotoInputs: source.publicPhotoInputs });
-      }
-    }
+    const publicationBody = reportBody(report?.body, publicText);
     // 配った報告は、本文が同じなら作り直さない。
     if (report?.body !== publicationBody) {
       const written = await saveDocument(c.env.DB, ward.wardId, id, account.accountId, {
@@ -456,7 +440,6 @@ admin.post("/close/:projectId/finalize", async (c) => {
           AND NOT EXISTS (SELECT 1 FROM publication_records WHERE ward_id = ? AND project_id = ? AND version_id = ?)`)
         .bind(ward.wardId, publicationId, id, report.document_id, report.version_id, report.version_no, now, account.accountId,
           ward.wardId, id, ward.wardId, id, report.version_id),
-      ...(sourcePublication?.unpublished_at === null ? [copyPublicPhotoStatement(c.env.DB, ward.wardId, id, sourcePublication.publication_id, publicationId)] : []),
     );
   }
   await c.env.DB.batch([

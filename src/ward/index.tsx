@@ -1,4 +1,3 @@
-import { listPublicPhotos } from "../photos/public";
 import { getSquads } from "../settings/store";
 import { getAnswerDeadline } from "../answers/api";
 import { ReceptionClosed, ResidentContact, EventDetails, residentContext, publishedItem } from "../answers/resident";
@@ -242,7 +241,6 @@ pub.get("/p/:projectId", async (c) => {
   const changes = ordered.some(({ latest }) => latest.kind === "notice" && !latest.unpublished_at);
   const newerNotice = ordered.some(({ latest: notice }) => notice.kind === "notice" && !notice.unpublished_at &&
     ordered.some(({ latest: announcement }) => announcement.kind === "announcement" && !announcement.unpublished_at && notice.published_at > announcement.published_at));
-  const reportPhotos = await listPublicPhotos(c.env, c.var.ward.wardId, projectId);
   const renderDocument = ({ latest, earlier }: { latest: PublicProject; earlier: PublicProject[] }) => {
       const date = (item: PublicProject) => formatJstDate(item.published_at);
       const title = publicDocumentTitle(latest);
@@ -254,8 +252,6 @@ pub.get("/p/:projectId", async (c) => {
         <h2>{latest.kind === "announcement" ? changes ? `${date(latest)}に知らせた案内` : "くわしい案内" : title}</h2>
         {latest.kind === "announcement" && changes ? <p>変わったところは、上のお知らせのとおりです。</p> : null}
         <ArticleBody body={latest.body} title={{ project: latest.title, document: latest.document_title }} kind={latest.kind} hide={latest.kind === "announcement" && !changes ? ["date_time", "place", "rain_plan", "due", "public_contact"] : []} />
-        {latest.kind === "report" ? reportPhotos.filter((p) => p.document_id === latest.document_id && p.version_no === latest.version_no).map((p) =>
-          <img loading="lazy" style="display:block;max-width:100%;height:auto;margin:1em 0" src={`/${c.var.ward.slug}/photos/${projectId}/${p.photo_id}`} alt="行事の報告の写真" />) : null}
         <p class="muted">{date(latest)}に載せました</p>
         {earlier.map((older) => <details>
           <summary>変更前の{event ? "案内" : publicDocumentTitle(older)}（{date(older)}に載せたもの）</summary>
