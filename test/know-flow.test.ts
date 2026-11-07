@@ -77,6 +77,9 @@ it("自治会の資料は行き先の無い紙も出し、項目につなげて�
   expect(files).toContain("まだどれの資料にもしていません");
   // 押した先で、どれの資料にするかを決められる画面へ行く。
   expect(files).toContain(`href="${root}/inbox/city/${received.jobId}/pick"`);
+  const picked = await get(realApp, `${root}/inbox/city/${received.jobId}/pick`, cookie);
+  expect(picked.status).toBe(303);
+  expect(picked.headers.get("location")).toContain("/inbox/talks/");
   expect(await redirectedTalkPage(`${root}/inbox/city/${received.jobId}/pick`, cookie)).toContain("自治会の基本情報");
   await postForm(realApp, `${root}/know/meeting/links`, { originalId }, cookie);
   const linked = await read(`${root}/files`, cookie);
@@ -283,13 +286,14 @@ it("一年の行から始めると何の準備かを聞かず、やることの�
   expect(plain).toContain("ごみ当番のように、順番で回すもの");
   const undated = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の日のない祭り", year: 2026, accountId: account.accountId });
   const undatedMap = await read(`${root}/projects/${undated.projectId}/map`, cookie);
-  expect(undatedMap).toContain("始まる日がまだ決まっていません");
+  expect(undatedMap).toContain("まず、日を決めます");
+  expect(undatedMap).toContain("<button>日を保存する</button>");
   const dated = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の日のある祭り", year: 2026, eventDay: "2026-11-28", accountId: account.accountId });
   const datedMap = await read(`${root}/projects/${dated.projectId}/map`, cookie);
-  expect(datedMap).toContain("<dt>準備を始める</dt>");
-  expect(datedMap).toContain("<dt>当日</dt>");
-  expect(datedMap).toContain("<dt>終わる</dt>");
-  expect(datedMap).not.toContain("始まる日がまだ決まっていません");
+  expect(datedMap).toContain("当日は11月28日（土）です。");
+  expect(datedMap).toContain("から始める目安です。");
+  expect(datedMap).toContain("にまとめ終える目安です。");
+  expect(datedMap).not.toContain("まず、日を決めます");
 });
 
 it("種類の決まっていない予定から始める時と、何もないところから始める時は、何の準備かを最初から選ばずに聞く", async () => {

@@ -36,3 +36,23 @@ it("案内をまだ知らせていない準備の出欠の返事の画面は、�
   expect(html).toContain(`href="/${ward.slug}/admin/projects/${project.projectId}/map">架空のまだ知らせていない祭りのやることを開く</a>`);
   expect(html).not.toContain("回答票が手元にあれば、撮って送れます。");
 });
+
+it("問い合わせの一件の画面で、電話で返事をした時の欄は大きい送るボタンと別のフォームにあり、書いても大きいボタンでは送られない", async () => {
+  const { ward, cookie } = await seedAdmin(env.DB);
+  await env.DB.prepare(`INSERT INTO inquiry_records (inquiry_id, ward_id, received_at, kind, subject, answer, submitted_to_city, created_at, line_source_type, line_user_id, line_sender_label)
+    VALUES ('q-fold', ?, '2026-11-07T01:00:00.000Z', 'inquiry', '駐車場はありますか', '', 0, '2026-11-07T01:00:00.000Z', 'user', 'U-fictional-fold', '架空 四郎')`).bind(ward.wardId).run();
+  const html = await (await realApp.request(`/${ward.slug}/admin/inquiries/q-fold`, { headers: { cookie } }, env)).text();
+  const mainStart = html.indexOf('<textarea id="answer"');
+  const mainEnd = html.indexOf("</form>", mainStart);
+  expect(mainStart).toBeGreaterThan(0);
+  expect(html.slice(mainStart, mainEnd)).not.toContain('name="phoneAnswer"');
+  expect(html.slice(mainEnd)).toContain('name="phoneAnswer"');
+  expect(html.slice(mainEnd)).toContain('value="record"');
+});
+
+it("住民向けの連絡先が無い時は、トップの役員が見ないと進まないことに、連絡先を入れる道を出す", async () => {
+  const { ward, cookie } = await seedAdmin(env.DB);
+  const html = await (await realApp.request(`/${ward.slug}/admin/`, { headers: { cookie } }, env)).text();
+  expect(html).toContain("住民向けのページに出す自治会の連絡先が、まだ入っていません。");
+  expect(html).toContain(`href="/${ward.slug}/admin/settings/info">連絡先を入れる</a>`);
+});
