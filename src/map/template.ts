@@ -1,7 +1,7 @@
 // 地図の型。プロジェクトを開く時に、種類ごとの一般の仕事を置く（設計書 3.1、L-152）。
 // 役員は眺めて、要らない仕事を消し、足りない仕事を足す。しなくても流れは止まらない。
 //
-// offset は行事の日（期限群の event_day）からの日数。行事の日が決まっていなければ時期は空のまま置く。
+// 準備は始まる日、報告は終わる日から数える。実施の日が決まっていなければ時期は空のまま置く。
 // opens は、仕事を押した時にその仕事から開く物。材料、案、答え、収支の四つ。
 
 import type { DocumentKind, ProjectKind } from "../project/model";
@@ -93,4 +93,12 @@ export function addDays(date: string, days: number): string {
   const [y, m, d] = date.split("-").map(Number) as [number, number, number];
   const t = new Date(Date.UTC(y, m - 1, d + days));
   return t.toISOString().slice(0, 10);
+}
+
+/** 実施の仕事は期間全体、実施後の仕事は終わる日から数える。 */
+export function templatePeriod(task: Pick<TemplateTask, "start" | "end">, day: string, endDay = day) {
+  return {
+    start: addDays(task.start > 0 ? endDay : day, task.start),
+    end: addDays(task.end > 0 || (task.start === 0 && task.end === 0) ? endDay : day, task.end),
+  };
 }

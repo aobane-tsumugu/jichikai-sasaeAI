@@ -2,14 +2,14 @@ import { Hono, type Context } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
 import { ErrorNotice, Layout, Notice } from "../core/ui";
-import { formatJstDate, periodText, shortDate } from "../core/time";
+import { eventPeriodText, formatJstDate, seasonText } from "../core/time";
 import type { AdminEnv } from "../env";
 import { getProjectState } from "../project/api";
 import { addMapTask, removeMapTask, restoreMapTask, setEventDay, setMapTask } from "../project/actions";
 import { MAP_PROGRESS_LABEL, countWord, type ProjectKind } from "../project/model";
 import { documentTitle } from "../project/heading";
 import { materialChangeText } from "./material-change";
-import { nextMapTask, mapCalendar, mapTaskPath } from "./next";
+import { nextMapTask, mapCalendar, mapTaskPath, taskPeriodText } from "./next";
 import { jobSummaries } from "../intake/store";
 import { guideOf, opensOf, taskDraftKind, type MapOpens } from "./template";
 export { taskDraftKind } from "./template";
@@ -43,6 +43,7 @@ admin.get("/projects/:projectId/map", async (c) => {
   const next = nextMapTask(tasks, today);
   const taskUrl = (task: (typeof tasks)[number]) => mapTaskPath(id, project.kind, task);
   const day = project.deadlines.event_day;
+  const endDay = project.deadlines.event_end ?? day;
   const daysLeft = day ? Math.ceil((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000) : null;
   const readCount = materials.results.filter((material) => material.status === "done").length;
   const canRain = project.kind === "event" && state.documents.some((document) => document.kind === "announcement" && document.publishedVersionNo !== null);
@@ -54,16 +55,16 @@ admin.get("/projects/:projectId/map", async (c) => {
     <div class="map-page">
       <h1>{project.title}のやること</h1>
       <p class="lead">{first ? materials.results.length ? `${readCount}件の資料を読んで、${tasks.length}つのやることを用意しました。違うところは、仕事を押して直せます。` : `ふつうの${tasks.length}つのやることを用意しました。違うところは、仕事を押して直せます。` : `${day && daysLeft !== null && daysLeft >= 0 ? `${formatJstDate(day)}まで、あと${daysLeft}日です。` : ""}仕事を押すと開きます。`}</p>
-      {project.closedAt ? null : day ? <dl class="facts"><dt>準備を始める</dt><dd>{prepStart && prepStart < day ? shortDate(prepStart) : "決まっていません"}</dd><dt>当日</dt><dd>{formatJstDate(day)}</dd><dt>終わる</dt><dd>{finish && finish > day ? shortDate(finish) : "決まっていません"}</dd></dl>
-        : <div class="notice"><strong>当日がまだ決まっていません</strong><p>当日を入れると、準備を始める時期と終わる時期を、当日から数えて置きます。</p>
-          <form method="post" action={adminPath(ward, `/projects/${id}/map/event-day`)}><div class="field"><label for="event-day-first">当日</label><input id="event-day-first" name="event_day" type="date" required /></div><button class="secondary">当日を保存する</button></form></div>}
+      {project.closedAt ? null : day ? <dl class="facts"><dt>準備を始める</dt><dd>{prepStart && prepStart < day ? seasonText(prepStart) : "決まっていません"}</dd><dt>{endDay !== day ? "期間" : "当日"}</dt><dd>{eventPeriodText(day, endDay)}</dd><dt>終わる</dt><dd>{finish && finish > endDay! ? seasonText(finish) : "決まっていません"}</dd></dl>
+        : <div class="notice"><strong>始まる日がまだ決まっていません</strong><p>日を入れると、準備を始める頃と報告をまとめ終える頃を置きます。あとで直せます。</p>
+          <form method="post" action={adminPath(ward, `/projects/${id}/map/event-day`)}><div class="field"><label for="event-day-first">始まる日</label><input id="event-day-first" name="event_day" type="date" required /></div><div class="field"><label for="event-end-first">終わる日（一日だけなら空のまま）</label><input id="event-end-first" name="event_end" type="date" /></div><button class="secondary">日を保存する</button></form></div>}
       <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
       {notice === "event_day" ? <Notice><p>当日を変えました。済んでいない仕事の時期を置き直しました。案内の文は変わりません。</p><p>やることを押して、時期を確かめてください。戻すときは、下の「当日を直す」からもう一度入れ直せます。</p><a class="quiet" href="#event-day">当日を直す</a></Notice> : null}
       {notice === "done" ? <Notice>「{tasks.find((task) => task.taskId === c.req.query("changed"))?.name}」を済みにしました。戻すときは、その仕事を開いて「済みを取り消す」を押してください。</Notice> : notice === "reopen" ? <Notice>「{tasks.find((task) => task.taskId === c.req.query("changed"))?.name}」の済みを取り消しました。</Notice> : null}
       {notice === "removed" ? <Notice>仕事を外しました。下の「外した仕事」から戻せます。</Notice> : notice === "restored" ? <Notice>仕事を戻しました。仕事を押すと直せます。</Notice> : notice === "added" ? <Notice>仕事を足しました。仕事を押すと直せます。</Notice> : null}
       {project.closedAt ? <Notice>{project.title}は終わりにしました。直すときは「報告を書いて終わりにする」の画面で「終わりを取り消す」を押してください。</Notice> : <>
         <section class="next"><strong>次は</strong>
-          <p>{next ? next.periodEnd ? `${shortDate(next.periodEnd)}までの仕事です。` : day ? "この仕事の時期はまだ決まっていません。仕事を押すと入れられます。" : "時期は、当日を入れると決まります。" : "やることは全部済みました。"}</p>
+          <p>{next ? next.periodEnd ? `${taskPeriodText(next, true)}の仕事です。` : day ? "この仕事の時期はまだ決まっていません。仕事を押すと入れられます。" : "時期は、始まる日を入れると決まります。" : "やることは全部済みました。"}</p>
           <a class="button" href={adminPath(ward, next ? taskUrl(next) : `/close/${id}`)}>{next?.name ?? "報告を書いて終わりにする"}</a>
           {tasks.some((task) => task.taskId === c.req.query("changed") && task.taskKey === "announcement" && task.progress === "done") ? <a class="quiet" href={adminPath(ward, `/print/${id}`)}>案内の紙を印刷する</a> : null}
         </section>
@@ -79,7 +80,7 @@ admin.get("/projects/:projectId/map", async (c) => {
             const just = task.taskId === c.req.query("changed") && task.progress === "done";
             const owner = seats.results.find((seat) => seat.seat_id === task.seatId)?.title;
             return <li><a class={`map-row${task.progress === "done" ? " done" : current ? " now" : ""}${just ? " just" : ""}`} href={adminPath(ward, taskUrl(task))}>
-              <span class="map-name"><b>{task.name}</b><small>{task.progress === "done" ? "済み" : task.periodStart && task.periodStart === task.periodEnd ? formatJstDate(task.periodStart) : current ? task.periodEnd ? `${shortDate(task.periodEnd)}まで` : MAP_PROGRESS_LABEL[task.progress] : task.periodStart ? task.periodEnd ? periodText(task.periodStart, task.periodEnd) : `${shortDate(task.periodStart)}から` : "時期はまだ決まっていません"}{owner ? `　${owner}` : ""}</small>{just ? <small class="map-just">いま済みにしました</small> : null}</span>
+              <span class="map-name"><b>{task.name}</b><small>{task.progress === "done" ? "済み" : taskPeriodText(task)}{owner ? `　${owner}` : ""}</small>{just ? <small class="map-just">いま済みにしました</small> : null}</span>
               <span class="map-track">{task.periodStart || task.periodEnd ? <i style={`--from:${calendar.position(task.periodStart ?? task.periodEnd ?? calendar.first) * 100}%;--to:${calendar.position(task.periodEnd ?? task.periodStart ?? calendar.last) * 100}%`} /> : null}</span>
             </a></li>;
           })}</ol>
@@ -103,7 +104,8 @@ admin.get("/projects/:projectId/map", async (c) => {
           {removed.results.length ? <><p><b>外した仕事</b></p>{removed.results.map((task) => <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.task_id}/restore`)}><p>{task.name}</p><button class="secondary">この仕事を戻す</button></form>)}</> : null}
         </div></details> : null}
         {!project.closedAt ? <details class="fold" id="event-day" open={c.req.query("error") === "invalid_input"}><summary>当日を直す</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/map/event-day`)}>
-          <div class="field"><label for="event-day-input">当日</label><input id="event-day-input" name="event_day" type="date" value={day ?? ""} required /></div>
+          <div class="field"><label for="event-day-input">始まる日</label><input id="event-day-input" name="event_day" type="date" value={day ?? ""} required /></div>
+          <div class="field"><label for="event-end-input">終わる日（一日だけなら空のまま）</label><input id="event-end-input" name="event_end" type="date" value={endDay !== day ? endDay : ""} /></div>
           <p>済んでいない仕事の時期も動きます。案内の文は変わりません。</p><button class="secondary">当日を保存する</button>
         </form></div></details> : null}
       </aside></div>
@@ -177,7 +179,8 @@ admin.post("/projects/:projectId/map/add", async (c) => {
 });
 admin.post("/projects/:projectId/map/event-day", async (c) => {
   const form = await c.req.formData(); const id = c.req.param("projectId");
-  const ok = await setEventDay(c.env.DB, c.var.ward.wardId, id, String(form.get("event_day") ?? ""), c.var.account.accountId);
+  const day = String(form.get("event_day") ?? "");
+  const ok = await setEventDay(c.env.DB, c.var.ward.wardId, id, day, c.var.account.accountId, String(form.get("event_end") || day));
   return c.redirect(`${adminPath(c.var.ward, `/projects/${id}/map`)}?${ok ? "notice=event_day" : "error=invalid_input"}`, 303);
 });
 admin.post("/projects/:projectId/map/:taskId", async (c) => {

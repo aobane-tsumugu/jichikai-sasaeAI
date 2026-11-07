@@ -1,6 +1,7 @@
 // プロジェクトを開く、一覧、状態を引く（読む側）。区の ID は必ず where に入れる。
 import { newId, nowIso } from "../core/ids";
-import { addDays, MAP_TEMPLATES } from "../map/template";
+import { addDays, MAP_TEMPLATES, templatePeriod } from "../map/template";
+import { isCalendarDay } from "../core/time";
 import {
   DEADLINE_KINDS,
   ITEM_LABEL,
@@ -45,8 +46,6 @@ interface ProjectRow {
   state_version: number;
 }
 
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
 function toSummary(row: ProjectRow, deadlines: Partial<Record<DeadlineKind, string>>): ProjectSummary {
   return {
     projectId: row.project_id,
@@ -72,25 +71,29 @@ function groupDeadlines(rows: { project_id: string; kind: string; due_on: string
 /** 行事の日と、済んでいない仕事の時期を同じ書き込みで置く。資料からは既存の日を保つ。 */
 export function eventDayStatements(
   db: D1Database, wardId: string, projectId: string, state: Pick<ProjectState, "project" | "mapTasks">,
-  day: string, accountId: string | null, now: string, onlyIfMissing = false,
+  day: string, accountId: string | null, now: string, onlyIfMissing = false, endDay = day,
 ): D1PreparedStatement[] {
   const oldDay = state.project.deadlines.event_day;
+  const oldEnd = state.project.deadlines.event_end ?? oldDay;
   const shift = oldDay ? Math.round((Date.parse(day) - Date.parse(oldDay)) / 86400000) : 0;
+  const endShift = oldEnd ? Math.round((Date.parse(endDay) - Date.parse(oldEnd)) / 86400000) : 0;
   const template = MAP_TEMPLATES[state.project.kind] ?? [];
-  const statements = [db.prepare(`INSERT INTO project_deadlines (ward_id, project_id, kind, due_on, updated_at, updated_by_account_id)
-    VALUES (?, ?, 'event_day', ?, ?, ?)
+  const statements = ([["event_day", day], ["event_end", endDay]] as const).map(([kind, date]) => db.prepare(`INSERT INTO project_deadlines (ward_id, project_id, kind, due_on, updated_at, updated_by_account_id)
+    VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT (ward_id, project_id, kind) DO ${onlyIfMissing ? "NOTHING" : `UPDATE SET due_on = excluded.due_on,
       updated_at = excluded.updated_at, updated_by_account_id = excluded.updated_by_account_id`}`)
-    .bind(wardId, projectId, day, now, accountId)];
+    .bind(wardId, projectId, kind, date, now, accountId));
   for (const task of state.mapTasks) {
     if (task.progress === "done") continue;
     const offsets = template.find((entry) => entry.key === task.taskKey);
-    const start = oldDay ? task.periodStart ? addDays(task.periodStart, shift) : null : offsets ? addDays(day, offsets.start) : task.periodStart;
-    const end = oldDay ? task.periodEnd ? addDays(task.periodEnd, shift) : null : offsets ? addDays(day, offsets.end) : task.periodEnd;
+    const period = offsets ? templatePeriod(offsets, day, endDay) : null;
+    const start = oldDay ? task.periodStart ? addDays(task.periodStart, offsets && offsets.start > 0 ? endShift : shift) : null : task.periodStart ?? period?.start ?? null;
+    const end = oldDay ? task.periodEnd ? addDays(task.periodEnd, offsets && (offsets.end > 0 || (offsets.start === 0 && offsets.end === 0)) ? endShift : shift) : null : task.periodEnd ?? period?.end ?? null;
     statements.push(db.prepare(`UPDATE project_map_tasks SET period_start = ?, period_end = ?
       WHERE ward_id = ? AND project_id = ? AND task_id = ? AND progress <> 'done' AND removed_at IS NULL
-        AND EXISTS (SELECT 1 FROM project_deadlines WHERE ward_id = ? AND project_id = ? AND kind = 'event_day' AND due_on = ?)`)
-      .bind(start, end, wardId, projectId, task.taskId, wardId, projectId, day));
+        AND EXISTS (SELECT 1 FROM project_deadlines WHERE ward_id = ? AND project_id = ? AND kind = 'event_day' AND due_on = ?)
+        AND EXISTS (SELECT 1 FROM project_deadlines WHERE ward_id = ? AND project_id = ? AND kind = 'event_end' AND due_on = ?)`)
+      .bind(start, end, wardId, projectId, task.taskId, wardId, projectId, day, wardId, projectId, endDay));
   }
   return statements;
 }
@@ -99,12 +102,13 @@ export function eventDayStatements(
  * プロジェクトを開く。種類（行事、総会、市の依頼…）と題と年を受け、種類ごとの一般の地図を置く。
  * 題は後で直せる。去年の地図を種にする時の日付の置き直しは、束 7 の来年の種で行う。
  */
-export async function createProject(db: D1Database, wardId: string, input: CreateProjectInput): Promise<ProjectSummary> {
+export async function createProject(db: D1Database, wardId: string, input: CreateProjectInput & { eventEnd?: string }): Promise<ProjectSummary> {
   if (!(PROJECT_KINDS as readonly string[]).includes(input.kind)) throw new ProjectInputError("種類が合いません");
   const title = input.title.trim();
   if (title === "" || title.length > 100) throw new ProjectInputError("題は1文字から100文字にしてください");
   if (!Number.isInteger(input.year) || input.year < 1900 || input.year > 2200) throw new ProjectInputError("年が合いません");
-  if (input.eventDay !== undefined && !DATE_PATTERN.test(input.eventDay)) throw new ProjectInputError("当日を入れ直してください");
+  if (input.eventDay !== undefined && !isCalendarDay(input.eventDay)) throw new ProjectInputError("始まる日を入れ直してください");
+  if (input.eventEnd !== undefined && (!input.eventDay || !isCalendarDay(input.eventEnd) || input.eventEnd < input.eventDay)) throw new ProjectInputError("終わる日は始まる日以降にしてください");
   if (input.seedProjectId) {
     const seed = await db
       .prepare("SELECT 1 AS ok FROM projects WHERE ward_id = ? AND project_id = ?")
@@ -124,15 +128,16 @@ export async function createProject(db: D1Database, wardId: string, input: Creat
       .bind(projectId, wardId, input.kind, title, input.year, input.seedProjectId ?? null, now, input.accountId ?? null),
   ];
   if (input.eventDay) {
-    statements.push(
+    for (const [kind, date] of [["event_day", input.eventDay], ["event_end", input.eventEnd ?? input.eventDay]]) statements.push(
       db
         .prepare(
-          "INSERT INTO project_deadlines (ward_id, project_id, kind, due_on, updated_at, updated_by_account_id) VALUES (?, ?, 'event_day', ?, ?, ?)",
+          "INSERT INTO project_deadlines (ward_id, project_id, kind, due_on, updated_at, updated_by_account_id) VALUES (?, ?, ?, ?, ?, ?)",
         )
-        .bind(wardId, projectId, input.eventDay, now, input.accountId ?? null),
+        .bind(wardId, projectId, kind, date, now, input.accountId ?? null),
     );
   }
   (MAP_TEMPLATES[input.kind] ?? []).forEach((task, index) => {
+    const period = input.eventDay ? templatePeriod(task, input.eventDay, input.eventEnd) : null;
     statements.push(
       db
         .prepare(
@@ -146,8 +151,8 @@ export async function createProject(db: D1Database, wardId: string, input: Creat
           projectId,
           task.key,
           task.name,
-          input.eventDay ? addDays(input.eventDay, task.start) : null,
-          input.eventDay ? addDays(input.eventDay, task.end) : null,
+          period?.start ?? null,
+          period?.end ?? null,
           task.start,
           task.end,
           index,
@@ -327,7 +332,7 @@ export async function getProjectState(db: D1Database, wardId: string, projectId:
       .bind(wardId, projectId),
     db
       .prepare(
-        `SELECT task_id, task_key, name, period_start, period_end, sort_order, progress, progress_source_kind, progress_source_ref,
+        `SELECT task_id, task_key, name, period_start, period_end, offset_start_days, offset_end_days, sort_order, progress, progress_source_kind, progress_source_ref,
                 progress_source_locator, progress_confidence, seat_id
          FROM project_map_tasks WHERE ward_id = ? AND project_id = ? AND removed_at IS NULL ORDER BY sort_order, created_at`,
       )
@@ -405,6 +410,8 @@ export async function getProjectState(db: D1Database, wardId: string, projectId:
       name: string;
       period_start: string | null;
       period_end: string | null;
+      offset_start_days: number | null;
+      offset_end_days: number | null;
       sort_order: number;
       progress: string;
       progress_source_kind: string | null;
@@ -413,25 +420,33 @@ export async function getProjectState(db: D1Database, wardId: string, projectId:
       progress_confidence: string | null;
       seat_id: string | null;
     }[]
-  ).map((t) => ({
-    taskId: t.task_id,
-    taskKey: t.task_key,
-    name: t.name,
-    periodStart: t.period_start,
-    periodEnd: t.period_end,
-    sortOrder: t.sort_order,
-    progress: t.progress as MapProgress,
-    progressSource: t.progress_source_kind
-      ? sourceView({
-          source_kind: t.progress_source_kind,
-          source_ref: t.progress_source_ref,
-          source_locator: t.progress_source_locator,
-          source_year: null,
-        })
-      : null,
-    progressConfidence: (t.progress_confidence as Confidence | null) ?? null,
-    seatId: t.seat_id,
-  }));
+  ).map((t) => {
+    const template = MAP_TEMPLATES[project.kind]?.find((entry) => entry.key === t.task_key);
+    const day = project.deadlines.event_day;
+    const expected = template && day ? templatePeriod(template, day, project.deadlines.event_end ?? day) : null;
+    return {
+      taskId: t.task_id,
+      taskKey: t.task_key,
+      name: t.name,
+      periodStart: t.period_start,
+      periodEnd: t.period_end,
+      // 手で時期を変えた仕事は日で示す。進み具合だけの変更では目安を保つ。
+      periodEstimated: !!template && t.offset_start_days === template.start && t.offset_end_days === template.end
+        && (!t.period_start || t.period_start === expected?.start) && (!t.period_end || t.period_end === expected?.end),
+      sortOrder: t.sort_order,
+      progress: t.progress as MapProgress,
+      progressSource: t.progress_source_kind
+        ? sourceView({
+            source_kind: t.progress_source_kind,
+            source_ref: t.progress_source_ref,
+            source_locator: t.progress_source_locator,
+            source_year: null,
+          })
+        : null,
+      progressConfidence: (t.progress_confidence as Confidence | null) ?? null,
+      seatId: t.seat_id,
+    };
+  });
 
   return { project, items, tables, documents: documentList, questions: questionList, mapTasks: taskList };
 }

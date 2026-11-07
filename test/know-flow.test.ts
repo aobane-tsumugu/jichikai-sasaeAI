@@ -277,11 +277,11 @@ it("一年の行から始めると何の準備かを聞かず、やることの�
   expect(plain).toContain("ごみ当番のように、順番で回すもの");
   const undated = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の日のない祭り", year: 2026, accountId: account.accountId });
   const undatedMap = await read(`${root}/projects/${undated.projectId}/map`, cookie);
-  expect(undatedMap).toContain("当日がまだ決まっていません");
+  expect(undatedMap).toContain("始まる日がまだ決まっていません");
   const dated = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の日のある祭り", year: 2026, eventDay: "2026-11-28", accountId: account.accountId });
   const datedMap = await read(`${root}/projects/${dated.projectId}/map`, cookie);
   expect(datedMap).toContain("<dt>準備を始める</dt>");
   expect(datedMap).toContain("<dt>当日</dt>");
   expect(datedMap).toContain("<dt>終わる</dt>");
-  expect(datedMap).not.toContain("当日がまだ決まっていません");
+  expect(datedMap).not.toContain("始まる日がまだ決まっていません");
 });
