@@ -205,7 +205,7 @@ export const SEND_SCRIPT = PHOTO_SCRIPT + String.raw`(function (root) {
         var v = /<v>([\s\S]*?)<\/v>/.exec(inner);
         var value = '';
         if (type === 'inlineStr') {
-          inner.replace(/<t(?:\s[^>]*)?>([^<]*)<\/t>/g, function (mm, t) { value += unescapeXml(t); return ''; });
+          inner.replace(/<rPh\b[\s\S]*?<\/rPh>/g, '').replace(/<t(?:\s[^>]*)?>([^<]*)<\/t>/g, function (mm, t) { value += unescapeXml(t); return ''; });
         } else if (v) {
           if (type === 's') value = shared[parseInt(v[1], 10)] || '';
           else if (type === 'b') value = v[1] === '1' ? 'TRUE' : 'FALSE';
