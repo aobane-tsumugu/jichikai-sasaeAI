@@ -48,7 +48,7 @@ function Question({ question, ward, back, choices }: { question: ClarificationRo
 
 talkAdmin.get("/inbox", async (c) => {
   const { ward } = c.var;
-  const talks = await listTalks(c.env.DB, ward.wardId);
+  const talks = await listTalks(c.env.DB, ward.wardId, { withText: false });
   return c.html(<Layout title="届いたもの" siteName={ward.name} adminHomeHref={adminPath(ward, "/")} noindex>
     <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a><h1>届いたもの</h1>
     <p class="lead">トークを開くと、届いた写真と言葉を送られた順に見て、その場で直せます。</p>
@@ -152,7 +152,7 @@ talkAdmin.post("/inbox/:itemId", async (c) => legacyEdit(c, false));
 
 async function legacyEdit(c: Context<AdminEnv>, fromAdmin: boolean) {
   const { ward, account } = c.var;
-  const talks = await listTalks(c.env.DB, ward.wardId);
+  const talks = await listTalks(c.env.DB, ward.wardId, { withText: false });
   const talk = talks.find((t) => t.posts.some((p) => fromAdmin ? p.sourceType === "admin" && p.jobId === c.req.param("jobId") : p.itemId === c.req.param("itemId")));
   const post = talk?.posts.find((p) => fromAdmin ? p.jobId === c.req.param("jobId") : p.itemId === c.req.param("itemId"));
   const topic = talk?.topics.find((t) => t.id === post?.bundleId);

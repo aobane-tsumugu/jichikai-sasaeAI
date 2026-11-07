@@ -55,7 +55,7 @@ export function dateWords(subject: string): string[] {
 }
 
 async function inquiryRecords(db: D1Database, wardId: string): Promise<DisplayInquiry[]> {
-  const talks = await listTalks(db, wardId);
+  const talks = await listTalks(db, wardId, { withText: false });
   const rows = await db.prepare(`SELECT inquiry_id, received_at, kind, subject, answer, submitted_to_city,
     line_bundle_id, line_event_id, line_source_type, line_source_id, line_user_id, line_pending_answer, line_answer_sent_at, line_send_claimed_at, line_send_error, line_reply_batch, line_retry_key, line_retry_started_at, line_sender_label, line_replied_at, answer_history FROM inquiry_records WHERE ward_id = ?
     AND (answer <> '' OR NOT EXISTS (SELECT 1 FROM line_bundle_decisions d WHERE d.ward_id = inquiry_records.ward_id

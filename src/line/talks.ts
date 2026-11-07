@@ -1,7 +1,7 @@
 import { sha256Hex } from "../intake/media";
-import { getReadings, listOriginals } from "../intake/store";
+import { getReadings } from "../intake/store";
 import type { OriginalRow } from "../intake/types";
-import { getBundleDecision, saveAiBundleDecision, type BundleDecision } from "./bundle-decisions";
+import { saveAiBundleDecision, type BundleDecision } from "./bundle-decisions";
 import { listClarifications } from "./clarifications";
 
 export interface TalkPost {
@@ -44,7 +44,32 @@ export const talkMark = (wardId: string, destination: string, type: string, id: 
 export const topicAnchor = async (id: string) => `topic-${await sha256Hex(id)}`;
 export const talkPath = (id: string) => `/inbox/talks/${id}`;
 
-export async function listTalks(db: D1Database, wardId: string): Promise<Talk[]> {
+/**
+ * トークを集める。資料、読み取り、判断は一件ずつ読まず、自治会の分をまとめて読む。
+ * 役員の画面から送った物が数百ある自治会でも、画面を開くたびに件数だけ問い合わせを重ねないため。
+ * withText が false の時は、役員の画面から送った文の中身を読まない（一覧と元の会話への道だけの時）。
+ */
+export async function listTalks(db: D1Database, wardId: string, options: { withText?: boolean } = {}): Promise<Talk[]> {
+  const withText = options.withText ?? true;
+  const originalRows = await db.prepare(`SELECT o.*, j.job_id AS for_job FROM jobs j JOIN originals o
+    ON o.ward_id = j.ward_id AND (o.job_id = j.job_id OR o.job_id = j.paper_source_job_id)
+    WHERE j.ward_id = ? AND o.withdrawn_at IS NULL ORDER BY o.position`).bind(wardId).all<OriginalRow & { for_job: string }>();
+  const originalsByJob = new Map<string, OriginalRow[]>();
+  for (const { for_job: jobId, ...original } of originalRows.results) {
+    const list = originalsByJob.get(jobId) ?? [];
+    list.push(original as OriginalRow);
+    originalsByJob.set(jobId, list);
+  }
+  const originalsOf = (jobId: string | null) => jobId ? originalsByJob.get(jobId) ?? [] : [];
+  // 表の行には updated_at もある。読み取りの後に一度だけ写すかを決めるのに使う。
+  const decisions = new Map<string, BundleDecision & { updated_at?: string }>((await db.prepare("SELECT * FROM line_bundle_decisions WHERE ward_id = ?")
+    .bind(wardId).all<BundleDecision & { updated_at: string }>()).results.map((decision) => [decision.bundle_id, decision] as const));
+  const marks = new Map<string, Promise<string>>();
+  const mark = (destination: string, type: string, id: string) => {
+    const key = JSON.stringify([destination, type, id]);
+    if (!marks.has(key)) marks.set(key, talkMark(wardId, destination, type, id));
+    return marks.get(key)!;
+  };
   const rows = await db.prepare(`SELECT i.*, COALESCE(i.matched_project_id, j.project_id) AS project_id
     FROM line_inbox_items i LEFT JOIN jobs j ON j.ward_id = i.ward_id AND j.job_id = i.job_id
     LEFT JOIN line_photo_items p ON p.ward_id = i.ward_id AND p.job_id = i.job_id
@@ -57,30 +82,47 @@ export async function listTalks(db: D1Database, wardId: string): Promise<Talk[]>
     const type = row.source_type ?? "user";
     const sourceId = row.source_id || row.sender_id;
     return { id: row.item_id, bundleId: row.bundle_id ?? row.item_id,
-      talkId: await talkMark(wardId, row.line_destination ?? "", type, sourceId),
+      talkId: await mark(row.line_destination ?? "", type, sourceId),
       talkName: type === "user" ? row.sender_display_name || "名前の分からない人" : "役員のLINEグループ",
       jobId: row.job_id, itemId: row.item_id, eventId: row.event_id, sourceType: type, sourceId, destination: row.line_destination ?? "", senderId: row.sender_id,
       sender: row.sender_display_name || "名前の分からない人", at: row.received_at, text: row.original_text ?? "",
-      originals: row.job_id ? (await listOriginals(db, wardId, row.job_id)).filter((o) => !o.withdrawn_at) : [], projectId: row.project_id };
+      originals: originalsOf(row.job_id), projectId: row.project_id };
   }));
-  const jobs = await db.prepare(`SELECT j.job_id, j.created_at, j.project_id, a.name AS display_name,
+  const jobs = await db.prepare(`SELECT j.job_id, j.created_at, j.project_id, j.read_at, a.name AS display_name,
       COALESCE(t.bundle_id, 'admin:' || j.job_id) AS bundle_id
     FROM jobs j LEFT JOIN line_talk_admin_topics t ON t.ward_id = j.ward_id AND t.job_id = j.job_id
     LEFT JOIN accounts a ON a.ward_id = j.ward_id AND a.account_id = j.account_id
     WHERE j.ward_id = ? AND j.via = 'admin' AND j.task = 'connect' AND j.withdrawn_at IS NULL
       AND EXISTS (SELECT 1 FROM originals o WHERE o.ward_id = j.ward_id AND o.job_id = j.job_id AND o.withdrawn_at IS NULL)
     ORDER BY j.created_at, j.job_id`).bind(wardId)
-    .all<{ job_id: string; created_at: string; project_id: string | null; display_name: string | null; bundle_id: string }>();
-  const adminId = await talkMark(wardId, "", "admin", "");
+    .all<{ job_id: string; created_at: string; project_id: string | null; read_at: string | null; display_name: string | null; bundle_id: string }>();
+  const adminId = await mark("", "admin", "");
+  const directBodies = new Map<string, string[]>();
+  if (withText) {
+    const direct = await db.prepare(`SELECT r.job_id, r.body FROM readings r JOIN jobs j ON j.ward_id = r.ward_id AND j.job_id = r.job_id
+      WHERE r.ward_id = ? AND r.source = 'direct' AND j.via = 'admin' AND j.task = 'connect' AND j.withdrawn_at IS NULL`)
+      .bind(wardId).all<{ job_id: string; body: string }>();
+    for (const row of direct.results) directBodies.set(row.job_id, [...directBodies.get(row.job_id) ?? [], row.body]);
+  }
   for (const job of jobs.results) {
-    const originals = (await listOriginals(db, wardId, job.job_id)).filter((o) => !o.withdrawn_at);
-    const readings = await getReadings(db, wardId, job.job_id);
-    const text = readings.filter((r) => r.source === "direct").flatMap((r) => "text_blocks" in r.body
-      ? r.body.text_blocks.filter((b) => originals.some((o) => o.original_id === b.original_id && o.kind === "text")).map((b) => b.text) : []).join("\n");
+    const originals = originalsOf(job.job_id);
+    const text = (directBodies.get(job.job_id) ?? []).flatMap((raw) => {
+      let body: unknown;
+      try { body = JSON.parse(raw); } catch { return []; }
+      const blocks = body && typeof body === "object" && "text_blocks" in body && Array.isArray(body.text_blocks)
+        ? body.text_blocks as Array<{ original_id?: unknown; text?: unknown }> : [];
+      return blocks.filter((b) => typeof b.text === "string" && originals.some((o) => o.original_id === b.original_id && o.kind === "text"))
+        .map((b) => b.text as string);
+    }).join("\n");
     // 役員画面の受付と読み取りに保存済みの結果を同じ表に写す。人の直しは更新しない。
-    const saved = await getBundleDecision(db, wardId, job.bundle_id);
-    if (!saved || saved.decided_by === "ai") await saveAiBundleDecision(db, wardId, job.bundle_id,
-      readings.map((r) => r.body.summary).filter(Boolean).join(" ").slice(0, 500) || "送った資料です。", "material", job.project_id, new Date());
+    // 写すのは、まだ無い時と、AIの判断のまま行き先や読み取りが変わった時だけにする。開くたびに書き直さない。
+    const saved = decisions.get(job.bundle_id);
+    if (!saved || (saved.decided_by === "ai" && ((saved.project_id ?? null) !== (job.project_id ?? null)
+      || (job.read_at !== null && (saved.updated_at ?? "") < job.read_at)))) {
+      const readings = await getReadings(db, wardId, job.job_id);
+      decisions.set(job.bundle_id, await saveAiBundleDecision(db, wardId, job.bundle_id,
+        readings.map((r) => r.body.summary).filter(Boolean).join(" ").slice(0, 500) || "送った資料です。", "material", job.project_id, new Date()));
+    }
     posts.push({ id: `admin:${job.job_id}`, bundleId: job.bundle_id, talkId: adminId, talkName: "役員の画面から送ったもの",
       jobId: job.job_id, itemId: null, eventId: null, sourceType: "admin", sourceId: "", destination: "", senderId: "",
       sender: job.display_name || "役員", at: job.created_at, text, originals, projectId: job.project_id });
@@ -89,7 +131,7 @@ export async function listTalks(db: D1Database, wardId: string): Promise<Talk[]>
     .bind(wardId).all<{ event_id: string; bundle_id: string; destination: string; source_type: string; source_id: string;
       sender_id: string; sender_name: string | null; received_at: string; text: string }>();
   for (const row of inquiryPosts.results) posts.push({ id: row.event_id, bundleId: row.bundle_id,
-    talkId: await talkMark(wardId, row.destination, row.source_type, row.source_id),
+    talkId: await mark(row.destination, row.source_type, row.source_id),
     talkName: row.source_type === "user" ? row.sender_name || "名前の分からない人" : "役員のLINEグループ",
     jobId: null, itemId: null, eventId: row.event_id, sourceType: row.source_type, sourceId: row.source_id, destination: row.destination, senderId: row.sender_id,
     sender: row.sender_name || "名前の分からない人", at: row.received_at, text: row.text, originals: [], projectId: null });
@@ -105,7 +147,7 @@ export async function listTalks(db: D1Database, wardId: string): Promise<Talk[]>
     if (!row.line_bundle_id && row.line_event_id && posts.some((p) => p.eventId === row.line_event_id)) continue;
     const id = row.line_bundle_id ?? `inquiry:${row.inquiry_id}`;
     const existing = posts.find((p) => p.sourceType === row.line_source_type && p.sourceId === row.line_source_id);
-    posts.push({ id: `inquiry:${row.inquiry_id}`, bundleId: id, talkId: existing?.talkId ?? await talkMark(wardId, "", row.line_source_type, row.line_source_id),
+    posts.push({ id: `inquiry:${row.inquiry_id}`, bundleId: id, talkId: existing?.talkId ?? await mark("", row.line_source_type, row.line_source_id),
       talkName: row.line_source_type === "user" ? row.line_sender_label || "名前の分からない人" : "役員のLINEグループ",
       jobId: null, itemId: null, eventId: row.line_event_id, sourceType: row.line_source_type, sourceId: row.line_source_id, destination: existing?.destination ?? "",
       senderId: row.line_source_id, sender: row.line_sender_label || "名前の分からない人", at: row.received_at,
@@ -127,7 +169,7 @@ export async function listTalks(db: D1Database, wardId: string): Promise<Talk[]>
     if (!topic) {
       const record = inquiries.results.find((q) => q.line_bundle_id === post.bundleId || (post.eventId && q.line_event_id === post.eventId)
         || `inquiry:${q.inquiry_id}` === post.bundleId);
-      topic = { id: post.bundleId, anchor: await topicAnchor(post.bundleId), posts: [], decision: await getBundleDecision(db, wardId, post.bundleId),
+      topic = { id: post.bundleId, anchor: await topicAnchor(post.bundleId), posts: [], decision: decisions.get(post.bundleId) ?? null,
         inquiry: record ? { inquiry_id: record.inquiry_id, answer: record.answer } : null };
       // U82より前の保存済みの行き先も、この表から読む。未判断の写真には判断を作らない。
       if (!topic.decision && (record || post.projectId)) topic.decision = await saveAiBundleDecision(db, wardId, post.bundleId,
@@ -146,7 +188,7 @@ export async function listTalks(db: D1Database, wardId: string): Promise<Talk[]>
 export async function conversationFor(db: D1Database, wardId: string, find: { itemId?: string; jobId?: string; bundleId?: string; inquiryId?: string }) {
   const inquiry = find.inquiryId ? await db.prepare("SELECT line_event_id, line_bundle_id FROM inquiry_records WHERE ward_id = ? AND inquiry_id = ?")
     .bind(wardId, find.inquiryId).first<{ line_event_id: string | null; line_bundle_id: string | null }>() : null;
-  for (const talk of await listTalks(db, wardId)) {
+  for (const talk of await listTalks(db, wardId, { withText: false })) {
     const topic = talk.topics.find((t) => (find.bundleId && t.id === find.bundleId) || (find.inquiryId && t.inquiry?.inquiry_id === find.inquiryId)
       || (inquiry?.line_bundle_id && t.id === inquiry.line_bundle_id)
       || t.posts.some((p) => (find.itemId && p.itemId === find.itemId) || (find.jobId && p.jobId === find.jobId) || (inquiry?.line_event_id && p.eventId === inquiry.line_event_id)));
