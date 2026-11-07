@@ -1,7 +1,7 @@
 import { countText, labelsFromBody } from "../answers/counts";
 import { getAnswerLabels } from "../settings/answer-labels";
 import { formatDateText, formatJstDate, periodText, shortDate } from "../core/time";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
 import { newId, nowIso } from "../core/ids";
@@ -10,7 +10,7 @@ import { Layout } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { createProject, getProjectState, getProjectSummary, listProjects, ProjectInputError } from "../project/api";
 import { MAP_PROGRESS_LABEL, PROJECT_KINDS, PROJECT_KIND_LABEL, TABLES, displayFieldValue, type MapProgress, type ProjectKind, type TableKey } from "../project/model";
-import type { RowView } from "../project/types";
+import type { ProjectSummary, RowView } from "../project/types";
 import { listAnswers } from "../answers/api";
 import { countMeetingAnswers } from "../answers/meeting-store";
 import { MeetingCounts, meetingText, meetingTotalsText } from "../answers/meeting";
@@ -28,6 +28,19 @@ import { listSubmittedItems, SubmittedItems } from "../project/followup";
 interface SeedTask { task_id: string; task_key: string | null; name: string; period_start: string | null; period_end: string | null; offset_start_days: number | null; offset_end_days: number | null; sort_order: number; }
 const admin = new Hono<AdminEnv>();
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+type SeedFields = Record<"title" | "year" | "eventDay", string>;
+
+function seedPage(c: Context<AdminEnv>, project: ProjectSummary, values?: SeedFields) {
+  const root = adminPath(c.var.ward, `/archive/${project.projectId}`);
+  return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="終わったものをもとに新しく始める" back={{ href: root, label: `← ${project.year}年の${project.title}へ` }}>
+    <h1>{project.year}年の{project.title}をもとに新しく始める</h1><p class="lead">去年のやることを、新しい日に合わせて置き直します。全部を見直す必要はありません。</p>
+    {values || c.req.query("error") ? <p class="notice error" role="alert">名前、年、当日を確かめて、もう一度始めてください。</p> : null}
+    <form method="post" action={`${root}/seed`}><div class="field"><label for="title">名前</label><input id="title" name="title" type="text" value={values?.title ?? project.title} maxlength={100} required /></div>
+      <div class="field"><label for="year">年</label><input id="year" name="year" type="number" inputmode="numeric" value={values?.year ?? String(project.year + 1)} min="1900" max="2200" required /></div>
+      <div class="field"><label for="eventDay">当日</label><input id="eventDay" name="eventDay" type="date" value={values?.eventDay} required={project.kind === "event"} /></div><div class="action-bar"><button>始める</button></div></form><p class="muted">新しく始めても、去年のものは変わりません。</p>
+  </AdminPage>, values ? 400 : 200);
+}
 
 function AskForm({ action, question = "" }: { action: string; question?: string }) {
   return <form method="post" action={action}>
@@ -191,13 +204,7 @@ admin.get("/archive/:projectId", async (c) => {
       <h1>{next.project.title}を始めました</h1><p class="lead">去年のやることを新しい日に置き直しました</p><section class="next"><strong>次は</strong><p>やることから準備を進められます。</p><a class="button" href={href}>{label}</a></section><p><a class="quiet" href={mapHref}>やることへ</a></p><p>仕事の時期は、やることから直せます。去年のものは変わりません。</p>
     </AdminPage>);
   }
-  if (c.req.query("view") === "seed") return c.html(<AdminPage ward={ward} account={c.var.account} title="終わったものをもとに新しく始める" back={{ href: root, label: `← ${project.year}年の${project.title}へ` }}>
-    <h1>{project.year}年の{project.title}をもとに新しく始める</h1><p class="lead">去年のやることを、新しい日に合わせて置き直します。全部を見直す必要はありません。</p>
-    {c.req.query("error") ? <p class="notice error" role="alert">名前、年、当日を確かめて、もう一度始めてください。</p> : null}
-    <form method="post" action={`${root}/seed`}><div class="field"><label for="title">名前</label><input id="title" name="title" type="text" value={project.title} maxlength={100} required /></div>
-      <div class="field"><label for="year">年</label><input id="year" name="year" type="number" inputmode="numeric" value={project.year + 1} min="1900" max="2200" required /></div>
-      <div class="field"><label for="eventDay">当日</label><input id="eventDay" name="eventDay" type="date" required={project.kind === "event"} /></div><div class="action-bar"><button>始める</button></div></form><p class="muted">新しく始めても、去年のものは変わりません。</p>
-  </AdminPage>);
+  if (c.req.query("view") === "seed") return seedPage(c, project);
   const [reports, map, originals, documents, answers, state, helpCount, submittedItems] = await Promise.all([
     c.env.DB.prepare("SELECT scope, body FROM project_close_reports WHERE ward_id = ? AND project_id = ? ORDER BY scope").bind(ward.wardId, id).all<{ scope: string; body: string }>(),
     c.env.DB.prepare("SELECT task_id, name, period, progress, requested_by, difficulty, next_year FROM project_close_map WHERE ward_id = ? AND project_id = ? ORDER BY period, task_id").bind(ward.wardId, id).all<{ task_id: string; name: string; period: string; progress: string; requested_by: string; difficulty: string; next_year: string }>(),
@@ -295,19 +302,22 @@ admin.post("/archive/:projectId/seed", async (c) => {
   const { ward, account } = c.var; const sourceId = c.req.param("projectId"); const form = await c.req.formData();
   const source = await getProjectSummary(c.env.DB, ward.wardId, sourceId);
   if (!source?.closedAt) return c.notFound();
-  const eventDay = String(form.get("eventDay") ?? "").trim();
-  const year = Number(form.get("year"));
-  if ((eventDay && !DATE.test(eventDay)) || (source.kind === "event" && !eventDay)) return c.redirect(`${adminPath(ward, `/archive/${sourceId}`)}?view=seed&error=input`, 303);
+  const values: SeedFields = {
+    title: String(form.get("title") ?? source.title), year: String(form.get("year") ?? ""), eventDay: String(form.get("eventDay") ?? ""),
+  };
+  const eventDay = values.eventDay.trim();
+  const year = Number(values.year);
+  if ((eventDay && !DATE.test(eventDay)) || (source.kind === "event" && !eventDay)) return seedPage(c, source, values);
   try {
     const next = await createProject(c.env.DB, ward.wardId, {
-      kind: source.kind, title: String(form.get("title") ?? source.title), year,
+      kind: source.kind, title: values.title, year,
       ...(eventDay ? { eventDay } : {}), seedProjectId: sourceId, accountId: account.accountId,
     });
     await copySeed(c.env.DB, ward.wardId, sourceId, next.projectId, source.year, eventDay || null);
     return c.redirect(`${adminPath(ward, `/archive/${sourceId}`)}?started=${encodeURIComponent(next.projectId)}`, 303);
   } catch (error) {
     if (!(error instanceof ProjectInputError)) console.error("去年のやることから開けませんでした", error instanceof Error ? error.name : "");
-    return c.redirect(`${adminPath(ward, `/archive/${sourceId}`)}?view=seed&error=input`, 303);
+    return seedPage(c, source, values);
   }
 });
 
