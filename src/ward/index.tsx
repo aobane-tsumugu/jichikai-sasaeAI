@@ -124,6 +124,7 @@ pub.get("/", async (c) => {
   const unique = [...uniqueItems.values()];
   const isCurrent = (item: PublicProject) => !item.closed_at && (item.kind === "announcement" || item.kind === "notice");
   const current = unique.filter(isCurrent);
+  const noticeProjects = new Set(current.filter((item) => item.kind === "notice").map((item) => item.project_id));
   // 過去の行事は一行にする。報告があれば報告、なければ案内を読む。
   const pastRank = (item: PublicProject) => (item.kind === "report" ? 0 : item.kind === "announcement" ? 1 : 2);
   const pastByProject = new Map<string, PublicProject>();
@@ -138,7 +139,13 @@ pub.get("/", async (c) => {
     const topics = [body.introduction.trim() ? "役員の仕事" : "", body.membershipBurden.trim() ? "加入すると担うこと" : "", body.membershipBenefit.trim() ? "加入すると得られること" : ""].filter(Boolean);
     return topics.length ? [{ ...item, topics }] : [];
   });
-  const row = (item: PublicProject) => <li key={item.document_id}><a class="row-link" href={`/${c.var.ward.slug}/p/${encodeURIComponent(item.project_id)}`}><b>{item.project_kind === "event" && item.kind === "announcement" ? `${item.title}のご案内` : paperHeading(item.title, publicDocumentTitle(item))}</b>{isCurrent(item) && publishedItem(item.body, "date_time") ? <span>{formatDateText(publishedItem(item.body, "date_time"))}</span> : null}{isCurrent(item) && publishedItem(item.body, "place") ? <span>{publishedItem(item.body, "place")}</span> : null}{isCurrent(item) && (publishedItem(item.body, "date_time") || publishedItem(item.body, "place")) ? null : <span>{formatJstDate(item.published_at)}に載せました</span>}</a></li>;
+  const row = (item: PublicProject) => {
+    // 知らせは本文を読む。項目や同じ行事の以前の案内から、古い日時・場所を足し戻さない。
+    const showDetails = isCurrent(item) && !noticeProjects.has(item.project_id);
+    const dateTime = showDetails ? publishedItem(item.body, "date_time") : "";
+    const place = showDetails ? publishedItem(item.body, "place") : "";
+    return <li key={item.document_id}><a class="row-link" href={`/${c.var.ward.slug}/p/${encodeURIComponent(item.project_id)}`}><b>{item.project_kind === "event" && item.kind === "announcement" ? `${item.title}のご案内` : paperHeading(item.title, publicDocumentTitle(item))}</b>{dateTime ? <span>{formatDateText(dateTime)}</span> : null}{place ? <span>{place}</span> : null}{dateTime || place ? null : <span>{formatJstDate(item.published_at)}に載せました</span>}</a></li>;
+  };
   const [contact, lineUrl] = await Promise.all([getPublicContact(c.env.DB, c.var.ward.wardId), getOfficialLineUrl(c.env.DB, c.var.ward.wardId)]);
   return c.html(<Layout title={`${c.var.ward.name}のお知らせ`} siteName={c.var.ward.name}>
     <h1>{c.var.ward.name}のお知らせ</h1>
