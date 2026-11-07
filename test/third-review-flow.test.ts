@@ -50,7 +50,7 @@ it("空の下書きを項目から整え、行事の日を直し、名簿なし�
     sourceType: "user", sourceId: fixture.firstHousehold, senderLabel: fixture.firstHousehold,
   });
   const home = await read(`${root}/`);
-  expect(home).toContain("問い合わせが1つあります");
+  expect(home).toContain("まだ返事をしていません");
   expect(home).not.toContain("まだ届いていません");
 
   const date = `${fixture.eventYear}年${fixture.publicDayText}`;

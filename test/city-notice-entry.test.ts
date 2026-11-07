@@ -16,9 +16,9 @@ it("入口の四つから進み、市の通知を知らせに保存して通常�
     const home = await get(realApp, `${root}/`, cookie, bindings);
     expect(home.status).toBe(200);
     const homeHtml = await home.text();
-    expect(homeHtml).toContain("まず、手元の資料を十件送ってください");
+    expect(homeHtml).toContain("まず、手元にある自治会の資料を送ってください");
     expect(homeHtml).toContain(`href="${root}/intake">写真やファイルを送る</a>`);
-    expect(homeHtml).toContain(`href="${root}/projects">資料がないので、何の準備かを選ぶ</a>`);
+    expect(homeHtml).toContain(`href="${root}/projects">資料なしで準備を始める</a>`);
 
     const project = await createProject(env.DB, ward.wardId, {
       kind: "city_request", title: FIRST_SLICE.draftTitle, year: FIRST_SLICE.eventYear, accountId: account.accountId,
