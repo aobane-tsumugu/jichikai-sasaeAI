@@ -23,6 +23,7 @@ import { contactDeletionRoutes } from "./contact-deletion";
 import { photoProvider } from "../photos/provider";
 import { PrivateWardContact, getPrivateWardContact, savePrivateWardContact } from "./private-contact";
 import { readSpacePaper } from "../space/receive-paper";
+import { backupStatus } from "../archive/backup";
 
 // 束 1: 運用の画面（提供側の ID とパスワード）。/ops に付く。
 // 区の一覧と開設、固定 URL と QR、A4 の案内、問い合わせの受付。提供側の復旧は受付から行う。
@@ -154,12 +155,14 @@ const OpenForm = (props: { error?: string; values?: { slug: string; name: string
 
 opsRoutes.get("/", async (c) => {
   const wards = await listWards(c.env.DB);
+  const backup = await backupStatus(c.env, wards.map((ward) => ward.wardId));
   return c.html(
     <OpsPage title="区の一覧" loggedIn>
       <h1>区の一覧</h1><p class="lead">SasaeAIを提供している区です。区の名前を押すと、その区の画面が開きます。</p><a class="quiet" href="#open-ward">新しい区を開く</a>
       <p class="link-line"><a href="/ops/contacts">問い合わせを見る</a></p>
       <p class="link-line"><a href="/ops/contact-deletions">問い合わせを消す</a></p>
       <p class="link-line"><a href="/ops/alerts">提供側で見る知らせ</a></p>
+      <p>別の場所への保管: {backup ? <>最後に複写したとき{backup.lastCopiedAt ? formatJst(backup.lastCopiedAt) : "まだありません"}、失敗した処理{backup.failures}件</> : "まだ接続していません"}</p>
       <p class="link-line"><a href="/ops/costs">全体の費用を見る</a></p>
       <p class="link-line"><a href="/ops/deletions">消去の状況</a></p>
       {wards.length === 0 ? (

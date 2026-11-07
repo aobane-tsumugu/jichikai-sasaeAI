@@ -5,6 +5,8 @@ import { WardBucket } from "../core/storage";
 import type { Env } from "../env";
 import { getClient } from "../ai/deps";
 import { deleteSession, pendingSessions } from "../ai/complete";
+import { BACKUP_PAGE_SIZE, deleteRecordObject, putRecordSnapshot, snapshotPage, withRecordLock } from "../archive/backup";
+import { CONTACT_WARD } from "../contact/store";
 
 const EXPORT_TABLES = WARD_TABLE_POLICY.filter((entry) => entry.export === true);
 const WARD_DELETE_TABLES = WARD_TABLE_POLICY.filter((entry) => entry.deletion === true).map((entry) => entry.table).reverse();
@@ -69,28 +71,28 @@ async function eraseAnswer(env: Env, item: QueueRow): Promise<void> {
   const wardId = item.ward_id;
   const answerId = item.target_id ?? "";
   const cursor = item.cursor?.startsWith("snapshots:") ? item.cursor.slice("snapshots:".length) : undefined;
-  const bucket = new WardBucket(env.ORIGINALS, wardId);
-  const page = await bucket.list("snapshots/daily/", { limit: 100, cursor });
+  const page = await snapshotPage(env, wardId, cursor);
+  const bucket = page.bucket;
   for (const entry of page.keys) {
     const object = await bucket.get(entry.key);
     if (!object) continue;
     let value: unknown;
-    try { value = await object.json(); } catch { await bucket.delete(entry.key); continue; }
-    if (typeof value !== "object" || value === null || Array.isArray(value)) { await bucket.delete(entry.key); continue; }
+    try { value = await object.json(); } catch { await deleteRecordObject(env, wardId, entry.key); continue; }
+    if (typeof value !== "object" || value === null || Array.isArray(value)) { await deleteRecordObject(env, wardId, entry.key); continue; }
     const doc = value as { wardId?: unknown; tables?: Record<string, unknown> };
-    if (doc.wardId !== wardId || typeof doc.tables !== "object" || doc.tables === null) { await bucket.delete(entry.key); continue; }
-    const rewritten = eraseSnapshotRecord(doc, wardId, item.target_type, answerId);
-    if (rewritten === null) { await bucket.delete(entry.key); continue; }
-    await bucket.put(entry.key, rewritten, { httpMetadata: { contentType: "application/json; charset=utf-8" } });
+    if (doc.wardId !== wardId || typeof doc.tables !== "object" || doc.tables === null) { await deleteRecordObject(env, wardId, entry.key); continue; }
+    const rewritten = eraseSnapshotRecord(doc, wardId, wardId === CONTACT_WARD ? "provider_contact" : item.target_type, answerId);
+    if (rewritten === null) { await deleteRecordObject(env, wardId, entry.key); continue; }
+    await putRecordSnapshot(env, wardId, entry.key, rewritten);
   }
-  if (page.truncated && page.cursor) {
+  if (page.next) {
     await env.DB.prepare("UPDATE ops_deletion_queue SET cursor = ?, state = 'running', last_error = '' WHERE queue_id = ? AND ward_id = ?")
-      .bind(`snapshots:${page.cursor}`, item.queue_id, wardId).run();
+      .bind(`snapshots:${page.next}`, item.queue_id, wardId).run();
     return;
   }
   await env.DB.batch([
     env.DB.prepare("DELETE FROM ops_deletion_queue WHERE queue_id = ? AND ward_id = ?").bind(item.queue_id, wardId),
-    env.DB.prepare("INSERT INTO ops_deletion_marks (mark_id, ward_id, scope, deleted_at, target_type, target_id) VALUES (?, ?, 'record', ?, ?, ?)").bind(newId(), wardId, nowIso(), item.target_type, item.target_id),
+    env.DB.prepare("INSERT INTO ops_deletion_marks (mark_id, ward_id, scope, deleted_at, target_type, target_id) VALUES (?, ?, 'record', ?, ?, ?)").bind(newId(), wardId, nowIso(), wardId === CONTACT_WARD ? "provider_contact" : item.target_type, item.target_id),
   ]);
 }
 
@@ -203,24 +205,35 @@ export async function inspectSnapshots(env: Env, wardId: string): Promise<Snapsh
 
 
 async function rewriteJobSnapshots(env: Env, wardId: string, jobId: string, cursor: string | undefined): Promise<string | null> {
-  const bucket = new WardBucket(env.ORIGINALS, wardId);
+  const page = await snapshotPage(env, wardId, cursor);
+  const bucket = page.bucket;
   const [originals, readings] = await Promise.all([
     env.DB.prepare("SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?").bind(wardId, jobId).all<{ original_id: string }>(),
     env.DB.prepare("SELECT body FROM readings WHERE ward_id = ? AND job_id = ?").bind(wardId, jobId).all<{ body: string }>(),
   ]);
   const originalIds = new Set(originals.results.map((row) => row.original_id));
   const readingBodies = new Set(readings.results.map((row) => row.body));
-  const page = await bucket.list("snapshots/daily/", { limit: 100, cursor });
   for (const entry of page.keys) {
     const object = await bucket.get(entry.key);
     if (!object) continue;
     let value: unknown;
-    try { value = await object.json(); } catch { await bucket.delete(entry.key); continue; }
+    try { value = await object.json(); } catch { await deleteRecordObject(env, wardId, entry.key); continue; }
+    // 取り下げで現在のr2_pathが空でも、過去の写しが持つ原本の所在を消す。
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+      const doc = value as { wardId?: unknown; tables?: { originals?: unknown } };
+      if (doc.wardId === wardId && Array.isArray(doc.tables?.originals)) {
+        for (const row of doc.tables.originals as unknown[]) {
+          if (typeof row !== "object" || row === null) continue;
+          const original = row as { job_id?: unknown; r2_path?: unknown };
+          if (original.job_id === jobId && typeof original.r2_path === "string") await deleteRecordObject(env, wardId, original.r2_path);
+        }
+      }
+    }
     const rewritten = eraseSnapshotJob(value, wardId, jobId, originalIds, readingBodies);
-    if (rewritten === null) { await bucket.delete(entry.key); continue; }
-    await bucket.put(entry.key, rewritten, { httpMetadata: { contentType: "application/json; charset=utf-8" } });
+    if (rewritten === null) { await deleteRecordObject(env, wardId, entry.key); continue; }
+    await putRecordSnapshot(env, wardId, entry.key, rewritten);
   }
-  return page.truncated ? page.cursor ?? null : null;
+  return page.next;
 }
 
 async function eraseJobCopies(env: Env, wardId: string, jobId: string): Promise<void> {
@@ -267,13 +280,12 @@ async function eraseJob(env: Env, item: QueueRow, projectJob?: { jobId: string; 
   }
 
   await eraseJobCopies(env, wardId, jobId);
-  const originals = await env.DB.prepare("SELECT r2_path FROM originals WHERE ward_id = ? AND job_id = ? AND r2_path IS NOT NULL")
-    .bind(wardId, jobId).all<{ r2_path: string }>();
+  const originals = await env.DB.prepare("SELECT original_id, r2_path FROM originals WHERE ward_id = ? AND job_id = ?")
+    .bind(wardId, jobId).all<{ original_id: string; r2_path: string | null }>();
   const inbox = await env.DB.prepare("SELECT original_object_key FROM line_inbox_items WHERE ward_id = ? AND job_id = ? AND original_object_key IS NOT NULL")
     .bind(wardId, jobId).all<{ original_object_key: string }>();
-  const bucket = new WardBucket(env.ORIGINALS, wardId);
-  for (const original of originals.results) await bucket.delete(original.r2_path);
-  for (const entry of inbox.results) await bucket.delete(entry.original_object_key);
+  for (const original of originals.results) await deleteRecordObject(env, wardId, original.r2_path ?? `originals/${original.original_id}`);
+  for (const entry of inbox.results) await deleteRecordObject(env, wardId, entry.original_object_key);
   const statements = [
     env.DB.prepare("DELETE FROM archive_search_entries WHERE ward_id = ? AND record_type = 'reading' AND (source_id IN (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?) OR content IN (SELECT body FROM readings WHERE ward_id = ? AND job_id = ?))").bind(wardId, wardId, jobId, wardId, jobId),
     // プロジェクトごとの消去では、差分への参照を持つ問い・地図と一緒に後で消す。
@@ -344,26 +356,26 @@ async function eraseProject(env: Env, item: QueueRow): Promise<void> {
     return;
   }
   if (item.cursor === "snapshots" || item.cursor.startsWith("snapshots:")) {
-    const bucket = new WardBucket(env.ORIGINALS, wardId);
     const cursor = item.cursor.startsWith("snapshots:") ? item.cursor.slice("snapshots:".length) : undefined;
-    const page = await bucket.list("snapshots/daily/", { limit: 100, cursor });
+    const page = await snapshotPage(env, wardId, cursor);
+    const bucket = page.bucket;
     for (const entry of page.keys) {
       const object = await bucket.get(entry.key);
       if (!object) continue;
       const value: unknown = await object.json().catch(() => null);
-      if (typeof value !== "object" || value === null || Array.isArray(value)) { await bucket.delete(entry.key); continue; }
+      if (typeof value !== "object" || value === null || Array.isArray(value)) { await deleteRecordObject(env, wardId, entry.key); continue; }
       const doc = value as { format?: unknown; wardId?: unknown; tables?: Record<string, unknown> };
-      if (doc.format !== 1 || doc.wardId !== wardId || typeof doc.tables !== "object" || doc.tables === null || Array.isArray(doc.tables)) { await bucket.delete(entry.key); continue; }
+      if (doc.format !== 1 || doc.wardId !== wardId || typeof doc.tables !== "object" || doc.tables === null || Array.isArray(doc.tables)) { await deleteRecordObject(env, wardId, entry.key); continue; }
       for (const [table, rows] of Object.entries(doc.tables)) {
         if (!Array.isArray(rows)) continue;
         doc.tables[table] = (rows as unknown[]).filter((row) => typeof row !== "object" || row === null || (row as Record<string, unknown>).project_id !== projectId)
           .map((row) => table === "projects" && typeof row === "object" && row !== null && (row as Record<string, unknown>).seed_project_id === projectId
             ? { ...row, seed_project_id: null } : row);
       }
-      await bucket.put(entry.key, JSON.stringify(doc), { httpMetadata: { contentType: "application/json; charset=utf-8" } });
+      await putRecordSnapshot(env, wardId, entry.key, JSON.stringify(doc));
     }
     await env.DB.prepare("UPDATE ops_deletion_queue SET cursor = ? WHERE ward_id = ? AND queue_id = ?")
-      .bind(page.truncated && page.cursor ? `snapshots:${page.cursor}` : "mark", wardId, item.queue_id).run();
+      .bind(page.next ? `snapshots:${page.next}` : "mark", wardId, item.queue_id).run();
     return;
   }
   await env.DB.batch([
@@ -426,11 +438,21 @@ async function finishDeletion(env: Env, item: QueueRow): Promise<void> {
   if (item.cursor === "r2" || item.cursor.startsWith("r2:")) {
     const cursor = item.cursor.startsWith("r2:") ? item.cursor.slice(3) : undefined;
     const bucket = new WardBucket(env.ORIGINALS, item.ward_id);
-    const page = await bucket.list("", { limit: 500, cursor });
-    for (const object of page.keys) await bucket.delete(object.key);
-    const next = page.truncated && page.cursor ? `r2:${page.cursor}` : "database";
+    const page = await bucket.list("", { limit: BACKUP_PAGE_SIZE, cursor });
+    for (const object of page.keys) await deleteRecordObject(env, item.ward_id, object.key);
+    const next = page.truncated && page.cursor ? `r2:${page.cursor}` : env.ORIGINALS_BACKUP ? "backup" : "database";
     await env.DB.prepare("UPDATE ops_deletion_queue SET cursor = ?, state = 'running', last_error = '' WHERE queue_id = ? AND ward_id = ?")
       .bind(next, item.queue_id, item.ward_id).run();
+    return;
+  }
+  if ((item.cursor === "backup" || item.cursor.startsWith("backup:")) && env.ORIGINALS_BACKUP) {
+    const bucket = new WardBucket(env.ORIGINALS_BACKUP, item.ward_id);
+    const page = await bucket.list("", {
+      limit: BACKUP_PAGE_SIZE, cursor: item.cursor.startsWith("backup:") ? item.cursor.slice(7) : undefined,
+    });
+    for (const object of page.keys) await bucket.delete(object.key);
+    await env.DB.prepare("UPDATE ops_deletion_queue SET cursor = ? WHERE ward_id = ? AND queue_id = ?")
+      .bind(page.truncated && page.cursor ? `backup:${page.cursor}` : "database", item.ward_id, item.queue_id).run();
     return;
   }
   await eraseWardData(env, item.ward_id, at);
@@ -446,7 +468,13 @@ export async function runDeletionCron(event: ScheduledController, env: Env): Pro
   try {
     await env.DB.prepare("UPDATE ops_deletion_queue SET state = 'running', last_error = '' WHERE queue_id = ? AND ward_id = ?")
       .bind(item.queue_id, item.ward_id).run();
-    await finishDeletion(env, item);
+    await withRecordLock(env, item.ward_id, async () => {
+      // 同じ区を別のCronが先に進めた場合は、その途中位置から読む。
+      const current = await env.DB.prepare(`SELECT queue_id, ward_id, target_type, target_id, cursor
+        FROM ops_deletion_queue WHERE ward_id = ? AND queue_id = ?`)
+        .bind(item.ward_id, item.queue_id).first<QueueRow>();
+      if (current) await finishDeletion(env, current);
+    });
   } catch (error) {
     const message = "処理を完了できませんでした。提供側で確認してください。";
     await env.DB.prepare("UPDATE ops_deletion_queue SET state = 'error', last_error = ? WHERE queue_id = ? AND ward_id = ?")

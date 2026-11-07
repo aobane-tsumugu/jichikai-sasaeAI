@@ -9,6 +9,8 @@ export interface Env {
   FACE_MASK?: DurableObjectNamespace;
   /** R2。原本、出した物、写し。キーは src/core/storage.ts の WardBucket 越しに作る。 */
   ORIGINALS: R2Bucket;
+  /** 元の資料と日次の写しを別に保管する。接続していなければ複写しない。 */
+  ORIGINALS_BACKUP?: R2Bucket;
 
   /** 区のページの固定 URL の根。空なら要求の origin。 */
   PUBLIC_BASE_URL: string;
