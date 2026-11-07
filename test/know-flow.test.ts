@@ -106,7 +106,8 @@ it("行き先のない写真は聞かずに自治会の資料へ残し、名簿�
   await photo(1, "other");
   const rosterJob = await photo(2, "roster");
   const list = await read(`${root}/inbox`, cookie);
-  expect(list).toContain("名前の分からない人");
+  expect(list).toContain("<b>個別に送ってきた方 1</b>");
+  expect(list).not.toContain("名前の分からない人");
   const inbox = await redirectedTalkPage(`${root}/inbox/item-1/pick`, cookie);
   expect(inbox).toContain("この資料で、世帯の名簿を入れ直しますか？");
   expect(inbox).toContain("自治会の資料にしました。");

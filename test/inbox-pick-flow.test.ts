@@ -29,7 +29,8 @@ it("分からないものは行事を選ぶ画面へ進み、選び直しと外�
   await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId });
   await lineItem(ward.wardId, "item-1", "架空の連絡");
   const inbox = await (await get(realApp, `${root}/inbox`, cookie)).text();
-  expect(inbox).toContain("名前の分からない人");
+  expect(inbox).toContain("<b>個別に送ってきた方 1</b>");
+  expect(inbox).not.toContain("名前の分からない人");
   expect(inbox).toContain("/inbox/talks/");
   expect(inbox).not.toContain("<select");
   const pick = await redirectedTalkPage(`${root}/inbox/item-1/pick`, cookie);
@@ -51,7 +52,8 @@ it("同じ人からの問い合わせは一つのトークに出し、送られ�
     await recordLineInquiry(env.DB, ward.wardId, { eventId: `inquiry-${index}`, receivedAt: `2026-09-1${index}T00:00:00.000Z`, text: text!, sourceType: "user", sourceId: "fictional-user", senderLabel: null });
   }
   const page = await (await get(realApp, `/${ward.slug}/admin/inbox`, cookie)).text();
-  expect(page).toContain("名前の分からない人");
+  expect(page).toContain("<b>個別に送ってきた方 1</b>");
+  expect(page).not.toContain("名前の分からない人");
   const talks = await listTalks(env.DB, ward.wardId);
   expect(talks).toHaveLength(1);
   const talk = talks[0];

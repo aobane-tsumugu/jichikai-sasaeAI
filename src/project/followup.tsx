@@ -15,8 +15,9 @@ import { getEditableDocument, saveDocument } from "./actions";
 import { ArticleBody } from "../publish";
 import { lineBundleContents } from "../line/photo-context";
 import { listTalks, conversationPath } from "../line/talks";
+import { senderNumbers, senderText } from "../line/sender";
 
-type DisplayInquiry = InquiryRow & { line_bundle_id?: string | null; line_event_id?: string | null; photos?: string[]; conversation?: string };
+type DisplayInquiry = InquiryRow & { line_bundle_id?: string | null; line_event_id?: string | null; photos?: string[]; conversation?: string; sender: string };
 
 export const followupAdmin = new Hono<AdminEnv>();
 
@@ -55,18 +56,21 @@ export function dateWords(subject: string): string[] {
 }
 
 async function inquiryRecords(db: D1Database, wardId: string): Promise<DisplayInquiry[]> {
+  const numbers = await senderNumbers(db, wardId);
   const talks = await listTalks(db, wardId, { withText: false });
   const rows = await db.prepare(`SELECT inquiry_id, received_at, kind, subject, answer, submitted_to_city,
     line_bundle_id, line_event_id, line_source_type, line_source_id, line_user_id, line_pending_answer, line_answer_sent_at, line_send_claimed_at, line_send_error, line_reply_batch, line_retry_key, line_retry_started_at, line_sender_label, line_replied_at, answer_history FROM inquiry_records WHERE ward_id = ?
     AND (answer <> '' OR NOT EXISTS (SELECT 1 FROM line_bundle_decisions d WHERE d.ward_id = inquiry_records.ward_id
       AND d.bundle_id = inquiry_records.line_bundle_id AND d.action <> 'inquiry'))
-    ORDER BY received_at DESC, created_at DESC, inquiry_id`).bind(wardId).all<DisplayInquiry>();
+    ORDER BY received_at DESC, created_at DESC, inquiry_id`).bind(wardId).all<Omit<DisplayInquiry, "sender">>();
   return Promise.all(rows.results.map(async (row) => {
     const contains = (topic: (typeof talks)[number]["topics"][number]) => topic.inquiry?.inquiry_id === row.inquiry_id || topic.id === row.line_bundle_id
       || Boolean(row.line_event_id && topic.posts.some((post) => post.eventId === row.line_event_id));
     const talk = talks.find((t) => t.topics.some(contains));
     const topic = talk?.topics.find(contains);
-    return { ...row, conversation: talk && topic ? conversationPath(talk, topic) : undefined, photos: row.line_bundle_id
+    const senderId = row.line_user_id || (row.line_source_type === "user" ? row.line_source_id : null);
+    return { ...row, sender: senderText(row.line_sender_label, row.line_source_type, numbers.get(senderId ?? "")),
+      conversation: talk && topic ? conversationPath(talk, topic) : undefined, photos: row.line_bundle_id
       ? (await lineBundleContents(db, wardId, row.line_bundle_id)).photos.map((p) => p.item_id) : undefined };
   }));
 }
@@ -120,7 +124,7 @@ followupAdmin.get("/inquiries", async (c) => {
     <ul class="rows">{open.map(({ group, project }) => { const record = group[0]!; return <li>
       <a class="row-link" href={adminPath(ward, inquiryPath(record.inquiry_id))}><b>「{inquirySubject(record.subject)}」</b>
         {record.photos?.map((id) => <img class="photo" src={adminPath(ward, `/inbox/${id}/original`)} alt="一緒に届いた写真" loading="lazy" />)}
-        <span>送った人: {record.line_sender_label || "名前は分かりません"}{record.line_source_type ? `（${record.line_source_type === "user" ? "自治会のLINEに個別に送った人" : "LINEグループ"}）` : ""}</span>
+        <span>送った人: {record.sender}</span>
         <span>{dateWords(record.subject).length ? `急ぎかもしれません（${dateWords(record.subject).map((word) => `「${word}」`).join("")}とあります）　` : ""}{group.length > 1 ? `同じ内容が${group.length}件あります　最初は` : ""}{formatJstDate(group[group.length - 1]!.received_at)}に届きました</span>
         {project ? <span>{project.title}の話のようです{project.deadlines.event_day ? `　${untilText("当日", project.deadlines.event_day)}` : ""}{project.deadlines.answer_due ? `　${untilText("返事の締切", project.deadlines.answer_due)}` : ""}{project.deadlines.submit_due ? `　${untilText("提出の締切", project.deadlines.submit_due)}` : ""}</span> : null}
       </a>{record.conversation ? <a class="button secondary" href={adminPath(ward, record.conversation)}>元の会話を見る</a> : null}</li>; })}</ul>
@@ -155,7 +159,7 @@ followupAdmin.get("/inquiries/:inquiryId/original", async (c) => {
     <a class="back" href={adminPath(c.var.ward, inquiryPath(row.inquiry_id))}>← 前の画面へ</a><h1>元の文</h1>
     <p class="lead">{row.line_source_type ? "自治会のLINEに届いたときのままの文です。" : "受けたこととして残した文です。"}この画面では直せません。</p>
     <dl class="facts"><dt>件数</dt><dd>{group.length}件</dd></dl>
-    {group.map((r) => <div class="panel"><p class="muted">{formatJstDate(r.received_at)}　送った人: {r.line_sender_label || "名前は分かりません"}</p>
+    {group.map((r) => <div class="panel"><p class="muted">{formatJstDate(r.received_at)}　送った人: {r.sender}</p>
       {r.photos?.map((id) => <img class="photo-full" src={adminPath(c.var.ward, `/inbox/${id}/original`)} alt="一緒に届いた写真" loading="lazy" />)}
       <p class="preserve-lines">{r.subject}</p></div>)}
     <p class="muted">この画面では直せません。どう返事をしたかは、問い合わせの画面で残します。</p>
@@ -200,7 +204,7 @@ followupAdmin.get("/inquiries/:inquiryId", async (c) => {
     {group.some((r) => r.photos?.length) ? <section class="panel"><h2>一緒に届いた写真</h2>
       {group.flatMap((r) => r.photos ?? []).map((id) => <a href={adminPath(ward, `/inbox/${id}/original`)}><img class="photo-full" src={adminPath(ward, `/inbox/${id}/original`)} alt="問い合わせと一緒に届いた写真" loading="lazy" /></a>)}
       <h2>一緒に送られた言葉</h2><p class="preserve-lines">{record.subject}</p></section> : <p class="preserve-lines">{record.subject}</p>}
-    <dl class="facts"><dt>送った人</dt><dd>{record.line_sender_label || "名前は分かりません"}{record.line_source_type ? `（${record.line_source_type === "user" ? "自治会のLINEに個別に送った人" : "LINEグループ"}）` : ""}</dd><dt>届いた日</dt><dd>{group.map((r) => formatJstDate(r.received_at)).join("、")}</dd><dt>同じ内容</dt><dd>{group.length}件</dd>{canPush ? <><dt>返事の送り先</dt><dd>{recipients}</dd></> : null}
+    <dl class="facts"><dt>送った人</dt><dd>{record.sender}</dd><dt>届いた日</dt><dd>{group.map((r) => formatJstDate(r.received_at)).join("、")}</dd><dt>同じ内容</dt><dd>{group.length}件</dd>{canPush ? <><dt>返事の送り先</dt><dd>{recipients}</dd></> : null}
       {project ? <><dt>関係しそうなもの</dt><dd>{project.title}のようです。{project.deadlines.event_day ? `当日まで${daysRemaining(project.deadlines.event_day)}` : ""}</dd>{project.deadlines.answer_due ? <><dt>返事の締切</dt><dd>{formatJstDate(project.deadlines.answer_due)}　{daysRemaining(project.deadlines.answer_due)}</dd></> : null}</> : null}</dl>
     <form method="post" action={path}>
       <label for="answer">{canPush ? "返事（LINEで送ります）" : "返事した内容"}</label>

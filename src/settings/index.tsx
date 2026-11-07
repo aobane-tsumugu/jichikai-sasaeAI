@@ -25,6 +25,7 @@ import { mySignInPath } from "./sign-in";
 import { templates } from "./templates";
 import { deletion } from "./deletion";
 import { listAccounts } from "./accounts";
+import { senderNumbers, senderText } from "../line/sender";
 
 // 束 1: 区の設定（席とアカウント、区の情報、定型文）と役員画面の入口。
 // 他の束が設定を読む入口は store.ts（getPublicContact、getSquads、getTemplates）と keys.ts。
@@ -89,9 +90,10 @@ admin.get("/", async (c) => {
   const order = (await c.env.DB.prepare("SELECT project_id FROM projects WHERE ward_id = ? AND closed_at IS NULL ORDER BY created_at DESC, project_id LIMIT 5").bind(ward.wardId).all<{ project_id: string }>()).results.map((row) => row.project_id);
   const recent = order.flatMap((id) => projects.filter((project) => project.projectId === id));
   // ここから下は、見出しや札や件数に縮めず、その時の中身を名前と日付の入った文で書く（管理の決定ログ L-300）。
-  const openInquiries = (await c.env.DB.prepare(`SELECT inquiry_id, subject, line_sender_label, received_at FROM inquiry_records
+  const openInquiries = (await c.env.DB.prepare(`SELECT inquiry_id, subject, line_sender_label, line_source_type, line_source_id, line_user_id, received_at FROM inquiry_records
     WHERE ward_id = ? AND kind = 'inquiry' AND answer = '' ORDER BY received_at DESC LIMIT 4`).bind(ward.wardId)
-    .all<{ inquiry_id: string; subject: string; line_sender_label: string | null; received_at: string }>()).results;
+    .all<{ inquiry_id: string; subject: string; line_sender_label: string | null; line_source_type: string | null;
+      line_source_id: string | null; line_user_id: string | null; received_at: string }>()).results;
   const answerCount = async (projectId: string) => (await c.env.DB.prepare("SELECT COUNT(*) AS n FROM project_answers WHERE ward_id = ? AND project_id = ?")
     .bind(ward.wardId, projectId).first<{ n: number }>())?.n ?? 0;
   const whenText = (project: (typeof projects)[number]) => {
@@ -119,12 +121,13 @@ admin.get("/", async (c) => {
       <a class="button" href={adminPath(ward, `/archive/${unseeded.project_id}?view=seed`)}>今年の{unseeded.title}の準備を始める</a>
       <p><a href={adminPath(ward, `/archive/${unseeded.project_id}`)}>去年の{unseeded.title}のやることと報告を見る</a></p>
     </section> : null;
-  const senderName = (label: string | null) => label && !/^LINE(個別|グループ|複数人トーク)$/.test(label) ? `${label}さん` : "名前の分からない人";
+  const numbers = await senderNumbers(c.env.DB, ward.wardId);
   // 住民向けのページに出す連絡先が無いと、加入していない人は自治会に連絡のしようがない。役員が気づけるようにトップで言う。
   const publicContact = await getPublicContact(c.env.DB, ward.wardId);
   const waiting = [
     ...(publicContact.trim() ? [] : [<li><p>住民向けのページに出す自治会の連絡先が、まだ入っていません。今は「班長か役員にお知らせください」とだけ出ていて、加入していない人や班長を知らない人は、自治会に連絡ができません。</p><a class="quiet" href={adminPath(ward, "/settings/info")}>連絡先を入れる</a></li>]),
-    ...openInquiries.slice(0, 3).map((row) => <li><p>{senderName(row.line_sender_label)}から、{formatJstDate(row.received_at)}に「{inquirySubject(row.subject)}」と届いています。まだ返事をしていません。</p>
+    ...openInquiries.slice(0, 3).map((row) => <li><p>{senderText(row.line_sender_label, row.line_source_type,
+      numbers.get(row.line_user_id || (row.line_source_type === "user" ? row.line_source_id : "") || ""))}から、{formatJstDate(row.received_at)}に「{inquirySubject(row.subject)}」と届いています。まだ返事をしていません。</p>
       <a class="quiet" href={adminPath(ward, `/inquiries/${encodeURIComponent(row.inquiry_id)}`)}>返事を書く</a></li>),
     ...(openInquiries.length > 3 ? [<li><p>ほかにも、まだ返事をしていない問い合わせがあります。</p><a class="quiet" href={adminPath(ward, "/inquiries")}>問い合わせを全部見る</a></li>] : []),
     ...(near.length ? [<li><p>{near[0]}。{inquiryNotice(digest)}</p><a class="quiet" href={adminPath(ward, "/inquiries")}>問い合わせを見る</a></li>] : []),

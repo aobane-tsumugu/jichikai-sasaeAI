@@ -3,6 +3,7 @@ import { getReadings } from "../intake/store";
 import type { OriginalRow } from "../intake/types";
 import { saveAiBundleDecision, type BundleDecision } from "./bundle-decisions";
 import { listClarifications } from "./clarifications";
+import { hasSenderName, senderNumbers, senderText } from "./sender";
 
 export interface TalkPost {
   id: string;
@@ -17,6 +18,7 @@ export interface TalkPost {
   destination: string;
   senderId: string;
   sender: string;
+  senderNumber?: number;
   at: string;
   text: string;
   originals: OriginalRow[];
@@ -69,6 +71,7 @@ export function conversationPath(talk: Talk, topic: TalkTopic) {
  */
 export async function listTalks(db: D1Database, wardId: string, options: { withText?: boolean } = {}): Promise<Talk[]> {
   const withText = options.withText ?? true;
+  const numbers = await senderNumbers(db, wardId);
   const originalRows = await db.prepare(`SELECT o.*, j.job_id AS for_job FROM jobs j JOIN originals o
     ON o.ward_id = j.ward_id AND (o.job_id = j.job_id OR o.job_id = j.paper_source_job_id)
     WHERE j.ward_id = ? AND o.withdrawn_at IS NULL ORDER BY o.position`).bind(wardId).all<OriginalRow & { for_job: string }>();
@@ -101,9 +104,9 @@ export async function listTalks(db: D1Database, wardId: string, options: { withT
     const sourceId = row.source_id || row.sender_id;
     return { id: row.item_id, bundleId: row.bundle_id ?? row.item_id,
       talkId: await mark(row.line_destination ?? "", type, sourceId),
-      talkName: type === "user" ? row.sender_display_name || "名前の分からない人" : "役員のLINEグループ",
+      talkName: type === "user" ? senderText(row.sender_display_name, type, numbers.get(row.sender_id)) : "役員のLINEグループ",
       jobId: row.job_id, itemId: row.item_id, eventId: row.event_id, sourceType: type, sourceId, destination: row.line_destination ?? "", senderId: row.sender_id,
-      sender: row.sender_display_name || "名前の分からない人", at: row.received_at, text: row.original_text ?? "",
+      sender: row.sender_display_name ?? "", senderNumber: numbers.get(row.sender_id), at: row.received_at, text: row.original_text ?? "",
       originals: originalsOf(row.job_id), projectId: row.project_id };
   }));
   const jobs = await db.prepare(`SELECT j.job_id, j.created_at, j.project_id, j.read_at, a.name AS display_name,
@@ -150,25 +153,26 @@ export async function listTalks(db: D1Database, wardId: string, options: { withT
       sender_id: string; sender_name: string | null; received_at: string; text: string }>();
   for (const row of inquiryPosts.results) posts.push({ id: row.event_id, bundleId: row.bundle_id,
     talkId: await mark(row.destination, row.source_type, row.source_id),
-    talkName: row.source_type === "user" ? row.sender_name || "名前の分からない人" : "役員のLINEグループ",
+    talkName: row.source_type === "user" ? senderText(row.sender_name, row.source_type, numbers.get(row.sender_id)) : "役員のLINEグループ",
     jobId: null, itemId: null, eventId: row.event_id, sourceType: row.source_type, sourceId: row.source_id, destination: row.destination, senderId: row.sender_id,
-    sender: row.sender_name || "名前の分からない人", at: row.received_at, text: row.text, originals: [], projectId: null });
+    sender: row.sender_name ?? "", senderNumber: numbers.get(row.sender_id), at: row.received_at, text: row.text, originals: [], projectId: null });
   // 古い問い合わせには届いたものが無い場合がある。元の文を同じトークに出す。
   const inquiries = await db.prepare(`SELECT inquiry_id, line_bundle_id, line_event_id, received_at, subject, answer,
-      line_source_type, line_source_id, line_sender_label FROM inquiry_records WHERE ward_id = ?
+      line_source_type, line_source_id, line_user_id, line_sender_label FROM inquiry_records WHERE ward_id = ?
       AND (line_source_type IS NOT NULL OR line_bundle_id IS NOT NULL) ORDER BY received_at, inquiry_id`).bind(wardId)
     .all<{ inquiry_id: string; line_bundle_id: string | null; line_event_id: string | null; received_at: string; subject: string;
-      answer: string; line_source_type: string; line_source_id: string; line_sender_label: string | null }>();
+      answer: string; line_source_type: string; line_source_id: string; line_user_id: string | null; line_sender_label: string | null }>();
   for (const row of inquiries.results) {
     if (posts.some((p) => p.bundleId === row.line_bundle_id || (row.line_event_id && p.eventId === row.line_event_id))) continue;
     // 別の資料へ直した問い合わせの記録は返事の画面に残すが、元の会話を二重に出さない。
     if (!row.line_bundle_id && row.line_event_id && posts.some((p) => p.eventId === row.line_event_id)) continue;
     const id = row.line_bundle_id ?? `inquiry:${row.inquiry_id}`;
     const existing = posts.find((p) => p.sourceType === row.line_source_type && p.sourceId === row.line_source_id);
+    const senderId = row.line_user_id || (row.line_source_type === "user" ? row.line_source_id : "");
     posts.push({ id: `inquiry:${row.inquiry_id}`, bundleId: id, talkId: existing?.talkId ?? await mark("", row.line_source_type, row.line_source_id),
-      talkName: row.line_source_type === "user" ? row.line_sender_label || "名前の分からない人" : "役員のLINEグループ",
+      talkName: row.line_source_type === "user" ? senderText(row.line_sender_label, row.line_source_type, numbers.get(senderId)) : "役員のLINEグループ",
       jobId: null, itemId: null, eventId: row.line_event_id, sourceType: row.line_source_type, sourceId: row.line_source_id, destination: existing?.destination ?? "",
-      senderId: row.line_source_id, sender: row.line_sender_label || "名前の分からない人", at: row.received_at,
+      senderId, sender: row.line_sender_label ?? "", senderNumber: numbers.get(senderId), at: row.received_at,
       text: row.subject, originals: [], projectId: null });
   }
   const questions = await listClarifications(db, wardId);
@@ -182,7 +186,7 @@ export async function listTalks(db: D1Database, wardId: string, options: { withT
     talk.posts.push(post);
     talk.at = post.at;
     // 後から名前が分かった人には、分かった名前を使う。
-    if (post.talkName !== "名前の分からない人") talk.name = post.talkName;
+    if (post.sourceType !== "user" || hasSenderName(post.sender)) talk.name = post.talkName;
     let topic = talk.topics.find((t) => t.id === post.bundleId);
     if (!topic) {
       const record = inquiries.results.find((q) => q.line_bundle_id === post.bundleId || (post.eventId && q.line_event_id === post.eventId)
