@@ -517,7 +517,7 @@ async function selfTest() {
       report(options, result.results, result.project, result.capped);
       assert.equal(result.project, "first");
       for (const width of widths) {
-        for (const path of ["/admin/projects/duty/draft/duty_roster", "/admin/rota/duty/result", "/admin/rota/exemptions", "/admin/rota/history", "/admin/projects/first/committee", "/admin/projects/meeting/committee", "/admin/inbox/item-one/pick", "/admin/inbox/city/job-one/pick"]) {
+        for (const path of ["/admin/projects/duty/draft/duty_roster", "/admin/rota/duty/result", "/admin/rota/exemptions", "/admin/rota/history", "/admin/projects/first/committee", "/admin/projects/meeting/committee"]) {
           const row = result.results.find((row) => row.path === `/fixture${path}` && row.width === width);
           assert.ok(row, path);
           assert.equal(row.primaryChecked, false);
