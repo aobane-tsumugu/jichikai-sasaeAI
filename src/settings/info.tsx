@@ -1,5 +1,5 @@
-import { DigestFields, getDigestSettings, saveDigestSettings } from "./digest";
-import { AnswerLabelFields, getAnswerLabels, saveAnswerLabels } from "./answer-labels";
+import { DigestFields, digestSettingsFromForm, getDigestSettings, saveDigestSettings } from "./digest";
+import { AnswerLabelFields, answerLabelsFromForm, DEFAULT_ANSWER_LABELS, getAnswerLabels, saveAnswerLabels, type AnswerLabels } from "./answer-labels";
 import { Hono, type Context } from "hono";
 import { AdminPage } from "../core/admin-ui";
 import { adminPath } from "../core/auth";
@@ -12,18 +12,24 @@ import { deleteSetting, getPublicContact, getSquads, setSetting } from "./store"
 
 export const info = new Hono<AdminEnv>();
 
-async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: string } = {}, status: 200 | 400 = 200, form?: { contact: string; squads: string }) {
+async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: string } = {}, status: 200 | 400 = 200, form?: { contact: string; squads: string; values: Record<string, unknown> }) {
   const { ward, account } = c.var;
   const contact = form?.contact ?? (await getPublicContact(c.env.DB, ward.wardId));
   const squads = form?.squads ?? (await getSquads(c.env.DB, ward.wardId)).join("\n");
   const digest = await getDigestSettings(c.env.DB, ward.wardId);
-  const labels = await getAnswerLabels(c.env.DB, ward.wardId);
+  const savedLabels = await getAnswerLabels(c.env.DB, ward.wardId);
+  const values = form?.values;
+  const labels: AnswerLabels = values?.answer_labels_reset === "1" ? [...DEFAULT_ANSWER_LABELS] : [
+    typeof values?.answer_label_0 === "string" ? values.answer_label_0 : savedLabels[0],
+    typeof values?.answer_label_1 === "string" ? values.answer_label_1 : savedLabels[1],
+    typeof values?.answer_label_2 === "string" ? values.answer_label_2 : savedLabels[2],
+  ];
   c.header("Cache-Control", "no-store");
   return c.html(
     <AdminPage ward={ward} account={account} title="区の情報" back={{ href: adminPath(ward, "/settings"), label: "区の設定" }}>
       <h1>区の情報</h1><p class="lead">案内と区のページに出る内容です。ふだんは直さなくてかまいません。</p>
       {extra.notice ? <Notice>{extra.notice}</Notice> : null}
-      {extra.error ? <Notice error>{extra.error}</Notice> : null}
+      {extra.error ? <Notice error>{extra.error} 入れた内容は残っています。</Notice> : null}
       <form method="post" action={adminPath(ward, "/settings/info")}>
         <h2>区のページで伝えること</h2>
         <p class="panel">{PUBLIC_PRIVACY_NOTICE}</p>
@@ -38,8 +44,8 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
         <textarea id="squads" name="squads" rows={8}>
           {squads}
         </textarea>
-        <AnswerLabelFields labels={labels} />
-        <DigestFields value={digest} />
+        <AnswerLabelFields labels={labels} open={!!extra.error} />
+        <DigestFields value={digest} rawValues={values} open={!!extra.error} />
         <div class="action-bar"><button type="submit">保存する</button></div>
       </form>
     </AdminPage>,
@@ -62,23 +68,26 @@ info.post("/", async (c) => {
   const contact = typeof body["contact"] === "string" ? body["contact"].replace(/\r\n?/g, "\n").trim() : "";
   const squadText = typeof body["squads"] === "string" ? body["squads"] : "";
   const squads = linesToList(squadText);
+  const form = { contact, squads: squadText, values: body };
 
   if (contact.length > LIMITS.publicContact) {
-    return show(c, { error: `公開用の連絡先は${LIMITS.publicContact}文字までです。` }, 400, { contact, squads: squadText });
+    return show(c, { error: `公開用の連絡先は${LIMITS.publicContact}文字までです。` }, 400, form);
   }
   if (squads.length > LIMITS.squadCount || squads.some((s) => s.length > LIMITS.squadName)) {
     return show(
       c,
       { error: `班の名前は${LIMITS.squadCount}個まで、一つ${LIMITS.squadName}文字までです。` },
       400,
-      { contact, squads: squadText },
+      form,
     );
   }
 
-  if (typeof body.answer_label_0 === "string" || body.answer_labels_reset === "1") {
-    if (!await saveAnswerLabels(c.env.DB, ward.wardId, body, account.accountId)) return show(c, { error: "人数の聞き方を三つとも入れてください。一つ80文字までです。" }, 400, { contact, squads: squadText });
-  }
-  if (!await saveDigestSettings(c.env.DB, ward.wardId, body, account.accountId)) return show(c, { error: "知らせの時刻と日数を確かめてください。日数は0から365までです。" }, 400, { contact, squads: squadText });
+  // 入力の誤りで、一部の設定だけが変わらないよう、保存する前に既存の条件を確かめる。
+  const hasLabels = typeof body.answer_label_0 === "string" || body.answer_labels_reset === "1";
+  if (hasLabels && !answerLabelsFromForm(body)) return show(c, { error: "人数の聞き方を三つとも入れてください。一つ80文字までです。" }, 400, form);
+  if ((body.digest_cutoff !== undefined || body.digest_send !== undefined) && !digestSettingsFromForm(body)) return show(c, { error: "知らせの時刻と日数を確かめてください。日数は0から365までです。" }, 400, form);
+  if (hasLabels) await saveAnswerLabels(c.env.DB, ward.wardId, body, account.accountId);
+  await saveDigestSettings(c.env.DB, ward.wardId, body, account.accountId);
   if (contact === "") await deleteSetting(c.env.DB, ward.wardId, SETTING_KEYS.publicContact);
   else await setSetting(c.env.DB, ward.wardId, SETTING_KEYS.publicContact, contact, account.accountId);
   if (squads.length === 0) await deleteSetting(c.env.DB, ward.wardId, SETTING_KEYS.squads);
