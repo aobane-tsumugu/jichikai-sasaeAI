@@ -65,7 +65,10 @@ export async function saveAiBundleDecision(db: D1Database, wardId: string, bundl
 
 export async function jobBundleDecision(db: D1Database, wardId: string, jobId: string): Promise<BundleDecision | null> {
   return db.prepare(`SELECT d.* FROM line_bundle_decisions d JOIN line_inbox_items i
-    ON i.ward_id = d.ward_id AND i.bundle_id = d.bundle_id WHERE d.ward_id = ? AND i.job_id = ? LIMIT 1`)
+    ON i.ward_id = d.ward_id AND i.bundle_id = d.bundle_id WHERE d.ward_id = ? AND i.job_id = ?
+    AND NOT (COALESCE(i.source_type, '') = 'admin' AND d.action = 'material')
+    AND (d.decided_by = 'officer' OR d.action = 'inquiry' OR EXISTS (SELECT 1 FROM ward_settings s
+      WHERE s.ward_id = i.ward_id AND s.key = 'line.officer_group' AND s.value = i.source_id AND i.source_type = 'group')) LIMIT 1`)
     .bind(wardId, jobId).first<BundleDecision>();
 }
 

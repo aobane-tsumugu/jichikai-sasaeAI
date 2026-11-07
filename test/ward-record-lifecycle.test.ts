@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { expect, it } from "vitest";
-import { WARD_TABLE_POLICY, writeDailyWardSnapshots } from "../src/archive/snapshot";
+import { eraseSnapshotJob, WARD_TABLE_POLICY, writeDailyWardSnapshots } from "../src/archive/snapshot";
 import { CRON } from "../src/core/cron";
 import { WardBucket } from "../src/core/storage";
 import { seedAdmin, seedSeat } from "../src/core/testing";
@@ -75,6 +75,14 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
       env.DB.prepare(`INSERT INTO line_bundle_decisions
         (ward_id, bundle_id, summary, action, project_id, decided_by, clarification_id, created_at, updated_at, decided_at)
         VALUES (?, 'fictional-bundle', '架空の参考資料の判断', 'reference', ?, 'officer', ?, '2026-11-06', '2026-11-06', '2026-11-06')`).bind(w, p, w),
+      env.DB.prepare(`INSERT INTO line_talk_admin_topics (ward_id, job_id, bundle_id)
+        VALUES (?, ?, 'fictional-admin-bundle')`).bind(w, w),
+      env.DB.prepare(`INSERT INTO line_talk_inquiry_posts
+        (ward_id, event_id, bundle_id, destination, source_type, source_id, sender_id, received_at, text)
+        VALUES (?, 'fictional-inquiry-event', 'fictional-inquiry-bundle', 'fictional-destination', 'user', 'fictional-user', 'fictional-user', '2026-11-06', '架空の問い合わせの元の文')`).bind(w),
+      env.DB.prepare(`INSERT INTO line_talk_undo (ward_id, talk_id, undo_id, body)
+        VALUES (?, 'fictional-talk', 'fictional-undo', ?)`)
+        .bind(w, JSON.stringify({ posts: [], decisions: [], inquiries: [], links: [] })),
       env.DB.prepare(`INSERT INTO line_officer_digests (ward_id, day, claimed_at, recipients, usage_before, inquiry_count)
         VALUES (?, '2026-11-06', '2026-11-06', 1, 0, 1)`).bind(w),
       env.DB.prepare(`INSERT INTO line_photo_sources (ward_id, destination, source_type, source_id, project_id)
@@ -136,7 +144,7 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
   expect(providerSnapshot.tables.provider_contacts).toEqual([expect.objectContaining({ contact_id: received.id, ward_id: CONTACT_WARD, reach: PROVIDER_CONTACT_FIXTURE.reach })]);
   expect(providerSnapshot.tables.provider_contact_messages).toEqual([expect.objectContaining({ contact_id: received.id, ward_id: CONTACT_WARD, body: PROVIDER_CONTACT_FIXTURE.body })]);
   const snapshot = await (await target.bucket.get("snapshots/daily/2026-11-06.json"))!
-    .json<{ tables: Record<string, Record<string, unknown>[]> }>();
+    .json<{ format: number; wardId: string; tables: Record<string, Record<string, unknown>[]> }>();
   const exported = JSON.parse((await exportWard(env, target.ward.wardId)).body) as {
     tables: Record<string, Record<string, unknown>[]>; objects: { key: string }[];
   };
@@ -167,6 +175,25 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
   })]);
   expect(exported.tables.line_bundle_decisions).toEqual(snapshot.tables.line_bundle_decisions);
   expect(otherCounts.get("line_bundle_decisions")).toBe(1);
+  expect(snapshot.tables.line_talk_admin_topics).toEqual([expect.objectContaining({
+    ward_id: target.ward.wardId, job_id: target.ward.wardId, bundle_id: "fictional-admin-bundle",
+  })]);
+  expect(snapshot.tables.line_talk_inquiry_posts).toEqual([expect.objectContaining({
+    ward_id: target.ward.wardId, event_id: "fictional-inquiry-event", text: "架空の問い合わせの元の文",
+  })]);
+  for (const table of ["line_talk_admin_topics", "line_talk_inquiry_posts"]) {
+    expect(exported.tables[table]).toEqual(snapshot.tables[table]);
+    expect(otherCounts.get(table)).toBe(1);
+  }
+  expect(snapshot.tables).not.toHaveProperty("line_talk_undo");
+  expect(exported.tables).not.toHaveProperty("line_talk_undo");
+  expect(otherCounts.get("line_talk_undo")).toBe(1);
+  // 受付を消した写しにも、実DBの連動消去と同じく親のない境目を残さない。
+  const withoutJob = eraseSnapshotJob(snapshot, target.ward.wardId, target.ward.wardId);
+  expect(withoutJob).not.toBeNull();
+  const rewritten = JSON.parse(withoutJob!) as { tables: Record<string, Record<string, unknown>[]> };
+  expect(rewritten.tables.line_talk_admin_topics).toEqual([]);
+  expect(rewritten.tables.line_talk_inquiry_posts).toEqual(snapshot.tables.line_talk_inquiry_posts);
   expect(snapshot.tables).not.toHaveProperty("line_photo_context_texts");
   expect(exported.tables).not.toHaveProperty("line_photo_context_texts");
   expect(otherCounts.get("line_photo_context_texts")).toBe(1);

@@ -22,6 +22,7 @@ import { pendingMaterialGroups, startMaterialGroup } from "./groups";
 import { initialDraftKind } from "../map/template";
 import { documentTitle } from "../project/heading";
 import { PhotoCheckNotice, photoChecks } from "./photo-check";
+import { talkMark, talkPath } from "../line/talks";
 
 /** Hono のテスト用 request には ExecutionContext が無い場合がある。 */
 function waitableContext(context: { executionCtx: Waitable }): Waitable {
@@ -144,6 +145,7 @@ intakeAdmin.get("/intake/received", async (c) => {
   </Layout>);
   return c.html(<Layout title="受け取りました" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>受け取りました</h1>
+    <p><a class="button secondary" href={adminPath(ward, talkPath(await talkMark(ward.wardId, "", "admin", "")))}>送った写真と言葉を見る・直す</a></p>
     {c.req.query("n") === "retry" ? <div class="notice done" role="status"><strong>もう一度読みます</strong><p>読み終わると、やることと下書きに入ります。</p></div> : null}
     {project ? <><div class="notice done"><strong>{project.title}に資料を預かりました</strong><p>画面を閉じてもかまいません。AIが読み続けます。読み終わると、やることと下書きに入ります。</p></div>{slow ? <div class="notice warn"><strong>読み取りが遅れています</strong><p>送った資料は預かっています。こちらで対応しているので、送り直す必要はありません。下書きを自分で書いて住民に知らせることもできます。</p><a class="quiet" href={adminPath(ward, `/projects/${project.projectId}/draft/announcement`)}>案内の下書きを書く</a></div> : null}<section class="next"><strong>次は</strong><p>読み終わるのを待たずに、やることを見られます。</p><a class="button" href={adminPath(ward, `/projects/${project.projectId}/map`)}>やることへ</a></section></> : slow ? <>
       <div class="notice warn"><strong>読み取りが遅れています</strong><p>送った資料は預かっています。こちらで対応しているので、送り直す必要はありません。下書きを自分で書いて住民に知らせることもできます。</p></div>

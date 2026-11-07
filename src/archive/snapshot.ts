@@ -71,6 +71,9 @@ export const WARD_TABLE_POLICY: readonly WardTablePolicy[] = [
   { table: "line_webhook_receipts", snapshot: true, export: true, deletion: true },
   { table: "line_inbox_items", snapshot: true, export: true, deletion: true },
   { table: "line_bundle_decisions", snapshot: true, export: true, deletion: true },
+  { table: "line_talk_admin_topics", snapshot: true, export: true, deletion: { cascade: "jobs" } },
+  { table: "line_talk_inquiry_posts", snapshot: true, export: true, deletion: { cascade: "wards" } },
+  { table: "line_talk_undo", snapshot: "直す前に戻すための一時的な情報。復旧後に古い操作を戻さない。", export: "直す前に戻すための一時的な情報で、区へ渡す記録ではない。", deletion: { cascade: "wards" } },
   { table: "line_unrelated_daily_counts", snapshot: true, export: true, deletion: true },
   { table: "line_group_notices", snapshot: true, export: true, deletion: true },
   { table: "line_officer_digests", snapshot: true, export: true, deletion: { cascade: "wards" } },
@@ -193,7 +196,7 @@ export function eraseSnapshotJob(snapshot: unknown, wardId: string, jobId: strin
   remove("jobs", (row) => row.job_id === jobId);
   remove("originals", (row) => row.job_id === jobId || (typeof row.original_id === "string" && originalIds.has(row.original_id)));
   remove("ward_material_links", (row) => typeof row.original_id === "string" && originalIds.has(row.original_id));
-  for (const table of ["readings", "job_runs", "job_tool_calls", "intake_photo_checks", "line_photo_items", "line_clarifications", "line_clarification_answers"]) remove(table, (row) => row.job_id === jobId);
+  for (const table of ["readings", "job_runs", "job_tool_calls", "intake_photo_checks", "line_photo_items", "line_clarifications", "line_clarification_answers", "line_talk_admin_topics"]) remove(table, (row) => row.job_id === jobId);
   remove("paper_reading_slices", (row) => row.job_id === jobId || row.source_job_id === jobId);
   for (const table of ["project_item_values", "project_rows", "project_changes"]) {
     remove(table, (row) => typeof row.source_ref === "string" && originalIds.has(row.source_ref));

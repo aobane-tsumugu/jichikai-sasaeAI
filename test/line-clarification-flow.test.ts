@@ -1,3 +1,4 @@
+import { conversationFor } from "../src/line/talks";
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "cloudflare:workers";
 import { expect, it } from "vitest";
@@ -120,8 +121,12 @@ it("写真をまとめて同じ場所で聞き、別の人の答えを受け、�
     expect((await env.DB.prepare("SELECT subject, answer, created_by_account_id FROM inquiry_records WHERE ward_id = ?").bind(ward.wardId).all()).results)
       .toEqual([{ subject: inquiry.message.text, answer: "", created_by_account_id: null }]);
     expect((await listClarifications(env.DB, other.wardId))).toHaveLength(0);
-    const inbox = await get(realApp, `/${ward.slug}/admin/inbox`, cookie, runtime);
-    expect(await inbox.text()).toContain(inquiry.message.text);
+    const inquiryRow = await env.DB.prepare("SELECT inquiry_id FROM inquiry_records WHERE ward_id = ? AND line_event_id = ?").bind(ward.wardId, "fictional-inquiry").first<{ inquiry_id: string }>();
+    if (!inquiryRow) throw new Error("問い合わせがありません");
+    const conversation = await conversationFor(env.DB, ward.wardId, { inquiryId: inquiryRow.inquiry_id });
+    if (!conversation) throw new Error("元の会話がありません");
+    const inbox = await (await get(realApp, `/${ward.slug}/admin${conversation}`, cookie, runtime)).text();
+    expect(inbox).toContain(inquiry.message.text);
     expect(await (await get(realApp, `/${ward.slug}/admin/inquiries`, cookie, runtime)).text()).toContain(inquiry.message.text);
     await processPhotoBatches(runtime, ward.wardId, { fetch: fakeLine, now: new Date(now.getTime() + 3600_000) });
     expect(sent).toHaveLength(2); // 答えがあっても無くても、自動の催促はしない。

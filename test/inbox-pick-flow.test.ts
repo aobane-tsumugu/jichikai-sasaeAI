@@ -1,3 +1,5 @@
+import { redirectedTalkPage } from "./fixtures/line-u83-page";
+import { listTalks, talkPath } from "../src/line/talks";
 import { env } from "cloudflare:workers";
 import { expect, it } from "vitest";
 import { seedAdmin } from "../src/core/testing";
@@ -27,29 +29,36 @@ it("分からないものは行事を選ぶ画面へ進み、選び直しと外�
   await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId });
   await lineItem(ward.wardId, "item-1", "架空の連絡");
   const inbox = await (await get(realApp, `${root}/inbox`, cookie)).text();
-  expect(inbox).toContain("「架空の連絡」");
-  expect(inbox).toContain(`href="${root}/inbox/item-1/pick"`);
+  expect(inbox).toContain("名前の分からない人");
+  expect(inbox).toContain("/inbox/talks/");
   expect(inbox).not.toContain("<select");
-  const pick = await (await get(realApp, `${root}/inbox/item-1/pick`, cookie)).text();
-  expect(pick).toContain("どれの資料にしますか");
+  const pick = await redirectedTalkPage(`${root}/inbox/item-1/pick`, cookie);
+  expect(pick).toContain("何の話か");
+  expect(pick).toContain("どこからどこまでか");
+  expect(pick).toContain("架空の連絡");
   expect(pick).toContain("架空の行事");
-  expect(pick).toContain("この中にない");
-  expect(pick).toContain("この名前で新しく準備を始める");
+  expect(pick).toContain("新しく準備を始める");
+  expect(pick).toContain("関係ない");
   expect(pick).not.toContain("関係のないものとして捨てる");
   expect((await postForm(realApp, `${root}/inbox/item-1`, { operation: "assign", projectId: "" }, cookie)).headers.get("location")).toContain("error=input");
   expect((await postForm(realApp, `${root}/inbox/item-1`, { operation: "new-project", projectName: "", kind: "event", year: "2026" }, cookie)).headers.get("location")).toContain("error=input");
   expect((await get(realApp, `${root}/inbox/none/pick`, cookie)).status).toBe(404);
 });
 
-it("問い合わせは二件と残りの件数を出し、問い合わせの画面へつなぐ", async () => {
+it("同じ人からの問い合わせは一つのトークに出し、送られた順に返事の画面へつなぐ", async () => {
   const { ward, cookie } = await seedAdmin(env.DB);
   for (const [index, text] of ["明日の架空の集まりは何時からですか", "架空の質問その二", "架空の質問その三", "架空の質問その四"].entries()) {
     await recordLineInquiry(env.DB, ward.wardId, { eventId: `inquiry-${index}`, receivedAt: `2026-09-1${index}T00:00:00.000Z`, text: text!, sourceType: "user", sourceId: "fictional-user", senderLabel: null });
   }
   const page = await (await get(realApp, `/${ward.slug}/admin/inbox`, cookie)).text();
-  expect(page).toContain("「明日の架空の集まりは何時からですか」");
-  expect(page).toContain("急ぎかもしれません（「明日」とあります）。");
-  expect(page).toContain("ほかの問い合わせ 2件");
-  expect(page).not.toContain("架空の質問その二");
-  expect(page).toContain(`/${ward.slug}/admin/inquiries/`);
+  expect(page).toContain("名前の分からない人");
+  const talks = await listTalks(env.DB, ward.wardId);
+  expect(talks).toHaveLength(1);
+  const talk = talks[0];
+  if (!talk) throw new Error("問い合わせのトークがありません");
+  const timeline = await (await get(realApp, `/${ward.slug}/admin${talkPath(talk.id)}`, cookie)).text();
+  expect(timeline).toContain("明日の架空の集まりは何時からですか");
+  expect(timeline).toContain("架空の質問その二");
+  expect(timeline).toContain(`/${ward.slug}/admin/inquiries/`);
+  expect(timeline).toContain("返事はまだです。");
 });

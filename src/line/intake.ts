@@ -121,12 +121,15 @@ export async function removeLineInquiryYearItems(db: D1Database, wardId: string)
     AND source_original_id IN (SELECT o.original_id FROM originals o JOIN line_inbox_items i
       ON i.ward_id = o.ward_id AND i.job_id = o.job_id JOIN inquiry_records q
       ON q.ward_id = i.ward_id AND q.line_bundle_id = i.bundle_id
-      WHERE o.ward_id = ? AND i.original_kind = 'image' AND o.withdrawn_at IS NULL)`)
+      WHERE o.ward_id = ? AND i.original_kind = 'image' AND o.withdrawn_at IS NULL
+      AND NOT EXISTS (SELECT 1 FROM line_bundle_decisions d WHERE d.ward_id = i.ward_id AND d.bundle_id = i.bundle_id AND d.action <> 'inquiry'))`)
     .bind(wardId, wardId).run();
 }
 
 /** 問い合わせの文と添えた写真を、同じ一件に残す。写真の当て先を住民に聞かない。 */
 export async function saveLineBundleInquiry(db: D1Database, wardId: string, bundleId: string, original: LineOriginal, sourceId: string): Promise<void> {
+  const fixed = await getBundleDecision(db, wardId, bundleId);
+  if (fixed?.decided_by === "officer" && fixed.action !== "inquiry") return;
   const contents = await lineBundleContents(db, wardId, bundleId);
   const existing = await db.prepare("SELECT line_event_id FROM inquiry_records WHERE ward_id = ? AND line_bundle_id = ?")
     .bind(wardId, bundleId).first<{ line_event_id: string | null }>();
@@ -144,11 +147,13 @@ export async function saveLineBundleInquiry(db: D1Database, wardId: string, bund
       ON i.ward_id = p.ward_id AND i.job_id = p.job_id WHERE p.ward_id = ? AND i.bundle_id = ?)`)
     .bind(new Date().toISOString(), wardId, wardId, bundleId).run();
   await removeLineInquiryYearItems(db, wardId);
+  await saveAiBundleDecision(db, wardId, bundleId, "住民からの問い合わせです。", "inquiry", null, new Date());
 }
 
 /** 言葉が先に届いた場合も、写真の読みができたところで同じ内容を見直す。 */
 export async function refreshLineBundleInquiry(db: D1Database, wardId: string, bundleId: string, ports: LineIntakePorts): Promise<void> {
-  if (await getBundleDecision(db, wardId, bundleId)) return;
+  const fixed = await getBundleDecision(db, wardId, bundleId);
+  if (fixed && (fixed.decided_by === "officer" || fixed.action !== "inquiry")) return;
   if ((await getWardAiLimits(db, wardId)).monthlyBlocked) return;
   const contents = await lineBundleContents(db, wardId, bundleId);
   if (!contents.photos.length || !contents.text) return;
@@ -235,7 +240,9 @@ async function saveLineAnswer(db: D1Database, wardId: string, projectId: string,
 }
 
 /** 役員が関係ない物として消した時、受け箱から外して日ごとの数だけ残す。原本は呼び出し側で取り下げる。 */
-export async function markInboxItemUnrelated(db: D1Database, wardId: string, itemId: string): Promise<void> {
+export async function markInboxItemUnrelated(db: D1Database, wardId: string, itemId: string, correctable = false): Promise<void> {
+  // 数だけを残すのは捨てた文。人が戻せる状態で保つものは、捨てた数に加えない。
+  if (correctable) return;
   const item = await db.prepare("SELECT received_at FROM line_inbox_items WHERE ward_id = ? AND item_id = ?")
     .bind(wardId, itemId).first<{ received_at: string }>();
   if (!item) return;
@@ -293,6 +300,9 @@ export function createLineIntakePorts(
       if (original.kind === "text") await saveLineAnswer(env.DB, wardId, projectId, original, jobId);
     },
     async matchInboxItem(wardId, original) {
+      const fixed = original.bundleId ? await getBundleDecision(env.DB, wardId, original.bundleId) : null;
+      if (fixed?.decided_by === "officer") return { disposition: fixed.action === "material" && fixed.project_id ? "matched" : "unmatched",
+        ...(fixed.action === "material" && fixed.project_id ? { projectId: fixed.project_id } : {}), reason: fixed.summary, inquiry: fixed.action === "inquiry" };
       if (original.aiLimitReason || (await getWardAiLimits(env.DB, wardId)).monthlyBlocked) return { disposition: "unmatched" };
       const open = await projectApi().listOpenProjects(env, wardId);
       const candidates = open.map((project) => ({

@@ -40,10 +40,13 @@ export async function joinLineBundle(db: D1Database, wardId: string, destination
     bundle_id = COALESCE((SELECT r.bundle_id FROM line_webhook_receipts r WHERE r.ward_id = ?
       AND r.destination = ? AND r.source_type = ? AND r.source_hash = ? AND r.sender_hash = ? AND r.event_id <> ? AND ? <> ''
       AND r.received_at >= ? AND r.received_at <= ? AND r.bundle_id IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM line_webhook_receipts newer WHERE newer.ward_id = r.ward_id
+        AND newer.destination = r.destination AND newer.source_type = r.source_type AND newer.source_hash = r.source_hash
+        AND newer.event_id <> ? AND newer.received_at > r.received_at AND newer.received_at <= ?)
       ORDER BY r.received_at DESC, r.event_id DESC LIMIT 1), ?)
     WHERE ward_id = ? AND event_id = ? AND bundle_id IS NULL`)
     .bind(destination, source.type, sourceHash, senderHash, receivedAt, wardId, destination, source.type, sourceHash, senderHash, eventId, source.senderId ? senderHash : "",
-      new Date(Date.parse(receivedAt) - PHOTO_AFTER_MS).toISOString(), receivedAt, eventId, wardId, eventId).run();
+      new Date(Date.parse(receivedAt) - PHOTO_AFTER_MS).toISOString(), receivedAt, eventId, receivedAt, eventId, wardId, eventId).run();
   const row = await db.prepare("SELECT bundle_id FROM line_webhook_receipts WHERE ward_id = ? AND event_id = ?")
     .bind(wardId, eventId).first<{ bundle_id: string }>();
   return row?.bundle_id ?? eventId;
@@ -62,12 +65,14 @@ export async function lineBundleContents(db: D1Database, wardId: string, bundleI
   const rows = await db.prepare(`SELECT i.item_id, i.job_id, i.event_id, i.original_kind, i.original_text, i.received_at
     FROM line_inbox_items i LEFT JOIN jobs j ON j.ward_id = i.ward_id AND j.job_id = i.job_id
     WHERE i.ward_id = ? AND i.bundle_id = ? AND (i.job_id IS NULL OR j.withdrawn_at IS NULL)
-    ORDER BY i.received_at, i.created_at, i.event_id`).bind(wardId, bundleId).all<{
+    UNION ALL SELECT t.event_id AS item_id, NULL AS job_id, t.event_id, 'text' AS original_kind, t.text AS original_text, t.received_at
+    FROM line_talk_inquiry_posts t WHERE t.ward_id = ? AND t.bundle_id = ?
+    ORDER BY 6, 3`).bind(wardId, bundleId, wardId, bundleId).all<{
       item_id: string; job_id: string | null; event_id: string; original_kind: string; original_text: string | null; received_at: string;
     }>();
   const inquiry = await db.prepare("SELECT subject FROM inquiry_records WHERE ward_id = ? AND line_bundle_id = ?")
     .bind(wardId, bundleId).first<{ subject: string }>();
-  return { items: rows.results, text: inquiry?.subject ?? rows.results.filter((r) => r.original_kind === "text").map((r) => r.original_text ?? "").filter(Boolean).join("\n"),
+  return { items: rows.results, text: rows.results.filter((r) => r.original_kind === "text").map((r) => r.original_text ?? "").filter(Boolean).join("\n") || inquiry?.subject || "",
     photos: rows.results.filter((r) => r.original_kind === "image") };
 }
 

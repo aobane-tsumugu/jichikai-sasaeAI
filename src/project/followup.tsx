@@ -14,8 +14,9 @@ import { applyChange, createProject, getProjectState, getProjectSummary, listPro
 import { getEditableDocument, saveDocument } from "./actions";
 import { ArticleBody } from "../publish";
 import { lineBundleContents } from "../line/photo-context";
+import { listTalks, talkPath } from "../line/talks";
 
-type DisplayInquiry = InquiryRow & { line_bundle_id?: string | null; photos?: string[] };
+type DisplayInquiry = InquiryRow & { line_bundle_id?: string | null; line_event_id?: string | null; photos?: string[]; conversation?: string };
 
 export const followupAdmin = new Hono<AdminEnv>();
 
@@ -54,11 +55,20 @@ export function dateWords(subject: string): string[] {
 }
 
 async function inquiryRecords(db: D1Database, wardId: string): Promise<DisplayInquiry[]> {
+  const talks = await listTalks(db, wardId);
   const rows = await db.prepare(`SELECT inquiry_id, received_at, kind, subject, answer, submitted_to_city,
-    line_bundle_id, line_source_type, line_source_id, line_user_id, line_pending_answer, line_answer_sent_at, line_send_claimed_at, line_send_error, line_reply_batch, line_retry_key, line_retry_started_at, line_sender_label, line_replied_at, answer_history FROM inquiry_records WHERE ward_id = ?
+    line_bundle_id, line_event_id, line_source_type, line_source_id, line_user_id, line_pending_answer, line_answer_sent_at, line_send_claimed_at, line_send_error, line_reply_batch, line_retry_key, line_retry_started_at, line_sender_label, line_replied_at, answer_history FROM inquiry_records WHERE ward_id = ?
+    AND (answer <> '' OR NOT EXISTS (SELECT 1 FROM line_bundle_decisions d WHERE d.ward_id = inquiry_records.ward_id
+      AND d.bundle_id = inquiry_records.line_bundle_id AND d.action <> 'inquiry'))
     ORDER BY received_at DESC, created_at DESC, inquiry_id`).bind(wardId).all<DisplayInquiry>();
-  return Promise.all(rows.results.map(async (row) => ({ ...row, photos: row.line_bundle_id
-    ? (await lineBundleContents(db, wardId, row.line_bundle_id)).photos.map((p) => p.item_id) : undefined })));
+  return Promise.all(rows.results.map(async (row) => {
+    const contains = (topic: (typeof talks)[number]["topics"][number]) => topic.inquiry?.inquiry_id === row.inquiry_id || topic.id === row.line_bundle_id
+      || Boolean(row.line_event_id && topic.posts.some((post) => post.eventId === row.line_event_id));
+    const talk = talks.find((t) => t.topics.some(contains));
+    const topic = talk?.topics.find(contains);
+    return { ...row, conversation: talk && topic ? `${talkPath(talk.id)}#${topic.anchor}` : undefined, photos: row.line_bundle_id
+      ? (await lineBundleContents(db, wardId, row.line_bundle_id)).photos.map((p) => p.item_id) : undefined };
+  }));
 }
 
 function inquiryGroups(records: DisplayInquiry[]): DisplayInquiry[][] {
@@ -113,9 +123,9 @@ followupAdmin.get("/inquiries", async (c) => {
         <span>送った人: {record.line_sender_label || "名前は分かりません"}{record.line_source_type ? `（${record.line_source_type === "user" ? "自治会のLINEに個別に送った人" : "LINEグループ"}）` : ""}</span>
         <span>{dateWords(record.subject).length ? `急ぎかもしれません（${dateWords(record.subject).map((word) => `「${word}」`).join("")}とあります）　` : ""}{group.length > 1 ? `同じ内容が${group.length}件あります　最初は` : ""}{formatJstDate(group[group.length - 1]!.received_at)}に届きました</span>
         {project ? <span>{project.title}の話のようです{project.deadlines.event_day ? `　${untilText("当日", project.deadlines.event_day)}` : ""}{project.deadlines.answer_due ? `　${untilText("返事の締切", project.deadlines.answer_due)}` : ""}{project.deadlines.submit_due ? `　${untilText("提出の締切", project.deadlines.submit_due)}` : ""}</span> : null}
-      </a></li>; })}</ul>
+      </a>{record.conversation ? <a class="button secondary" href={adminPath(ward, record.conversation)}>元の会話を見る</a> : null}</li>; })}</ul>
     {open.length === 0 ? <p>まだ返事をしていないものはありません。</p> : null}
-    <h2>返事が済んだもの</h2><ul class="rows">{answered.map((r) => <li><a class="row-link" href={adminPath(ward, inquiryPath(r.inquiry_id))}><b>{r.kind === "request" ? "市に伝える要望" : "問い合わせ"}　{inquirySubject(r.subject)}</b><span>{formatJstDate(r.received_at)}に受けました</span><span>返事: {r.answer}</span></a></li>)}</ul>
+    <h2>返事が済んだもの</h2><ul class="rows">{answered.map((r) => <li><a class="row-link" href={adminPath(ward, inquiryPath(r.inquiry_id))}><b>{r.kind === "request" ? "市に伝える要望" : "問い合わせ"}　{inquirySubject(r.subject)}</b><span>{formatJstDate(r.received_at)}に受けました</span><span>返事: {r.answer}</span></a>{r.conversation ? <a class="button secondary" href={adminPath(ward, r.conversation)}>元の会話を見る</a> : null}</li>)}</ul>
     {answered.length === 0 ? <p>返事が済んだものは、まだありません。</p> : null}
     <details class="fold"><summary>市に伝える要望（{requests.length}件）</summary><div><p>道路や街灯のように、住民の声を自治会から市に伝えるものです。</p><ul class="rows">{requests.map((r) => <li><a class="row-link" href={adminPath(ward, inquiryPath(r.inquiry_id))}><b>{inquirySubject(r.subject)}</b><span>{formatJstDate(r.received_at)}に受けました</span></a></li>)}</ul>{requests.length === 0 ? <p>市に伝える要望は、まだありません。</p> : null}</div></details></>}
   </Layout>);
@@ -186,6 +196,7 @@ followupAdmin.get("/inquiries/:inquiryId", async (c) => {
     {record.kind === "request" ? <a class="button" href={`${path}/request`}>市に出す要望書を書く</a> : null}
     {group.some((r) => r.line_source_type && !inquiryTarget(r)) ? <div class="notice warn"><strong>自治会のLINEで返事を送れない人がいます</strong><p>送り先が分からないため、LINEでは送れません。電話や会って返事をしたら、返事した内容を残してください。</p></div> : null}<p class="muted">{notice}</p>
     <a class="quiet" href={`${path}/original`}>元の文を見る</a>
+    {record.conversation ? <a class="button secondary" href={adminPath(ward, record.conversation)}>元の会話を見る</a> : null}
     {group.some((r) => r.photos?.length) ? <section class="panel"><h2>一緒に届いた写真</h2>
       {group.flatMap((r) => r.photos ?? []).map((id) => <a href={adminPath(ward, `/inbox/${id}/original`)}><img class="photo-full" src={adminPath(ward, `/inbox/${id}/original`)} alt="問い合わせと一緒に届いた写真" loading="lazy" /></a>)}
       <h2>一緒に送られた言葉</h2><p class="preserve-lines">{record.subject}</p></section> : <p class="preserve-lines">{record.subject}</p>}

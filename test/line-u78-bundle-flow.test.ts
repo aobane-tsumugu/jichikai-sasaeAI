@@ -1,3 +1,5 @@
+import { redirectedTalkPage } from "./fixtures/line-u83-page";
+import { listTalks } from "../src/line/talks";
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "cloudflare:workers";
 import { expect, it, vi } from "vitest";
@@ -128,8 +130,10 @@ it("U78: 写真と言葉を送信者ごとに10分で結び、一回受領し、
     expect(html).toContain(texts.questions[0]!.text);
     expect((await get(realApp, `${root}/inbox/${firstPhoto.item_id}/original`, cookie, runtime)).headers.get("content-type")).toBe("image/jpeg");
     const inboxHtml = await (await get(realApp, `${root}/inbox`, cookie, runtime)).text();
-    expect(inboxHtml).toContain(`${root}/inquiries/${firstInquiry.inquiry_id}`);
-    expect(inboxHtml).toContain(`${root}/inbox/${firstPhoto.item_id}/original`);
+    expect(inboxHtml).toContain("/inbox/talks/");
+    const conversation = await redirectedTalkPage(`${root}/inbox/${firstPhoto.item_id}/pick`, cookie, runtime);
+    expect(conversation).toContain(`${root}/inquiries/${firstInquiry.inquiry_id}`);
+    expect(conversation).toContain(texts.questions[0]!.text);
     expect(inboxHtml).not.toContain(`${root}/inbox/${firstPhoto.item_id}/pick`);
 
     // 言葉が先なら、写真を読み終えた時点で一件の問い合わせになる。
@@ -153,15 +157,19 @@ it("U78: 写真と言葉を送信者ごとに10分で結び、一回受領し、
     const groupPhoto = await item(await send(203, "fictional-u78-member", 1, "fictional-u78-group"));
     const stranger = await item(await send(fixture.reportText, "fictional-u78-stranger", 1, "fictional-u78-group"));
     const caption = await item(await send(fixture.dutyText, "fictional-u78-member", 1, "fictional-u78-group"));
-    expect(caption.bundle_id).toBe(groupPhoto.bundle_id);
+    expect(caption.bundle_id).not.toBe(groupPhoto.bundle_id);
     expect(stranger.bundle_id).not.toBe(groupPhoto.bundle_id);
     const groupContents = await lineBundleContents(env.DB, ward.wardId, groupPhoto.bundle_id);
-    expect(groupContents.text).toBe(fixture.dutyText);
+    expect(groupContents.text).toBe("");
+    expect((await lineBundleContents(env.DB, ward.wardId, caption.bundle_id)).text).toBe(fixture.dutyText);
     expect(groupContents.photos.map((p) => p.item_id)).toEqual([groupPhoto.item_id]);
-    const pick = await (await get(realApp, `${root}/inbox/${groupPhoto.item_id}/pick`, cookie, runtime)).text();
+    const pick = await redirectedTalkPage(`${root}/inbox/${groupPhoto.item_id}/pick`, cookie, runtime);
     expect(pick).toContain(fixture.dutyText);
-    expect(pick).toContain(`${root}/inbox/${groupPhoto.item_id}/original`);
-    expect(pick).not.toContain(fixture.reportText);
+    const groupOriginal = (await listOriginals(env.DB, ward.wardId, groupPhoto.job_id))[0];
+    if (!groupOriginal) throw new Error("元の写真がありません");
+    expect(pick).toContain(`${root}/intake/originals/${groupOriginal.original_id}`);
+    expect(pick).toContain(fixture.reportText);
+    expect(pick.indexOf(fixture.reportText)).toBeLessThan(pick.indexOf(fixture.dutyText));
     const batch = await env.DB.prepare(`SELECT b.* FROM line_photo_batches b JOIN line_photo_items p ON p.ward_id = b.ward_id AND p.batch_id = b.batch_id
       WHERE b.ward_id = ? AND p.job_id = ?`).bind(ward.wardId, groupPhoto.job_id).first<import("../src/line/photo-context").PhotoBatchContext>();
     if (!batch) throw new Error("写真の受け取りがありません");
@@ -170,8 +178,10 @@ it("U78: 写真と言葉を送信者ごとに10分で結び、一回受領し、
     expect(JSON.stringify(context)).not.toContain(fixture.reportText);
     await clearPhotoTexts(env.DB, ward.wardId, batch);
     await purgePhotoTexts(env.DB, ward.wardId, new Date(at.getTime() + PHOTO_TEXT_TTL_MS));
-    expect((await lineBundleContents(env.DB, ward.wardId, groupPhoto.bundle_id)).text).toBe(fixture.dutyText);
-    expect((await (await get(realApp, `${root}/inbox`, cookie, runtime)).text()).match(new RegExp(`${root}/inbox/${groupPhoto.item_id}/pick`, "g"))).toHaveLength(1);
+    expect((await lineBundleContents(env.DB, ward.wardId, caption.bundle_id)).text).toBe(fixture.dutyText);
+    const groupTalk = (await listTalks(env.DB, ward.wardId)).find((talk) => talk.posts.some((post) => post.itemId === groupPhoto.item_id));
+    if (!groupTalk) throw new Error("グループの会話がありません");
+    expect(groupTalk.posts.map((post) => post.itemId)).toEqual([groupPhoto.item_id, stranger.item_id, caption.item_id]);
 
     const beforeEarly = sent.length;
     const early = await receipt(await send(texts.questions[1]!.text, "fictional-u78-early"));
