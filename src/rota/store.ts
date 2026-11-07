@@ -16,7 +16,11 @@ export interface Exemption extends RosterEntry {
 }
 export const householdKey = (entry: RosterEntry) => JSON.stringify([normalizeHousehold(entry.district), normalizeHousehold(entry.household)]);
 export const householdLabel = (entry: RosterEntry) => `${entry.district} ${entry.household}`;
-export const rotaDate = (iso: string) => `${iso.slice(0, 4)}年${formatJstDate(iso)}`;
+const jstYear = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", year: "numeric" });
+export function rotaDate(iso: string): string {
+  const date = formatJstDate(iso);
+  return date ? `${jstYear.format(new Date(iso))}${date}` : "";
+}
 
 export async function exemptions(db: D1Database, wardId: string): Promise<Exemption[]> {
   return (await db.prepare(`SELECT exemption_id, household, district, reason, starts_on, ends_on, recorded_at, withdrawn_at
