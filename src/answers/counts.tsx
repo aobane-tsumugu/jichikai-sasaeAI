@@ -37,7 +37,7 @@ export function CountFields({ labels, answer, prefix = "count", disabled = false
     {COUNT_FIELDS.map((name, index) => <div><label for={`${prefix}-${name}`}>{labels[index]}</label>
       <input id={`${prefix}-${name}`} name={name} type="number" min="0" max="1000" inputmode="numeric" value={typeof rawValues?.[name] === "string" ? String(rawValues[name]) : values[index] ?? ""} disabled={disabled} />人</div>)}
     <p class="muted">いない欄は空けたままでかまいません。</p>
-    {legacy ? <><label for={`${prefix}-total`}>合計だけ分かるときの人数</label><input id={`${prefix}-total`} name="people_count" type="number" min="0" max="1000" value={answer.peopleCount} disabled={disabled} /></> : null}
+    {legacy ? <><label for={`${prefix}-total`}>合計だけ分かるときの人数</label><input id={`${prefix}-total`} name="people_count" type="number" min="0" max="1000" value={typeof rawValues?.people_count === "string" ? rawValues.people_count : answer.peopleCount} disabled={disabled} /></> : null}
   </fieldset>;
 }
 
