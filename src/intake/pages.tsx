@@ -40,7 +40,7 @@ export const STATUS_LABEL: Record<JobStatus, string> = {
   connecting: "行事に入れています", done: "行事に入れました",
   attention: "読み取りが遅れています。送り直す必要はありません。",
   failed: "読めませんでした。もう一度読むか、このまま進められます。",
-  withdrawn: "送るのを取り消しました",
+  withdrawn: "資料を消しました",
 };
 
 const ERROR_MESSAGE: Record<ReceiveError["code"], (filename: string) => string> = {
@@ -57,7 +57,7 @@ const ERROR_MESSAGE: Record<ReceiveError["code"], (filename: string) => string> 
 
 const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   ...Object.fromEntries(Object.entries(ERROR_MESSAGE).map(([code, message]) => [code, message("")])),
-  withdraw_failed: "取り下げられませんでした。消すときは区の設定の「消す希望」から対象を選んでください。",
+  withdraw_failed: "取り下げられませんでした。資料は残っています。消すときは区の設定の「消す希望」から対象を選んでください。",
   retry_failed: "今は読み直せません。送ったものを見て、このまま進めることもできます。",
 };
 
@@ -102,7 +102,7 @@ intakeAdmin.get("/intake", async (c) => {
     <a class="back" href={back}>← {project && back === adminPath(ward, `/projects/${project.projectId}/map`) ? `${project.title}の段取りへ` : back === adminPath(ward, "/") ? "最初の画面へ" : "前の画面へ"}</a>
     <h1>{title}</h1>
     <p class="lead">{project ? "" : "去年の資料も今年の紙も送れます。"}何枚でも一度に送れます。分類も名前付けもいりません。</p>
-    {c.req.query("n") === "withdrawn" ? <Notice>送るのを取り消しました。</Notice> : null}
+    {c.req.query("n") === "withdrawn" ? <Notice>資料を消しました。</Notice> : null}
     {c.req.query("n") === "retry" ? <Notice>もう一度読みます。</Notice> : null}
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     <form id="send-form" method="post" action={`${adminPath(ward, "/intake")}?${query}`} enctype="multipart/form-data">
@@ -129,8 +129,8 @@ intakeAdmin.get("/intake/received", async (c) => {
   const slow = jobs.find((job) => job.status === "attention" || ((job.status === "received" || job.status === "reading") && Date.now() - Date.parse(job.created_at) > 90_000));
   const readHref = adminPath(ward, "/intake/read");
   const backLabel = project && back === adminPath(ward, `/projects/${project.projectId}/map`) ? `← ${project.title}の段取りへ` : back === adminPath(ward, "/") ? "← 最初の画面へ" : "← 前の画面へ";
-  if (c.req.query("n") === "withdrawn") return c.html(<Layout title="送るのを取り消しました" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={back}>{backLabel}</a><h1>送るのを取り消しました</h1>
+  if (c.req.query("n") === "withdrawn") return c.html(<Layout title="資料を消しました" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <a class="back" href={back}>{backLabel}</a><h1>資料を消しました</h1>
     <div class="notice done" role="status"><strong>資料は入っていません</strong><p>段取りと下書きは変わりません。</p></div>
     <section class="next"><strong>次は</strong><p>送り直すときは、もう一度送ってください。</p><a class="button" href={sendHref}>資料を送る</a></section>
   </Layout>);
@@ -158,11 +158,11 @@ intakeAdmin.get("/intake/received", async (c) => {
       {job.project_id ? <a href={adminPath(ward, `/projects/${job.project_id}/map`)}>段取りを見る</a> : null}
       {job.status === "failed" ? <><form method="post" action={adminPath(ward, `/intake/${job.job_id}/retry`)}><button class="quiet">もう一度読む</button></form>
         <form method="post" action={adminPath(ward, `/intake/${job.job_id}/continue`)}><button class="quiet">このまま進める</button></form></> : null}
-      {["received", "reading", "read", "failed"].includes(job.status) ? <form method="post" action={adminPath(ward, `/intake/${job.job_id}/withdraw`)}><button class="quiet">送るのを取り消す</button></form> : null}
+      {["received", "reading", "read", "failed"].includes(job.status) ? <form method="post" action={adminPath(ward, `/intake/${job.job_id}/withdraw`)}><p>送った資料と読み取った内容を消します。元に戻せないので、送り直すには手元の写真やファイルが必要です。</p><button class="quiet">この資料を消す</button></form> : null}
     </li>))}</ul>
     {jobs.length === 0 ? <p>{projectId ? "送ったものはありません。" : "この1時間に送ったものはありません。"}</p> : null}
     <div class="action-links"><a class="button secondary" href={sendHref}>続けて送る</a></div>
-    {jobs.some((job) => ["received", "reading", "read", "failed"].includes(job.status)) ? <><h2>間違えて送ったときは</h2><p>読み終わる前なら、上の「送るのを取り消す」で取り消せます。</p></> : null}
+    {jobs.some((job) => ["received", "reading", "read", "failed"].includes(job.status)) ? <><h2>間違えて送ったときは</h2><p>上に「この資料を消す」がある資料は消せます。</p></> : null}
   </Layout>);
 });
 

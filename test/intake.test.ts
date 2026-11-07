@@ -468,7 +468,8 @@ describe("画面", () => {
     expect(html).not.toContain("見えない.jpg");
     expect(html).toContain("読めませんでした");
     expect(html).toContain("もう一度読む");
-    expect(html).toContain("送るのを取り消す");
+    expect(html).toContain("この資料を消す");
+    expect(html).toContain("元に戻せないので");
   });
 
   it("取り下げの画面の操作", async () => {

@@ -29,6 +29,14 @@ interface SeedTask { task_id: string; task_key: string | null; name: string; per
 const admin = new Hono<AdminEnv>();
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+function AskForm({ action, question = "" }: { action: string; question?: string }) {
+  return <form method="post" action={action}>
+    <label for="question">聞きたいこと</label><input id="question" name="question" type="text" value={question} minlength={3} maxlength={300} required />
+    <p class="help-text">3文字以上300文字以内で書いてください。</p>
+    <button type="submit" class="secondary">記録に聞く</button>
+  </form>;
+}
+
 function projectRecordPath(result: ArchiveSearchResult): string {
   const id = encodeURIComponent(result.project_id);
   return result.closed_at ? `/archive/${id}` : `/projects/${id}`;
@@ -113,18 +121,21 @@ admin.get("/archive/search", async (c) => {
     {query.trim().length >= 2 && results.length === 0 ? <p>見つかりませんでした。</p> : null}
     <h2>記録に聞く</h2>
     <p>記録から分かることを尋ねます。元の箇所も一緒に表示します。</p>
-    <form method="post" action={adminPath(ward, "/archive/ask")}>
-      <label for="question">聞きたいこと</label><input id="question" name="question" type="text" maxlength={300} required />
-      <button type="submit" class="secondary">記録に聞く</button>
-    </form>
+    <AskForm action={adminPath(ward, "/archive/ask")} />
   </Layout>);
 });
 
 admin.post("/archive/ask", async (c) => {
   const { ward } = c.var;
   const form = await c.req.formData();
-  const question = String(form.get("question") ?? "").trim().slice(0, 300);
-  if (question.length < 3) return c.redirect(adminPath(ward, "/archive/search"), 303);
+  const entered = String(form.get("question") ?? "");
+  const question = entered.trim();
+  if (question.length < 3 || question.length > 300) return c.html(<Layout title="記録に聞く" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <h1>記録に聞く</h1><p class="lead">記録から分かることを尋ねます。</p>
+    <div class="notice warn" role="alert">聞きたいことを3文字以上300文字以内で書いてください。書いた内容は下に残っています。</div>
+    <AskForm action={adminPath(ward, "/archive/ask")} question={entered} />
+    <a class="quiet" href={adminPath(ward, "/archive/search")}>記録を探す画面に戻る</a>
+  </Layout>, 400);
   const fragments = await findFragments(c.env.DB, ward.wardId, question, 8);
   if (fragments.length === 0) return c.html(<Layout title="記録に聞く" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>記録に聞く</h1><p class="lead">過去の記録について聞いた結果です。元の箇所が示されているときは、そこも開いて内容を読んでください。</p><p>記録の中に答えは見つかりませんでした。</p><p class="link-line"><a href={adminPath(ward, "/archive/search")}>記録を探す</a></p>

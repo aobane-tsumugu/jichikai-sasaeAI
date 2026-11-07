@@ -352,7 +352,9 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
     </> : null}
     {view === "sent" ? <><p class="lead">読み取れた分から数えに入れます。読み違いは、答えの一覧で直せます。</p><section class="next"><strong>次は</strong><p>答えの数に入ったか見てください。</p><a class="button" href={root}>答えを見る</a></section><a class="quiet" href={`${root}?view=send`}>続けて撮って送る</a><p><a class="quiet" href={`${root}?view=list`}>答えの一覧で直す</a></p><p class="muted">写真が残るので、紙は名前が読めないようにして捨ててかまいません。班長から預かった紙も同じです。</p></> : null}
     {view === "hand" && !closed ? <><p class="lead">聞いた内容を入れてください。</p><p><a class="button secondary" href={`${root}/help`}>手伝いだけの申し込みを入れる</a></p><form method="post" action={`${root}/phone`}>
-      {retry ? <Notice error>入力を確認してください。入れた内容は残っています。</Notice> : null}
+      {retry ? <><Notice error>入力を確認してください。入れた内容は残っています。</Notice>
+        <section class="next"><strong>次は</strong><p>下の内容を直して、もう一度「この答えを入れる」を押してください。前の画面には、ブラウザの戻るボタンでも戻れます。</p><a class="quiet" href={root}>答えの画面に戻る</a></section>
+      </> : null}
       <div class="field"><label for="household">代表者のお名前</label><input id="household" name="household" required maxlength={120} value={asString(retry?.household)} /></div>
       <fieldset><legend>班</legend><DistrictSelect districts={districts} selected={asString(retry?.district)} /></fieldset>
       <AttendanceFields title={project.title} selected={asString(retry?.attend)} /><div class="admin-answer-counts"><CountFields labels={labels} rawValues={retry} /></div>

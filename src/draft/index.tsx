@@ -6,7 +6,7 @@ import { ErrorNotice, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { startTask } from "../ai/api";
 import { getProjectState, getProjectSummary } from "../project/api";
-import { getEditableDocument, saveDocument } from "../project/actions";
+import { getEditableDocument, saveDocument, DOCUMENT_TEXT_LIMIT } from "../project/actions";
 import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, ITEMS_BY_KIND, PROJECT_KIND_LABEL, SCOPES, SCOPE_LABEL, type DocumentKind, type Scope, type ItemKey } from "../project/model";
 import { documentBodyCheckMessage } from "../project/document-body";
 import { getDraftPack, listDraftPacks } from "./packs";
@@ -70,23 +70,25 @@ admin.get("/projects/:projectId/draft", async (c) => {
   </Layout>);
 });
 
-admin.get("/projects/:projectId/draft/:kind", async (c) => {
+type DraftRetry = { body: DraftBody; title: string; scope: Scope; basedOn: string; message: string; status: 400 | 503 };
+async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRetry): Promise<Response> {
   const { ward } = c.var; const id = c.req.param("projectId"); const kindRaw = c.req.param("kind");
-  if (!isKind(kindRaw)) return c.notFound();
+  if (!id || !kindRaw || !isKind(kindRaw)) return c.notFound();
   const [project, state, document] = await Promise.all([getProjectSummary(c.env.DB, ward.wardId, id), getProjectState(c.env.DB, ward.wardId, id), getEditableDocument(c.env.DB, ward.wardId, id, kindRaw)]);
   if (!project || !state) return c.notFound();
   // 保存済みの知らせは通常の下書きとして開き、保存結果や前の下書きも読めるようにする。
-  if (project.kind === "event" && kindRaw === "notice" && !document && c.req.query("edit") !== "1") return rainDraft(c);
+  if (!retry && project.kind === "event" && kindRaw === "notice" && !document && c.req.query("edit") !== "1") return rainDraft(c);
   const pack = getDraftPack(kindRaw, project.kind);
   const meetingMaterials = kindRaw === "procedure" ? await getMeetingMaterials(c.env.DB, ward.wardId, project) : null;
   const reportPhotos = kindRaw === "report" && project.kind === "event" && await photosAvailable(c.env, ward.wardId);
   const minutes = kindRaw === "report" && ["general_meeting", "board_meeting"].includes(project.kind);
-  const body: DraftBody = document ? parseBody(document.body) : { text: "", items: (minutes ? [] : state.items).map((item) => {
+  const body: DraftBody = retry?.body ?? (document ? parseBody(document.body) : { text: "", items: (minutes ? [] : state.items).map((item) => {
     if (item.current?.content.trim()) return { key: item.key, content: item.current.content };
     const reference = item.references.find((ref) => ref.content.trim());
     return { key: item.key, content: reference?.content ?? "", ...(reference ? { source: reference.refYear === null ? "年の分からない資料" : reference.refYear === project.year - 1 ? "去年の資料" : `${reference.refYear}年の資料` } : {}) };
-  }) };
-  const scope = document?.scope ?? pack.scope; const baseVersion = document?.stateVersion ?? project.stateVersion;
+  }) });
+  const scope = retry?.scope ?? document?.scope ?? pack.scope; const baseVersion = retry?.basedOn ?? document?.stateVersion ?? project.stateVersion;
+  const title = retry?.title ?? (kindRaw === "announcement" && project.kind === "event" && (document?.title ?? pack.title) === pack.title ? `${project.title}のご案内` : document?.title ?? pack.title);
   const paperFirst = project.kind !== "event" && scope !== "public" && !(scope === "space" && ["duty_roster", "procedure"].includes(kindRaw));
   const task = await c.env.DB.prepare(`SELECT status FROM jobs WHERE ward_id = ? AND project_id = ? AND task = 'draft'
     AND instruction LIKE ? ORDER BY created_at DESC LIMIT 1`).bind(ward.wardId, id, `%対象の文書: ${kindRaw}。%`).first<{ status: string }>();
@@ -94,15 +96,15 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     read: "順番を待っています",
     connecting: "下書きを作っています",
     done: "AIの下書きができました。内容を見てください",
-    attention: "AIの作業が止まりました。内容を確かめてください",
-    failed: "AIの作業が止まりました。ここで書いて保存できます",
+    attention: "AIの下書きを作れませんでした。ここで書いて保存するか、下の「AIに言葉で頼む」からもう一度頼めます。",
+    failed: "AIの下書きを作れませんでした。ここで書いて保存するか、下の「AIに言葉で頼む」からもう一度頼めます。",
   };
   const taskNotice = task ? {
     status: task.status,
     message: taskLabel[task.status] ?? "AIの様子が分かりません。ここで書いて保存できます",
   } : null;
   const versions = document ? await c.env.DB.prepare("SELECT version_no, body, created_at, origin, published_at FROM document_versions WHERE ward_id = ? AND project_id = ? AND document_id = ? ORDER BY version_no DESC LIMIT 8").bind(ward.wardId, id, document.documentId).all<{ version_no: number; body: string; created_at: string; origin: string; published_at: string | null }>() : { results: [] };
-  if (!body.text && !minutes) body.text = body.items.find((item) => item.key === "content")?.content ?? "";
+  if (!retry && !body.text && !minutes) body.text = body.items.find((item) => item.key === "content")?.content ?? "";
   const originals = await c.env.DB.prepare(`SELECT o.original_id, o.filename FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
     WHERE o.ward_id = ? AND j.project_id = ? AND o.withdrawn_at IS NULL`).bind(ward.wardId, id).all<{ original_id: string; filename: string }>();
   const labels: Record<string, string> = { date_time: "いつ", place: "どこで", rain_plan: "雨のとき", helper_slots: "手伝いの時間帯", belongings: "持ち物", due: ["city_request", "request"].includes(project.kind) ? "提出の締切" : kindRaw === "recruitment" ? "申し込みの締切" : "答えの締切", public_contact: "連絡先" };
@@ -135,11 +137,11 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     <h1>{pack.title}の下書きを直す</h1>
     <p class="lead">{kindRaw === "announcement" && scope === "public" ? `直して保存しても、まだ配られません。だれでも読める${project.kind === "event" ? "案内" : pack.title}です。` : <>{kindRaw === "duty_roster" ? "実行委員と班長に見せる当番表です。" : kindRaw === "recruitment" && scope === "public" ? "区のページの「一回だけ手伝う」に出る募集です。" : scope === "public" ? `だれでも読める${project.kind === "event" ? "案内" : pack.title}です。` : scope === "space" ? "実行委員と班長だけが読めます。" : "役員だけが読めます。"}直して保存しても、まだ配られません。</>}</p>
     {minutes ? <p>決めたことを書いた紙を撮るか、文を送ってから、AIに下書きを頼めます。書かれていることだけをまとめます。<a class="button secondary" href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>紙や文を送る</a></p> : null}
-    <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
+    {retry ? <Notice error>{retry.message} 書いた内容は下に残っています。</Notice> : <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />}
     {c.req.query("notice") === "saved" ? <section class="next"><strong>保存しました。まだ配っていません</strong><p>前の下書きにも戻せます。</p>{scope !== "staff" ? <a class="button secondary" href={adminPath(ward, `/publish/${id}/confirm?kind=${kindRaw}`)}>配る画面へ</a> : null}<a class="quiet" href="#previous-drafts">前の下書きに戻す</a></section> : null}
     {bodyCheck ? <Notice>{bodyCheck}</Notice> : null}
     {c.req.query("notice") === "restored" ? <section class="next"><strong>前の下書きに戻しました</strong><p>今の下書きも残ります。直して保存できます。</p></section> : null}
-    {taskNotice && !(taskNotice.status === "done" && (project.closedAt || versions.results[0]?.published_at)) ? <Notice><span data-ai-status={taskNotice.status}>{taskNotice.message}</span>{taskNotice.status === "done" ? "" : " 画面を閉じても続きます。ここで書いて保存することもできます。"}</Notice> : null}
+    {taskNotice && !(taskNotice.status === "done" && (project.closedAt || versions.results[0]?.published_at)) ? <Notice><span data-ai-status={taskNotice.status}>{taskNotice.message}</span>{["received", "reading", "read", "connecting"].includes(taskNotice.status) ? " 画面を閉じても続きます。ここで書いて保存することもできます。" : ""}</Notice> : null}
     {document?.stale ? <div class="notice warn"><strong>新しい資料が届きました</strong><p>このまま直して配れます。</p><a class="quiet" href="#redo">新しい資料を入れて作り直す</a></div> : null}
     {project.closedAt ? <Notice>この行事は閉じました。もう一度開くと下書きを直せます。</Notice> : null}
     <MeetingMaterialsView ward={ward} materials={meetingMaterials} />
@@ -148,11 +150,11 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
     {rota}
     <form id="draft-form" method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/save`)}>
       <input type="hidden" name="based_on" value={baseVersion} />
-      <div class="field"><label for="title">題</label><input id="title" name="title" value={kindRaw === "announcement" && project.kind === "event" && (document?.title ?? pack.title) === pack.title ? `${project.title}のご案内` : document?.title ?? pack.title} maxlength={100} required /></div>
+      <div class="field"><label for="title">題</label><input id="title" name="title" value={title} maxlength={100} required /></div>
       {project.kind !== "event" ? <p>紙の見出し: {paperHeading(project.title, document?.title ?? pack.title)}</p> : null}
       {kindRaw === "duty_roster" ? <><input type="hidden" name="scope" value="space" /><p>当番表は、実行委員と班長にだけ見えます。</p></> : null}
       {kindRaw !== "duty_roster" ? ITEMS_BY_KIND[project.kind].filter((key) => ["date_time", "place", "rain_plan"].includes(key)).map(field) : null}
-      <div class="field"><label for="text">{kindRaw === "announcement" && project.kind === "event" ? "案内の文" : kindRaw === "duty_roster" ? "当番表の説明" : kindRaw === "recruitment" ? "募集の文" : `${pack.title}の文`}</label><textarea id="text" name="text" rows={10} maxlength={20000}>{body.text}</textarea>{oldDates.map((date) => <p class="warn-text">文の中に前の日付「{date}」が残っています。このままでも配れます。</p>)}</div>
+      <div class="field"><label for="text">{kindRaw === "announcement" && project.kind === "event" ? "案内の文" : kindRaw === "duty_roster" ? "当番表の説明" : kindRaw === "recruitment" ? "募集の文" : `${pack.title}の文`}</label><textarea id="text" name="text" rows={10} maxlength={DOCUMENT_TEXT_LIMIT}>{body.text}</textarea>{oldDates.map((date) => <p class="warn-text">文の中に前の日付「{date}」が残っています。このままでも配れます。</p>)}</div>
       {kindRaw === "duty_roster" ? (["date_time", "place", "helper_slots", "rain_plan"] as const).map(field) : null}
       <input type="hidden" name="item_content" value={body.items.find((item) => item.key === "content")?.content ?? ""} />
       {kindRaw === "duty_roster" ? body.items.filter((item) => !["date_time", "place", "helper_slots", "rain_plan", "content"].includes(item.key)).map((item) => <input type="hidden" name={`item_${item.key}`} value={item.content} />) : [...ITEMS_BY_KIND[project.kind]].filter((key) => !["date_time", "place", "rain_plan", "content"].includes(key)).sort((a, b) => Number(b === "helper_slots") - Number(a === "helper_slots")).map(field)}
@@ -185,8 +187,9 @@ admin.get("/projects/:projectId/draft/:kind", async (c) => {
       </form></div></details>}
       <div class="action-bar page-action"><button type="submit" form="draft-form" name="after" value={paperFirst ? "paper" : "confirm"}>{paperFirst ? "保存して紙の見え方を見る" : "保存して配る内容を見る"}</button><button class="secondary" type="submit" form="draft-form">保存だけする</button></div>
     </> : null}
-  </Layout>);
-});
+  </Layout>, retry?.status ?? 200);
+}
+admin.get("/projects/:projectId/draft/:kind", (c) => renderDraft(c));
 
 async function latestFields(c: import("hono").Context<AdminEnv>, kind: DocumentKind): Promise<URLSearchParams | null> {
   const row = await c.env.DB.prepare(`SELECT d.document_id, d.scope, v.version_id, v.version_no FROM documents d
@@ -278,7 +281,20 @@ admin.post("/projects/:projectId/draft/:kind/save", async (c) => {
   const scopeRaw = String(form.get("scope")); if (!(SCOPES as readonly string[]).includes(scopeRaw) || (kindRaw === "duty_roster" && scopeRaw !== "space")) return c.notFound();
   const body: DraftBody = { text: String(form.get("text") ?? ""), items: ITEMS_BY_KIND[state.project.kind].map((key) => ({ key, content: String(form.get(`item_${key}`) ?? "").trim() })).filter((i) => i.content !== "") };
   const bodyChecks: ItemKey[] = [];
-  const ok = await saveDocument(c.env.DB, ward.wardId, id, account.accountId, { kind: kindRaw, title: String(form.get("title") ?? ""), scope: scopeRaw as Scope, body: JSON.stringify(body), basedOn: Number(form.get("based_on")) }, bodyChecks);
+  const title = String(form.get("title") ?? "");
+  const basedOn = String(form.get("based_on") ?? "");
+  const retry = (message: string, status: 400 | 503) => renderDraft(c, { body, title, scope: scopeRaw as Scope, basedOn, message, status });
+  // ブラウザの改行は1文字として数え、保存する本文の改行形式は保つ。
+  if (body.text.replace(/\r\n/g, "\n").length > DOCUMENT_TEXT_LIMIT) return retry(`本文が長いため保存できませんでした。${DOCUMENT_TEXT_LIMIT}文字以内にして、もう一度保存してください。`, 400);
+  if (!title.trim() || title.length > 100) return retry("題を1文字以上100文字以内で書いて、もう一度保存してください。", 400);
+  if (body.items.some((item) => item.content.length > 2000)) return retry("本文以外の欄は、それぞれ2000文字以内にして、もう一度保存してください。", 400);
+  let ok: boolean;
+  try {
+    ok = await saveDocument(c.env.DB, ward.wardId, id, account.accountId, { kind: kindRaw, title, scope: scopeRaw as Scope, body: JSON.stringify(body), basedOn: Number(basedOn) }, bodyChecks);
+  } catch {
+    return retry("保存を最後まで終えられませんでした。時間をおいて、もう一度保存してください。", 503);
+  }
+  if (!ok) return retry(state.project.closedAt ? "この行事は閉じています。段取りに戻ってもう一度開くと保存できます。" : "保存できませんでした。入力した内容を確かめて、もう一度保存してください。", 400);
   if (ok && form.get("after") === "paper") {
     const saved = await latestFields(c, kindRaw);
     if (saved) return c.redirect(adminPath(ward, `/print/${id}/${saved.get("documentId")}/${saved.get("versionNo")}/preview`), 303);

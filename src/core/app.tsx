@@ -121,11 +121,26 @@ export function createApp(bundles: Bundle[]) {
     if (err instanceof HTTPException) return err.getResponse();
     // 中身（鍵、本文）を記録に出さないよう、失敗の種類だけにする
     console.error("要求の処理に失敗しました", err instanceof Error ? err.name : "不明な失敗");
+    const reading = ["GET", "HEAD"].includes(c.req.method);
+    const wardSlug = c.req.path.split("/")[1];
+    const home = /^\/[^/]+\/admin(?:\/|$)/.test(c.req.path) ? `/${wardSlug}/admin/`
+      : c.req.path.startsWith("/contact") ? "/contact" : c.req.path.startsWith("/ops") ? "/ops/" : c.req.param("ward") ? `/${encodeURIComponent(c.req.param("ward")!)}/` : "/";
+    let back = home;
+    // 書き込み先をGETで開かず、同じ区の操作前の画面へ戻す。
+    const referer = c.req.header("referer");
+    if (!reading && referer) {
+      try {
+        const previous = new URL(referer);
+        const boundary = home.endsWith("/") ? home : `${home}/`;
+        if (previous.origin === new URL(c.req.url).origin && (previous.pathname === home || previous.pathname.startsWith(boundary)) && previous.pathname !== c.req.path) back = previous.pathname + previous.search;
+      } catch { /* 戻り先が読めないときは最初の画面へ戻す。 */ }
+    }
+    c.header("Cache-Control", "private, no-store");
     return c.html(
       <Layout title="うまく動きませんでした">
         <h1>うまく動きませんでした</h1>
-        <div class="notice warn"><strong>今は、この画面を開けません</strong><p>時間をおくと開けることがあります。</p></div>
-        <section class="next"><strong>次は</strong><p>時間をおいて、もう一度開いてください。</p><a class="button" href={c.req.path}>もう一度開く</a></section>
+        <div class="notice warn"><strong>{reading ? "今は、この画面を開けません" : "操作を最後まで終えられませんでした"}</strong><p>{reading ? "時間をおくと開けることがあります。" : "保存や配布が済んでいることもあります。元の画面で結果を確かめてください。"}</p></div>
+        <section class="next"><strong>次は</strong><p>{reading ? "時間をおいて、もう一度開いてください。" : "結果が分からないときは、時間をおいて確かめてください。"}</p><a class="button" href={reading ? c.req.path : back}>{reading ? "もう一度開く" : back === home ? "最初の画面で確かめる" : "元の画面で確かめる"}</a></section>
         <a class="quiet" href={c.req.param("ward") ? `/${encodeURIComponent(c.req.param("ward")!)}/` : "/"}>最初の画面に戻る</a>
         
       </Layout>,

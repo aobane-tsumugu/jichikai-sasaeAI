@@ -85,7 +85,7 @@ it("リンクを出し直してもLINE・メール・端末を保ち、メール
     expect(await missingReach.text()).toContain("「メールアドレス」に今使えるメールアドレスを200文字までで入れてください。");
     const noMail = await postForm(realApp, "/contact", await contactInput(opsEnv), undefined, opsEnv);
     expect(noMail.status).toBe(201);
-    expect(await noMail.text()).toContain("この画面を閉じないでください");
+    expect(await noMail.text()).toContain("お気に入りに保存してください");
     const contact = await postForm(realApp, "/contact", await contactInput(runtime), undefined, runtime);
     expect(contact.status).toBe(201);
     expect(mail).toHaveLength(1);

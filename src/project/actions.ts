@@ -331,14 +331,15 @@ export async function getEditableDocument(db: D1Database, wardId: string, projec
     body: row.body ?? JSON.stringify({ text: "", items: [] }), stateVersion: row.state_version, stale: row.stale_since_version !== null } : null;
 }
 
+export const DOCUMENT_TEXT_LIMIT = 20000;
 export async function saveDocument(db: D1Database, wardId: string, projectId: string, accountId: string, input: { kind: DocumentKind; title: string; scope: Scope; body: string; basedOn: number }, bodyChecks?: ItemKey[]): Promise<boolean> {
   if (!["announcement", "recruitment", "duty_roster", "procedure", "notice", "report"].includes(input.kind)) return false;
-  if (!["public", "space", "staff"].includes(input.scope) || input.title.trim().length < 1 || input.title.length > 100 || input.body.length > 20000) return false;
+  if (!["public", "space", "staff"].includes(input.scope) || input.title.trim().length < 1 || input.title.length > 100) return false;
   let parsed: unknown;
   try { parsed = JSON.parse(input.body); } catch { return false; }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
   const record = parsed as { text?: unknown; items?: unknown };
-  if (typeof record.text !== "string" || !Array.isArray(record.items)) return false;
+  if (typeof record.text !== "string" || record.text.replace(/\r\n/g, "\n").length > DOCUMENT_TEXT_LIMIT || !Array.isArray(record.items)) return false;
   const items: { key: ItemKey; content: string }[] = [];
   for (const x of record.items) {
     if (typeof x !== "object" || x === null || typeof (x as { key?: unknown }).key !== "string" || typeof (x as { content?: unknown }).content !== "string") return false;
