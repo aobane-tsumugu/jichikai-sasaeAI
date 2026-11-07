@@ -10,7 +10,7 @@ import { DEFAULT_TEMPLATES, renderTemplate, type Template } from "../settings/ke
 /** 標準の文面は見本に揃え、区が直した文面はそのまま使う。 */
 export function rainTemplate(template: Template): Template {
   return template.id === "rain" && template.body === DEFAULT_TEMPLATES.find((item) => item.id === "rain")?.body
-    ? { ...template, body: "{行事名}は、雨のため{会場}で行います。日ときは{日時}です。くわしくは住民向けのページをご覧ください。" }
+    ? { ...template, body: "{行事名}は、雨のため{会場}で行います。日時は{日時}です。くわしくは住民向けのページをご覧ください。" }
     : template;
 }
 

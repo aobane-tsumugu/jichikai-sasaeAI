@@ -51,9 +51,9 @@ export const inquiryNotice = (value: DigestSettings, hasGroup = true) => `${hasG
 
 export function DigestFields({ value, rawValues, open = false }: { value: DigestSettings; rawValues?: Record<string, unknown>; open?: boolean }) {
   const field = (name: string, saved: string | number) => typeof rawValues?.[name] === "string" ? String(rawValues[name]) : saved;
-  return <details class="fold" open={open}><summary>問い合わせの通知の時刻と、近い日の案内</summary><div>
-    <p>役員のLINEグループへ通知します。時刻は日本時間です。送る時刻から5分ほど遅れることがあります。</p>
-    <label for="digest-cutoff">問い合わせを締める時刻</label><input id="digest-cutoff" name="digest_cutoff" type="time" value={field("digest_cutoff", value.cutoff)} required />
+  return <details class="fold" open={open}><summary>通知の時刻を変える</summary><div>
+    <p>時刻は日本時間です。送る時刻から5分ほど遅れることがあります。</p>
+    <label for="digest-cutoff">この時刻までに届いた問い合わせを、次の通知にまとめる</label><input id="digest-cutoff" name="digest_cutoff" type="time" value={field("digest_cutoff", value.cutoff)} required />
     <label for="digest-send">通知を送る時刻</label><input id="digest-send" name="digest_send" type="time" value={field("digest_send", value.send)} required />
     <label for="digest-event-days">当日の何日前から、ときどき見る案内を出すか</label><input id="digest-event-days" name="digest_event_days" type="number" min="0" max="365" value={field("digest_event_days", value.eventDays)} required />
     <label for="digest-due-days">締切の何日前から、ときどき見る案内を出すか</label><input id="digest-due-days" name="digest_due_days" type="number" min="0" max="365" value={field("digest_due_days", value.dueDays)} required />
