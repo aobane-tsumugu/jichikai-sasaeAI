@@ -80,7 +80,7 @@ export interface WebhookDependencies {
   matchAnswer?: typeof matchClarificationAnswer;
 }
 
-const looksLikeInquiry = (text: string) => /[?？]|(?:です|ます|でしょう|なの|ません)か[。\s]*$|教えて|知りたい|お願い(?:します|したい)|相談|要望|シェアしたい/.test(text);
+const looksLikeInquiry = (text: string) => /[?？]|(?:です|ます|でしょう|なの|ません)か[。\s]*$|教えて|知りたい|お願い(?:します|したい)|相談|要望|シェアしたい|(?:知らせて|載せて)(?:ほしい|欲しい|ください)/.test(text);
 
 /** 一時の失敗だけ当て直す。止まり続けても役員に仕分けを求めず、受付へ進む。 */
 async function matchLineText(ports: LineIntakePorts, wardId: string, original: LineOriginal): Promise<InboxMatch> {

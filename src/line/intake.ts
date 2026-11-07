@@ -112,6 +112,16 @@ export interface LineIntakePorts {
   saveAnswerReply?: (wardId: string, projectId: string, original: LineOriginal, jobId: string) => Promise<void>;
 }
 
+/** 問い合わせの添付写真から自動で足された予定を外す。写真と読み取りはそのまま残す。 */
+export async function removeLineInquiryYearItems(db: D1Database, wardId: string): Promise<void> {
+  await db.prepare(`DELETE FROM ward_year_items WHERE ward_id = ? AND added = 1 AND removed_at IS NULL
+    AND source_original_id IN (SELECT o.original_id FROM originals o JOIN line_inbox_items i
+      ON i.ward_id = o.ward_id AND i.job_id = o.job_id JOIN inquiry_records q
+      ON q.ward_id = i.ward_id AND q.line_bundle_id = i.bundle_id
+      WHERE o.ward_id = ? AND i.original_kind = 'image' AND o.withdrawn_at IS NULL)`)
+    .bind(wardId, wardId).run();
+}
+
 /** 問い合わせの文と添えた写真を、同じ一件に残す。写真の当て先を住民に聞かない。 */
 export async function saveLineBundleInquiry(db: D1Database, wardId: string, bundleId: string, original: LineOriginal, sourceId: string): Promise<void> {
   const contents = await lineBundleContents(db, wardId, bundleId);
@@ -130,6 +140,7 @@ export async function saveLineBundleInquiry(db: D1Database, wardId: string, bund
     WHERE ward_id = ? AND batch_id IN (SELECT p.batch_id FROM line_photo_items p JOIN line_inbox_items i
       ON i.ward_id = p.ward_id AND i.job_id = p.job_id WHERE p.ward_id = ? AND i.bundle_id = ?)`)
     .bind(new Date().toISOString(), wardId, wardId, bundleId).run();
+  await removeLineInquiryYearItems(db, wardId);
 }
 
 /** 言葉が先に届いた場合も、写真の読みができたところで同じ内容を見直す。 */

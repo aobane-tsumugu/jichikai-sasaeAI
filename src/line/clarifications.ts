@@ -9,7 +9,7 @@ import { photoCheckMessage } from "../intake/photo-check";
 import { sha256Hex } from "../intake/media";
 import { matchPendingLinePhotos } from "../intake/pipeline";
 import { PHOTO_AFTER_MS, purgePhotoTexts, claimLineBundleReply } from "./photo-context";
-import { createLineIntakePorts, refreshLineBundleInquiry } from "./intake";
+import { createLineIntakePorts, refreshLineBundleInquiry, removeLineInquiryYearItems } from "./intake";
 
 async function batchIsInquiry(db: D1Database, wardId: string, batchId: string): Promise<boolean> {
   return Boolean(await db.prepare(`SELECT 1 FROM line_photo_items p JOIN line_inbox_items i
@@ -430,6 +430,8 @@ export async function processPhotoBatches(env: Env, wardId: string, deps: Questi
   for (const bundle of bundles.results) await refreshLineBundleInquiry(env.DB, wardId, bundle.bundle_id, ports).catch(() => {
     console.error("写真と一緒に届いた言葉を確認できませんでした", wardId);
   });
+  // 言葉が先の問い合わせも、写真の読み取りや後日の再処理で予定にしない。
+  await removeLineInquiryYearItems(env.DB, wardId);
   await matchPendingLinePhotos(env, wardId, now);
   await completeScreenClarifications(env, wardId, deps);
   await resolveRetakes(env, wardId, deps);
