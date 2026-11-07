@@ -23,6 +23,23 @@ export async function listOriginals(db: D1Database, wardId: string, jobId: strin
   return res.results;
 }
 
+/** 名簿と読めて、まだ聞いていない資料。行事に入っていない物だけを聞く。 */
+export async function rosterCandidates(db: D1Database, wardId: string): Promise<string[]> {
+  const rows = await db.prepare(`SELECT DISTINCT r.job_id FROM readings r JOIN jobs j ON j.ward_id = r.ward_id AND j.job_id = r.job_id
+    WHERE r.ward_id = ? AND j.project_id IS NULL AND j.withdrawn_at IS NULL AND CASE WHEN json_valid(r.body) THEN json_extract(r.body, '$.document_kind') END = 'roster'
+      AND NOT EXISTS (SELECT 1 FROM originals o JOIN ward_material_links l ON l.ward_id = o.ward_id AND l.original_id = o.original_id
+        WHERE o.ward_id = j.ward_id AND o.job_id = j.job_id AND l.target_kind = 'roster') ORDER BY r.job_id LIMIT 20`)
+    .bind(wardId).all<{ job_id: string }>();
+  return rows.results.map((row) => row.job_id);
+}
+
+/** 名簿として使った、または使わないと答えたことを残す。二度聞かない。 */
+export async function markRosterAnswered(db: D1Database, wardId: string, jobId: string, answer: "imported" | "skipped"): Promise<void> {
+  const originals = await db.prepare("SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ? AND withdrawn_at IS NULL").bind(wardId, jobId).all<{ original_id: string }>();
+  await db.batch(originals.results.map((row) => db.prepare(`INSERT OR IGNORE INTO ward_material_links (ward_id, link_id, original_id, target_kind, target_id, linked_by)
+    VALUES (?, ?, ?, 'roster', ?, 'person')`).bind(wardId, crypto.randomUUID(), row.original_id, answer)));
+}
+
 /** 資料ごとの一行の要約。一覧に、ファイル名の代わりに出す。 */
 export async function jobSummaries(db: D1Database, wardId: string): Promise<Map<string, string>> {
   const rows = await db.prepare("SELECT job_id, CASE WHEN json_valid(body) THEN json_extract(body, '$.summary') END AS summary FROM readings WHERE ward_id = ?")
