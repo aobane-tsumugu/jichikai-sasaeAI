@@ -18,9 +18,9 @@ it("電話の答えを入れ間違えた役員が、案内を読んで戻り、�
   const guidance = await failed.text();
   expect(guidance).toContain(`${ward.name} 役員の画面`);
   expect(guidance).toContain("入力を確認してください。");
-  expect(guidance).toContain("次は");
-  expect(guidance).toContain(`href="${path}">答えの画面に戻る</a>`);
-  expect(guidance).toContain("ブラウザの戻るボタン");
+  // 入れ間違いは別の画面へ移らず、入れた内容を残した同じ入力の画面で直す。
+  expect(guidance).toContain("入れた内容は残っています。");
+  expect(guidance).toContain("代表者のお名前");
 
   const entry = await (await get(realApp, `${path}?view=hand`, cookie)).text();
   expect(entry).toContain("電話や紙の答えを手で入れる");
