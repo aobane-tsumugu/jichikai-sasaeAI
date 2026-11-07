@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
 import { ErrorNotice, Layout, Notice } from "../core/ui";
@@ -98,8 +98,8 @@ admin.get("/projects/:projectId/map", async (c) => {
   </Layout>);
 });
 
-admin.get("/projects/:projectId/map/:taskId", async (c) => {
-  const { ward } = c.var; const id = c.req.param("projectId");
+async function taskPage(c: Context<AdminEnv>, retry?: { values: Record<string, string>; message: string }) {
+  const { ward } = c.var; const id = c.req.param("projectId") ?? "";
   const [state, seats, history] = await Promise.all([
     getProjectState(c.env.DB, ward.wardId, id),
     c.env.DB.prepare("SELECT seat_id, title FROM seats WHERE ward_id = ? AND removed_at IS NULL ORDER BY sort_order, created_at").bind(ward.wardId).all<{ seat_id: string; title: string }>(),
@@ -112,6 +112,7 @@ admin.get("/projects/:projectId/map/:taskId", async (c) => {
   const task = state?.mapTasks.find((entry) => entry.taskId === c.req.param("taskId"));
   if (!state || !task) return c.notFound();
   const { project } = state;
+  const values = retry?.values ?? { name: task.name, start: task.periodStart ?? "", end: task.periodEnd ?? "", progress: task.progress, seat_id: task.seatId ?? "" };
   const owner = seats.results.find((seat) => seat.seat_id === task.seatId)?.title;
   const destinations = opensOf(project.kind, task.taskKey);
   const draftKind = taskDraftKind(task.taskKey, project.kind);
@@ -120,8 +121,8 @@ admin.get("/projects/:projectId/map/:taskId", async (c) => {
   return c.html(<Layout title={task.name} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {project.title}の段取りへ</a>
     <h1>{task.name}</h1><p class="lead">{task.periodStart && task.periodEnd && task.periodStart !== task.periodEnd ? `${formatJstDate(task.periodStart)}から${formatJstDate(task.periodEnd)}まで。` : task.periodEnd ? `${formatJstDate(task.periodEnd)}まで。` : "時期はまだ決まっていません。"}{owner ? `担当は${owner}です。` : "担当はあとから直せます。"}</p>
-    <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
-    {c.req.query("notice") === "saved" ? <section class="next"><strong>直した内容を保存しました</strong><p>段取りに入りました。時期や担当はあとから直せます。</p><a class="button" href={adminPath(ward, `/projects/${id}/map`)}>段取りへ</a></section> : null}
+    {retry ? <Notice error>{retry.message} 入れた内容は残っています。</Notice> : <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />}
+    {!retry && c.req.query("notice") === "saved" ? <section class="next"><strong>直した内容を保存しました</strong><p>段取りに入りました。時期や担当はあとから直せます。</p><a class="button" href={adminPath(ward, `/projects/${id}/map`)}>段取りへ</a></section> : null}
     {draft && destinations[0] === "draft" ? <div class="notice" role="status"><strong>下書きができています</strong><p>{state.questions.length ? `質問が${countWord(state.questions.length)}残っていますが、このまま配れます。` : "直して保存しても、まだ配られません。"}</p></div> : null}
     <div class="action-links">{destinations.map((destination, index) => <a class={index ? "button secondary" : "button"} href={adminPath(ward, targetPath[destination](id, task.taskKey, project.kind))}>{labels[destination]}</a>)}</div>
     <h2>届いた資料</h2><p><a class="quiet" href={adminPath(ward, `/projects/${id}#materials`)}>この行事に届いた資料を見る</a></p>
@@ -129,18 +130,20 @@ admin.get("/projects/:projectId/map/:taskId", async (c) => {
       {entry.requested_by ? <><dt>頼んだ人</dt><dd>{entry.requested_by}</dd></> : null}{entry.difficulty ? <><dt>困ったこと</dt><dd>{entry.difficulty}</dd></> : null}{entry.next_year ? <><dt>来年は</dt><dd>{entry.next_year}</dd></> : null}
     </dl></>)}
     {!project.closedAt ? <>
-      <details class="fold"><summary>時期や担当を直す</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}`)}>
-        <div class="field"><label for="name">仕事</label><input id="name" name="name" value={task.name} maxlength={100} required /></div>
-        <div class="field"><label for="seat">担当</label><select id="seat" name="seat_id"><option value="">まだ決まっていません</option>{seats.results.map((seat) => <option value={seat.seat_id} selected={seat.seat_id === task.seatId}>{seat.title}</option>)}</select></div>
-        <div class="field"><label for="start">始める日</label><input id="start" name="start" type="date" value={task.periodStart ?? ""} /></div>
-        <div class="field"><label for="end">終わる日</label><input id="end" name="end" type="date" value={task.periodEnd ?? ""} /></div>
-        <div class="field"><label for="progress">進み具合</label><select id="progress" name="progress"><option value="open" selected={task.progress === "open"}>これから</option><option value="started" selected={task.progress === "started"}>進行中</option><option value="done" selected={task.progress === "done"}>済み</option></select></div>
+      <details class="fold" open={!!retry}><summary>時期や担当を直す</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}`)}>
+        <div class="field"><label for="name">仕事</label><input id="name" name="name" value={values.name} maxlength={100} required /></div>
+        <div class="field"><label for="seat">担当</label><select id="seat" name="seat_id"><option value="" selected={!values.seat_id}>まだ決まっていません</option>{seats.results.map((seat) => <option value={seat.seat_id} selected={seat.seat_id === values.seat_id}>{seat.title}</option>)}</select></div>
+        <div class="field"><label for="start">始める日</label><input id="start" name="start" type="date" value={values.start} /></div>
+        <div class="field"><label for="end">終わる日</label><input id="end" name="end" type="date" value={values.end} /></div>
+        <div class="field"><label for="progress">進み具合</label><select id="progress" name="progress"><option value="open" selected={values.progress === "open"}>これから</option><option value="started" selected={values.progress === "started"}>進行中</option><option value="done" selected={values.progress === "done"}>済み</option></select></div>
         <button class="secondary">直した内容を保存する</button>
       </form></div></details>
       <details class="fold"><summary>この仕事を段取りから外す</summary><div><p>外しても、段取りの「外した仕事を戻す」から戻せます。</p><form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}/remove`)}><button class="secondary">外す</button></form></div></details>
     </> : <Notice>この行事は閉じました。もう一度開くと時期や担当を直せます。</Notice>}
-  </Layout>);
-});
+  </Layout>, retry ? 400 : 200);
+}
+
+admin.get("/projects/:projectId/map/:taskId", (c) => taskPage(c));
 
 admin.use("/projects/:projectId/map/*", async (c, next) => {
   if (c.req.method === "POST") {
@@ -161,9 +164,11 @@ admin.post("/projects/:projectId/map/event-day", async (c) => {
   return c.redirect(`${adminPath(c.var.ward, `/projects/${id}/map`)}?${ok ? "notice=event_day" : "error=invalid_input"}`, 303);
 });
 admin.post("/projects/:projectId/map/:taskId", async (c) => {
-  const form = await c.req.formData(); const id = c.req.param("projectId"); const taskId = c.req.param("taskId"); const progress = String(form.get("progress"));
-  const ok = ["open", "started", "done"].includes(progress) && await setMapTask(c.env.DB, c.var.ward.wardId, id, taskId, { name: String(form.get("name") ?? ""), start: String(form.get("start") ?? ""), end: String(form.get("end") ?? ""), progress: progress as "open" | "started" | "done", seatId: String(form.get("seat_id") ?? "") || null });
-  return c.redirect(`${adminPath(c.var.ward, `/projects/${id}/map/${taskId}`)}?${ok ? "notice=saved" : "error=invalid_input"}`, 303);
+  const form = await c.req.formData(); const id = c.req.param("projectId"); const taskId = c.req.param("taskId");
+  const values = { name: String(form.get("name") ?? ""), start: String(form.get("start") ?? ""), end: String(form.get("end") ?? ""), progress: String(form.get("progress")), seat_id: String(form.get("seat_id") ?? "") };
+  const ok = ["open", "started", "done"].includes(values.progress) && await setMapTask(c.env.DB, c.var.ward.wardId, id, taskId, { ...values, progress: values.progress as "open" | "started" | "done", seatId: values.seat_id || null });
+  if (!ok) return taskPage(c, { values, message: values.start && values.end && values.start > values.end ? "始める日が終わる日より後になっています。日付を直してください。" : "仕事の名前、日付、担当を確認してください。" });
+  return c.redirect(`${adminPath(c.var.ward, `/projects/${id}/map/${taskId}`)}?notice=saved`, 303);
 });
 for (const operation of ["remove", "restore"] as const) admin.post(`/projects/:projectId/map/:taskId/${operation}`, async (c) => {
   const id = c.req.param("projectId");

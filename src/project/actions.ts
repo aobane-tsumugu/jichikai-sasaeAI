@@ -311,6 +311,7 @@ export async function setMapTask(db: D1Database, wardId: string, projectId: stri
   if (!name || name.length > 100 || !["open", "started", "done"].includes(input.progress)) return false;
   const date = (s: string) => s === "" || /^\d{4}-\d{2}-\d{2}$/.test(s);
   if (!date(input.start) || !date(input.end)) return false;
+  if (input.start && input.end && input.start > input.end) return false;
   if (input.seatId && !(await db.prepare("SELECT 1 AS ok FROM seats WHERE ward_id = ? AND seat_id = ? AND removed_at IS NULL").bind(wardId, input.seatId).first())) return false;
   const r = await db.prepare(`UPDATE project_map_tasks SET name = ?, period_start = ?, period_end = ?, progress = ?, seat_id = ?,
     progress_source_kind = 'person', progress_source_ref = NULL, progress_source_locator = NULL, progress_confidence = 'high', progress_change_id = NULL
