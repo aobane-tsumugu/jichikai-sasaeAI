@@ -124,7 +124,8 @@ it("架空の初年度の名簿から始め、翌年は残る担当を保ち、�
   if (!memberCookie) throw new Error("架空の実行委員の入口に入れません。");
   const memberHtml = await (await get(realApp, space, memberCookie)).text();
   const officerHtml = await (await get(realApp, `${root}/answers/${id}`, cookie)).text();
-  for (const html of [memberHtml, officerHtml]) expect(html).toContain("<b>3<small>世帯</small></b>");
+  expect(memberHtml).toContain("<b>3<small>世帯</small></b>");
+  expect(officerHtml).toContain("今日までに3世帯から返事が届いています。");
   expect(memberHtml).toContain("返事のあった世帯の一覧（3世帯）");
   expect(memberHtml).toContain("<b>4<small>人</small></b>");
   expect(memberHtml).toContain(fixture.exempt);

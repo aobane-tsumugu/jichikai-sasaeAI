@@ -18,7 +18,7 @@ it("役員が実行委員と班長のページを開き、実行委員が合言�
   const answerList = await get(realApp, `${admin}/answers`, cookie);
   expect(await answerList.text()).toContain("<h1>出欠の返事を見る</h1>");
   const answer = await get(realApp, `${admin}/answers/${project.projectId}`, cookie);
-  expect(await answer.text()).toContain("返事の一覧");
+  expect(await answer.text()).toContain("の出欠の返事</h1>");
 
   const opened = await postForm(realApp, `${admin}/space/${project.projectId}/open`, { passphrase: "確認用の合言葉（架空）" }, cookie);
   expect(opened.status).toBe(200);
