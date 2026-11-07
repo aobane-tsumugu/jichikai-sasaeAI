@@ -74,7 +74,7 @@ it("読み終わった物が無い時は読み終わりましたと言わず、�
 it("取り消したあとと、同じ資料だった時の結果を別の画面で出す", async () => {
   const { ward, cookie } = await seedAdmin(env.DB);
   const cancelled = await (await get(realApp, `/${ward.slug}/admin/intake/received?n=withdrawn`, cookie)).text();
-  expect(cancelled).toContain("<h1>送るのを取り消しました</h1>");
+  expect(cancelled).toContain("<h1>資料を消しました</h1>");
   expect(cancelled).toContain("資料は入っていません");
   const same = await (await get(realApp, `/${ward.slug}/admin/intake/received?n=same`, cookie)).text();
   expect(same).toContain("<h1>同じ資料でした</h1>");

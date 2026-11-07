@@ -94,10 +94,10 @@ function contactReceipt(c: Context<AppEnv>, token: string, receipt: string, mail
     <Notice>受付番号{receiptLabel(receipt)}</Notice>
     <p>{mailed === "sent" ? "受付番号と、やりとりの画面のリンクをメールで送りました。迷惑メールのフォルダも見てください。"
       : mailed === "received" ? "この問い合わせは受け付けています。返事は、下のやりとりの画面で読めます。"
-      : "メールをまだ送れないため、この画面を閉じないでください。返事は、下のやりとりの画面で読めます。"}</p>
+      : "問い合わせは受け付けましたが、メールは送れていません。下のやりとりの画面で返事を読めます。"}</p>
     {mailed === "failed" ? <Notice error>問い合わせは受け付けましたが、メールを送れませんでした。</Notice> : null}
     <p>受付番号からは、やりとりの画面を開き直せません。</p>
-    <section class="next"><strong>次は</strong><p>やりとりの画面を開いて、返事を見てください。</p><a class="button contact-thread-link" href={`/contact/${token}`}>やりとりの画面を開く</a></section>
+    <section class="next"><strong>次は</strong><p>やりとりの画面を開き、お気に入りに保存してください。画面を閉じても、そこから返事を読めます。</p><a class="button contact-thread-link" href={`/contact/${token}`}>やりとりの画面を開く</a></section>
     <a class="quiet" href="/contact">問い合わせのフォームへ戻る</a>
   </ContactPage>, created ? 201 : 200);
 }
@@ -150,7 +150,7 @@ async function threadPage(c: Context<AppEnv>, contact: Contact, retry?: ThreadRe
   return c.html(<ContactPage title="問い合わせのやりとり"><h1>問い合わせのやりとり</h1><p class="lead">受付番号{receiptLabel(contact.receipt)} {contact.closed_at ? "受付は閉じています" : "返事をここで読めます"}</p>
     {retry ? <Notice error>{retry.message} 書いた内容は下に残っています。{retry.photo ? "写真は選び直してください。" : ""}</Notice> : null}
     {!retry && c.req.query("sent") === "1" ? <Notice>書き足した内容を送りました。下のボタンで返事を確かめられます。</Notice> : null}
-    {!contactBindings(c.env).CONTACT_MAIL ? <Notice>メールをまだ送れないため、この画面を閉じないでください。「返事を確かめる」で返事を読めます。</Notice> : null}
+    {!contactBindings(c.env).CONTACT_MAIL ? <Notice>このページをお気に入りに保存してください。画面を閉じても、そこから返事を読めます。「返事を確かめる」で新しい返事を読めます。</Notice> : null}
     <Conversation contact={contact} entries={await messages(c.env.DB, contact.contact_id)} photoBase={`${href}/photos`} />
     {invitation ? <section class="next"><strong>本人と確かめました</strong><p>入り方を選んでください。一度だけ、24時間使えます。</p><a class="button" href={invitation}>入り方を選ぶ</a></section> : null}
     <a class="button secondary" href={href}>返事を確かめる</a>

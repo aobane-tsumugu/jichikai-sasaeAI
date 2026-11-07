@@ -19,7 +19,7 @@ import { receiveSpacePaper } from "./receive-paper";
 import { PHOTO_SCRIPT } from "../intake/photo-script";
 import { photoSourceHash } from "../intake/photo";
 import type { AdminEnv, WardEnv } from "../env";
-import { receiveOriginal } from "../intake/api";
+import { receiveOriginal, ReceiveError } from "../intake/api";
 import { PhotoCheckNotice, photoChecks } from "../intake/photo-check";
 import { articleParagraphs } from "../publish";
 import { createInvite, enterWithPassphrase, exchangeInvite, findMember, getSpace, getSpaceMaterials, makePassphrase, openSpace, closeSpace, type SpaceCredential } from "./api";
@@ -53,8 +53,8 @@ async function renderAdminSpace(c: Context<AdminEnv>, passphrase?: string) {
       <p class="muted">この合言葉と入口を、LINEや電話で実行委員に伝えてください。</p>
       <form method="post" action={`${base}/invite`}><input type="hidden" name="role" value="member" /><div class="action-links"><button class="secondary" type="submit">一人用の入口を作る</button></div><p class="muted">合言葉を使わずに入れる入口です。一度だけ使えます。</p></form>
       <details class="fold"><summary>合言葉を変える</summary><div><form method="post" action={`${base}/open`}><label for="passphrase">新しい合言葉</label><input id="passphrase" name="passphrase" type="text" value={makePassphrase()} minlength={6} maxlength={120} required autocomplete="off" /><button class="secondary" type="submit">変えてもう一度開く</button><p class="muted">今の合言葉と、作った入口は使えなくなります。合言葉を変えると、配った班長への一枚も作り直しです。</p></form></div></details>
-      <details class="fold"><summary>このページを閉じる</summary><div><p>実行委員と班長が開けなくなります。役員はあとでもう一度開けます。</p><form method="post" action={`${base}/close`}><button class="secondary" type="submit">閉じる</button></form></div></details>
-      <p>間違えたときは、このページを閉じられます。閉じたあとも、もう一度開けます。</p>
+      <details class="fold"><summary>このページを閉じる</summary><div><p>閉じると、渡した一人用の入口と班長への一枚のQRコードは使えなくなります。もう一度開くときは、新しい入口と紙を渡し直してください。</p><form method="post" action={`${base}/close`}><button class="secondary" type="submit">閉じる</button></form></div></details>
+      <p>間違えたときは、このページを閉じられます。閉じたあとも、もう一度開けます。新しい入口と紙は渡し直してください。</p>
     </> : <>
       <Notice>{project.closed_at ? "この行事は閉じています。" : space?.closed_at ? "閉じています。もう一度開けます。" : "まだ開いていません。"}</Notice>
       {!project.closed_at ? <form method="post" action={`${base}/open`}><label for="passphrase">合言葉</label><input id="passphrase" name="passphrase" type="text" value={makePassphrase()} minlength={6} maxlength={120} required autocomplete="off" /><p>この合言葉を使えます。書き換えることもできます。</p><button type="submit">開く</button></form> : null}
@@ -137,7 +137,18 @@ pub.post("/space/:projectId/enter", async (c) => {
   return c.redirect(`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(credential.projectId)}`, 303);
 });
 
-pub.get("/space/:projectId/send-error", async (c) => c.html(<Layout title="送れませんでした" siteName={await spaceSiteName(c)} noindex><h1>送れませんでした</h1><p>もう一度撮って送れます。</p><a class="button" href={`/${c.var.ward.slug}/space/${c.req.param("projectId")}`}>実行委員と班長のページに戻る</a></Layout>, 400));
+pub.get("/space/:projectId/send-error", async (c) => {
+  const projectId = c.req.param("projectId");
+  const credential = await cookieMember(c, projectId);
+  if (!credential) return closedNotice(c);
+  const reason = c.req.query("reason");
+  const message = reason === "file" ? "写真かPDFを選んで、もう一度送ってください。"
+    : reason === "too_large" ? "ファイルが大きすぎます。25MB以内の写真かPDFを選んで送ってください。"
+    : reason === "unsupported" ? "このファイルは受け取れません。写真かPDFを選んで送ってください。"
+    : "送った紙の受付を確かめられませんでした。撮り直す必要はありません。時間をおいてページを開き、届いていなければ同じ写真かPDFをもう一度送ってください。";
+  const base = `/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}`;
+  return c.html(<Layout title="送れませんでした" siteName={await spaceSiteName(c)} noindex><h1>送れませんでした</h1><p>{message}</p><a class="button" href={`${base}?send=${credential.role === "leader" ? "answer" : "paper"}`}>送る画面に戻る</a><a class="quiet" href={base}>実行委員と班長のページに戻る</a></Layout>, reason ? 400 : 503);
+});
 
 pub.get("/space/:projectId/file/:originalId", async (c) => {
   const projectId = c.req.param("projectId");
@@ -175,11 +186,11 @@ async function sendMaterial(c: Context<WardEnv>, readKind: "general" | "answer_s
   const projectId = c.req.param("projectId");
   if (!projectId) return c.notFound();
   const credential = await cookieMember(c, projectId);
-  if (!credential) return c.redirect(`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/send-error`, 303);
+  if (!credential) return closedNotice(c);
   if (credential.role === "leader" && readKind === "general") return closedNotice(c);
   const form = await c.req.formData();
   const file = form.get("file");
-  if (!(file instanceof File)) return c.redirect(`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/send-error`, 303);
+  if (!(file instanceof File) || file.size === 0) return c.redirect(`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/send-error?reason=file`, 303);
   try {
     const sourceHash = photoSourceHash(form.get("source_hash"));
     const outcome = readKind === "general" ? await receiveSpacePaper(c.env, c.executionCtx, c.var.ward.wardId, projectId, file, sourceHash) : await receiveOriginal(c.env, c.executionCtx, {
@@ -191,8 +202,11 @@ async function sendMaterial(c: Context<WardEnv>, readKind: "general" | "answer_s
     });
     if (outcome.jobId) setCookie(c, "space_photo_receipt", outcome.jobId, { path: `/${c.var.ward.slug}/space/${projectId}`, httpOnly: true, sameSite: "Lax", secure: new URL(c.req.url).protocol === "https:", maxAge: 600 });
     return c.redirect(`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}?sent=${readKind === "answer_sheet" ? "answer" : "paper"}`, 303);
-  } catch {
-    return c.redirect(`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/send-error`, 303);
+  } catch (error) {
+    if (error instanceof ReceiveError && error.code === "no_project") return closedNotice(c);
+    const reason = error instanceof ReceiveError && error.code === "too_large" ? "too_large"
+      : error instanceof ReceiveError && ["unsupported", "needs_expansion"].includes(error.code) ? "unsupported" : "";
+    return c.redirect(`/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/send-error${reason ? `?reason=${reason}` : ""}`, 303);
   }
 }
 
@@ -299,7 +313,7 @@ async function closedNotice(c: Context<WardEnv>) {
   const state = projectId ? await getSpace(c.env.DB, c.var.ward.wardId, projectId) : null;
   const title = project?.closed_at || state?.closed_at ? "閉じました" : !state ? "まだ開いていません" : "この入口は使えません";
   const contact = await getPublicContact(c.env.DB, c.var.ward.wardId);
-  return c.html(<Layout title={title} siteName={await spaceSiteName(c)} noindex><h1>{title}</h1><p>{title === "閉じました" ? "閉じました。役員に聞いてください。行事が終わって、役員が閉じています。" : title === "まだ開いていません" ? "役員がまだ開いていません。開いているはずのときは、役員に聞いてください。" : "この入口からは入れませんでした。役員に、新しい入口を頼んでください。"}</p><p class="preserve-lines">{contact || "連絡先は役員に聞いてください。"}</p>{title === "この入口は使えません" ? <a class="button" href={`/${c.var.ward.slug}/space/${projectId}`}>合言葉で入る</a> : null}<a class="quiet" href={`/${encodeURIComponent(c.var.ward.slug)}/`}>区のページへ</a></Layout>, 403);
+  return c.html(<Layout title={title} siteName={await spaceSiteName(c)} noindex><h1>{title}</h1><p>{title === "閉じました" ? "閉じました。役員に聞いてください。" : title === "まだ開いていません" ? "役員がまだ開いていません。開いているはずのときは、役員に聞いてください。" : "班長への一枚のQRコードから開き直すか、合言葉で入り直してください。入れないときは、役員に新しい入口を頼んでください。"}</p><p class="preserve-lines">{contact || "連絡先は役員に聞いてください。"}</p>{title === "この入口は使えません" ? <a class="button" href={`/${c.var.ward.slug}/space/${projectId}`}>合言葉で入る</a> : null}<a class="quiet" href={`/${encodeURIComponent(c.var.ward.slug)}/`}>区のページへ</a></Layout>, 403);
 }
 
 export const space: Bundle = { admin, pub };

@@ -159,7 +159,10 @@ admin.get("/publish/:projectId", async (c) => {
     const rain = draft?.kind === "notice" && draft.title.includes("雨");
     const kind = draft?.kind ?? "announcement";
     const editHref = adminPath(ward, `/projects/${projectId}/draft/${kind}`);
-    const printHref = adminPath(ward, `/print/${projectId}/${record.document_id}/${record.version_no}${kind === "announcement" ? "/announcement" : kind === "duty_roster" ? "/duty" : ""}`);
+    const printBase = adminPath(ward, `/print/${projectId}/${record.document_id}/${record.version_no}`);
+    const printHref = `${printBase}/${kind === "duty_roster" ? "duty" : "announcement"}`;
+    const withAnswer = collectsAttendance(project.kind, kind);
+    const paperLabel = withAnswer ? "案内と回答票" : DOCUMENT_KIND_LABEL[kind];
     const failed = record.line_status === "failed" || record.line_status === "not_configured";
     return c.html(<AdminPage ward={ward} account={account} title={lowered ? "区のページから下げました" : rain ? "雨の変更を配りました" : "配りました"} back={{ href: mapHref, label: `${project.title}の段取りへ` }}>
       <h1>{lowered ? "区のページから下げました" : rain ? "雨の変更を配りました" : `${DOCUMENT_KIND_LABEL[kind as DocumentKind]}を配りました`}</h1>
@@ -167,10 +170,10 @@ admin.get("/publish/:projectId", async (c) => {
         <div class={failed ? "notice warn" : "notice done"} role="status"><strong>{failed ? "公式LINEには送れませんでした" : "区のページに載せました"}</strong>
           <p>{failed ? "区のページには載っています。紙も配れます。LINEは送らないままでもかまいません。" : record.line_status === "sent" ? `公式LINE${record.line_recipients === null ? "に" : `の友だち${record.line_recipients}人に`}送りました。` : record.line_status === "pending" ? "公式LINEの送信結果はまだ分かりません。" : "今回は公式LINEに送りませんでした。"}{task ? `段取りの「${task.name}」を済みにしました。` : ""}</p>
         </div>}
-      <section class="next"><strong>次は</strong>{lowered ? <><p>内容を直して、配り直せます。</p><a class="button" href={editHref}>直して配り直す</a></> : rain ? <p>班長に電話して伝えてください。掲示も張り替えてください。ここは画面では済みません。</p> : <><p>案内と班長への一枚を印刷して、班長に渡してください。</p><a class="button" href={printHref}>案内を印刷する</a><a class="quiet" href={`${printHref}/leader`}>班長への一枚を印刷する</a></>}</section>
+      <section class="next"><strong>次は</strong>{lowered ? <><p>内容を直して、配り直せます。</p><a class="button" href={editHref}>直して配り直す</a></> : rain ? <p>班長に電話して伝えてください。掲示も張り替えてください。ここは画面では済みません。</p> : <><p>{paperLabel}{withAnswer ? "、班長への一枚" : ""}を印刷して、{withAnswer ? "班長に渡してください。" : "配ってください。"}</p><a class="button" href={printHref}>{paperLabel}を印刷する</a>{withAnswer ? <a class="quiet" href={`${printBase}/leader`}>班長への一枚を印刷する</a> : null}</>}</section>
       {!rain && !lowered ? <DistributionFacts raw={record.distribution} /> : null}
       {!lowered ? <div class="action-links"><a class="button secondary" href={`/${ward.slug}/p/${encodeURIComponent(projectId)}`}>区のページで見る</a></div> : null}
-      <h2>間違えたときは</h2><p>{rain ? "直して配り直すと、区のページは新しい知らせに変わります。LINEで送った知らせは取り消せません。" : "直して配り直すと、区のページは新しい案内に変わります。"}</p>
+      <h2>間違えたときは</h2><p>{rain ? "直して配り直すと、区のページは新しい知らせに変わります。LINEで送った知らせは取り消せません。" : `直して配り直すと、区のページは新しい${DOCUMENT_KIND_LABEL[kind]}に変わります。`}</p>
       <div class="action-links"><a class="button secondary" href={editHref}>直して配り直す</a>{!rain && !record.unpublished_at ? <form method="post" action={adminPath(ward, `/publish/${projectId}/lower/${record.publication_id}`)}><button class="secondary" type="submit">区のページから下げる</button></form> : null}</div>
       {!rain ? <p class="muted">下げても、配った記録は残ります。LINEで送った知らせは取り消せません。</p> : null}
       <a class="quiet" href={adminPath(ward, `/publish/${projectId}`)}>配る画面へ</a>

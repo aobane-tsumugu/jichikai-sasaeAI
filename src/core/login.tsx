@@ -111,7 +111,7 @@ loginRoutes.get("/login/help", (c) => {
     <p class="lead">自分で戻せる方法から、試してください。</p>
     {connections.email || connections.line ? <><h2>ほかの入り方で入る</h2><p>つないである入り方なら、IDやパスワードが分からなくても入れます。</p>
       {(["email", "line"] as const).map((kind) => connections[kind] ? <form method="post" action={adminPath(c.var.ward, `/sign-in-connect/${kind}/start`)}><button class="secondary">{kind === "line" ? "LINE" : "メール"}で入る</button></form> : null)}</> : null}
-    <h2>ほかに入れるスマホやパソコンがあるとき</h2><p>そのスマホやパソコンで役員の一覧を開き、「自分の入り方へ」から入り方を足せます。</p>
+    <h2>ほかに入れるスマホやパソコンがあるとき</h2><p>入れるスマホやパソコンで「区の設定」を開き、「自分の入り方」から入り方を足せます。</p>
     <h2>自分で戻せないとき</h2><p>ほかの役員に頼んでください。役員の一覧から、入るためのリンクを作ってもらえます。</p>
     <h2>ほかの役員も入れないとき</h2><p>連絡のつく連絡先を伝えてください。登録したメールが使えなくなったときも、連絡のつく所へ連絡します。</p>
     <a class="button" href={`/contact?ward=${encodeURIComponent(c.var.ward.name)}`}>SasaeAIに問い合わせる</a>

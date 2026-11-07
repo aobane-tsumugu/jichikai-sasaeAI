@@ -62,7 +62,7 @@ it("資料も質問も仕事もない一年目に、案内を確認して配り�
   expect(published).toContain("案内を配りました");
   expect(published).toContain("公式LINEには送れませんでした");
   expect(published).toContain("区のページには載っています。紙も配れます。");
-  expect(published).toContain("案内を印刷する");
+  expect(published).toContain("案内と回答票を印刷する");
   expect(published).toContain("班長への一枚を印刷する");
   expect(published).toContain("直して配り直す");
   expect(published).not.toContain("いま済みにしました");
