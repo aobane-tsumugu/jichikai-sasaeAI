@@ -91,3 +91,48 @@ it("募集の紙とWebから同じ手伝いに申し込み、役員が時間を�
   expect(closed?.help_offer_count_on_close).toBe(1);
   expect((await postForm(realApp, `${endpoint}/restore`, undo, cookie)).headers.get("location")).toContain("error=answers_closed");
 });
+
+it.each([
+  { slots: "（確認中）", choices: [] },
+  { slots: `${fixture.times[0]}、（確認中）`, choices: [fixture.times[0]] },
+])("確認中の時間帯を手伝いの選択肢から外し、決まった時間帯がないときは希望を書ける（$slots）", async ({ slots, choices }) => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const project = await createProject(env.DB, ward.wardId, {
+    kind: "event", title: "架空の手伝いの募集", year: 2026, accountId: account.accountId,
+  });
+  const base = `/${ward.slug}`;
+  expect(await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
+    kind: "recruitment", title: "架空の募集", scope: "public", basedOn: project.stateVersion,
+    body: JSON.stringify({ text: "架空の手伝いを募集します。", items: [{ key: "helper_slots", content: slots }] }),
+  })).toBe(true);
+  const version = await env.DB.prepare("SELECT document_id, version_id, version_no FROM document_versions WHERE ward_id = ? AND project_id = ?")
+    .bind(ward.wardId, project.projectId).first<{ document_id: string; version_id: string; version_no: number }>();
+  if (!version) throw new Error("架空の募集がありません。");
+  expect((await postForm(realApp, `${base}/admin/publish/${project.projectId}/send`, {
+    documentId: version.document_id, versionId: version.version_id, versionNo: String(version.version_no), lineDelivery: "skip",
+  }, cookie)).status).toBe(303);
+
+  const publicPath = `${base}/help/${project.projectId}`;
+  const adminPath = `${base}/admin/answers/${project.projectId}/help`;
+  for (const html of [await (await get(realApp, publicPath)).text(), await (await get(realApp, adminPath, cookie)).text()]) {
+    expect(html).not.toContain('<option value="（確認中）"');
+    if (choices.length) {
+      expect(html).toMatch(/<select[^>]+name="helper_times"/);
+      for (const time of choices) expect(html).toContain(`<option value="${time}"`);
+    } else {
+      expect(html).toMatch(/<input[^>]+name="helper_times"/);
+      expect(html).not.toMatch(/<select[^>]+name="helper_times"/);
+    }
+  }
+  const paper = await (await get(realApp, `${base}/admin/print/${project.projectId}/${version.document_id}/${version.version_no}/announcement`, cookie)).text();
+  expect(paper).not.toContain("□ （確認中）");
+  for (const time of choices) expect(paper).toContain(`□ ${time}`);
+  const times = choices[0] ?? fixture.times[1];
+  expect((await postForm(realApp, publicPath, {
+    helper_name: FIRST_SLICE.phoneHelper, helper_times: times, submission_id: crypto.randomUUID(),
+  })).status).toBe(200);
+  expect((await postForm(realApp, adminPath, {
+    helper_name: FIRST_SLICE.sheetHelper, helper_times: times, submission_id: crypto.randomUUID(),
+  }, cookie)).status).toBe(303);
+  expect((await listHelpOffers(env.DB, ward.wardId, project.projectId)).map((offer) => offer.times)).toEqual([times, times]);
+});
