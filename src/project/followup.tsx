@@ -376,10 +376,10 @@ followupAdmin.get("/requests/city", async (c) => {
     return { ...project, dueOn: project.due_on ?? state?.items.find((item) => item.key === "due")?.current?.content ?? null };
   }));
   rows.sort((a, b) => (a.dueOn ?? "9999-12-31").localeCompare(b.dueOn ?? "9999-12-31") || b.year - a.year);
-  return c.html(<Layout title="行政の依頼" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a><h1>行政の依頼</h1><p class="lead">行政から届いた依頼と、締切です。押すと、市への回答の下書きや、出したことを残せます。</p>
+  return c.html(<Layout title="市からの依頼" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a><h1>市からの依頼</h1><p class="lead">{(() => { const open = rows.filter((row) => !row.submitted_on); const next = open.find((row) => row.dueOn); return open.length ? `まだ出していない依頼は${open.length}つです。${next ? `いちばん近い締切は、${next.title}の${formatDateText(next.dueOn!)}です。` : "締切はまだ分かっていません。"}` : "まだ出していない依頼はありません。"; })()}押すと、市への回答の下書きや、出したことを残せます。</p>
     <div class="action-links"><a class="button secondary" href={adminPath(ward, `/intake?back=${encodeURIComponent(adminPath(ward, "/requests/city"))}`)}>通知を撮って送る</a></div>
-    {[false, true].map((submitted) => <section><h2>{submitted ? "出したもの" : "まだ出していないもの"}</h2><ul class="rows">{rows.filter((p) => Boolean(p.submitted_on) === submitted).map((project) => <li><a class="row-link" href={adminPath(ward, `/requests/city/${encodeURIComponent(project.project_id)}`)}><b>{project.title}</b><span>{project.year}年　締切は{project.dueOn ? formatDateText(project.dueOn) : "まだ分かりません"}</span><span>{project.submitted_on ? `${formatJstDate(project.submitted_on)}に出しました` : "出したことの記録はありません"}</span></a></li>)}</ul>{rows.filter((p) => Boolean(p.submitted_on) === submitted).length === 0 ? <p>{submitted ? "出したものはまだありません。行政に出したら、依頼の画面から残せます。" : "まだ出していない依頼はありません。届いた通知は、上のボタンから撮って送れます。"}</p> : null}</section>)}
+    {[false, true].map((submitted) => <section><h2>{submitted ? "出したもの" : "まだ出していないもの"}</h2><ul class="rows">{rows.filter((p) => Boolean(p.submitted_on) === submitted).map((project) => <li><a class="row-link" href={adminPath(ward, `/requests/city/${encodeURIComponent(project.project_id)}`)}><b>{project.title}</b><span>{project.year}年　締切は{project.dueOn ? formatDateText(project.dueOn) : "まだ分かりません"}</span><span>{project.submitted_on ? `${formatJstDate(project.submitted_on)}に出しました` : "出したことの記録はありません"}</span></a></li>)}</ul>{rows.filter((p) => Boolean(p.submitted_on) === submitted).length === 0 ? <p>{submitted ? "出したものはまだありません。市に出したら、依頼の画面から残せます。" : "まだ出していない依頼はありません。届いた通知は、上のボタンから撮って送れます。"}</p> : null}</section>)}
     <p class="link-line"><a href={adminPath(ward, "/")}>役員画面へ</a></p>
   </Layout>);
 });
@@ -404,11 +404,11 @@ followupAdmin.get("/requests/city/:projectId", async (c) => {
   const submittedItems = await listSubmittedItems(c.env.DB, ward.wardId, projectId);
   const inquiries = await c.env.DB.prepare("SELECT inquiry_id, subject FROM inquiry_records WHERE ward_id = ? AND request_project_id = ? AND kind = 'request' ORDER BY received_at")
     .bind(ward.wardId, projectId).all<{ inquiry_id: string; subject: string }>();
-  if (c.req.query("saved")) return c.html(<Layout title="行政の依頼を記録しました" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+  if (c.req.query("saved")) return c.html(<Layout title="市からの依頼を記録しました" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={back}>← {project.title}へ</a><h1>記録しました</h1>
     <div class="notice done"><strong>{project.title}の内容を保存しました</strong><p>間違えたときは、前の画面で直して、もう一度「記録する」を押してください。</p></div>
-    <section class="next"><strong>次は</strong><p>{details?.submitted_on ? "出したことの記録も残りました。ほかの行政の依頼を見られます。" : "出した日がまだ空です。行政に出したら、出したものと出した日を入れてください。"}</p><a class="button" href={details?.submitted_on ? adminPath(ward, "/requests/city") : back}>{details?.submitted_on ? "行政の依頼の一覧を開く" : "出したことを入れる"}</a></section>
-    <a class="quiet" href={adminPath(ward, "/requests/city")}>行政の依頼の一覧に戻る</a>
+    <section class="next"><strong>次は</strong><p>{details?.submitted_on ? "出したことの記録も残りました。ほかの市からの依頼を見られます。" : "出した日がまだ空です。市に出したら、出したものと出した日を入れてください。"}</p><a class="button" href={details?.submitted_on ? adminPath(ward, "/requests/city") : back}>{details?.submitted_on ? "市からの依頼の一覧を開く" : "出したことを入れる"}</a></section>
+    <a class="quiet" href={adminPath(ward, "/requests/city")}>市からの依頼の一覧に戻る</a>
   </Layout>);
   const originals = await c.env.DB.prepare(`SELECT o.original_id, o.filename FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id WHERE o.ward_id = ? AND j.project_id = ? AND o.withdrawn_at IS NULL`).bind(ward.wardId, projectId).all<{ original_id: string; filename: string }>();
   return c.html(<Layout title={project.title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
