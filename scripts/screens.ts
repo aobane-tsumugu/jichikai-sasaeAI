@@ -171,7 +171,6 @@ const shots: Shot[] = [
   { stage: 4, name: "実行委員と班長のページ", path: "project/space", heading: "実行委員と班長のページ" },
   { stage: 5, name: "再配布", path: "project/publish", heading: "配る" },
   { stage: 6, name: "閉じる", path: "project/close", heading: "閉じ" },
-  { stage: 6, name: "一年の予定", path: `${admin}/archive/map`, heading: "一年の予定" },
   { stage: 6, name: "記録", path: `${admin}/archive`, heading: "記録" },
 ];
 

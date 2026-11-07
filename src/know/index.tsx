@@ -235,7 +235,7 @@ admin.get("/year/:key", async (c) => {
   if (!base) return c.notFound();
   return c.html(<AdminPage ward={ward} account={account} title={base.title} back={{ href: adminPath(ward, "/year"), label: "この自治会の一年へ" }}>
     <h1>{base.title}</h1>
-    <p class="lead">一般の自治会の例を仮に置いています。この自治会のことはまだ書かれていません。</p>
+    <p class="lead">一般の自治会の例を仮に置いています。この自治会でも行うなら、今年の準備を始めるか、この予定の資料を送ると、この自治会の予定に変わります。この自治会で行わないなら、下から外してください。</p>
     <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>この予定の写真やファイルを送る</a><a class="button secondary" href={`${adminPath(ward, "/projects")}?${base.kind ? `kind=${base.kind}&` : ""}title=${encodeURIComponent(base.title)}`}>今年の{base.title}の準備を始める</a></div>
     <details class="fold"><summary>この自治会にないので外す</summary><div><p>外しても、一年の画面の「外した予定」から戻せます。</p><form method="post" action={adminPath(ward, `/year/${base.key}/remove`)}><button class="secondary">外す</button></form></div></details>
   </AdminPage>);

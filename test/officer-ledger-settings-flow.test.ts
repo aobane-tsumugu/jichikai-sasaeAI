@@ -28,7 +28,10 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
   expect(await read(`${root}/inquiries`)).toContain("届いている問い合わせはありません");
   expect(await read(`${root}/requests/city`)).toContain("まだ出していない依頼はありません");
   expect(await read(`${root}/ledger`)).toContain("準備中のものはまだありません");
-  expect(await read(`${root}/archive/map`)).toContain("予定はまだありません");
+  // 一年の予定の画面は外し、前の行き先は一年の画面へ送る。
+  const oldMap = await get(realApp, `${root}/archive/map`, cookie);
+  expect(oldMap.status).toBe(301);
+  expect(oldMap.headers.get("location")).toBe(`${root}/year`);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: fixture.nextYearTitle, year: fixture.nextYear,
     eventDay: fixture.eventDay, accountId: account.accountId,
@@ -168,7 +171,6 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
   const today = await read(`${root}/projects/today`);
   expect(today).toContain("これからの仕事");
   expect(today).not.toContain("まだ返事のない世帯");
-  expect(await read(`${root}/archive/map`)).toContain('class="row-link"');
 
   for (const path of [`/inquiries/${inquiry.inquiry_id}`, `/projects/${id}/ledger/${sponsor.rowId}`, `/intake/originals/${original.originalId}?raw=1`]) {
     expect((await get(realApp, `/${other.ward.slug}/admin${path}`, other.cookie)).status).toBe(404);
