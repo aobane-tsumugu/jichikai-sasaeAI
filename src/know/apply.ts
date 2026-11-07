@@ -34,11 +34,14 @@ async function applyFact(db: D1Database, wardId: string, topic: KnowTopic, facts
 
 async function applyYear(db: D1Database, wardId: string, entries: YearEntry[]): Promise<void> {
   for (const entry of entries) {
-    if (!entry.month) continue;
-    const same = await db.prepare("SELECT 1 AS ok FROM ward_year_items WHERE ward_id = ? AND title = ? AND month = ? LIMIT 1").bind(wardId, entry.title, entry.month).first();
+    // 月がない通年の予定も受け取る。くり返しの詳しい言い方は資料のまま残す。
+    const recurrence = /毎週|毎月|随時|通年/.test(entry.date_text) ? entry.date_text.trim() : "";
+    if (!entry.month && !recurrence) continue;
+    const same = await db.prepare("SELECT 1 AS ok FROM ward_year_items WHERE ward_id = ? AND title = ? AND (recurrence_text = ? AND recurrence_text <> '' OR recurrence_text = '' AND month = ?) LIMIT 1")
+      .bind(wardId, entry.title, recurrence, entry.month).first();
     if (same) continue;
-    await db.prepare("INSERT INTO ward_year_items (ward_id, item_id, title, month, date_text, added, source_original_id) VALUES (?, ?, ?, ?, ?, 1, ?)")
-      .bind(wardId, newId(), entry.title, entry.month, entry.date_text, entry.original_id || null).run();
+    await db.prepare("INSERT INTO ward_year_items (ward_id, item_id, title, month, date_text, recurrence_text, added, source_original_id) VALUES (?, ?, ?, ?, ?, ?, 1, ?)")
+      .bind(wardId, newId(), entry.title, recurrence ? null : entry.month, entry.date_text, recurrence, entry.original_id || null).run();
   }
 }
 

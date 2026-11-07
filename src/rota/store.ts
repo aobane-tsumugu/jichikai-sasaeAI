@@ -5,6 +5,7 @@ import { rowMatchKey, type RowData } from "../project/model";
 import { latestSpaceTables, readPublicationTables } from "../space/publication-tables";
 import { formatJstDate } from "../core/time";
 import { isPersonalAssignee, splitAssignees } from "./assignees";
+import { rotaSchedule, weeklyRota } from "./schedule";
 
 export interface Exemption extends RosterEntry {
   exemption_id: string;
@@ -53,6 +54,7 @@ export interface ProposalEntry {
   explanation: string;
 }
 export interface Comparison {
+  weekday?: number;
   sourceTitle: string;
   sourceProjectId: string | null;
   year: number;
@@ -71,10 +73,25 @@ export async function lastPreparation(db: D1Database, wardId: string, projectId:
 }
 
 /** 元の資料は読み直さず、去年の同じ当番の記録か、この仕事に届いた去年の表を使う。 */
-export async function compareRota(db: D1Database, wardId: string, projectId: string): Promise<{ comparison: Comparison; roster: RosterEntry[] } | null> {
+export async function compareRota(db: D1Database, wardId: string, projectId: string, weekday?: number): Promise<{ comparison: Comparison; roster: RosterEntry[] } | null> {
   const state = await getProjectState(db, wardId, projectId);
   if (!state || state.project.kind !== "duty") return null;
   const project = state.project;
+  const schedule = await rotaSchedule(db, wardId, projectId);
+  const day = weekday ?? schedule?.weekday;
+  if (day !== undefined) {
+    if (!Number.isInteger(day) || day < 0 || day > 6) return null;
+    const [roster, records, preparation] = await Promise.all([getRoster(db, wardId), exemptions(db, wardId), lastPreparation(db, wardId, projectId)]);
+    const oldRoster = preparation ? JSON.parse(preparation.roster_json) as RosterEntry[] : null;
+    if (!roster.length && !oldRoster?.length) return null;
+    const currentKeys = new Set(roster.map(householdKey));
+    const oldKeys = new Set(oldRoster?.map(householdKey));
+    return { roster, comparison: { weekday: day, sourceTitle: "今の世帯の名簿", sourceProjectId: null, year: project.year,
+      hasOldRoster: oldRoster !== null, hasPreviousTable: false,
+      added: oldRoster ? roster.filter((entry) => !oldKeys.has(householdKey(entry))).map(householdLabel) : [],
+      removed: oldRoster ? oldRoster.filter((entry) => !currentKeys.has(householdKey(entry))).map(householdLabel) : [],
+      entries: weeklyRota(project.year, day, roster, records), ruleRecords: [] } };
+  }
   const seed = await db.prepare(`SELECT seed_project_id FROM projects WHERE ward_id = ? AND project_id = ?`)
     .bind(wardId, projectId).first<{ seed_project_id: string | null }>();
   const candidates = await db.prepare(`SELECT project_id, title FROM projects
@@ -149,10 +166,10 @@ export async function compareRota(db: D1Database, wardId: string, projectId: str
 }
 
 /** 下書きを表の行に入れる。役員が直した行は保ち、配った内容には触れない。 */
-export async function prepareRota(db: D1Database, wardId: string, projectId: string, accountId: string): Promise<boolean> {
+export async function prepareRota(db: D1Database, wardId: string, projectId: string, accountId: string, weekday?: number): Promise<boolean> {
   const project = await getProjectSummary(db, wardId, projectId);
   if (!project || project.closedAt || project.kind !== "duty") return false;
-  const proposal = await compareRota(db, wardId, projectId);
+  const proposal = await compareRota(db, wardId, projectId, weekday);
   if (!proposal) return false;
   const previous = await lastPreparation(db, wardId, projectId);
   const previousEntries = previous ? (JSON.parse(previous.comparison_json) as Comparison).entries : [];
@@ -162,6 +179,12 @@ export async function prepareRota(db: D1Database, wardId: string, projectId: str
   const now = nowIso();
   const preparationId = newId();
   const statements: D1PreparedStatement[] = [];
+  if (proposal.comparison.weekday !== undefined) {
+    statements.push(db.prepare(`INSERT INTO rota_schedules (ward_id, project_id, weekday)
+      SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND state_version = ? AND closed_at IS NULL)
+      ON CONFLICT (ward_id, project_id) DO UPDATE SET weekday = excluded.weekday`)
+      .bind(wardId, projectId, proposal.comparison.weekday, wardId, projectId, project.stateVersion));
+  }
   for (const [index, entry] of proposal.comparison.entries.entries()) {
     const priorId = previousEntries.find((old) => old.sourceKey === entry.sourceKey)?.rowId;
     const matchKey = rowMatchKey("duties", entry.data);
@@ -173,10 +196,10 @@ export async function prepareRota(db: D1Database, wardId: string, projectId: str
         entry.explanation += " 今ある担当の行はそのまま残しています。";
         continue;
       }
-      statements.push(db.prepare(`UPDATE project_rows SET data = ?, updated_at = ?, source_ref = ?
+      statements.push(db.prepare(`UPDATE project_rows SET data = ?, match_key = ?, updated_at = ?, source_ref = ?
         WHERE ward_id = ? AND project_id = ? AND row_id = ? AND source_kind = 'ai_proposal' AND person_fields = '[]'
           AND EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND state_version = ? AND closed_at IS NULL)`)
-        .bind(JSON.stringify(entry.data), now, preparationId, wardId, projectId, existing.row_id, wardId, projectId, project.stateVersion));
+        .bind(JSON.stringify(entry.data), matchKey, now, preparationId, wardId, projectId, existing.row_id, wardId, projectId, project.stateVersion));
     } else {
       statements.push(db.prepare(`INSERT INTO project_rows
         (row_id, ward_id, project_id, table_key, scope, match_key, data, source_kind, source_ref, source_locator, source_year, confidence, created_at, updated_at)

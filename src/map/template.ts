@@ -51,7 +51,7 @@ export const MAP_TEMPLATES: Record<string, readonly TemplateTask[]> = {
     { key: "minutes", name: "決めたことをまとめる", start: 1, end: 7, opens: ["draft", "materials"], draftKind: "report", guide: "役員会で決めたことをまとめます。" },
   ],
   duty: [
-    { key: "assign", name: "担当を決める", start: -21, end: -7, opens: ["materials", "draft"], draftKind: "duty_roster", guide: "当番の担当を決めます。" },
+    { key: "assign", name: "当番表を作る", start: -21, end: -7, opens: ["materials", "draft"], draftKind: "duty_roster", guide: "毎週の当番は、曜日を一度選ぶと一年分の日付を名簿の順で割り当てます。免除や名簿が変わったときも、下書きを作り直せます。" },
     { key: "notify", name: "担当に知らせる", start: -7, end: -3, opens: ["draft"], draftKind: "notice", guide: "担当の人に、日と場所を知らせます。" },
     { key: "day", name: "当日", start: 0, end: 0, opens: ["materials"] },
   ],
