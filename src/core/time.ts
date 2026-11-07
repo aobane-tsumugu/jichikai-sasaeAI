@@ -85,7 +85,7 @@ function parseSingleEventDay(text: string, projectYear: number): string | null {
 /** 終わりが書かれていないときは同じ日。時刻の「10:00〜12:00」は期間の日にしない。 */
 export function parseEventDay(text: string, projectYear: number, edge: "start" | "end" = "start"): string | null {
   const value = text.normalize("NFKC");
-  const range = value.match(/(?:〜|~|～|から)\s*((?:(?:\d{4}\s*[年/\-]|(?:令和|平成|昭和)\s*(?:元|\d{1,2})\s*年)\s*)?\d{1,2}\s*(?:月\s*\d{1,2}\s*日|\/\s*\d{1,2})|\d{1,2}\s*日)/);
+  const range = value.match(/(?:〜|~|～|から)\s*(\d{4}\s*-\s*\d{1,2}\s*-\s*\d{1,2}(?!\d)|(?:(?:\d{4}\s*[年/\-]|(?:令和|平成|昭和)\s*(?:元|\d{1,2})\s*年)\s*)?\d{1,2}\s*(?:月\s*\d{1,2}\s*日|\/\s*\d{1,2})|\d{1,2}\s*日)/);
   const start = parseSingleEventDay(range ? value.slice(0, range.index) : value, projectYear);
   if (!start) return null;
   if (!range) return start;
