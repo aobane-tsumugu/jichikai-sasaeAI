@@ -26,11 +26,12 @@ it("最初の画面から去年の記録を読み、写真はAIが止まって�
     return project;
   };
   await closeRecord(other.ward.wardId, other.account.accountId);
-  expect(await (await get(realApp, `${root}/`, cookie)).text()).toContain("去年の資料を送ってください");
+  expect(await (await get(realApp, `${root}/`, cookie)).text()).toContain("手元に去年の案内や資料はありますか");
   const record = await closeRecord(ward.wardId, account.accountId);
   const home = await (await get(realApp, `${root}/`, cookie)).text();
-  expect(home).not.toContain("去年の資料を送ってください");
-  expect(home).toContain(`class="button" href="${root}/archive">記録を読む</a>`);
+  expect(home).not.toContain("手元に去年の案内や資料はありますか");
+  expect(home).toContain(`class="button" href="${root}/archive/${record.projectId}?view=seed">今年を始める</a>`);
+  expect(home).toContain(`href="${root}/archive/${record.projectId}"`);
   const archive = await get(realApp, `${root}/archive`, cookie);
   expect(archive.status).toBe(200);
   expect(await archive.text()).toContain(`href="${root}/archive/${record.projectId}"`);
