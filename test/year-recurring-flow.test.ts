@@ -22,7 +22,7 @@ it("通年のごみ当番を月曜で作り、免除と名簿変更を反映し�
   expect(ordered).toHaveLength(3);
   const exempt = ordered[1]!;
   expect(await addExemption(env.DB, ward.wardId, account.accountId, {
-    ...exempt, reason: "この年は当番を休む", startsOn: `${year}-01-01`, endsOn: `${year}-12-31`,
+    ...exempt, reason: "この年は当番を休む", startsOn: `${year}-04-01`, endsOn: `${year + 1}-03-31`,
   })).toBe(true);
   const initialYear = await (await get(realApp, `${root}/year`, cookie)).text();
   for (const title of ["ごみ当番", "市報や回覧の配布", "集会所の管理"]) expect(initialYear).toContain(title);
@@ -60,7 +60,8 @@ it("通年のごみ当番を月曜で作り、免除と名簿変更を反映し�
   if (!state) throw new Error("ごみ当番の下書きがありません");
   const duties = state.tables.duties.filter((row) => row.scope === "current");
   const mondays: string[] = [];
-  for (let day = new Date(`${year}-01-01T00:00:00Z`); day.getUTCFullYear() === year; day.setUTCDate(day.getUTCDate() + 1)) {
+  // 自治会の一年は4月から翌年3月。
+  for (let day = new Date(`${year}-04-01T00:00:00Z`); day < new Date(`${year + 1}-04-01T00:00:00Z`); day.setUTCDate(day.getUTCDate() + 1)) {
     if (day.getUTCDay() === 1) mondays.push(day.toISOString().slice(0, 10));
   }
   expect(duties.map((row) => row.data.slot)).toEqual(mondays);
@@ -106,7 +107,7 @@ it("kakuuの見本に月曜のごみ当番と毎月の市報を入れ、ほか�
   if (!state) throw new Error("見本のごみ当番がありません");
   expect(state.tables.duties.filter((row) => row.scope === "current")).toHaveLength(52);
   const first = state.tables.duties.find((row) => row.scope === "current");
-  expect(first?.data.slot).toBe("2026-01-05");
+  expect(first?.data.slot).toBe("2026-04-06");
   const projects = await listOpenProjects(env.DB, ward.wardId);
   const table = await wardYear(env.DB, ward, projects, [state], "2026-11-08");
   expect(table.rows.find((row) => row.title === "ごみ当番")?.note).toBe("毎週月曜。");

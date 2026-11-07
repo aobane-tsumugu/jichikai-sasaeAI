@@ -9,18 +9,18 @@ import { weeklyRota } from "../src/rota/schedule";
 import type { Exemption } from "../src/rota/store";
 
 it("53回の月曜がある年も全部割り当て、免除の始めと終わりの日だけ飛ばす", () => {
-  // 世帯と免除は架空。2024年は最初の日も最後の週も月曜になる。
+  // 世帯と免除は架空。自治会の一年は4月から翌年3月。2024年4月1日と2025年3月31日はどちらも月曜になる。
   const roster = [{ household: "一世帯", district: "1班" }, { household: "二世帯", district: "1班" }];
   const exemption: Exemption = { ...roster[0]!, exemption_id: "weekly-fictional", reason: "一時的に休む",
-    starts_on: "2024-01-01", ends_on: "2024-01-08", recorded_at: "2023-12-01T00:00:00Z", withdrawn_at: null };
+    starts_on: "2024-04-01", ends_on: "2024-04-08", recorded_at: "2024-03-01T00:00:00Z", withdrawn_at: null };
   const rows = weeklyRota(2024, 1, roster, [exemption]);
   expect(rows).toHaveLength(53);
-  expect(rows[0]?.data.slot).toBe("2024-01-01");
-  expect(rows.at(-1)?.data.slot).toBe("2024-12-30");
+  expect(rows[0]?.data.slot).toBe("2024-04-01");
+  expect(rows.at(-1)?.data.slot).toBe("2025-03-31");
   expect(rows.slice(0, 4).map((row) => row.data.assignee)).toEqual(["二世帯", "二世帯", "一世帯", "二世帯"]);
   expect(rows.every((row) => new Date(String(row.data.slot)).getUTCDay() === 1)).toBe(true);
-  expect(weeklyRota(2024, 1, roster, [{ ...exemption, withdrawn_at: "2024-01-01T00:00:00Z" }])[0]?.data.assignee).toBe("一世帯");
-  const allExempt = weeklyRota(2024, 1, roster, roster.map((entry, index) => ({ ...exemption, ...entry, exemption_id: `weekly-${index}`, ends_on: "2024-12-31" })));
+  expect(weeklyRota(2024, 1, roster, [{ ...exemption, withdrawn_at: "2024-04-01T00:00:00Z" }])[0]?.data.assignee).toBe("一世帯");
+  const allExempt = weeklyRota(2024, 1, roster, roster.map((entry, index) => ({ ...exemption, ...entry, exemption_id: `weekly-${index}`, ends_on: "2025-03-31" })));
   expect(allExempt).toHaveLength(53);
   expect(allExempt.every((row) => row.data.assignee === "" && row.explanation.includes("担当できる世帯がありません"))).toBe(true);
 });
