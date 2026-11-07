@@ -205,15 +205,16 @@ followupAdmin.get("/inquiries/:inquiryId", async (c) => {
     <form method="post" action={path}>
       <label for="answer">{canPush ? "返事（LINEで送ります）" : "返事した内容"}</label>
       <textarea id="answer" name="answer" maxlength={2000}>{record.line_pending_answer ?? record.answer}</textarea>
-      {canPush ? <details class="fold"><summary>もう電話や会って返事をしたとき</summary><div><p>LINEでは送らずに、返事した内容だけを残します。</p>
-        <label for="phoneAnswer">返事した内容</label><textarea id="phoneAnswer" name="phoneAnswer" maxlength={2000} />
-        <button class="secondary" name="operation" value="record">返事した内容を残す</button>
-      </div></details> : null}
-      {record.kind === "request" ? <details class="fold"><summary>市に伝える要望ではなかったとき</summary><div><button class="secondary" name="operation" value="unwish">問い合わせに戻す</button></div></details> : <details class="fold"><summary>市に伝える要望だったとき</summary><div><p>道路や街灯のように、自治会から市に伝えることなら、ここを押します。一覧の「市に伝える要望」に移り、要望書を書いて市に出すまでを残せます。</p><button class="secondary" name="operation" value="wish">市に伝える要望にする</button></div></details>}
       {!record.line_source_type ? <><label for="receivedAt">受けた日</label><input id="receivedAt" name="receivedAt" type="date" value={record.received_at.slice(0, 10)} required /><label for="subject">何を受けたか</label><textarea id="subject" name="subject" maxlength={2000} required>{inquirySubject(record.subject)}</textarea></> : null}
       {canPush ? <p>問い合わせが届いたグループや、個別のトークへ送ります。同じ内容が届いたときは、それぞれの送り先へ送ります。送った返事は取り消せません。</p> : null}
       <div class="action-bar">{canPush ? <button name="operation" value="send">{!destinationCount ? "返事を送る" : group.some((r) => r.line_source_type && r.line_source_type !== "user") ? `返事を${destinationCount}か所に送る` : `返事を${destinationCount}人に送る`}</button> : <button name="operation" value="record">返事した内容を残す</button>}<a class="button secondary" href={adminPath(ward, "/inquiries")}>今は返事をしないで戻る</a></div>
     </form>
+      {canPush ? <details class="fold"><summary>もう電話や会って返事をしたとき</summary><div><form method="post" action={path}><p>LINEでは送らずに、返事した内容だけを残します。</p>
+        <label for="phoneAnswer">返事した内容</label><textarea id="phoneAnswer" name="phoneAnswer" maxlength={2000} />
+        <button class="secondary" name="operation" value="record">返事した内容を残す</button></form>
+      </div></details> : null}
+      {record.kind === "request" ? <details class="fold"><summary>市に伝える要望ではなかったとき</summary><div><form method="post" action={path}><button class="secondary" name="operation" value="unwish">問い合わせに戻す</button></form></div></details> : <details class="fold"><summary>市に伝える要望だったとき</summary><div><form method="post" action={path}><p>道路や街灯のように、自治会から市に伝えることなら、ここを押します。一覧の「市に伝える要望」に移り、要望書を書いて市に出すまでを残せます。</p><button class="secondary" name="operation" value="wish">市に伝える要望にする</button></form></div></details>}
+
     {notes.length ? <details class="fold"><summary>これまでに残した返事</summary><div>{notes.map((n) => <article><p>{formatJstDate(n.created_at)}</p><p class="preserve-lines">{n.answer}</p></article>)}</div></details> : null}
     <details class="fold"><summary>この問い合わせを消す</summary><div><p>間違えて残したときに、この記録と返事を消せます。消すと戻せません。</p><form method="post" action={`${path}/remove`}><button class="danger">この記録を消す</button></form></div></details>
   </Layout>);

@@ -9,7 +9,7 @@ it("初めての役員に行事・資料・実行委員と班長のページの�
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   const opening = "まず、手元にある自治会の資料を送ってください";
-  const materials = "ふつうの8つのやることを用意しました";
+  const materials = "よくある8つのやることを用意しました";
   const emptyHome = await get(realApp, `${root}/`, cookie);
   expect(emptyHome.status).toBe(200);
   const homeHtml = await emptyHome.text();
@@ -34,7 +34,7 @@ it("初めての役員に行事・資料・実行委員と班長のページの�
   await receive(env, { wardId: ward.wardId, projectId: project.projectId, via: "admin", parts: [
     { kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode("去年の会場の記録（架空）") },
   ] });
-  expect(await (await get(realApp, `${root}/projects/${project.projectId}/map`, cookie)).text()).not.toContain(materials);
+  expect(await (await get(realApp, `${root}/projects/${project.projectId}/map`, cookie)).text()).toContain("最近届いた資料");
   const space = await get(realApp, `${root}/space/${project.projectId}`, cookie);
   expect(await space.text()).toContain("実行委員と班長だけが、スマホで開けるページです。住民には見えません。");
 });

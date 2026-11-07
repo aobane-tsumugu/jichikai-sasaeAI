@@ -21,7 +21,7 @@ it("資料のない一年目から仕事・質問・下書き・別の雨の知�
     return current;
   };
   const empty = await (await get(realApp, `${path}/map`, cookie)).text();
-  expect(empty).toContain("ふつうの8つのやることを用意しました");
+  expect(empty).toContain("よくある8つのやることを用意しました");
   expect(empty).toContain('class="map-list"');
   expect(empty).not.toContain('<svg viewBox=');
   expect(empty).not.toContain("雨の変更を知らせる");

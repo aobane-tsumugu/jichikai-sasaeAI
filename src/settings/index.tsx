@@ -1,4 +1,5 @@
 import { getDigestSettings, inquiryNotice } from "./digest";
+import { getPublicContact } from "./store";
 import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { AdminPage } from "../core/admin-ui";
@@ -118,7 +119,10 @@ admin.get("/", async (c) => {
       <p><a href={adminPath(ward, `/archive/${unseeded.project_id}`)}>去年の{unseeded.title}のやることと報告を見る</a></p>
     </section> : null;
   const senderName = (label: string | null) => label && !/^LINE(個別|グループ|複数人トーク)$/.test(label) ? `${label}さん` : "名前の分からない人";
+  // 住民向けのページに出す連絡先が無いと、加入していない人は自治会に連絡のしようがない。役員が気づけるようにトップで言う。
+  const publicContact = await getPublicContact(c.env.DB, ward.wardId);
   const waiting = [
+    ...(publicContact.trim() ? [] : [<li><p>住民向けのページに出す自治会の連絡先が、まだ入っていません。今は「班長か役員にお知らせください」とだけ出ていて、加入していない人や班長を知らない人は、自治会に連絡ができません。</p><a class="quiet" href={adminPath(ward, "/settings/info")}>連絡先を入れる</a></li>]),
     ...openInquiries.slice(0, 3).map((row) => <li><p>{senderName(row.line_sender_label)}から、{formatJstDate(row.received_at)}に「{inquirySubject(row.subject)}」と届いています。まだ返事をしていません。</p>
       <a class="quiet" href={adminPath(ward, `/inquiries/${encodeURIComponent(row.inquiry_id)}`)}>返事を書く</a></li>),
     ...(openInquiries.length > 3 ? [<li><p>ほかにも、まだ返事をしていない問い合わせがあります。</p><a class="quiet" href={adminPath(ward, "/inquiries")}>問い合わせを全部見る</a></li>] : []),

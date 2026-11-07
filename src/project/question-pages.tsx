@@ -91,7 +91,7 @@ questionPages.get("/projects/:projectId/questions", async (c) => {
   const draftLabel = duty ? "当番表の下書きを見る" : "案内の下書きを見る";
   const answered = c.req.query("notice") === "answered";
   const next = <section class="next"><strong>{answered ? "答えを残しました" : "次は"}</strong>
-    <p>{questions.length ? "残りの質問に答えられます。" : answered ? "AIからの質問は、もうありません。答えは下書きに使われます。下書きであとから直せます。" : "AIが資料を読んで分からない所があると、ここで聞きます。今は聞くことはありません。"}</p>
+    <p>{questions.length ? "残りの質問に答えられます。" : answered ? "AIからの質問は、もうありません。答えは下書きに使われます。下書きであとから直せます。" : "AIが資料を読んで分からないところがあると、ここで聞きます。今は聞くことはありません。"}</p>
     <a class="button" href={questions[0] ? `#question-${questions[0].questionId}` : draftHref}>{questions.length ? "残りの質問に答える" : draftLabel}</a>
   </section>;
   return c.html(<Layout title="質問に答える" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>

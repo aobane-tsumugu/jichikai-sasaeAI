@@ -54,20 +54,21 @@ admin.get("/projects/:projectId/map", async (c) => {
   return c.html(<Layout title={`${project.title}のやること`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <div class="map-page">
       <h1>{project.title}のやること</h1>
-      <p class="lead">{first ? materials.results.length ? `${readCount}件の資料を読んで、${tasks.length}つのやることを用意しました。違うところは、仕事を押して直せます。` : `ふつうの${tasks.length}つのやることを用意しました。違うところは、仕事を押して直せます。` : `${day && daysLeft !== null && daysLeft >= 0 ? `${formatJstDate(day)}まで、あと${daysLeft}日です。` : ""}仕事を押すと開きます。`}</p>
-      {project.closedAt ? null : day ? <dl class="facts"><dt>準備を始める</dt><dd>{prepStart && prepStart < day ? seasonText(prepStart) : "決まっていません"}</dd><dt>{endDay !== day ? "期間" : "当日"}</dt><dd>{eventPeriodText(day, endDay)}</dd><dt>終わる</dt><dd>{finish && finish > endDay! ? seasonText(finish) : "決まっていません"}</dd></dl>
-        : <div class="notice"><strong>始まる日がまだ決まっていません</strong><p>日を入れると、準備を始める頃と報告をまとめ終える頃を置きます。あとで直せます。</p>
-          <form method="post" action={adminPath(ward, `/projects/${id}/map/event-day`)}><div class="field"><label for="event-day-first">始まる日</label><input id="event-day-first" name="event_day" type="date" required /></div><div class="field"><label for="event-end-first">終わる日（一日だけなら空のまま）</label><input id="event-end-first" name="event_end" type="date" /></div><button class="secondary">日を保存する</button></form></div>}
+      {/* 日と次にすることを、札でなく文で書き、押す物を一画面目に入れる。日が無い時は、まず日を決めるのが次にすること。 */}
+      {project.closedAt ? null : <p class="lead">{day && !project.closedAt ? `${endDay !== day ? "期間" : "当日"}は${eventPeriodText(day, endDay)}です。${daysLeft !== null && daysLeft >= 0 ? `あと${daysLeft}日です。` : ""}${prepStart && prepStart < day ? `準備は${seasonText(prepStart)}から始める目安です。` : ""}${finish && finish > endDay! ? `報告は${seasonText(finish)}にまとめ終える目安です。` : ""}` : ""}{first ? readCount ? `${readCount}件の資料を読んで、${tasks.length}つのやることを用意しました。` : `よくある${tasks.length}つのやることを用意しました。` : ""}違うところは、仕事を押して直せます。</p>}
       <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
       {notice === "event_day" ? <Notice><p>当日を変えました。済んでいない仕事の時期を置き直しました。案内の文は変わりません。</p><p>やることを押して、時期を確かめてください。戻すときは、下の「当日を直す」からもう一度入れ直せます。</p><a class="quiet" href="#event-day">当日を直す</a></Notice> : null}
       {notice === "done" ? <Notice>「{tasks.find((task) => task.taskId === c.req.query("changed"))?.name}」を済みにしました。戻すときは、その仕事を開いて「済みを取り消す」を押してください。</Notice> : notice === "reopen" ? <Notice>「{tasks.find((task) => task.taskId === c.req.query("changed"))?.name}」の済みを取り消しました。</Notice> : null}
       {notice === "removed" ? <Notice>仕事を外しました。下の「外した仕事」から戻せます。</Notice> : notice === "restored" ? <Notice>仕事を戻しました。仕事を押すと直せます。</Notice> : notice === "added" ? <Notice>仕事を足しました。仕事を押すと直せます。</Notice> : null}
       {project.closedAt ? <Notice>{project.title}は終わりにしました。直すときは「報告を書いて終わりにする」の画面で「終わりを取り消す」を押してください。</Notice> : <>
+        {!day ? <section class="next"><strong>まず、日を決めます</strong><p>始まる日を入れると、準備を始める頃と、報告をまとめ終える頃を置きます。あとで直せます。</p>
+          <form method="post" action={adminPath(ward, `/projects/${id}/map/event-day`)}><div class="field"><label for="event-day-first">始まる日</label><input id="event-day-first" name="event_day" type="date" required /></div><div class="field"><label for="event-end-first">終わる日（一日だけなら空のまま）</label><input id="event-end-first" name="event_end" type="date" /></div><button>日を保存する</button></form>
+          <p>日が決まる前に進めたいときは、下の仕事を押してください。</p></section> :
         <section class="next"><strong>次は</strong>
           <p>{next ? next.periodEnd ? `${taskPeriodText(next, true)}の仕事です。` : day ? "この仕事の時期はまだ決まっていません。仕事を押すと入れられます。" : "時期は、始まる日を入れると決まります。" : "やることは全部済みました。"}</p>
           <a class="button" href={adminPath(ward, next ? taskUrl(next) : `/close/${id}`)}>{next?.name ?? "報告を書いて終わりにする"}</a>
           {tasks.some((task) => task.taskId === c.req.query("changed") && task.taskKey === "announcement" && task.progress === "done") ? <a class="quiet" href={adminPath(ward, `/print/${id}`)}>案内の紙を印刷する</a> : null}
-        </section>
+        </section>}
         <div class="action-links">
           <a class="button secondary" href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>資料を送る</a>
         </div>
@@ -103,7 +104,7 @@ admin.get("/projects/:projectId/map", async (c) => {
           <form method="post" action={adminPath(ward, `/projects/${id}/map/add`)}><div class="field"><label for="new-task">足す仕事の名前</label><input id="new-task" name="name" maxlength={100} required /></div><button class="secondary">足す</button></form>
           {removed.results.length ? <><p><b>外した仕事</b></p>{removed.results.map((task) => <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.task_id}/restore`)}><p>{task.name}</p><button class="secondary">この仕事を戻す</button></form>)}</> : null}
         </div></details> : null}
-        {!project.closedAt ? <details class="fold" id="event-day" open={c.req.query("error") === "invalid_input"}><summary>当日を直す</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/map/event-day`)}>
+        {!project.closedAt && day ? <details class="fold" id="event-day" open={c.req.query("error") === "invalid_input"}><summary>当日を直す</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/map/event-day`)}>
           <div class="field"><label for="event-day-input">始まる日</label><input id="event-day-input" name="event_day" type="date" value={day ?? ""} required /></div>
           <div class="field"><label for="event-end-input">終わる日（一日だけなら空のまま）</label><input id="event-end-input" name="event_end" type="date" value={endDay !== day ? endDay : ""} /></div>
           <p>済んでいない仕事の時期も動きます。案内の文は変わりません。</p><button class="secondary">当日を保存する</button>
