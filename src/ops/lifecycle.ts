@@ -226,32 +226,18 @@ async function rewriteJobSnapshots(env: Env, wardId: string, jobId: string, curs
 async function eraseJobCopies(env: Env, wardId: string, jobId: string): Promise<void> {
   const originals = await env.DB.prepare("SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?")
     .bind(wardId, jobId).all<{ original_id: string }>();
-  const projects = await env.DB.prepare(`SELECT project_id FROM jobs WHERE ward_id = ? AND job_id = ?
-    UNION SELECT project_id FROM project_rows WHERE ward_id = ? AND source_ref IN
-      (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)
-    UNION SELECT project_id FROM project_item_values WHERE ward_id = ? AND source_ref IN
-      (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)`)
-    .bind(wardId, jobId, wardId, wardId, jobId, wardId, wardId, jobId).all<{ project_id: string | null }>();
   const tables: Record<string, Record<string, unknown>[]> = {};
-  for (const table of ["document_versions", "city_request_details", "project_close_reports", "archive_search_entries", "project_rows", "project_changes"]) {
+  for (const table of ["document_versions", "archive_search_entries", "project_rows", "project_changes"]) {
     tables[table] = (await env.DB.prepare(`SELECT * FROM ${table} WHERE ward_id = ?`).bind(wardId).all<Record<string, unknown>>()).results;
   }
-  const before = new Map(Object.entries(tables).flatMap(([table, rows]) => rows.map((row) => [row, { table, json: JSON.stringify(row) }] as const)));
+  const before = new Map(tables.document_versions?.map((row) => [row, row.tables_snapshot] as const));
   const oldSearch = new Set(tables.archive_search_entries?.map((row) => Number(row.entry_id)));
-  eraseCopiedContent(tables, new Set(originals.results.map((row) => row.original_id)), new Set(projects.results.flatMap((row) => row.project_id ? [row.project_id] : [])));
+  eraseCopiedContent(tables, new Set(originals.results.map((row) => row.original_id)));
   const statements: D1PreparedStatement[] = [];
   for (const row of tables.document_versions ?? []) {
-    if (before.get(row)?.json !== JSON.stringify(row)) statements.push(env.DB.prepare(`UPDATE document_versions
-      SET body = ?, source_original_ids = ?, tables_snapshot = ? WHERE ward_id = ? AND version_id = ?`)
-      .bind(String(row.body), String(row.source_original_ids), row.tables_snapshot as string | null, wardId, String(row.version_id)));
-  }
-  for (const row of tables.city_request_details ?? []) {
-    if (before.get(row)?.json !== JSON.stringify(row)) statements.push(env.DB.prepare("UPDATE city_request_details SET submission_history = ?, answer_draft = ? WHERE ward_id = ? AND project_id = ?")
-      .bind(String(row.submission_history), String(row.answer_draft), wardId, String(row.project_id)));
-  }
-  for (const row of tables.project_close_reports ?? []) {
-    if (before.get(row)?.json !== JSON.stringify(row)) statements.push(env.DB.prepare("UPDATE project_close_reports SET body = ? WHERE ward_id = ? AND project_id = ? AND scope = ?")
-      .bind(String(row.body), wardId, String(row.project_id), String(row.scope)));
+    if (before.get(row) !== row.tables_snapshot) statements.push(env.DB.prepare(`UPDATE document_versions
+      SET tables_snapshot = ? WHERE ward_id = ? AND version_id = ?`)
+      .bind(row.tables_snapshot as string | null, wardId, String(row.version_id)));
   }
   for (const row of tables.archive_search_entries ?? []) oldSearch.delete(Number(row.entry_id));
   for (const id of oldSearch) statements.push(env.DB.prepare("DELETE FROM archive_search_entries WHERE ward_id = ? AND entry_id = ?").bind(wardId, id));

@@ -149,22 +149,13 @@ export function eraseSnapshotJob(snapshot: unknown, wardId: string, jobId: strin
   const tables = doc.tables as Record<string, unknown>;
   const originalIds = new Set(knownOriginalIds);
   const readingBodies = new Set(knownReadingBodies);
-  const projectIds = new Set<string>();
   for (const row of snapshotRows(tables, "originals")) {
     if (row.job_id === jobId && typeof row.original_id === "string") originalIds.add(row.original_id);
-  }
-  for (const row of snapshotRows(tables, "jobs")) {
-    if (row.job_id === jobId && typeof row.project_id === "string") projectIds.add(row.project_id);
   }
   for (const row of snapshotRows(tables, "readings")) {
     if (row.job_id === jobId && typeof row.body === "string") readingBodies.add(row.body);
   }
-  for (const table of ["project_rows", "project_item_values", "project_changes"]) {
-    for (const row of snapshotRows(tables, table)) {
-      if (typeof row.source_ref === "string" && originalIds.has(row.source_ref) && typeof row.project_id === "string") projectIds.add(row.project_id);
-    }
-  }
-  eraseCopiedContent(tables, originalIds, projectIds);
+  eraseCopiedContent(tables, originalIds);
   const remove = (table: string, match: (row: Record<string, unknown>) => boolean) => {
     const rows = tables[table];
     if (Array.isArray(rows)) tables[table] = rows.filter((row) =>
@@ -203,7 +194,7 @@ export function eraseSnapshotJob(snapshot: unknown, wardId: string, jobId: strin
   remove("line_inbox_items", (row) => row.job_id === jobId);
   remove("archive_search_entries", (row) =>
     (typeof row.source_id === "string" && originalIds.has(row.source_id)) ||
-    (typeof row.content === "string" && readingBodies.has(row.content)));
+    (row.record_type === "reading" && typeof row.content === "string" && readingBodies.has(row.content)));
   return JSON.stringify(doc);
 }
 
@@ -214,18 +205,9 @@ function snapshotRows(tables: Record<string, unknown>, table: string): SnapshotR
   return Array.isArray(rows) ? rows.filter((row): row is SnapshotRow => typeof row === "object" && row !== null && !Array.isArray(row)) : [];
 }
 
-export const ERASED_BODY = JSON.stringify({ text: "消去の希望により、この内容を消しました。", items: [] });
-
-function sourceIds(raw: unknown): string[] {
-  const value: unknown = typeof raw === "string" ? JSON.parse(raw) : raw;
-  return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
-}
-
-/** 配った番号は保ち、消す資料に由来する表の行と、切り分けられない本文を伏せる。 */
-export function eraseCopiedContent(tables: Record<string, unknown>, originalIds: Set<string>, projectIds: Set<string>): void {
-  const erasedVersions = new Set<string>();
-  const erasedProjects = new Set<string>();
-  const rowSources = new Map<string, Array<{ rowId?: string; sourceRef: string | null }>>();
+/** 配った本文は保ち、消す資料との対応が分かる表の行と検索記録だけを外す。 */
+export function eraseCopiedContent(tables: Record<string, unknown>, originalIds: Set<string>): void {
+  const rowSources = new Map<string, Array<string | null>>();
   const rowKey = (project: unknown, kind: unknown, data: unknown) => {
     if (typeof data !== "object" || data === null || Array.isArray(data)) return "";
     return JSON.stringify([project, kind, Object.entries(data).sort(([a], [b]) => a.localeCompare(b))]);
@@ -233,66 +215,37 @@ export function eraseCopiedContent(tables: Record<string, unknown>, originalIds:
   for (const row of snapshotRows(tables, "project_rows")) {
     if (typeof row.data !== "string" || typeof row.row_id !== "string") continue;
     const key = rowKey(row.project_id, row.table_key, JSON.parse(row.data) as unknown);
-    rowSources.set(key, [...(rowSources.get(key) ?? []), { rowId: row.row_id, sourceRef: typeof row.source_ref === "string" ? row.source_ref : null }]);
+    rowSources.set(key, [...(rowSources.get(key) ?? []), typeof row.source_ref === "string" ? row.source_ref : null]);
   }
   // 直したあとの表だけで、過去に配った中身の出どころを決めない。
   for (const row of snapshotRows(tables, "project_changes")) {
     if (row.kind !== "row" || typeof row.payload !== "string" || typeof row.change_id !== "string") continue;
     const change = JSON.parse(row.payload) as { table?: unknown; data?: unknown };
     const key = rowKey(row.project_id, change.table, change.data);
-    rowSources.set(key, [...(rowSources.get(key) ?? []), { sourceRef: typeof row.source_ref === "string" ? row.source_ref : null }]);
+    rowSources.set(key, [...(rowSources.get(key) ?? []), typeof row.source_ref === "string" ? row.source_ref : null]);
   }
   for (const row of snapshotRows(tables, "document_versions")) {
-    const sources = sourceIds(row.source_original_ids);
-    const legacy = row.source_original_ids === undefined && typeof row.project_id === "string" && projectIds.has(row.project_id);
-    if (legacy || sources.some((id) => originalIds.has(id))) {
-      row.body = ERASED_BODY;
-      row.source_original_ids = JSON.stringify(sources.filter((id) => !originalIds.has(id)));
-      if (typeof row.version_id === "string") erasedVersions.add(row.version_id);
-      if (typeof row.project_id === "string") erasedProjects.add(row.project_id);
-    }
     if (typeof row.tables_snapshot === "string") {
       const entries: unknown = JSON.parse(row.tables_snapshot);
       if (!Array.isArray(entries)) throw new Error("配った表を読み取れませんでした");
       row.tables_snapshot = JSON.stringify(entries.flatMap((entry: unknown) => {
-        if (typeof entry !== "object" || entry === null) return [];
+        if (typeof entry !== "object" || entry === null) return [entry];
         const tableRow = entry as SnapshotRow;
         if (typeof tableRow.sourceRef === "string" && originalIds.has(tableRow.sourceRef)) return [];
-        if (tableRow.sourceRef === undefined && typeof row.project_id === "string" && projectIds.has(row.project_id)) {
+        if (tableRow.sourceRef === undefined) {
           const sources = rowSources.get(rowKey(row.project_id, tableRow.kind, tableRow.data));
-          // 確かめられる古い行は残す。出どころを確認できない行は、残さない側で扱う。
-          if (!sources?.length || sources.some((source) => source.sourceRef !== null && originalIds.has(source.sourceRef))) return [];
-          return [{ ...tableRow, ...sources[0] }];
+          // 古い行は、同じ行事・種類・中身から出どころを確かめられたときだけ外す。
+          if (sources?.length && sources.every((source) => source !== null && originalIds.has(source))) return [];
         }
         return [tableRow];
       }));
     }
   }
-  for (const row of snapshotRows(tables, "city_request_details")) {
-    if (typeof row.project_id === "string" && erasedProjects.has(row.project_id)) row.answer_draft = "";
-    if (typeof row.submission_history !== "string") continue;
-    const entries: unknown = JSON.parse(row.submission_history);
-    if (!Array.isArray(entries)) throw new Error("提出した内容を読み取れませんでした");
-    row.submission_history = JSON.stringify(entries.map((entry: unknown) => {
-      if (typeof entry !== "object" || entry === null) return entry;
-      const item = entry as SnapshotRow;
-      const sources = sourceIds(item.sourceOriginalIds);
-      if (sources.some((id) => originalIds.has(id)) || (typeof item.versionId === "string" && erasedVersions.has(item.versionId)) ||
-          (item.sourceOriginalIds === undefined && typeof row.project_id === "string" && projectIds.has(row.project_id))) {
-        return { ...item, body: null, sourceOriginalIds: sources.filter((id) => !originalIds.has(id)) };
-      }
-      return item;
-    }));
-  }
-  for (const row of snapshotRows(tables, "project_close_reports")) {
-    if (typeof row.project_id === "string" && erasedProjects.has(row.project_id)) row.body = "";
-  }
   const search = tables.archive_search_entries;
   if (Array.isArray(search)) tables.archive_search_entries = search.filter((value: unknown) => {
-    if (typeof value !== "object" || value === null) return false;
+    if (typeof value !== "object" || value === null) return true;
     const row = value as SnapshotRow;
-    return !(typeof row.source_id === "string" && (originalIds.has(row.source_id) || erasedVersions.has(row.source_id))) &&
-      !(row.record_type !== "reading" && typeof row.project_id === "string" && erasedProjects.has(row.project_id));
+    return !(typeof row.source_id === "string" && originalIds.has(row.source_id));
   });
 }
 

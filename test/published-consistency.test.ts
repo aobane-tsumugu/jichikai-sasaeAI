@@ -1,7 +1,6 @@
 import { env } from "cloudflare:workers";
 import { expect, it } from "vitest";
 import { seedAdmin } from "../src/core/testing";
-import { receive } from "../src/intake/receive";
 import { renameProject, saveDocument } from "../src/project/actions";
 import { applyChange, createProject, getProjectState } from "../src/project/api";
 import type { DocumentKind } from "../src/project/model";
@@ -30,14 +29,8 @@ async function fixture() {
   return { ward, account, cookie, project, base, admin, draft, publish };
 }
 
-it.each(["public", "space"] as const)("元の資料の依存先を保って%sに配り、古い下書きと二重の配布を防ぐ", async (scope) => {
+it.each(["public", "space"] as const)("%sに配り、古い下書きと二重の配布を防ぐ", async (scope) => {
   const f = await fixture();
-  const material = await receive(env, {
-    wardId: f.ward.wardId, projectId: f.project.projectId, via: "admin", accountId: f.account.accountId,
-    parts: [{ kind: "text", filename: "配布の資料（架空）.txt", mediaType: "text/plain", bytes: new TextEncoder().encode("架空の配布資料です。") }],
-  });
-  const originalId = material.received[0]?.originalId;
-  if (!originalId) throw new Error("架空の資料を受け付けられませんでした。");
   const kind = scope === "public" ? "announcement" : "duty_roster";
   const first = await f.draft(kind, "配布物（架空）", scope, { text: "架空の古い本文です。", items: [] });
   const latest = await f.draft(kind, "配布物（架空）", scope, { text: "架空の新しい本文です。", items: [] });
@@ -45,9 +38,9 @@ it.each(["public", "space"] as const)("元の資料の依存先を保って%sに
     `${f.admin}/publish/${f.project.projectId}/${scope === "public" ? "send" : "space"}`, {
       documentId: row.document_id, versionId: row.version_id, versionNo: String(row.version_no), lineDelivery: "skip",
     }, f.cookie);
-  const readVersion = (versionId: string) => env.DB.prepare(`SELECT body, published_at, source_original_ids FROM document_versions
+  const readVersion = (versionId: string) => env.DB.prepare(`SELECT body, published_at FROM document_versions
     WHERE ward_id = ? AND version_id = ?`).bind(f.ward.wardId, versionId)
-    .first<{ body: string; published_at: string | null; source_original_ids: string }>();
+    .first<{ body: string; published_at: string | null }>();
   const records = () => env.DB.prepare("SELECT COUNT(*) AS n FROM publication_records WHERE ward_id = ? AND project_id = ?")
     .bind(f.ward.wardId, f.project.projectId).first<number>("n");
 
@@ -57,7 +50,6 @@ it.each(["public", "space"] as const)("元の資料の依存先を保って%sに
   expect((await distribute(latest)).status).toBe(303);
   const published = await readVersion(latest.version_id);
   expect(published?.published_at).toEqual(expect.any(String));
-  expect(JSON.parse(published!.source_original_ids)).toContain(originalId);
   expect(await records()).toBe(scope === "public" ? 1 : 0);
   expect((await distribute(latest)).status).toBe(scope === "public" ? 404 : 303);
   expect(await readVersion(latest.version_id)).toEqual(published);
@@ -69,12 +61,11 @@ it.each(["public", "space"] as const)("元の資料の依存先を保って%sに
       source: { kind: "person", accountId: f.account.accountId }, confidence: "high", packVersion: "fictional-consistency@1",
     })).status).toBe("applied");
     expect((await distribute(latest)).status).toBe(303);
-    const republished = await env.DB.prepare(`SELECT version_no, published_at, source_original_ids FROM document_versions
+    const republished = await env.DB.prepare(`SELECT version_no, published_at FROM document_versions
       WHERE ward_id = ? AND document_id = ? ORDER BY version_no DESC LIMIT 1`)
-      .bind(f.ward.wardId, latest.document_id).first<{ version_no: number; published_at: string | null; source_original_ids: string }>();
+      .bind(f.ward.wardId, latest.document_id).first<{ version_no: number; published_at: string | null }>();
     expect(republished?.version_no).toBe(latest.version_no + 1);
     expect(republished?.published_at).toEqual(expect.any(String));
-    expect(JSON.parse(republished!.source_original_ids)).toContain(originalId);
     expect(await readVersion(latest.version_id)).toEqual(published);
   }
 });
