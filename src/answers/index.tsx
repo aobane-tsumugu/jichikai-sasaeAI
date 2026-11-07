@@ -501,14 +501,22 @@ admin.post("/answers/:projectId/sheet/:originalId/row/:rowIndex", async (c) => {
   const rowIndex = Number(c.req.param("rowIndex"));
   if (!household || !Number.isInteger(peopleCount) || peopleCount < 0 || peopleCount > 1000 || !Number.isInteger(rowIndex) || rowIndex < 0) return adminResult(c, "読み取りを確認してください。", 400, { href: adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(c.req.param("projectId"))}`), label: "答えの画面に戻る" }, "答えの画面で内容を確かめてください。閉じた行事の答えを直すときは、先に行事をもう一度開いてください。");
   const originalId = c.req.param("originalId");
-  const link = await c.env.DB.prepare(`SELECT o.original_id, p.closed_at FROM originals o
+  const link = await c.env.DB.prepare(`SELECT o.original_id, o.withdrawn_at AS original_withdrawn_at,
+    j.withdrawn_at AS job_withdrawn_at, p.closed_at FROM originals o
     JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
     JOIN projects p ON p.ward_id = j.ward_id AND p.project_id = j.project_id
     WHERE o.ward_id = ? AND o.original_id = ? AND j.project_id = ? AND j.read_kind = 'answer_sheet'`)
-    .bind(c.var.ward.wardId, originalId, c.req.param("projectId")).first<{ original_id: string; closed_at: string | null }>();
+    .bind(c.var.ward.wardId, originalId, c.req.param("projectId")).first<{
+      original_id: string; original_withdrawn_at: string | null; job_withdrawn_at: string | null; closed_at: string | null;
+    }>();
   if (!link) return c.notFound();
   if (link.closed_at) {
     return c.redirect(`${adminPath(c.var.ward.slug, `/close/${encodeURIComponent(c.req.param("projectId"))}`)}?error=answers_closed`, 303);
+  }
+  if (link.original_withdrawn_at || link.job_withdrawn_at) {
+    return adminResult(c, "この回答票は取り下げられたため、答えを入れられません。", 409,
+      { href: `${adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(c.req.param("projectId"))}`)}?view=list`, label: "答えの一覧に戻る" },
+      "答えの一覧に戻って確認してください。");
   }
   await addAnswer(c.env.DB, c.var.ward.wardId, {
     projectId: c.req.param("projectId"), household, district, ...counts!, helperName, helperTimes,
