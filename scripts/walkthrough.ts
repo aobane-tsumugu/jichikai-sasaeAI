@@ -239,7 +239,7 @@ async function runFull() {
     const password = /^パスワード\s*[:：]\s*(.+)$/m.exec(cred)?.[1]?.trim();
     if (!name || !password) throw new Error("資格情報は「名前:」「パスワード:」形式で指定してください");
     sensitiveValues.add(password);
-    const login = await post(admin + "/login", { loginId: name, name, password });
+    const login = await post(admin + "/login", /^[A-Za-z0-9._-]+$/.test(name) ? { loginId: name, password } : { name, password });
     if (login.status !== 303 || !cookies.has("device") || !(await get(admin + "/")).response.ok) throw new Error("役員画面に入れません");
     record("0", "通過", "資格情報で入る。値は表示していない。", start);
   } catch (error) {
