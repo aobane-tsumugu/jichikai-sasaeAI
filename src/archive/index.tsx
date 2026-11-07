@@ -70,31 +70,8 @@ admin.get("/archive", async (c) => {
   </Layout>);
 });
 
-admin.get("/archive/map", async (c) => {
-  const { ward } = c.var;
-  const rows = await c.env.DB.prepare(`SELECT p.project_id, p.title, p.year, p.closed_at, t.name, t.period_start, t.period_end, t.sort_order
-      FROM projects p JOIN project_map_tasks t ON t.ward_id = p.ward_id AND t.project_id = p.project_id
-     WHERE p.ward_id = ? AND t.removed_at IS NULL
-     ORDER BY t.period_start, p.year, p.created_at, t.sort_order`).bind(ward.wardId)
-    .all<{ project_id: string; title: string; year: number; closed_at: string | null; name: string; period_start: string | null; period_end: string | null; sort_order: number }>();
-  const months = new Map<string, typeof rows.results>();
-  for (const row of rows.results) {
-    const month = row.period_start?.slice(0, 7) ?? `${row.year}年・時期未定`;
-    months.set(month, [...(months.get(month) ?? []), row]);
-  }
-  return c.html(<Layout title="一年の予定" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, "/archive")}>← 終わったものへ</a><h1>一年の予定</h1><p class="lead">自治会の仕事を、始まりの月ごとに並べています。終わったものを開くと、そこから新しく始められます。</p>
-    {[...months.entries()].sort(([a], [b]) => b.slice(0, 4).localeCompare(a.slice(0, 4)) || a.localeCompare(b)).map(([month, entries]) => <section>
-      <h2>{month.replace(/^(\d{4})-(\d{2})$/, (_, year: string, month: string) => `${year}年${Number(month)}月`)}</h2><ul class="rows two">{entries.map((entry) => <li>
-        <a class="row-link" href={adminPath(ward, entry.closed_at ? `/archive/${entry.project_id}` : `/projects/${entry.project_id}/map`)}>
-          <b>{entry.name}</b><span>{entry.title}（{entry.year}年　{entry.closed_at ? "終わりました" : "進めています"}）</span><span>{entry.period_start && entry.period_start === entry.period_end ? formatJstDate(entry.period_start) : entry.period_start && entry.period_end ? periodText(entry.period_start, entry.period_end) : entry.period_end ? `${shortDate(entry.period_end)}まで` : entry.period_start ? `${shortDate(entry.period_start)}から` : "時期はまだ決まっていません"}</span>
-        </a>
-        {entry.closed_at ? <a class="quiet" href={adminPath(ward, `/archive/${entry.project_id}?view=seed`)}>これをもとに新しく始める</a> : null}
-      </li>)}</ul></section>)}
-    {rows.results.some((row) => !row.period_start) ? <p class="muted">時期が決まっていない仕事は「時期未定」の月にまとまります。</p> : null}
-    {rows.results.length === 0 ? <><p>予定はまだありません。資料を送ると、やることがここに入ります。</p><a class="button secondary" href={adminPath(ward, "/intake")}>写真やファイルを送る</a></> : null}
-  </Layout>);
-});
+// 一年の予定の画面は、トップの一年の表、今やること、終わったものの「〇〇年の動き」と同じ中身なので外した（管理の決定ログ。PM と相談）。前の行き先は一年の画面へ送る。
+admin.get("/archive/map", (c) => c.redirect(adminPath(c.var.ward, "/year"), 301));
 
 admin.get("/archive/search", async (c) => {
   const { ward } = c.var;

@@ -28,7 +28,7 @@ const screens = [
   "/admin/answers/:project/:answer/edit", "/admin/space/:project", "/admin/close/:project",
   "/admin/projects/:project/committee", "/admin/rota/exemptions", "/admin/rota/history", "/admin/rota/:project/result",
   "/admin/intake", "/admin/intake/received", "/admin/intake/read", "/admin/intake/started/:project",
-  "/admin/inbox", "/admin/inbox/questions", "/admin/archive", "/admin/archive/map", "/admin/know", "/admin/know/:item", "/admin/files", "/admin/year", "/admin/year/:key",
+  "/admin/inbox", "/admin/inbox/questions", "/admin/archive", "/admin/know", "/admin/know/:item", "/admin/files", "/admin/year", "/admin/year/:key",
   "/admin/inbox/:item/pick", "/admin/inbox/city/:job/pick",
   "/admin/archive/search", "/admin/archive/:project", "/admin/settings",
   "/admin/settings/people", "/admin/settings/info", "/admin/settings/deletion",
