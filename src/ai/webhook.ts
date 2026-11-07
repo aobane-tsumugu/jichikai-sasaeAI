@@ -8,13 +8,14 @@ import { Hono } from "hono";
 import type { AppEnv } from "../env";
 import { checkSession } from "./complete";
 import { getClient } from "./deps";
+import { recordCredentialFailure } from "../ops/ai-alert";
 
 const SESSION_TYPES = new Set(["session.status_idled", "session.status_terminated", "session.budget_reached"]);
 
 export interface WebhookEvent {
   type: string;
   id: string;
-  data: { type: string; id: string; organization_id?: string; workspace_id?: string };
+  data: { type: string; id: string; organization_id?: string; workspace_id?: string; vault_id?: string };
 }
 
 export const anthropicHooks = new Hono<AppEnv>();
@@ -33,7 +34,16 @@ anthropicHooks.post("/anthropic", async (c) => {
     // 速く 200 を返し、完了の処理は応答の後に動かす。止められても Cron が拾う
     c.executionCtx.waitUntil(handleSession(c.env, event.data.id));
   } else if (type === "vault_credential.refresh_failed") {
-    console.error("vault の認証の更新に失敗しました（提供側の対応が要ります）", event.data.id);
+    // 保存できるまで成功を返さない。失敗時は提供元の再送で受け直す。
+    try {
+      if (!await recordCredentialFailure(c.env, event.data.id, event.data.vault_id)) {
+        console.error("AIの鍵の更新の失敗を、区の設定に当てられませんでした");
+        return c.text("credential ward not found", 503);
+      }
+    } catch {
+      console.error("AIの鍵の更新の失敗の知らせを保存できませんでした");
+      return c.text("alert not saved", 503);
+    }
   }
   return c.body(null, 204);
 });
@@ -57,6 +67,6 @@ async function handleSession(env: AppEnv["Bindings"], sessionId: string): Promis
       await checkSession(env, meta.ward_id, meta.job_id);
     }
   } catch (err) {
-    console.error("webhook の処理に失敗しました", err instanceof Error ? `${err.name}: ${err.message}` : "");
+    console.error("webhook の処理に失敗しました", err instanceof Error ? err.name : "不明な失敗");
   }
 }

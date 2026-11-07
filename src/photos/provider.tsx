@@ -8,7 +8,7 @@ import { photoBindings, saveWardPhotoPolicy } from "./policy";
 
 // 提供側の認証を必須にし、役員の入口へは登録しない。
 export const photoProvider = new Hono<AppEnv>();
-// hooksにはLINEやAIの受け口も差し込まれる。この設定の経路だけを提供側の認証で守る。
+// /opsに接続する。認証Cookieもこの範囲だけで送られる。
 photoProvider.use("/photo-settings/:wardId", csrf());
 photoProvider.use("/photo-settings/:wardId", async (c, next) => {
   c.header("Cache-Control", "private, no-store");
@@ -42,9 +42,9 @@ photoProvider.post("/photo-settings/:wardId", async (c) => {
     if (enabled && !photoBindings(c.env).FACE_MASK) throw new Error("準備が済んでいません。");
     await saveWardPhotoPolicy(c.env.DB, wardId, { enabled, authorApprovedAt: new Date().toISOString(),
       qualityReportSha256: String(form.get("qualityReportSha256") ?? ""), providerId: c.env.OPS_ID ?? "" });
-    return c.redirect(`/hooks/photo-settings/${encodeURIComponent(wardId)}?saved=1`, 303);
+    return c.redirect(`/ops/photo-settings/${encodeURIComponent(wardId)}?saved=1`, 303);
   } catch {
     return c.html(<Layout title="写真の設定を確かめてください" noindex><h1>写真の設定を保存できませんでした</h1>
-      <p>処理する準備と測定結果のSHA-256を確かめてください。</p><a class="button" href={`/hooks/photo-settings/${encodeURIComponent(wardId)}`}>設定に戻る</a></Layout>, 400);
+      <p>処理する準備と測定結果のSHA-256を確かめてください。</p><a class="button" href={`/ops/photo-settings/${encodeURIComponent(wardId)}`}>設定に戻る</a></Layout>, 400);
   }
 });
