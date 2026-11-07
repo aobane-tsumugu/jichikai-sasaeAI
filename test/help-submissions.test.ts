@@ -1,10 +1,10 @@
 import { env } from "cloudflare:workers";
 import { expect, it } from "vitest";
-import { getDutyDraftHelpers } from "../src/answers/api";
+import { getDutyDraftHelpers, setAnswerDeadline } from "../src/answers/api";
 import { listHelpOffers } from "../src/answers/help";
 import { seedAdmin } from "../src/core/testing";
 import { saveDocument } from "../src/project/actions";
-import { createProject } from "../src/project/api";
+import { createProject, getProjectSummary } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
 const input = { helper_name: "架空の同名の手伝いさん", helper_times: "9時から10時" };
@@ -78,4 +78,59 @@ it("同じ送信番号でも別の区と行事の手伝いをまとめない", a
     expect((await postForm(realApp, target.path, { ...input, submission_id })).status).toBe(200);
     expect(await listHelpOffers(env.DB, target.ward.wardId, target.project.projectId)).toHaveLength(1);
   }
+});
+
+it("募集時間を変えた後の再送も保存済みの受付結果へ戻し、新しい申し込みは現在の時間で受ける", async () => {
+  const { ward, account, cookie, project, path } = await fixture();
+  const form = { ...input, submission_id: number(await (await get(realApp, path)).text()) };
+  expect((await postForm(realApp, path, form)).status).toBe(200);
+  const saved = await listHelpOffers(env.DB, ward.wardId, project.projectId);
+  const current = await getProjectSummary(env.DB, ward.wardId, project.projectId);
+  const nextTime = "14時から15時";
+  expect(await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
+    kind: "recruitment", title: "架空の募集", scope: "public", basedOn: current!.stateVersion,
+    body: JSON.stringify({ text: "架空の準備時間を変えました。", items: [{ key: "helper_slots", content: nextTime }] }),
+  })).toBe(true);
+  const row = await env.DB.prepare(`SELECT document_id, version_id, version_no FROM document_versions
+    WHERE ward_id = ? AND project_id = ? ORDER BY version_no DESC LIMIT 1`)
+    .bind(ward.wardId, project.projectId).first<{ document_id: string; version_id: string; version_no: number }>();
+  if (!row) throw new Error("架空の変更後の募集がありません。");
+  expect((await postForm(realApp, `/${ward.slug}/admin/publish/${project.projectId}/send`, {
+    documentId: row.document_id, versionId: row.version_id, versionNo: String(row.version_no), lineDelivery: "skip",
+  }, cookie)).status).toBe(303);
+
+  for (const values of [form, { ...form, helper_name: "", helper_times: "" }]) {
+    const replay = await postForm(realApp, path, values);
+    expect(replay.status).toBe(200);
+    const receipt = await replay.text();
+    expect(receipt).toContain("申し込みを受け付けました");
+    expect(receipt).toContain(input.helper_name);
+    expect(receipt).toContain(input.helper_times);
+  }
+  expect(await listHelpOffers(env.DB, ward.wardId, project.projectId)).toEqual(saved);
+  const nextId = crypto.randomUUID();
+  const invalid = await postForm(realApp, path, { ...input, submission_id: nextId });
+  expect(invalid.status).toBe(400);
+  expect(await invalid.text()).toContain("募集にある時間帯を選んでください。");
+  expect((await postForm(realApp, path, { ...input, helper_times: nextTime, submission_id: nextId })).status).toBe(200);
+  expect(await listHelpOffers(env.DB, ward.wardId, project.projectId)).toHaveLength(2);
+});
+
+it("締切後も保存済みの受付結果へ戻し、新規申し込みと閉じて消した申し込みは受け付けない", async () => {
+  const { ward, account, cookie, project, path } = await fixture();
+  const form = { ...input, submission_id: number(await (await get(realApp, path)).text()) };
+  expect((await postForm(realApp, path, form)).status).toBe(200);
+  const saved = await listHelpOffers(env.DB, ward.wardId, project.projectId);
+  await setAnswerDeadline(env.DB, ward.wardId, project.projectId, "2000-01-01", account.accountId);
+  const replay = await postForm(realApp, path, form);
+  expect(replay.status).toBe(200);
+  expect(await replay.text()).toContain(input.helper_name);
+  expect((await postForm(realApp, path, { ...input, submission_id: crypto.randomUUID() })).status).toBe(400);
+  expect(await listHelpOffers(env.DB, ward.wardId, project.projectId)).toEqual(saved);
+
+  expect((await postForm(realApp, `/${ward.slug}/admin/close/${project.projectId}/finalize`, {}, cookie)).status).toBe(303);
+  const closed = await postForm(realApp, path, form);
+  expect(closed.status).toBe(400);
+  expect(await closed.text()).not.toContain(input.helper_name);
+  expect(await listHelpOffers(env.DB, ward.wardId, project.projectId)).toHaveLength(0);
 });
