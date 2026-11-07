@@ -16,7 +16,7 @@ routes = [{ pattern = "jichikai.aobane-tsumugu.com", custom_domain = true }]
 # 区のページの固定 URL の根。QR に刷る
 PUBLIC_BASE_URL = "https://jichikai.aobane-tsumugu.com"
 # デモの環境だけの断り書き。本番では置かない
-DEMO_NOTICE = "この区は架空です。掲載の人名、団体、金額はすべて架空のデータです。"
+DEMO_NOTICE = "この自治会は架空です。掲載の人名、団体、金額はすべて架空のデータです。"
 
 # 表。区ごとの行は全部 ward_id を持つ。migrations/ は束の番号で置く（束 N は NN01_*.sql から）
 [[d1_databases]]
