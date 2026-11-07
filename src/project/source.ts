@@ -1,6 +1,9 @@
 // 出どころの検査と、今年の中身か参考の中身かの分け方（設計書 5.2、5.4）。呼ぶ側には選ばせない。
 import { SOURCE_KINDS, type Source } from "./model";
 
+/** LINEのまとまりの判断からWorkersが付ける印。AIには選ばせない。 */
+export type MaterialSource = Source & { reference?: boolean };
+
 /** 原本が区の中に実在するかを確かめる口。束 2 の MCP の手が、原本の表を引いて渡す。 */
 export type VerifyOriginal = (originalId: string) => Promise<boolean>;
 
@@ -53,14 +56,15 @@ export function checkSourceShape(source: unknown, allowUnknownProposalYear = fal
 }
 
 /** 保存する出どころの形（余計な属性を落とし、箇所の既定を入れる）。 */
-export function normalizeSource(source: Source): Source {
-  const out: Source = { kind: source.kind };
+export function normalizeSource(source: MaterialSource): MaterialSource {
+  const out: MaterialSource = { kind: source.kind };
   if (source.ref !== undefined) out.ref = source.ref;
   if (source.kind === "original") out.locator = source.locator?.trim() || "全体";
   else if (source.locator?.trim()) out.locator = source.locator.trim();
   if (source.year !== undefined) out.year = source.year;
   if (source.qr) out.qr = true;
   if (source.accountId !== undefined) out.accountId = source.accountId;
+  if (source.kind === "original" && source.reference) out.reference = true;
   return out;
 }
 
@@ -73,16 +77,28 @@ export type Placement = { scope: "current" } | { scope: "reference"; refYear: nu
  * 過去の資料の中身は年ごとの参考に入り、年不明の物は参考（年不明）に留まる。
  * AI の案は今年の中身に入るが、出どころの年は参考にした年で、人が直すか決めるまで「案」のまま。
  */
-export function placeSource(source: Source, projectYear: number): Placement {
+export function placeSource(source: MaterialSource, projectYear: number): Placement {
   switch (source.kind) {
     case "person":
     case "web_answer":
     case "ai_proposal":
       return { scope: "current" };
     case "original":
+      if (source.reference) return { scope: "reference", refYear: source.year ?? null };
       if (source.qr) return { scope: "current" };
       if (source.year === undefined) return { scope: "reference", refYear: null };
       if (source.year === projectYear) return { scope: "current" };
       return { scope: "reference", refYear: source.year };
   }
+}
+
+/** 届いたもの→job_id→bundle_idをたどり、原本の扱いを区の中だけで調べる。 */
+export async function markReferenceSource(db: D1Database, wardId: string, source: MaterialSource): Promise<MaterialSource> {
+  if (source.kind !== "original" || !source.ref) return source;
+  const reference = await db.prepare(`SELECT 1 FROM originals o JOIN line_inbox_items i
+    ON i.ward_id = o.ward_id AND i.job_id = o.job_id JOIN line_bundle_decisions d
+    ON d.ward_id = i.ward_id AND d.bundle_id = i.bundle_id WHERE o.ward_id = ? AND o.original_id = ?
+    AND d.action IN ('reference', 'confirm_share', 'confirm_purpose') LIMIT 1`)
+    .bind(wardId, source.ref).first();
+  return { ...source, reference: Boolean(reference) };
 }

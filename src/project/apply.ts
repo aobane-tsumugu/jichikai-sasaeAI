@@ -39,7 +39,7 @@ import {
   type Source,
   type TableKey,
 } from "./model";
-import { checkSourceShape, normalizeSource, placeSource } from "./source";
+import { checkSourceShape, normalizeSource, placeSource, markReferenceSource } from "./source";
 import type { ApplyOptions, ApplyResult, ChangeInput, ItemChange, MapTaskChange, RowChange } from "./types";
 import { dedupeKeyOf, hashOf, quote, sameText, stableStringify } from "./util";
 
@@ -141,7 +141,10 @@ async function checkChange(
   if (!(CONFIDENCES as readonly string[]).includes(change.confidence)) return { ok: false, reason: "確かさが合いません" };
   const sourceReason = await verifySource(db, wardId, change.source, options, change.kind === "row" && change.table === "duties");
   if (sourceReason) return { ok: false, reason: sourceReason };
-  const source = normalizeSource(change.source);
+  const source = await markReferenceSource(db, wardId, normalizeSource(change.source));
+  if (source.reference && change.kind !== "item" && change.kind !== "row") {
+    return { ok: false, reason: "参考資料から今年のやることは変えません" };
+  }
 
   switch (change.kind) {
     case "item": {
