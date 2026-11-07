@@ -87,16 +87,21 @@ admin.get("/know/:itemId", async (c) => {
     {n && NOTICE[n] ? <Notice>{NOTICE[n]}</Notice> : null}
     <h1>{item.title}</h1>
     {item.hint ? <p class="lead">例: {item.hint}</p> : null}
-    {item.keepOut ? <div class="notice" role="status"><strong>このサービスでは{item.keepOut}を預かりません</strong><p>だれが持っているかだけ書いてください。</p></div> : null}
+    {item.keepOut ? <div class="notice" role="status"><strong>SasaeAIでは{item.keepOut}を預かりません</strong><p>だれが持っているかだけ書いてください。</p></div> : null}
     {item.note && item.state === "old" ? <p><span class="state old">見直す時期です</span> {item.note}</p> : null}
     {item.auto ? <p>{item.auto}</p> : null}
     {item.proposed ? <section class="panel"><p><span class="state checking">AIからの質問があります</span></p><p>新しく届いた資料には、こう書かれていました。この内容にしますか？</p><p class="preserve-lines"><b>{item.proposed}</b></p>
       {item.proposedOriginalId ? <p class="link-line"><a href={adminPath(ward, `/intake/originals/${item.proposedOriginalId}`)}>元の資料を見る</a></p> : null}
       <form method="post" action={`${base}/proposal`}><div class="action-links"><button class="secondary" name="use" value="yes">この内容にする</button><button class="secondary" name="use" value="no">今のままでよい</button></div></form></section> : null}
-    <form method="post" action={base}>
-      <div class="field"><label for="know-body">この自治会の内容</label><textarea id="know-body" name="body" rows={6} maxlength={KNOW_LIMITS.body}>{item.body}</textarea></div>
-      <div class="action-links"><button>保存する</button></div>
-    </form>
+    {item.body.trim() ? <><h2>この自治会の内容</h2><p class="preserve-lines">{item.body}</p>
+      <details class="fold"><summary>この内容を書き直す</summary><div><form method="post" action={base}>
+        <div class="field"><label for="know-body">この自治会の内容</label><textarea id="know-body" name="body" rows={6} maxlength={KNOW_LIMITS.body}>{item.body}</textarea></div>
+        <div class="action-links"><button>保存する</button></div>
+      </form></div></details></>
+      : <form method="post" action={base}>
+        <div class="field"><label for="know-body">この自治会の内容</label><textarea id="know-body" name="body" rows={6} maxlength={KNOW_LIMITS.body}>{item.body}</textarea></div>
+        <div class="action-links"><button>保存する</button></div>
+      </form>}
     {item.state === "old" ? <form method="post" action={`${base}/reviewed`}><p class="muted">内容が今も合っていれば押してください。</p><button class="secondary">今の内容のままでよい</button></form> : null}
     <h2>元の資料</h2>
     {sources.length ? <ul class="rows">{sources.map((source) => <li class="panel">
@@ -164,7 +169,7 @@ admin.post("/know/:itemId/links/:linkId/remove", async (c) => {
 });
 
 const fromWhom = (file: WardFile) => file.via === "line_direct" || file.via === "line_group" ? `送った人: ${senderText(file.sender, file.via === "line_group" ? "LINEグループ" : "LINE個別")}`
-  : file.sender ? `送った人: ${senderText(file.sender)}` : file.via === "admin" ? "この画面から送りました" : file.via === "space" ? "実行委員と班長のページから届きました" : "自治会のLINEに届きました";
+  : file.sender ? `送った人: ${senderText(file.sender)}` : file.via === "admin" ? (file.account_name ? `${file.account_name}さんが、役員の画面から送りました` : "役員の画面から送りました") : file.via === "space" ? "実行委員と班長のページから届きました" : "自治会のLINEに届きました";
 
 admin.get("/files", async (c) => {
   const { ward, account } = c.var;
@@ -234,7 +239,7 @@ admin.get("/year/:key", async (c) => {
   return c.html(<AdminPage ward={ward} account={account} title={base.title} back={{ href: adminPath(ward, "/year"), label: "この自治会の一年へ" }}>
     <h1>{base.title}</h1>
     <p class="lead">一般の自治会の例を仮に置いています。この自治会でも行うなら、今年の準備を始めるか、この予定の資料を送ると、この自治会の予定に変わります。この自治会で行わないなら、下から外してください。</p>
-    <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>この予定の写真やファイルを送る</a><a class="button secondary" href={`${adminPath(ward, "/projects")}?title=${encodeURIComponent(base.title)}`}>今年の{base.title}の準備を始める</a></div>
+    <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>この予定の写真やファイルを送る</a><a class="button secondary" href={`${adminPath(ward, "/projects")}?title=${encodeURIComponent(base.title)}`}>今年の「{base.title}」を始める</a></div>
     <details class="fold"><summary>この自治会にないので外す</summary><div><p>外しても、一年の画面の「外した予定」から戻せます。</p><form method="post" action={adminPath(ward, `/year/${base.key}/remove`)}><button class="secondary">外す</button></form></div></details>
   </AdminPage>);
 });

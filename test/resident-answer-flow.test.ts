@@ -40,7 +40,8 @@ it("名簿のない初年度から人数を答え、班と古い答えを保ち�
     const initial = await (await get(realApp, answerPath)).text();
     const submissionId = /name="submission_id" value="([^"]+)"/.exec(initial)?.[1];
     if (!submissionId) throw new Error("答えの送信番号がありません。");
-    expect(initial).toContain("分からない");
+    // 班の名前が入っていない自治会では、班を聞かない（点検 C の 5 節）。
+    expect(initial).not.toContain("<legend>班</legend>");
     expect(initial).toContain("代表者のお名前");
     const version = await publish("announcement", FIRST_SLICE.publicAnnouncement, [
       { key: "date_time", content: FIRST_SLICE.eventDay }, { key: "place", content: FIRST_SLICE.previousPlace },

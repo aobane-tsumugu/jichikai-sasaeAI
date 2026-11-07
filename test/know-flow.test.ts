@@ -42,8 +42,8 @@ it("十五項目を基本に、書く、外す、戻す、足す、名前を変�
 it("預からない物は欄の上に書き、会計の項目でも書ける", async () => {
   const { ward, cookie } = await seedAdmin(env.DB);
   const page = await read(`/${ward.slug}/admin/know/accounts`, cookie);
-  expect(page).toContain("このサービスでは通帳、印鑑、暗証番号を預かりません");
-  expect(await read(`/${ward.slug}/admin/know/handover`, cookie)).toContain("このサービスでは鍵とパスワードを預かりません");
+  expect(page).toContain("SasaeAIでは通帳、印鑑、暗証番号を預かりません");
+  expect(await read(`/${ward.slug}/admin/know/handover`, cookie)).toContain("SasaeAIでは鍵とパスワードを預かりません");
 });
 
 it("総会を閉じたあと直されていない項目と、時間の経った項目に見直しの合図を出し、今のままでよいを残せる", async () => {
@@ -278,7 +278,7 @@ it("一年の行から始めると何の準備かを聞かず、やることの�
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   const row = await read(`${root}/year/general-meeting`, cookie);
-  expect(row).toContain("今年の定期総会の準備を始める");
+  expect(row).toContain("今年の「定期総会」を始める");
   const form = await read(`${root}/projects?title=${encodeURIComponent("定期総会")}`, cookie);
   expect(form).toContain("今年の定期総会を始める");
   expect(form).toContain("よくある自治会の定期総会のやることを置きます。");
@@ -313,4 +313,20 @@ it("L-312: 種類の決まっていない予定から始める時も、何もな
   expect(plain).not.toContain('name="kind"');
   const meeting = await read(`${root}/projects?kind=general_meeting&title=${encodeURIComponent("定期総会")}`, cookie);
   expect(meeting).not.toContain('name="kind"');
+});
+
+it("基本情報の一件は、書かれている中身を先に読める文で出し、書き直す欄は畳みに入れる。班の名前が無い自治会では住民に班を聞かない", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const root = `/${ward.slug}/admin`;
+  const empty = await read(`${root}/know/dues`, cookie);
+  expect(empty).toContain('<textarea id="know-body"');
+  expect(empty).not.toContain("この内容を書き直す");
+  expect((await postForm(realApp, `${root}/know/dues`, { body: "架空の会費は年に三千円です。" }, cookie)).status).toBe(303);
+  const written = await read(`${root}/know/dues`, cookie);
+  expect(written).toContain('<p class="preserve-lines">架空の会費は年に三千円です。</p>');
+  expect(written).toContain("<summary>この内容を書き直す</summary>");
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の班の無い祭り", year: 2026, accountId: account.accountId });
+  const resident = await (await get(realApp, `/${ward.slug}/answer/${project.projectId}`)).text();
+  expect(resident).not.toContain("<legend>班</legend>");
+  expect(resident).toContain('<input type="hidden" name="district" value=""/>');
 });
