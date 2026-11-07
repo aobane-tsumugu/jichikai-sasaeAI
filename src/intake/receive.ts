@@ -9,6 +9,7 @@ import { classifyUpload, decodeText, sha256Hex, type MediaClass } from "./media"
 import { projectDirectory } from "./project-port";
 import type { OriginalKind, ReadKind, Via } from "./types";
 import { imagesBinding, photoSourceHash, preparePhoto } from "./photo";
+import { originalDate, type OriginalDate } from "./original-date";
 
 /** 一回に送れる量。画面の送るで足りる量（六枚前後）より十分大きく、Workers の要求の上限に収まる。 */
 export const MAX_PARTS = 30;
@@ -25,6 +26,8 @@ export interface ReceivePart {
   bytes: Uint8Array;
   /** ブラウザで写真を整える前のSHA-256。同じ写真の再送の照合だけに使う。 */
   sourceHash?: string;
+  /** 役員の画面が変換前のFileから取った日時。受付時刻では補わない。 */
+  lastModified?: number | string;
   /** Word と Excel をブラウザで展開した結果（JSON をパースした値）。無いと Word と Excel は受けない */
   extracted?: unknown;
 }
@@ -75,6 +78,7 @@ export interface ReceiveOutcome {
 }
 
 interface PreparedPart {
+  documentDate?: OriginalDate | null;
   resizeFailed?: boolean;
   part: ReceivePart;
   mediaType: string;
@@ -85,7 +89,7 @@ interface PreparedPart {
   text?: string;
 }
 
-async function prepare(parts: ReceivePart[], projectId: string | null, env: Pick<Env, "DB" | "ORIGINALS">): Promise<PreparedPart[]> {
+async function prepare(parts: ReceivePart[], projectId: string | null, env: Pick<Env, "DB" | "ORIGINALS">, via: Via): Promise<PreparedPart[]> {
   if (parts.length === 0) throw new ReceiveError("empty");
   if (parts.length > MAX_PARTS) throw new ReceiveError("too_many");
   let total = 0;
@@ -117,6 +121,7 @@ async function prepare(parts: ReceivePart[], projectId: string | null, env: Pick
     total += bytes.length;
     if (total > MAX_TOTAL_BYTES) throw new ReceiveError("too_large", part.filename);
     const item: PreparedPart = {
+      documentDate: await originalDate(classified.mediaClass, part.bytes, part.extracted, via === "admin" ? part.lastModified : undefined),
       part: photo?.mediaType === "image/jpeg" && classified.mediaType !== "image/jpeg"
         ? { ...part, filename: `${part.filename.replace(/\.[^.]*$/, "")}.jpg` } : part,
       mediaType: photo?.mediaType ?? classified.mediaType,
@@ -173,7 +178,7 @@ export async function receive(
   const projectId = input.projectId || null;
   // 存在しない、閉じたプロジェクトには送れない（繋げても、書く先が無くて全部捨てられる）
   if (projectId && !(await projectDirectory().isOpen(env.DB, input.wardId, projectId))) throw new ReceiveError("no_project");
-  const prepared = await prepare(input.parts, projectId, env);
+  const prepared = await prepare(input.parts, projectId, env, input.via);
 
   const existing = await findExistingHashes(
     env.DB,
@@ -250,8 +255,8 @@ export async function receive(
   for (const r of rows) {
     statements.push(
       env.DB.prepare(
-        `INSERT INTO originals (original_id, ward_id, job_id, position, kind, content_hash, dedupe_scope, media_type, filename, byte_size, r2_path, received_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO originals (original_id, ward_id, job_id, position, kind, content_hash, dedupe_scope, media_type, filename, byte_size, r2_path, received_at, document_date, document_date_source)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).bind(
         r.originalId,
         input.wardId,
@@ -265,6 +270,8 @@ export async function receive(
         r.p.bytes.length,
         r.path,
         now,
+        r.p.documentDate?.date ?? null,
+        r.p.documentDate?.source ?? null,
       ),
     );
   }

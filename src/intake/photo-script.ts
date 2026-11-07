@@ -18,7 +18,8 @@ export const PHOTO_SCRIPT = String.raw`(function (root) {
     } finally { URL.revokeObjectURL(url); }
   }
   async function preparePhoto(file) {
-    var unchanged = { file: file, sourceHash: '' };
+    var lastModified = file.lastModified;
+    var unchanged = { file: file, sourceHash: '', lastModified: lastModified };
     if (!isPhoto(file)) return unchanged;
     var bitmap;
     var canvas;
@@ -37,7 +38,7 @@ export const PHOTO_SCRIPT = String.raw`(function (root) {
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
       var blob = await new Promise(function (resolve) { canvas.toBlob(resolve, 'image/jpeg', 0.85); });
-      return blob && blob.type === 'image/jpeg' && blob.size <= 5 * 1024 * 1024 ? { file: blob, sourceHash: sourceHash } : unchanged;
+      return blob && blob.type === 'image/jpeg' && blob.size <= 5 * 1024 * 1024 ? { file: blob, sourceHash: sourceHash, lastModified: lastModified } : unchanged;
     } catch (ignored) { return unchanged; }
     finally {
       if (bitmap && typeof bitmap.close === 'function') bitmap.close();
@@ -60,6 +61,7 @@ export const PHOTO_SCRIPT = String.raw`(function (root) {
         var prepared = await preparePhoto(file);
         data.set('file', prepared.file, prepared.sourceHash ? file.name.replace(/\.[^.]*$/, '') + '.jpg' : file.name);
         data.set('source_hash', prepared.sourceHash);
+        data.set('last_modified', String(prepared.lastModified || ''));
       }
       try {
         var response = await fetch(form.action, { method: 'POST', body: data, credentials: 'same-origin' });

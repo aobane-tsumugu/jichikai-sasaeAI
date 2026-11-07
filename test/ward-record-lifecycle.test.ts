@@ -49,6 +49,9 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
     const duty = await createProject(env.DB, w, { kind: "duty", title: "架空のごみ当番", year: 2026, accountId: account.accountId });
     const sourceBytes = Uint8Array.from(atob(SOURCE_PNG), (character) => character.charCodeAt(0));
     const sourceHash = "b".repeat(64);
+    const comparisonOriginalId = `${w}-comparison`;
+    const comparisonText = "架空の確認会は午後に始めます。";
+    const comparisonBytes = new TextEncoder().encode(comparisonText);
     // ここで使うIDと本文と認証の値は全て試験用の架空のもの。
     await env.DB.batch([
       // 当番の曜日も両方の自治会に入れ、写し・書き出し・親からの連動消去を確かめる。
@@ -57,6 +60,18 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
         VALUES (?, ?, ?, 'line_direct', 'connect', 'done', '2026-11-06', '2026-11-06')`).bind(w, w, p),
       env.DB.prepare(`INSERT INTO originals (ward_id, original_id, job_id, position, kind, content_hash, media_type, byte_size, r2_path, received_at)
         VALUES (?, ?, ?, 1, 'photo', ?, 'image/png', ?, 'originals/fictional.jpg', '2026-11-06')`).bind(w, w, w, sourceHash, sourceBytes.length),
+      // 異なる二つの資料の比較を両方の自治会に残し、空の表で保存と連動消去を済ませない。
+      env.DB.prepare(`INSERT INTO originals (ward_id, original_id, job_id, position, kind, content_hash, media_type, byte_size, r2_path, received_at)
+        VALUES (?, ?, ?, 2, 'text', ?, 'text/plain', ?, 'originals/fictional-comparison.txt', '2026-11-06')`)
+        .bind(w, comparisonOriginalId, w, "d".repeat(64), comparisonBytes.length),
+      env.DB.prepare(`INSERT INTO original_comparisons (ward_id, project_id, first_original_id, second_original_id, result, created_at)
+        VALUES (?, ?, ?, ?, ?, '2026-11-06')`)
+        .bind(w, p, w, comparisonOriginalId, JSON.stringify({
+          descriptions: ["架空の案内の写真", "架空の確認会のメモ"],
+          differences: ["メモには午後に始めると書いてあります。"],
+          clues: ["どちらが新しいかを示す日付はありません。"],
+          newer: null, assessment: "中身からは、どちらが新しいか分かりません。",
+        })),
       env.DB.prepare(`INSERT INTO readings (ward_id, reading_id, job_id, source, pack_version, body, created_at)
         VALUES (?, ?, ?, 'direct', 'fixture@1', '{"text_blocks":[]}', '2026-11-06')`).bind(w, w, w),
       env.DB.prepare("INSERT INTO ward_know_items (ward_id, item_id, body) VALUES (?, 'meeting', '架空の総会の決まり')").bind(w),
@@ -105,6 +120,7 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
     ]);
     const bucket = new WardBucket(env.ORIGINALS, w);
     await bucket.put("originals/fictional.jpg", sourceBytes);
+    await bucket.put("originals/fictional-comparison.txt", comparisonBytes);
     // 機能を外したあとも残る旧写真の3表に行を入れ、書き出しと連動消去を確かめる。
     const model = "fictional-legacy-model", profile = "fictional-legacy-profile";
     await env.DB.prepare(`INSERT INTO ward_photo_policy
@@ -207,6 +223,7 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
   const withoutJob = eraseSnapshotJob(snapshot, target.ward.wardId, target.ward.wardId);
   expect(withoutJob).not.toBeNull();
   const rewritten = JSON.parse(withoutJob!) as { tables: Record<string, Record<string, unknown>[]> };
+  expect(rewritten.tables.original_comparisons).toEqual([]);
   expect(rewritten.tables.line_talk_admin_topics).toEqual([]);
   expect(rewritten.tables.line_talk_inquiry_posts).toEqual(snapshot.tables.line_talk_inquiry_posts);
   expect(snapshot.tables).not.toHaveProperty("line_photo_context_texts");
@@ -222,7 +239,7 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
   expect(exported.tables.publication_photos).toEqual([expect.objectContaining({
     photo_id: target.ward.wardId, masked_png: MASKED_PNG, model_sha256: "fictional-legacy-model", profile: "fictional-legacy-profile",
   })]);
-  expect(exported.objects.map((object) => object.key).sort()).toEqual([...target.flyerPaths, "originals/fictional.jpg"].sort());
+  expect(exported.objects.map((object) => object.key).sort()).toEqual([...target.flyerPaths, "originals/fictional.jpg", "originals/fictional-comparison.txt"].sort());
 
   await requestWardDeletion(env.DB, target.ward.wardId);
   for (let step = 0; step < 5; step++) {
@@ -241,6 +258,7 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
   expect((await target.bucket.list("")).keys.length).toBe(0);
   expect(new Uint8Array(await (await other.bucket.get("originals/fictional.jpg"))!.arrayBuffer()))
     .toEqual(Uint8Array.from(atob(SOURCE_PNG), (character) => character.charCodeAt(0)));
+  expect(await (await other.bucket.get("originals/fictional-comparison.txt"))!.text()).toBe("架空の確認会は午後に始めます。");
   for (const path of other.flyerPaths) {
     expect(new Uint8Array(await (await other.bucket.get(path))!.arrayBuffer())).toEqual(noticeFlyerJpeg());
   }
