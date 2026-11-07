@@ -73,13 +73,22 @@ admin.get("/", async (c) => {
   const know = await listKnowItems(c.env.DB, ward.wardId);
   const stale = know.items.filter((item) => item.state === "old");
   const asking = know.items.filter((item) => item.state === "checking");
+  // 当日（終わる日）が過ぎた準備は、当日の前の仕事を今の仕事と書かない。二週間以内は、記憶が新しいうちに閉じるので先の準備と同じ並びに置き、
+  // 二週間を過ぎて終わりにしていない準備は、ほかに準備が無い時だけ一番上に出し、それ以外は「役員が見ないと進まないこと」に出す。
+  const endOf = (project: (typeof projects)[number]) => project.deadlines.event_end ?? project.deadlines.event_day;
+  const graceStart = new Date(Date.parse(`${today}T00:00:00Z`) - 14 * 86400_000).toISOString().slice(0, 10);
+  const passed = (project: (typeof projects)[number]) => { const end = endOf(project); return Boolean(end && end < today); };
+  const longPast = (project: (typeof projects)[number]) => { const end = endOf(project); return Boolean(end && end < graceStart); };
+  const lively = projects.some((project) => !longPast(project));
+  const candidates = (project: (typeof projects)[number]) => !lively || !longPast(project);
   const nearest = projects.flatMap((project, index) => {
-    const task = states[index] ? nextMapTask(states[index]!.mapTasks, today) : undefined;
+    const task = states[index] && candidates(project) ? nextMapTask(states[index]!.mapTasks, today) : undefined;
     return task ? [{ project, task }] : [];
   }).sort((a, b) => (a.task.periodEnd ?? "9999").localeCompare(b.task.periodEnd ?? "9999"))[0];
-  const mine = account.seatId ? projects.flatMap((project, index) => (states[index]?.mapTasks ?? []).filter((task) => task.seatId === account.seatId && task.progress !== "done").map((task) => ({ project, task })))
+  const mine = account.seatId ? projects.flatMap((project, index) => candidates(project) ? (states[index]?.mapTasks ?? []).filter((task) => task.seatId === account.seatId && task.progress !== "done").map((task) => ({ project, task })) : [])
     .sort((a, b) => (a.task.periodEnd ?? "9999").localeCompare(b.task.periodEnd ?? "9999"))[0] : undefined;
   const chosen = mine ?? nearest;
+  const leftOpen = projects.filter((project) => longPast(project) && project.projectId !== chosen?.project.projectId);
   const unseeded = records.find((record) => !record.continued);
   const year = await wardYear(c.env.DB, ward, projects, states, today);
   const yearRows = nearToday(year.rows, year.today);
@@ -98,6 +107,7 @@ admin.get("/", async (c) => {
     .bind(ward.wardId, projectId).first<{ n: number }>())?.n ?? 0;
   const whenText = (project: (typeof projects)[number]) => {
     const day = project.deadlines.event_day;
+    if (day && passed(project)) return `${project.title}は${formatJstDate(day)}に行いました（${daysRemaining(endOf(project)!)}）。`;
     return day ? `${project.title}は${formatJstDate(day)}、${daysRemaining(day)}です。` : `${project.title}は、当日がまだ決まっていません。`;
   };
   const tasksOf = (project: (typeof projects)[number]) => states[projects.indexOf(project)]?.mapTasks.filter((task) => task.progress !== "done") ?? [];
@@ -108,6 +118,12 @@ admin.get("/", async (c) => {
     const { project, task } = chosen;
     const answers = task.taskKey === "answers" ? await answerCount(project.projectId) : null;
     const then = afterOf(project, task.taskId, task.periodEnd ?? today);
+    // 当日が過ぎた準備は、残った仕事ではなく、報告をまとめて終わりにすることを主にする。
+    if (passed(project)) return <section class="next">
+      <p class="lead">{whenText(project)}まだ終わりにしていません。{longPast(project) ? "" : "記憶が新しいうちに、"}報告をまとめて終わりにすると、来年の担当の方がこの記録から始められます。</p>
+      <a class="button" href={adminPath(ward, `/close/${project.projectId}`)}>{project.title}の報告をまとめて終わりにする</a>
+      <p>押すと、報告を書いて終わりにする画面が開きます。</p>
+    </section>;
     return <section class="next">
       <p class="lead">{mine ? "あなたの担当の仕事があります。" : ""}{whenText(project)}今は「{task.name}」の時期です。{task.periodEnd ? `${shortDate(task.periodEnd)}までです（${daysRemaining(task.periodEnd)}）。` : "この仕事の時期はまだ決まっていません。"}{answers !== null ? `今、${answers}世帯から返事が届いています。` : ""}</p>
       <a class="button" href={adminPath(ward, mapTaskPath(project.projectId, project.kind, task))}>{task.taskKey === "answers" ? `${project.title}の出欠の返事を見る` : task.name}</a>
@@ -131,13 +147,16 @@ admin.get("/", async (c) => {
       <a class="quiet" href={adminPath(ward, `/inquiries/${encodeURIComponent(row.inquiry_id)}`)}>返事を書く</a></li>),
     ...(openInquiries.length > 3 ? [<li><p>ほかにも、まだ返事をしていない問い合わせがあります。</p><a class="quiet" href={adminPath(ward, "/inquiries")}>問い合わせを全部見る</a></li>] : []),
     ...(near.length ? [<li><p>{near[0]}。{inquiryNotice(digest)}</p><a class="quiet" href={adminPath(ward, "/inquiries")}>問い合わせを見る</a></li>] : []),
+    ...leftOpen.slice(0, 3).map((project) => <li><p>{whenText(project)}まだ終わりにしていません。</p><a class="quiet" href={adminPath(ward, `/close/${project.projectId}`)}>{project.title}の報告をまとめて終わりにする</a></li>),
     ...(undecided ? [<li><p>届いた写真やファイルのうち{undecided}件は、どれの資料かをAIが決められませんでした。見て決めてください。</p><a class="quiet" href={adminPath(ward, "/inbox")}>届いたものを見て決める</a></li>] : []),
     ...asking.slice(0, 1).map((item) => <li><p>自治会の基本情報の「{item.title}」について、届いた資料に違うことが書かれていました。どちらが今の内容か教えてください。</p><a class="quiet" href={adminPath(ward, `/know/${item.id}`)}>見て答える</a></li>),
     ...stale.slice(0, 1).map((item) => <li><p>自治会の基本情報の「{item.title}」は、入れてから時間がたっています。今も合っているか見てください。</p><a class="quiet" href={adminPath(ward, `/know/${item.id}`)}>見て直す</a></li>),
   ];
-  const others = recent.filter((project) => project.projectId !== chosen?.project.projectId).slice(0, 4);
-  const othersBlock = others.length ? <><h2>ほかに準備中のもの</h2><ul class="rows">{others.map((project) => { const task = nextMapTask(tasksOf(project), today); return <li><a class="row-link" href={adminPath(ward, `/projects/${project.projectId}/map`)}><b>{project.title}</b>
-      <span>{whenText(project)}{task ? `次は「${task.name}」です${task.periodEnd ? `（${shortDate(task.periodEnd)}まで）` : ""}。` : ""}</span></a></li>; })}</ul>
+  // 二週間を過ぎて終わりにしていない準備は「役員が見ないと進まないこと」に出すので、ここには並べない。
+  const others = recent.filter((project) => project.projectId !== chosen?.project.projectId && !leftOpen.includes(project)).slice(0, 4);
+  // 一年を全部見る道は、ほかに並べる準備が無い時も、準備が多ければ出す。
+  const othersBlock = others.length || projects.length > 1 ? <>{others.length ? <><h2>ほかに準備中のもの</h2><ul class="rows">{others.map((project) => { const task = nextMapTask(tasksOf(project), today); return <li><a class="row-link" href={adminPath(ward, `/projects/${project.projectId}/map`)}><b>{project.title}</b>
+      <span>{whenText(project)}{task ? `次は「${task.name}」です${task.periodEnd ? `（${shortDate(task.periodEnd)}まで）` : ""}。` : ""}</span></a></li>; })}</ul></> : null}
     {projects.length > others.length + 1 ? <p class="link-line"><a href={adminPath(ward, "/year")}>この自治会の一年を全部見る</a></p> : null}</> : null;
   const lastYearTitles = [...new Set(lastYearTasks.map((task) => task.title))];
   const lastYear = lastYearTasks.length ? <p>去年の今ごろは、{lastYearTitles.map((title) => `${title}の${lastYearTasks.filter((task) => task.title === title).map((task) => `「${task.name}」`).join("と")}`).join("、")}をしていました。<a href={adminPath(ward, `/archive/${lastYearTasks[0]!.project_id}`)}>去年の{lastYearTasks[0]!.title}を見る</a></p> : null;

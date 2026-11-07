@@ -51,6 +51,11 @@ it("L-311: 住民へのメッセージを、トップから選ぶ二つと下書
   expect(record).not.toBeNull();
   expect(await (await get(realApp, `/${ward.slug}/p/${project.projectId}`)).text()).toContain("マイバッグを持ってきてください");
 
+  // まだ送っていない下書きは、どの準備の下書きかを名前で並べる
+  const saveVersion = (await getProjectSummary(env.DB, ward.wardId, project.projectId))!.stateVersion;
+  expect((await postForm(realApp, `${root}/projects/${project.projectId}/draft/recruitment/save`, { title: "架空の手伝いの募集", text: "架空の手伝いを募ります。", scope: "public", based_on: String(saveVersion), flyer_choice: "none" }, cookie)).status).toBe(303);
+  expect(await (await get(realApp, `${root}/messages/new`, cookie)).text()).toContain("架空の秋の収穫祭の下書き「架空の手伝いの募集」");
+
   // 住民向けにならない組み合わせは、理由を書いて選び直してもらう
   const duty = await createProject(env.DB, ward.wardId, { kind: "duty", title: "架空のごみ当番", year: 2026, accountId: account.accountId });
   const refused = await postForm(realApp, `${root}/messages`, { kind: "notice", projectId: duty.projectId }, cookie);
