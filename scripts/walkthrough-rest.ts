@@ -634,7 +634,7 @@ if (opsCredsArg) {
     opsLoggedIn = true;
     const costs = await get("/ops/wards/" + encodeURIComponent(ward) + "/costs");
     if (!costs.response.ok || !/費用|\$|円|USD|入力\s*\d/.test(costs.html)) throw new Error("費用の画面または数字を確認できません");
-    const numberMatch = /(?:費用|合計)[^<]{0,40}(?:\$|¥)?\s*[0-9][0-9,.]*/.exec(costs.html);
+    const numberMatch = /(?:費用|合計)[^0-9]{0,40}(?:\$|¥)?\s*[0-9][0-9,.]*/.exec(costs.html.replace(/<[^>]+>/g, " "));
     if (!numberMatch) throw new Error("費用画面に数字が見つかりません");
     record(14, "運用の費用", "通過", "運用画面の区別費用を開き、数値表示を確認", costs.response.status, start);
   } catch (error) { fail(14, "運用の費用", error, start); }
