@@ -286,6 +286,8 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
      ORDER BY j.created_at DESC`,
   ).bind(c.var.ward.wardId, projectId).all<{ original_id: string; filename: string; job_id: string; body: string | null; status: string }>();
   const root = adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(projectId)}`);
+  // 案内をまだ住民に知らせていない時は、返事はまだ来ない。まだ無い回答票を撮れとは言わない。
+  const announced = !!(await c.env.DB.prepare("SELECT 1 AS found FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id WHERE d.ward_id = ? AND d.project_id = ? AND d.kind = 'announcement' AND v.published_at IS NOT NULL LIMIT 1").bind(c.var.ward.wardId, projectId).first());
   const view = retry ? "hand" : c.req.query("view") ?? "summary";
   const closed = !!project.closed_at;
   const back = { href: root, label: `← ${project.title}の出欠の返事へ` };
@@ -325,7 +327,8 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
       <div class="counts"><div class="count"><b>{answers.length}<small>世帯</small></b><span>{roster.length ? `${roster.length}世帯のうち` : "返事のあった世帯"}</span></div><div class="count"><b>{totals.people}<small>人</small></b><span>参加する</span></div><div class="count"><b>{helperCount}<small>人</small></b><span>手伝い</span></div></div>
       {unread ? <div class="notice warn"><strong>人数が読めなかった返事が{unread}件あります</strong><p>参加しないには数えていません。写真を見て入れてください。</p><a class="quiet" href={`${root}?view=read`}>読み取った出欠の返事を見る</a></div> : null}
       {!answers.length ? <>
-        {!closed ? <><section class="next"><strong>次は</strong><p>回答票が手元にあれば、撮って送れます。</p><a class="button" href={`${root}?view=send`}>回答票を撮って送る</a></section><a class="quiet" href={`${root}?view=hand`}>電話で聞いた返事を入れる</a></> : null}
+        {!closed ? announced ? <><section class="next"><strong>次は</strong><p>回答票が手元にあれば、撮って送れます。</p><a class="button" href={`${root}?view=send`}>回答票を撮って送る</a></section><a class="quiet" href={`${root}?view=hand`}>電話で聞いた返事を入れる</a></>
+          : <><section class="next"><p>{project.title}は、まだ住民に案内を知らせていません。出欠の返事は、案内を知らせたあとに、ここに集まります。</p><a class="button" href={adminPath(c.var.ward.slug, `/projects/${projectId}/map`)}>{project.title}のやることを開く</a></section><p>先に電話で返事を聞いたときは、ここから入れられます。<a href={`${root}?view=hand`}>電話で聞いた返事を入れる</a></p></> : null}
         {!roster.length ? <p><a class="quiet" href={adminPath(c.var.ward.slug, "/answers/roster")}>名簿を入れる</a></p> : null}
         {deadlinePassed && remaining ? <p>返事のない{remaining}世帯は欠席として数えています。</p> : null}
         <p><a class="button secondary" href={`${root}?view=helpers`}>手伝いの一覧 {helperCount}人</a></p>

@@ -17,7 +17,7 @@ it("電話の返事を入れ間違えた役員が、案内を読んで戻り、�
   expect(failed.headers.get("content-type")).toContain("text/html");
   const guidance = await failed.text();
   expect(guidance).toContain(`${ward.name} 役員の画面`);
-  expect(guidance).toContain("入力を確認してください。");
+  expect(guidance).toContain("世帯の代表者のお名前が入っていません。");
   // 入れ間違いは別の画面へ移らず、入れた内容を残した同じ入力の画面で直す。
   expect(guidance).toContain("入れた内容は残っています。");
   expect(guidance).toContain("世帯の代表者（ふつうは世帯主）のお名前");
