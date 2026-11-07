@@ -188,8 +188,8 @@ admin.get("/year", async (c) => {
   const projects = await listOpenProjects(c.env.DB, ward.wardId);
   const states = await Promise.all(projects.map((project) => getProjectState(c.env.DB, ward.wardId, project.projectId)));
   const year = await wardYear(c.env.DB, ward, projects, states, today());
-  const removed = await c.env.DB.prepare("SELECT item_id FROM ward_year_items WHERE ward_id = ? AND added = 0 AND removed_at IS NOT NULL").bind(ward.wardId).all<{ item_id: string }>();
-  const taken = YEAR_BASE.filter((base) => removed.results.some((row) => row.item_id === base.key));
+  const removed = await c.env.DB.prepare("SELECT item_id, title, added FROM ward_year_items WHERE ward_id = ? AND removed_at IS NOT NULL ORDER BY created_at").bind(ward.wardId).all<{ item_id: string; title: string; added: number }>();
+  const taken = removed.results.map((row) => ({ key: row.item_id, title: row.added ? row.title : YEAR_BASE.find((base) => base.key === row.item_id)?.title ?? "" })).filter((row) => row.title);
   return c.html(<AdminPage ward={ward} account={account} title="この区の一年" back={{ href: adminPath(ward, "/"), label: "最初の画面へ" }}>
     <h1>この区の一年</h1>
     <p class="lead">一般の自治会の一年を仮に置いています。行事や届いた紙で、この区の内容に変わっていきます。行を押すと開きます。</p>
@@ -210,8 +210,18 @@ admin.post("/year", async (c) => {
   return c.redirect(adminPath(ward, "/year"), 303);
 });
 
-admin.get("/year/:key", (c) => {
+admin.get("/year/:key", async (c) => {
   const { ward, account } = c.var;
+  const added = await c.env.DB.prepare("SELECT item_id, title, month, date_text, source_original_id, removed_at FROM ward_year_items WHERE ward_id = ? AND item_id = ? AND added = 1")
+    .bind(ward.wardId, c.req.param("key")).first<{ item_id: string; title: string; month: number | null; date_text: string; source_original_id: string | null; removed_at: string | null }>();
+  if (added) return c.html(<AdminPage ward={ward} account={account} title={added.title} back={{ href: adminPath(ward, "/year"), label: "この区の一年へ" }}>
+    <h1>{added.title}</h1>
+    <p class="lead">{added.month ? `${added.month}月` : ""}{added.date_text ? `　${added.date_text}` : ""}</p>
+    {added.source_original_id ? <p class="link-line"><a href={adminPath(ward, `/intake/originals/${added.source_original_id}`)}>読み取った元の紙を見る</a></p> : null}
+    <div class="action-links"><a class="button secondary" href={`${adminPath(ward, "/projects")}?title=${encodeURIComponent(added.title)}`}>「{added.title}」を始める</a></div>
+    {added.removed_at ? <form method="post" action={adminPath(ward, `/year/${added.item_id}/restore`)}><button class="secondary">一年に戻す</button></form>
+      : <details class="fold"><summary>この行を外す</summary><div><p>違う行や、この区にない行は外せます。外しても、一年の画面の「外した行」から戻せます。</p><form method="post" action={adminPath(ward, `/year/${added.item_id}/remove`)}><button class="secondary">外す</button></form></div></details>}
+  </AdminPage>);
   const base = YEAR_BASE.find((entry) => entry.key === c.req.param("key"));
   if (!base) return c.notFound();
   return c.html(<AdminPage ward={ward} account={account} title={base.title} back={{ href: adminPath(ward, "/year"), label: "この区の一年へ" }}>
@@ -224,7 +234,8 @@ admin.get("/year/:key", (c) => {
 
 for (const [operation, removed] of [["remove", true], ["restore", false]] as const) admin.post(`/year/:key/${operation}`, async (c) => {
   const { ward } = c.var; const key = c.req.param("key");
-  if (!YEAR_BASE.some((entry) => entry.key === key)) return c.notFound();
+  const added = await c.env.DB.prepare("SELECT 1 AS ok FROM ward_year_items WHERE ward_id = ? AND item_id = ? AND added = 1").bind(ward.wardId, key).first();
+  if (!added && !YEAR_BASE.some((entry) => entry.key === key)) return c.notFound();
   await removeYearBase(c.env.DB, ward.wardId, key, removed);
   return c.redirect(adminPath(ward, "/year"), 303);
 });

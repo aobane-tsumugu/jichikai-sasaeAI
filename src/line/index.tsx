@@ -98,6 +98,8 @@ function InboxPick({ ward, title, noun, facts, photos, files, summary, reason, q
     {current ? null : <p class="muted">この紙は区の資料に入っています。行事につなげるときは選んでください。</p>}
     <h2>{current ? "別の行事に入れ直す" : "どの行事に入れますか"}</h2>
     <WhichProject id="pick" question={current ? `この${noun}は、次の行事のものですか？` : `この${noun}は、次の行事のものですか？`} projects={others} suggested={current ? null : suggested} suggestedName={current ? "" : suggestedName} suggestedKind={suggestedKind} action={action} />
+    {current ? <details class="fold"><summary>この行事から外す</summary><div><p>外しても、紙は区の資料に残ります。行事に入った内容は消えないので、違うところは下書きで直してください。</p>
+      <form method="post" action={action}><button class="secondary" name="operation" value="detach">この行事から外す</button></form></div></details> : null}
     {originalId ? <details class="fold"><summary>役員が知っておくことにつなげる</summary><div><p>規約や役員の一覧のように、行事に入らない紙に使います。</p>
       <div class="action-links">{know.map((item) => <form method="post" action={adminPath(ward, `/know/${encodeURIComponent(item.id)}/links`)}><input type="hidden" name="originalId" value={originalId} /><button class="secondary">{item.title}</button></form>)}</div>
     </div></details> : null}
@@ -153,13 +155,15 @@ admin.get("/inbox", async (c) => {
   const titled = groups.filter((g) => g.title);
   const toDecide = titled.length + rosterAsk.length;
   const assignedTo = names.get(c.req.query("project") ?? "");
+  const movedFrom = names.get(c.req.query("from") ?? "");
   const sentBy = (jobId: string) => { const item = items.find((i) => i.job_id === jobId); return item ? `${formatJst(item.received_at)}　${item.sender_display_name || item.sender_label || "公式LINE"}` : ""; };
   const detail = (jobId: string) => { const item = items.find((i) => i.job_id === jobId); return adminPath(ward, item ? `/inbox/${item.item_id}/pick` : `/inbox/city/${jobId}/pick`); };
   return c.html(<Layout title="届いたもの" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a>
     {c.req.query("error") === "input" ? <Notice error>入れる行事を選び直してください。</Notice> : null}
     <h1>届いたもの</h1>
-    {c.req.query("n") === "assigned" ? <Notice>{assignedTo ?? "行事"}に入れました。違うときは、下の写真を押すと入れ直せます。</Notice> : null}
+    {c.req.query("n") === "assigned" ? <Notice>{assignedTo ?? "行事"}に入れました。違うときは、下の写真を押すと入れ直せます。{movedFrom ? `${movedFrom}の下書きに、この紙から入った内容が残っていることがあります。配る前に見て直してください。` : ""}</Notice> : null}
+    {c.req.query("n") === "detached" ? <Notice>{movedFrom ? `${movedFrom}から外しました。` : "行事から外しました。"}紙は区の資料に残っています。{movedFrom ? `${movedFrom}の下書きに、この紙から入った内容が残っていることがあります。配る前に見て直してください。` : ""}</Notice> : null}
     {c.req.query("n") === "assigned" && assignedTo && !toDecide ? <section class="next"><strong>次は</strong><p>{assignedTo}の段取りから続きを進められます。</p><a class="button" href={adminPath(ward, `/projects/${c.req.query("project")}/map`)}>{assignedTo}の段取りを見る</a></section> : null}
     {c.req.query("n") === "removed" ? <Notice>関係のないものとして外しました。数だけが残ります。</Notice> : null}
     {c.req.query("n") === "roster" ? <Notice>名簿には入れませんでした。紙は区の資料に残っています。</Notice> : null}
@@ -263,6 +267,11 @@ admin.post("/inbox/city/:jobId", async (c) => {
   const job = await c.env.DB.prepare("SELECT via, project_id, ai_matched_at, withdrawn_at FROM jobs WHERE ward_id = ? AND job_id = ?")
     .bind(ward.wardId, jobId).first<{ via: string; project_id: string | null; ai_matched_at: string | null; withdrawn_at: string | null }>();
   if (!job || job.via !== "admin" || job.withdrawn_at !== null) return c.notFound();
+  const from = job.project_id ? `&from=${job.project_id}` : "";
+  if (operation === "detach") {
+    if (!(await assignProject(c.env, safeContext(c), ward.wardId, jobId, null))) return c.redirect(`/${ward.slug}/admin/inbox?error=busy`, 303);
+    return c.redirect(`/${ward.slug}/admin/inbox?n=detached${from}`, 303);
+  }
   let projectId = String(form.get("projectId") ?? "");
   if (operation === "new-project") {
     const title = String(form.get("projectName") ?? "").trim();
@@ -275,7 +284,7 @@ admin.post("/inbox/city/:jobId", async (c) => {
   if (!projectId || !(await c.env.DB.prepare("SELECT 1 AS ok FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL")
     .bind(ward.wardId, projectId).first())) return adminResult(c, "開いている行事を選んでください。", 400, { href: adminPath(c.var.ward, "/inbox"), label: "届いたものに戻る" }, "開いている行事を選び直してください。");
   if (!(await assignProject(c.env, safeContext(c), ward.wardId, jobId, projectId))) return c.redirect(`/${ward.slug}/admin/inbox?error=busy`, 303);
-  return c.redirect(`/${ward.slug}/admin/inbox?n=assigned&project=${projectId}`, 303);
+  return c.redirect(`/${ward.slug}/admin/inbox?n=assigned&project=${projectId}${job.project_id && job.project_id !== projectId ? from : ""}`, 303);
 });
 
 admin.get("/inbox/city/:jobId/pick", async (c) => {
@@ -347,6 +356,15 @@ admin.post("/inbox/:itemId", async (c) => {
   const form = await c.req.parseBody();
   const operation = form.operation;
   const itemId = c.req.param("itemId");
+  const before = await c.env.DB.prepare(`SELECT i.job_id, COALESCE(i.matched_project_id, j.project_id) AS current FROM line_inbox_items i
+    LEFT JOIN jobs j ON j.ward_id = i.ward_id AND j.job_id = i.job_id WHERE i.ward_id = ? AND i.item_id = ?`).bind(wardId, itemId).first<{ job_id: string | null; current: string | null }>();
+  const from = (next: string | null) => before?.current && before.current !== next ? `&from=${before.current}` : "";
+  if (operation === "detach") {
+    if (!before) return c.notFound();
+    if (before.job_id && !(await assignProject(c.env, safeContext(c), wardId, before.job_id, null))) return c.redirect(`/${c.var.ward.slug}/admin/inbox?error=busy`, 303);
+    await c.env.DB.prepare("UPDATE line_inbox_items SET disposition = 'unmatched', matched_project_id = NULL, matched_project_name = NULL, match_reason = NULL WHERE ward_id = ? AND item_id = ?").bind(wardId, itemId).run();
+    return c.redirect(`/${c.var.ward.slug}/admin/inbox?n=detached${from(null)}`, 303);
+  }
   if (operation === "unrelated") {
     const item = await c.env.DB.prepare("SELECT job_id FROM line_inbox_items WHERE ward_id = ? AND item_id = ?").bind(wardId, itemId).first<{ job_id: string | null }>();
     if (!item?.job_id || !(await withdrawJob(c.env, wardId, item.job_id))) return c.redirect(`/${c.var.ward.slug}/admin/inbox?error=busy`, 303);
@@ -370,7 +388,7 @@ admin.post("/inbox/:itemId", async (c) => {
         UPDATE line_inbox_items SET disposition = 'matched', matched_project_id = ?,
           matched_project_name = ?, match_reason = NULL WHERE ward_id = ? AND item_id = ?
       `).bind(projectId, project.name, wardId, itemId).run();
-      return c.redirect(`/${c.var.ward.slug}/admin/inbox?n=assigned&project=${projectId}`, 303);
+      return c.redirect(`/${c.var.ward.slug}/admin/inbox?n=assigned&project=${projectId}${from(projectId)}`, 303);
     }
   } else if (operation === "new-project") {
     const projectName = typeof form.projectName === "string" ? form.projectName.trim() : "";
@@ -389,7 +407,7 @@ admin.post("/inbox/:itemId", async (c) => {
         UPDATE line_inbox_items SET disposition = 'matched', matched_project_id = ?,
           matched_project_name = ?, match_reason = NULL WHERE ward_id = ? AND item_id = ?
       `).bind(created.projectId, projectName, wardId, itemId).run();
-      return c.redirect(`/${c.var.ward.slug}/admin/inbox?n=assigned&project=${created.projectId}`, 303);
+      return c.redirect(`/${c.var.ward.slug}/admin/inbox?n=assigned&project=${created.projectId}${from(created.projectId)}`, 303);
     }
   }
   return c.redirect(`/${c.var.ward.slug}/admin/inbox?n=assigned`, 303);
