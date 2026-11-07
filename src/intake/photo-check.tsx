@@ -62,7 +62,7 @@ export function photoCheckMessage(check: PhotoCheck): string {
 }
 
 const PAPER_LABEL: Record<PhotoCheck["paperKind"], string> = {
-  announcement: "案内", roster: "名簿", sponsors: "協賛先の一覧", receipt: "領収書", layout: "配置図", rota: "当番表", report: "報告", notice: "通知", memo: "メモ", answer_sheet: "回答票", photo: "写真", other: "紙の種類はまだ分かりません",
+  announcement: "案内", roster: "名簿", sponsors: "協賛先の一覧", receipt: "領収書", layout: "配置図", rota: "当番表", report: "報告", notice: "通知", memo: "メモ", answer_sheet: "回答票", rules: "規約", meeting_papers: "総会の資料", year_plan: "年間の予定", officers: "役員の一覧", photo: "写真", other: "紙の種類はまだ分かりません",
 };
 
 export function PhotoCheckNotice({ checks, retakeHref, continueHref }: { checks: StoredPhotoCheck[]; retakeHref: string; continueHref: string }) {

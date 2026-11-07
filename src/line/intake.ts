@@ -1,3 +1,4 @@
+import type { KnowTopic } from "../ai/schema";
 import { createAnthropic } from "../ai/anthropic";
 import { MATCH_NEW, MATCH_UNRELATED, matchProject, type MatchResult } from "../ai/match";
 import { projectApi } from "../ai/project-binding";
@@ -90,6 +91,7 @@ export interface InboxMatch {
   reason?: string;
   inquiry?: boolean;
   attendanceAnswer?: boolean;
+  knowTopic?: KnowTopic;
 }
 
 export interface LineIntakePorts {
@@ -231,14 +233,15 @@ export function createLineIntakePorts(
         officialAddressed: item.officialAddressed,
       })))(wardId, original);
       await recordAiMatchUsage(env.DB, wardId, result.usage);
-      if (result.choice === MATCH_UNRELATED) return { disposition: original.kind === "text" ? "unrelated" : "unmatched", reason: result.reason, inquiry: false };
+      if (result.choice === MATCH_UNRELATED && !result.knowTopic) return { disposition: original.kind === "text" ? "unrelated" : "unmatched", reason: result.reason, inquiry: false };
+      const knowTopic = result.knowTopic ? { knowTopic: result.knowTopic } : {};
       // 出欠の答えは、一対一でも問い合わせに回さず数える。
       if (original.officialAddressed && result.attendanceAnswer !== true && result.intent === "inquiry") return { disposition: "unmatched", reason: result.reason, inquiry: true };
-      if (result.choice === MATCH_NEW) return { disposition: "unmatched", reason: result.reason, inquiry: false };
+      if (result.choice === MATCH_NEW || result.choice === MATCH_UNRELATED) return { disposition: "unmatched", reason: result.reason, inquiry: false, ...knowTopic };
       const project = open.find((candidate) => candidate.projectId === result.choice);
       return project
-        ? { disposition: "matched", projectId: project.projectId, projectName: project.title, reason: result.reason, inquiry: false, attendanceAnswer: result.attendanceAnswer === true }
-        : { disposition: "unmatched", reason: result.reason, inquiry: false };
+        ? { disposition: "matched", projectId: project.projectId, projectName: project.title, reason: result.reason, inquiry: false, attendanceAnswer: result.attendanceAnswer === true, ...knowTopic }
+        : { disposition: "unmatched", reason: result.reason, inquiry: false, ...knowTopic };
     },
   };
 }

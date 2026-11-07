@@ -35,7 +35,7 @@ export const KNOW_BASE: readonly KnowBase[] = [
 
 export const KNOW_LIMITS = { title: 60, body: 4000 } as const;
 
-export type KnowState = "empty" | "fact" | "old";
+export type KnowState = "empty" | "fact" | "old" | "checking";
 
 export interface KnowItem {
   id: string;
@@ -49,9 +49,12 @@ export interface KnowItem {
   state: KnowState;
   /** 状態の理由を一文で。 */
   note: string;
+  /** 役員が書いた文と違う内容の紙が届いた時の、紙の内容。 */
+  proposed: string;
+  proposedOriginalId: string | null;
 }
 
-interface Row { item_id: string; title: string; body: string; reviewed_at: string | null; added: number; removed_at: string | null; updated_at: string }
+interface Row { item_id: string; title: string; body: string; reviewed_at: string | null; added: number; removed_at: string | null; updated_at: string; proposed_text: string; proposed_original_id: string | null }
 
 const monthsBetween = (from: string, to: Date) => {
   const start = new Date(from);
@@ -61,7 +64,7 @@ const ago = (months: number) => months >= 12 ? `${Math.floor(months / 12)}年${m
 
 function stateOf(base: KnowBase | undefined, value: string, seen: string | null, meetingClosedAt: string | null, now: Date): { state: KnowState; note: string } {
   if (!value) return { state: "empty", note: `入っていません。${base?.hint ?? ""}` };
-  if (!seen) return { state: "fact", note: "" };
+  if (!seen) return { state: "fact", note: "紙から読み取りました" };
   if (base?.afterMeeting && meetingClosedAt && seen < meetingClosedAt) return { state: "old", note: "総会のあと直されていません" };
   const months = monthsBetween(seen, now);
   if (base && months >= base.months) return { state: "old", note: `${ago(months)}に見直しました` };
@@ -71,7 +74,7 @@ function stateOf(base: KnowBase | undefined, value: string, seen: string | null,
 /** 基本の項目に区の上書きを重ねて返す。外した項目は別に返す。 */
 export async function listKnowItems(db: D1Database, wardId: string, now = new Date()) {
   const [rows, meeting, roster] = await Promise.all([
-    db.prepare("SELECT item_id, title, body, reviewed_at, added, removed_at, updated_at FROM ward_know_items WHERE ward_id = ? ORDER BY created_at, item_id").bind(wardId).all<Row>(),
+    db.prepare("SELECT item_id, title, body, reviewed_at, added, removed_at, updated_at, proposed_text, proposed_original_id FROM ward_know_items WHERE ward_id = ? ORDER BY created_at, item_id").bind(wardId).all<Row>(),
     db.prepare("SELECT MAX(closed_at) AS closed_at FROM projects WHERE ward_id = ? AND kind = 'general_meeting' AND closed_at IS NOT NULL").bind(wardId).first<{ closed_at: string | null }>(),
     db.prepare(`SELECT COUNT(*) AS n, MAX(s.updated_at) AS updated_at FROM ward_roster_entries e
       JOIN ward_roster_settings s ON s.ward_id = e.ward_id AND s.active_set_id = e.roster_set_id WHERE e.ward_id = ?`).bind(wardId).first<{ n: number; updated_at: string | null }>(),
@@ -81,7 +84,8 @@ export async function listKnowItems(db: D1Database, wardId: string, now = new Da
     const auto = id === "roster" && roster?.n ? `世帯の名簿 ${roster.n}世帯` : "";
     const body = row?.body ?? "";
     const seen = [row?.reviewed_at, auto ? roster?.updated_at : null].filter((value): value is string => Boolean(value)).sort().at(-1) ?? null;
-    return { id, title: row?.title || base?.title || "", body, auto, hint: base?.hint ?? "", keepOut: base?.keepOut ?? "", added: !base, ...stateOf(base, body.trim() || auto, seen, meeting?.closed_at ?? null, now) };
+    const state = row?.proposed_text ? { state: "checking" as const, note: "新しい紙に違う内容があります" } : stateOf(base, body.trim() || auto, seen, meeting?.closed_at ?? null, now);
+    return { id, title: row?.title || base?.title || "", body, auto, hint: base?.hint ?? "", keepOut: base?.keepOut ?? "", added: !base, proposed: row?.proposed_text ?? "", proposedOriginalId: row?.proposed_original_id ?? null, ...state };
   };
   const all = [...KNOW_BASE.map((base) => ({ item: build(base.key, base, byId.get(base.key)), removed: Boolean(byId.get(base.key)?.removed_at) })),
     ...rows.results.filter((row) => row.added).map((row) => ({ item: build(row.item_id, undefined, row), removed: Boolean(row.removed_at) }))];
@@ -99,6 +103,13 @@ export async function saveKnowItem(db: D1Database, wardId: string, id: string, i
   const now = nowIso();
   await db.batch([upsert(db, wardId, id),
     db.prepare("UPDATE ward_know_items SET body = ?, reviewed_at = ?, updated_at = ? WHERE ward_id = ? AND item_id = ?").bind(input.body, now, now, wardId, id)]);
+}
+
+/** 紙の内容を使うか、今のままにするかを決める。どちらでも質問は閉じる。 */
+export async function answerKnowProposal(db: D1Database, wardId: string, id: string, use: boolean): Promise<void> {
+  const now = nowIso();
+  await db.prepare(`UPDATE ward_know_items SET body = CASE WHEN ? = 1 THEN proposed_text ELSE body END, proposed_text = '', proposed_original_id = NULL,
+    reviewed_at = ?, updated_at = ? WHERE ward_id = ? AND item_id = ?`).bind(use ? 1 : 0, now, now, wardId, id).run();
 }
 
 export async function renameKnowItem(db: D1Database, wardId: string, id: string, title: string): Promise<void> {

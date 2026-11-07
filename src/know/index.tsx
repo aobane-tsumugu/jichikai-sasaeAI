@@ -10,15 +10,15 @@ import { jobSummaries } from "../intake/store";
 import { getProjectState, listOpenProjects } from "../project/api";
 import { YEAR_BASE, YearLegend, YearMap, addYearItem, removeYearBase, wardYear } from "./year";
 import {
-  KNOW_BASE, KNOW_LIMITS, WARD_FILES_PAGE, addKnowItem, getKnowItem, knowLinksByOriginal, linkKnowSource, listKnowItems, listKnowSources, listWardFiles,
+  KNOW_BASE, KNOW_LIMITS, WARD_FILES_PAGE, addKnowItem, answerKnowProposal, getKnowItem, knowLinksByOriginal, linkKnowSource, listKnowItems, listKnowSources, listWardFiles,
   markKnowReviewed, renameKnowItem, saveKnowItem, setKnowRemoved, unlinkKnowSource, type KnowItem, type WardFile,
 } from "./store";
 
 const admin = new Hono<AdminEnv>();
 
-const STATE_CLASS = { empty: "example", fact: "fact", old: "old" } as const;
+const STATE_CLASS = { empty: "example", fact: "fact", old: "old", checking: "checking" } as const;
 const NOTICE: Record<string, string> = {
-  saved: "保存しました。", reviewed: "見直した日を残しました。", renamed: "名前を変えました。", linked: "資料をつなげました。", unlinked: "資料のつながりを外しました。",
+  saved: "保存しました。", answered: "答えを残しました。", reviewed: "見直した日を残しました。", renamed: "名前を変えました。", linked: "資料をつなげました。", unlinked: "資料のつながりを外しました。",
 };
 
 const knownItem = async (db: D1Database, wardId: string, id: string) => {
@@ -42,10 +42,10 @@ admin.get("/know", async (c) => {
   const filled = items.filter((item) => item.state !== "empty").length;
   return c.html(<AdminPage ward={ward} account={account} title="役員が知っておくこと" back={{ href: adminPath(ward, "/"), label: "最初の画面へ" }}>
     <h1>役員が知っておくこと</h1>
-    <p class="lead">自治会を動かすのに知っておきたいことの一覧です。書いておくと、新しい役員がここを読めます。入っていなくても、仕事は止まりません。</p>
+    <p class="lead">自治会を動かすのに知っておきたいことの一覧です。紙を送るとAIが読み取って入れます。違うところは直せます。入っていなくても、仕事は止まりません。</p>
     {c.req.query("n") === "added" ? <Notice>項目を足しました。</Notice> : c.req.query("n") === "removed" ? <Notice>項目を外しました。下の「外した項目」から戻せます。</Notice> : c.req.query("n") === "restored" ? <Notice>項目を戻しました。</Notice> : null}
     <p>{items.length}項目のうち{filled}項目が入っています。{old.length ? `${old.length}項目は見直す時期です。` : ""}</p>
-    <div class="state-legend"><span class="state example">入っていません</span><span class="state fact">この区の内容</span><span class="state old">見直す時期です</span></div>
+    <div class="state-legend"><span class="state example">入っていません</span><span class="state checking">質問があります</span><span class="state fact">この区の内容</span><span class="state old">見直す時期です</span></div>
     <ul class="year-list">{items.map((item) => <Row ward={ward} item={item} />)}</ul>
     <details class="fold"><summary>項目を足す</summary><div><form method="post" action={adminPath(ward, "/know")}>
       <div class="field"><label for="know-title">項目の名前</label><input id="know-title" name="title" type="text" required maxlength={KNOW_LIMITS.title} /><p class="help-text">この区で知っておきたいことを足せます。</p></div>
@@ -81,6 +81,9 @@ admin.get("/know/:itemId", async (c) => {
     {item.keepOut ? <div class="notice" role="status"><strong>このサービスでは{item.keepOut}を預かりません</strong><p>だれが持っているかだけ書いてください。</p></div> : null}
     {item.note && item.state === "old" ? <p><span class="state old">見直す時期です</span> {item.note}</p> : null}
     {item.auto ? <p>{item.auto}</p> : null}
+    {item.proposed ? <section class="panel"><p><span class="state checking">質問があります</span></p><p>新しい紙には、こう書かれていました。この内容にしますか？</p><p class="preserve-lines"><b>{item.proposed}</b></p>
+      {item.proposedOriginalId ? <p class="link-line"><a href={adminPath(ward, `/intake/originals/${item.proposedOriginalId}`)}>元の紙を見る</a></p> : null}
+      <form method="post" action={`${base}/proposal`}><div class="action-links"><button class="secondary" name="use" value="yes">この内容にする</button><button class="secondary" name="use" value="no">今のままでよい</button></div></form></section> : null}
     <form method="post" action={base}>
       <div class="field"><label for="know-body">この区の内容</label><textarea id="know-body" name="body" rows={6} maxlength={KNOW_LIMITS.body}>{item.body}</textarea></div>
       <div class="action-links"><button>保存する</button></div>
@@ -111,6 +114,13 @@ admin.post("/know/:itemId", async (c) => {
   const body = String((await c.req.formData()).get("body") ?? "").trim().slice(0, KNOW_LIMITS.body);
   await saveKnowItem(c.env.DB, ward.wardId, id, { body });
   return c.redirect(`${adminPath(ward, `/know/${encodeURIComponent(id)}`)}?n=saved`, 303);
+});
+
+admin.post("/know/:itemId/proposal", async (c) => {
+  const { ward } = c.var; const id = c.req.param("itemId");
+  if (!await knownItem(c.env.DB, ward.wardId, id)) return c.notFound();
+  await answerKnowProposal(c.env.DB, ward.wardId, id, (await c.req.formData()).get("use") === "yes");
+  return c.redirect(`${adminPath(ward, `/know/${encodeURIComponent(id)}`)}?n=answered`, 303);
 });
 
 admin.post("/know/:itemId/title", async (c) => {
@@ -207,7 +217,7 @@ admin.get("/year/:key", (c) => {
   return c.html(<AdminPage ward={ward} account={account} title={base.title} back={{ href: adminPath(ward, "/year"), label: "この区の一年へ" }}>
     <h1>{base.title}</h1>
     <p class="lead">一般の自治会の例を仮に置いています。この区のことはまだ入っていません。</p>
-    <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>この行事の紙や資料を送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>行事として始める</a></div>
+    <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>この行事の紙や資料を送る</a><a class="button secondary" href={`${adminPath(ward, "/projects")}?kind=${base.kind || "event"}&title=${encodeURIComponent(base.title)}`}>「{base.title}」を始める</a></div>
     <details class="fold"><summary>この区にないので外す</summary><div><p>外しても、一年の画面の「外した行」から戻せます。</p><form method="post" action={adminPath(ward, `/year/${base.key}/remove`)}><button class="secondary">外す</button></form></div></details>
   </AdminPage>);
 });

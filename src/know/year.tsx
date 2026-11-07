@@ -47,8 +47,11 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
   const removed = new Set(overrides.results.filter((row) => row.removed_at).map((row) => row.item_id));
   const used = new Set<string>();
   const rows: YearRow[] = [];
-  const claim = (kind: string, month: number) => {
-    const base = YEAR_BASE.find((entry) => !used.has(entry.key) && entry.kind === kind && inRange(month, entry)) ?? YEAR_BASE.find((entry) => !used.has(entry.key) && !entry.kind && inRange(month, entry));
+  // 名前の似た仮の行を先に置き換える。無ければ同じ種類の行。どちらも無ければ足すだけにする。
+  const similar = (a: string, b: string) => Array.from({ length: Math.max(a.length - 1, 0) }, (_, index) => a.slice(index, index + 2)).some((part) => b.includes(part));
+  const claim = (kind: string, month: number, title: string) => {
+    const open = YEAR_BASE.filter((entry) => !used.has(entry.key) && inRange(month, entry));
+    const base = open.find((entry) => similar(entry.title, title)) ?? (kind ? open.find((entry) => entry.kind === kind) : undefined);
     if (base) used.add(base.key);
   };
   projects.forEach((project, index) => {
@@ -67,20 +70,21 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
     const firstTask = state?.mapTasks.map((task) => task.periodStart).filter((value): value is string => Boolean(value)).sort()[0];
     const filled = state?.items.filter((item) => item.current).length ?? 0;
     const total = state?.items.length ?? 0;
-    claim(project.kind, month);
+    claim(project.kind, month, project.title);
     const start = firstTask && Number(firstTask.slice(0, 4)) === Number(day.slice(0, 4)) ? position(monthOf(firstTask), dayOf(firstTask)) : position(month, dayOf(day));
     rows.push({ key: project.projectId, title: project.title, note: total ? `${total}項目のうち${filled}つ入っています` : "", state: total && filled >= total ? "fact" : "example", from: start, to: Math.max(position(month, dayOf(day)) + 2, start + 2), href: adminPath(ward, `/projects/${project.projectId}/map`), order: position(month, dayOf(day)) });
   });
   for (const record of records.results) {
     if (!record.event_day || rows.some((row) => row.title === record.title)) continue;
     const month = monthOf(record.event_day);
-    claim(record.kind, month);
+    claim(record.kind, month, record.title);
     const at = position(month, dayOf(record.event_day));
     rows.push({ key: record.project_id, title: record.title, note: `${record.year}年の記録`, state: "fact", from: at, to: at + 2, href: adminPath(ward, `/archive/${record.project_id}`), order: at });
   }
   for (const row of overrides.results.filter((entry) => entry.added && !entry.removed_at && entry.month)) {
     const at = position(row.month!);
-    rows.push({ key: row.item_id, title: row.title, note: row.date_text, state: "fact", from: at, to: at + 4, href: row.source_original_id ? adminPath(ward, `/intake/originals/${row.source_original_id}`) : adminPath(ward, "/files"), order: at });
+    if (row.source_original_id) claim("", row.month!, row.title);
+    rows.push({ key: row.item_id, title: row.title, note: row.date_text || (row.source_original_id ? "紙から読み取りました" : ""), state: "fact", from: at, to: at + 4, href: row.source_original_id ? adminPath(ward, `/intake/originals/${row.source_original_id}`) : adminPath(ward, "/files"), order: at });
   }
   for (const base of YEAR_BASE) {
     if (used.has(base.key) || removed.has(base.key)) continue;
@@ -90,6 +94,13 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
   rows.sort((a, b) => a.order - b.order);
   const [, month, day] = today.split("-").map(Number) as [number, number, number];
   return { rows, today: position(month, day) / 100 };
+}
+
+/** トップの地図は今に近い行だけにする。行事が増えても画面が伸びないように。全部は一年の画面で見る。 */
+export function nearToday(rows: YearRow[], today: number, limit = 14): YearRow[] {
+  if (rows.length <= limit) return rows;
+  const distance = (row: YearRow) => { const gap = Math.abs(row.order - today * 100); return Math.min(gap, 100 - gap); };
+  return [...rows].sort((a, b) => distance(a) - distance(b)).slice(0, limit).sort((a, b) => a.order - b.order);
 }
 
 export function YearLegend() {

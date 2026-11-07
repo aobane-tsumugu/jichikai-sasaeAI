@@ -27,10 +27,45 @@ export const DOCUMENT_KINDS = [
   "notice", // 市などからの通知
   "memo", // 役員会のメモ、会計のメモ、電話のメモ
   "answer_sheet", // 回答票
+  "rules", // 規約、会則
+  "meeting_papers", // 総会の資料、事業計画、決算
+  "year_plan", // 年間の予定
+  "officers", // 役員の一覧
   "photo", // 当日の写真など、文字の少ない物
   "other",
 ] as const;
 export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
+
+/** 役員が知っておくことの基本の項目。src/know/store.ts の KNOW_BASE と同じ鍵。 */
+export const KNOW_TOPICS = ["officers", "board", "meeting", "roster", "notices", "delivery", "inquiries", "answers", "dues", "accounts", "city", "handover", "events", "duties", "safety"] as const;
+export type KnowTopic = (typeof KNOW_TOPICS)[number];
+export const KNOW_TOPIC_GUIDE = "officers=役員の一覧と任期と決め方、board=役員会と班長会の開き方、meeting=総会の決まりと規約、roster=名簿と班と加入の手続き、notices=案内と回覧の決まり、delivery=配り方と部数、inquiries=住民の連絡先と要望の出し方、answers=出欠の集め方、dues=会費の額と集め方と募金、accounts=予算と決算と補助金、city=市の担当の窓口と毎年の依頼、handover=書類の場所と備品と引き継ぎ、events=毎年の行事と業者と保険、duties=ごみ集積所の当番と清掃の決まり、safety=防災の組織と訓練と集会所と防犯灯";
+
+/** 一つの行事に限らない、区全体の決まりや情報。 */
+export interface WardFact { original_id: string; topic: KnowTopic; text: string }
+/** 年間の予定に書かれた一行。 */
+export interface YearEntry { original_id: string; title: string; month: number | null; date_text: string }
+
+export function cleanWardFacts(value: unknown, originalIds: string[]): WardFact[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry: unknown) => {
+    const item = (entry ?? {}) as Record<string, unknown>;
+    if (typeof item.text !== "string" || !item.text.trim() || !KNOW_TOPICS.some((topic) => topic === item.topic)) return [];
+    const original = typeof item.original_id === "string" && originalIds.includes(item.original_id) ? item.original_id : originalIds.length === 1 ? originalIds[0]! : "";
+    return [{ original_id: original, topic: item.topic as KnowTopic, text: item.text.trim().slice(0, 500) }];
+  });
+}
+
+export function cleanYearEntries(value: unknown, originalIds: string[]): YearEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry: unknown) => {
+    const item = (entry ?? {}) as Record<string, unknown>;
+    if (typeof item.title !== "string" || !item.title.trim() || item.title.trim().length > 100) return [];
+    const month = typeof item.month === "number" && Number.isInteger(item.month) && item.month >= 1 && item.month <= 12 ? item.month : null;
+    const original = typeof item.original_id === "string" && originalIds.includes(item.original_id) ? item.original_id : originalIds.length === 1 ? originalIds[0]! : "";
+    return [{ original_id: original, title: item.title.trim(), month, date_text: typeof item.date_text === "string" ? item.date_text.slice(0, 200) : "" }];
+  });
+}
 
 export interface TextBlock {
   original_id: string;
@@ -99,6 +134,8 @@ export interface Reading {
   /** 一行の要約 */
   summary: string;
   project_suggestions?: ProjectSuggestion[];
+  ward_facts?: WardFact[];
+  year_entries?: YearEntry[];
   text_blocks: TextBlock[];
   fields: ReadField[];
   tables: ReadTable[];
@@ -156,7 +193,7 @@ const unreadableSchema = {
 export const GENERAL_READING_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["document_kind", "original_years", "summary", "project_suggestions", "text_blocks", "fields", "tables", "decisions", "unreadable"],
+  required: ["document_kind", "original_years", "summary", "project_suggestions", "ward_facts", "year_entries", "text_blocks", "fields", "tables", "decisions", "unreadable"],
   properties: {
     document_kind: { type: "string", enum: [...DOCUMENT_KINDS] },
     original_years: {
@@ -179,6 +216,22 @@ export const GENERAL_READING_SCHEMA = {
           date_text: str, place: str,
           kind: { type: "string", enum: ["event", "general_meeting", "city_request", "board_meeting", "duty", "request"] },
         },
+      },
+    },
+    ward_facts: {
+      type: "array",
+      items: {
+        type: "object", additionalProperties: false,
+        required: ["original_id", "topic", "text"],
+        properties: { original_id: str, topic: { type: "string", enum: [...KNOW_TOPICS] }, text: str },
+      },
+    },
+    year_entries: {
+      type: "array",
+      items: {
+        type: "object", additionalProperties: false,
+        required: ["original_id", "title", "month", "date_text"],
+        properties: { original_id: str, title: str, month: { anyOf: [{ type: "integer" }, { type: "null" }] }, date_text: str },
       },
     },
     text_blocks: {

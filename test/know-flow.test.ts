@@ -3,6 +3,8 @@ import { expect, it } from "vitest";
 import { fictionalPaperPhoto } from "../fixtures/test-photo";
 import { seedAdmin } from "../src/core/testing";
 import { receive } from "../src/intake/receive";
+import { KNOW_TOPICS, type KnowTopic } from "../src/ai/schema";
+import { applyWardReading } from "../src/know/apply";
 import { KNOW_BASE, listKnowItems } from "../src/know/store";
 import { createProject } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
@@ -134,4 +136,52 @@ it("一年の地図は一般の例から始まり、行事が入ると置き換�
   expect(home).not.toContain('<b>定期総会</b>');
   expect(home).toContain("架空の秋祭り");
   expect(home).not.toContain('<b>秋の行事</b>');
+});
+
+it("AIが読んだ内容を空の項目へ入れ、役員が書いた文は上書きせず質問にし、外した項目には入れない", async () => {
+  const { ward, cookie } = await seedAdmin(env.DB);
+  const root = `/${ward.slug}/admin`;
+  const received = await receive(env, { wardId: ward.wardId, via: "admin", parts: [{ kind: "photo", filename: "架空の規約.jpg", mediaType: "image/jpeg", bytes: new Uint8Array(fictionalPaperPhoto()) }] });
+  const original_id = received.received[0]!.originalId;
+  const reading = (facts: { topic: KnowTopic; text: string }[], entries: { title: string; month: number | null }[] = []) => ({ document_kind: "rules", original_years: [], summary: "架空の規約", text_blocks: [], fields: [], tables: [], decisions: [], unreadable: [],
+    ward_facts: facts.map((fact) => ({ original_id, ...fact })), year_entries: entries.map((entry) => ({ original_id, date_text: "", ...entry })) }) as never;
+  await postForm(realApp, `${root}/know/dues`, { body: "年3,600円" }, cookie);
+  await postForm(realApp, `${root}/know/safety/remove`, {}, cookie);
+  await applyWardReading(env.DB, ward.wardId, reading([{ topic: "meeting", text: "毎年4月に開く" }, { topic: "dues", text: "年4,800円" }, { topic: "safety", text: "架空の防災" }], [{ title: "架空の一斉清掃", month: 5 }, { title: "月の分からない行事", month: null }]));
+  const { items, removed } = await listKnowItems(env.DB, ward.wardId);
+  expect(items.find((item) => item.id === "meeting")).toMatchObject({ body: "毎年4月に開く", state: "fact", note: "紙から読み取りました" });
+  expect(items.find((item) => item.id === "dues")).toMatchObject({ body: "年3,600円", state: "checking", proposed: "年4,800円" });
+  expect(removed.find((item) => item.id === "safety")!.body).toBe("");
+  const page = await read(`${root}/know/dues`, cookie);
+  expect(page).toContain("この内容にする");
+  expect(await read(`${root}/know/meeting`, cookie)).toContain("つながりを外す");
+  await postForm(realApp, `${root}/know/dues/proposal`, { use: "yes" }, cookie);
+  expect((await listKnowItems(env.DB, ward.wardId)).items.find((item) => item.id === "dues")).toMatchObject({ body: "年4,800円", state: "fact" });
+  const year = await read(`${root}/year`, cookie);
+  expect(year).toContain("架空の一斉清掃");
+  expect(year).not.toContain("月の分からない行事");
+  expect(year).not.toContain("<b>春の清掃</b>");
+  await applyWardReading(env.DB, ward.wardId, reading([], [{ title: "架空の一斉清掃", month: 5 }]));
+  expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM ward_year_items WHERE ward_id = ? AND title = '架空の一斉清掃'").bind(ward.wardId).first<{ n: number }>())?.n).toBe(1);
+  expect(KNOW_BASE.map((base) => base.key)).toEqual([...KNOW_TOPICS]);
+});
+
+it("地図の行から種類と名前を選んだ状態で行事を始められる", async () => {
+  const { ward, cookie } = await seedAdmin(env.DB);
+  const root = `/${ward.slug}/admin`;
+  const page = await read(`${root}/year/general-meeting`, cookie);
+  expect(page).toContain(`/projects?kind=general_meeting&amp;title=`);
+  const start = await read(`${root}/projects?kind=general_meeting&title=${encodeURIComponent("定期総会")}`, cookie);
+  expect(start).toContain('value="定期総会"');
+  expect(start).toMatch(/value="general_meeting" checked/);
+});
+
+it("行事が増えてもトップの地図は今に近い行に絞り、全部は一年の画面で見る", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const root = `/${ward.slug}/admin`;
+  for (let index = 0; index < 30; index += 1) await createProject(env.DB, ward.wardId, { kind: "event", title: `架空の集まり${index}`, year: 2026, accountId: account.accountId });
+  const home = await read(`${root}/`, cookie);
+  expect(home.match(/class="map-row /g)?.length).toBe(14);
+  expect(home).toContain("一年を全部見る");
+  expect((await read(`${root}/year`, cookie)).match(/class="map-row /g)!.length).toBeGreaterThan(30);
 });

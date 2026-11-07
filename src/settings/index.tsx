@@ -12,7 +12,7 @@ import { countWord } from "../project/model";
 import { listInboxItems } from "../line";
 import { mapTaskPath, nextMapTask } from "../map/next";
 import { listKnowItems } from "../know/store";
-import { wardYear, YearLegend, YearMap } from "../know/year";
+import { nearToday, wardYear, YearLegend, YearMap } from "../know/year";
 import { pendingMaterialGroups } from "../intake/groups";
 import { rosterCandidates } from "../intake/store";
 import { nearInquiryDates } from "../line/digest";
@@ -82,10 +82,12 @@ admin.get("/", async (c) => {
       {record.continued ? null : <p class="link-line"><a href={`${adminPath(ward, `/archive/${record.project_id}`)}?view=seed`}>これをもとに今年を始める</a></p>}</li>)}</ul></> : null;
   const know = await listKnowItems(c.env.DB, ward.wardId);
   const stale = know.items.filter((item) => item.state === "old");
-  const knowRow = stale.length ? <ul class="year-list"><li><a class="year-row old" href={adminPath(ward, "/know")}><b>見直す時期が{stale.length}項目あります</b><span class="note">{stale.slice(0, 3).map((item) => item.title).join("、")}</span></a></li></ul> : null;
+  const asking = know.items.filter((item) => item.state === "checking");
+  const knowRow = stale.length || asking.length ? <ul class="year-list"><li><a class={`year-row ${asking.length ? "checking" : "old"}`} href={adminPath(ward, "/know")}><b>役員が知っておくこと: {asking.length ? `質問が${asking.length}項目あります。` : ""}{stale.length ? `見直す時期が${stale.length}項目あります。` : ""}</b><span class="note">{[...asking, ...stale].slice(0, 3).map((item) => item.title).join("、")}</span></a></li></ul> : null;
   const place = (path: string, name: string, note: string) => <li><a class="row-link" href={adminPath(ward, path)}><b>{name}</b><span>{note}</span></a></li>;
   const places = <><h2>ほかにできること</h2><ul class="rows two">
     {projects.length ? <>{place("/projects/today", "今やること", "締切のある仕事を近い順に見ます")}{place("/answers", "答えを見る", "住民から届いた出欠と手伝いを見ます")}</> : null}
+    {place("/year", "この区の一年", "一年の行を足す、外す")}
     {place("/know", "役員が知っておくこと", "自治会を動かすのに知っておきたいことを見ます")}
     {place("/files", "区の資料", "送った紙やファイルを全部見ます")}
     {place("/archive", "記録を読む", "閉じた行事の段取り、配ったもの、報告を読みます")}
@@ -107,7 +109,8 @@ admin.get("/", async (c) => {
     : unseeded ? { title: `${unseeded.year}年の${unseeded.title}をもとに今年を始める`, body: "去年の段取りを、新しい日に合わせて置き直します。全部を見直す必要はありません。", href: `/archive/${unseeded.project_id}?view=seed`, label: "今年を始める" }
     : { title: "手元の紙や資料を送る", body: "案内の紙も、Wordも、写真も、そのまま送れます。AIが読んで、行事に入れます。", href: "/intake", label: "紙や資料を送る" };
   const year = await wardYear(c.env.DB, ward, projects, states, today);
-  const yearMap = <><YearLegend /><YearMap rows={year.rows} today={year.today} /></>;
+  const yearRows = nearToday(year.rows, year.today);
+  const yearMap = <><YearLegend /><YearMap rows={yearRows} today={year.today} />{yearRows.length < year.rows.length ? <p class="link-line"><a href={adminPath(ward, "/year")}>一年を全部見る（{year.rows.length}行）</a></p> : null}</>;
   const sheets = (await c.env.DB.prepare("SELECT COUNT(*) AS n FROM originals WHERE ward_id = ? AND withdrawn_at IS NULL").bind(ward.wardId).first<{ n: number }>())?.n ?? 0;
   const GOAL = 10;
   const questionCard = undecided ? <section class="next"><strong>{next.title}</strong><p>{next.body}</p><a class="button" href={adminPath(ward, next.href)}>{next.label}</a></section> : null;

@@ -1,3 +1,4 @@
+import { applyLineFact } from "../know/apply";
 import { nowIso } from "../core/ids";
 import type { Env } from "../env";
 import { createLineIntakePorts, lineAiLimitReason, type InboxMatch, type LineIntakePorts, type LineOriginal } from "./intake";
@@ -299,6 +300,7 @@ export async function acceptLineWebhook(
         continue;
       }
       const itemId = await ports.receiveOriginal(wardId, original);
+      if (itemId && match?.knowTopic && original.kind === "text") await applyLineFact(db, wardId, itemId, match.knowTopic, original.text ?? "").catch(() => undefined);
       if (!itemId) {
         if (original.kind === "image" && source.type === "user" && event.replyToken) {
           await replyLineText(accessToken, event.replyToken, "同じ写真を受け取っています。", fetcher);
