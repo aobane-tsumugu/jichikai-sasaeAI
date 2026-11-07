@@ -190,10 +190,17 @@ export function eraseSnapshotJob(snapshot: unknown, wardId: string, jobId: strin
       }
     }
   }
+  const clarificationIds = new Set<string>();
+  for (const row of snapshotRows(tables, "line_clarifications")) {
+    if (row.job_id === jobId && typeof row.clarification_id === "string") clarificationIds.add(row.clarification_id);
+  }
   remove("jobs", (row) => row.job_id === jobId);
   remove("originals", (row) => row.job_id === jobId || (typeof row.original_id === "string" && originalIds.has(row.original_id)));
   remove("ward_material_links", (row) => typeof row.original_id === "string" && originalIds.has(row.original_id));
-  for (const table of ["readings", "job_runs", "job_tool_calls", "intake_photo_checks", "line_photo_items", "line_clarifications", "line_clarification_answers"]) remove(table, (row) => row.job_id === jobId);
+  for (const table of ["readings", "job_runs", "job_tool_calls", "intake_photo_checks", "line_photo_items", "line_clarifications"]) remove(table, (row) => row.job_id === jobId);
+  // 返事は写真とは別の受付で届く。実DBの連動削除に合わせ、消した確認への返事も外す。
+  remove("line_clarification_answers", (row) => row.job_id === jobId ||
+    (typeof row.clarification_id === "string" && clarificationIds.has(row.clarification_id)));
   remove("paper_reading_slices", (row) => row.job_id === jobId || row.source_job_id === jobId);
   for (const table of ["project_item_values", "project_rows", "project_changes"]) {
     remove(table, (row) => typeof row.source_ref === "string" && originalIds.has(row.source_ref));
