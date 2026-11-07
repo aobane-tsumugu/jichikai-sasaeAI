@@ -7,6 +7,8 @@ import { formatJst } from "../core/time";
 import { Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { jobSummaries } from "../intake/store";
+import { getProjectState, listOpenProjects } from "../project/api";
+import { YEAR_BASE, YearLegend, YearMap, addYearItem, removeYearBase, wardYear } from "./year";
 import {
   KNOW_BASE, KNOW_LIMITS, WARD_FILES_PAGE, addKnowItem, getKnowItem, knowLinksByOriginal, linkKnowSource, listKnowItems, listKnowSources, listWardFiles,
   markKnowReviewed, renameKnowItem, saveKnowItem, setKnowRemoved, unlinkKnowSource, type KnowItem, type WardFile,
@@ -167,6 +169,54 @@ admin.get("/files", async (c) => {
     })}</ul> : <div class="notice" role="status"><strong>まだ資料はありません</strong><p>紙の写真、Word、PDFを送ると、ここに入ります。</p></div>}
     {more || page ? <div class="action-links">{page ? <a class="button secondary" href={`${adminPath(ward, "/files")}?page=${page - 1}`}>前の{WARD_FILES_PAGE}件を見る</a> : null}{more ? <a class="button secondary" href={`${adminPath(ward, "/files")}?page=${page + 1}`}>次の{WARD_FILES_PAGE}件を見る</a> : null}</div> : null}
   </AdminPage>);
+});
+
+const today = () => new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+
+admin.get("/year", async (c) => {
+  const { ward, account } = c.var;
+  const projects = await listOpenProjects(c.env.DB, ward.wardId);
+  const states = await Promise.all(projects.map((project) => getProjectState(c.env.DB, ward.wardId, project.projectId)));
+  const year = await wardYear(c.env.DB, ward, projects, states, today());
+  const removed = await c.env.DB.prepare("SELECT item_id FROM ward_year_items WHERE ward_id = ? AND added = 0 AND removed_at IS NOT NULL").bind(ward.wardId).all<{ item_id: string }>();
+  const taken = YEAR_BASE.filter((base) => removed.results.some((row) => row.item_id === base.key));
+  return c.html(<AdminPage ward={ward} account={account} title="この区の一年" back={{ href: adminPath(ward, "/"), label: "最初の画面へ" }}>
+    <h1>この区の一年</h1>
+    <p class="lead">一般の自治会の一年を仮に置いています。行事や届いた紙で、この区の内容に変わっていきます。行を押すと開きます。</p>
+    <YearLegend /><YearMap rows={year.rows} today={year.today} />
+    <details class="fold"><summary>行を足す</summary><div><form method="post" action={adminPath(ward, "/year")}>
+      <div class="field"><label for="year-title">名前</label><input id="year-title" name="title" type="text" required maxlength={KNOW_LIMITS.title} /></div>
+      <div class="field"><label for="year-month">月</label><select id="year-month" name="month">{[4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3].map((month) => <option value={String(month)}>{month}月</option>)}</select></div>
+      <button class="secondary">この行を足す</button>
+    </form></div></details>
+    {taken.length ? <details class="fold"><summary>外した行（{taken.length}つ）</summary><div>{taken.map((base) => <form method="post" action={adminPath(ward, `/year/${base.key}/restore`)}><p>{base.title}</p><button class="secondary">この行を戻す</button></form>)}</div></details> : null}
+  </AdminPage>);
+});
+
+admin.post("/year", async (c) => {
+  const { ward } = c.var; const form = await c.req.formData();
+  const title = cleanName(String(form.get("title") ?? "")); const month = Number(form.get("month"));
+  if (title && title.length <= KNOW_LIMITS.title && Number.isInteger(month) && month >= 1 && month <= 12) await addYearItem(c.env.DB, ward.wardId, { title, month, dateText: "", originalId: null });
+  return c.redirect(adminPath(ward, "/year"), 303);
+});
+
+admin.get("/year/:key", (c) => {
+  const { ward, account } = c.var;
+  const base = YEAR_BASE.find((entry) => entry.key === c.req.param("key"));
+  if (!base) return c.notFound();
+  return c.html(<AdminPage ward={ward} account={account} title={base.title} back={{ href: adminPath(ward, "/year"), label: "この区の一年へ" }}>
+    <h1>{base.title}</h1>
+    <p class="lead">一般の自治会の例を仮に置いています。この区のことはまだ入っていません。</p>
+    <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>この行事の紙や資料を送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>行事として始める</a></div>
+    <details class="fold"><summary>この区にないので外す</summary><div><p>外しても、一年の画面の「外した行」から戻せます。</p><form method="post" action={adminPath(ward, `/year/${base.key}/remove`)}><button class="secondary">外す</button></form></div></details>
+  </AdminPage>);
+});
+
+for (const [operation, removed] of [["remove", true], ["restore", false]] as const) admin.post(`/year/:key/${operation}`, async (c) => {
+  const { ward } = c.var; const key = c.req.param("key");
+  if (!YEAR_BASE.some((entry) => entry.key === key)) return c.notFound();
+  await removeYearBase(c.env.DB, ward.wardId, key, removed);
+  return c.redirect(adminPath(ward, "/year"), 303);
 });
 
 export const know: Bundle = { admin };

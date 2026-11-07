@@ -8,14 +8,14 @@ import { get, realApp } from "./helpers";
 it("初めての役員に行事・資料・実行委員と班長のページの次の操作を、その画面で示す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
-  const opening = "手元に去年の案内や資料はありますか";
+  const opening = "まず、手元の紙を十枚送ってください";
   const materials = "ふつうの8つの仕事の段取りを用意しました";
   const emptyHome = await get(realApp, `${root}/`, cookie);
   expect(emptyHome.status).toBe(200);
   const homeHtml = await emptyHome.text();
   expect(homeHtml).toContain(opening);
   // 資料が無い一年目でも始められる。
-  expect(homeHtml).toContain(`class="button secondary" href="${root}/projects">ない。何の準備かを選ぶ</a>`);
+  expect(homeHtml).toContain(`class="quiet" href="${root}/projects">紙がないので、何の準備かを選ぶ</a>`);
   const projectEntry = await get(realApp, `${root}/projects`, cookie);
   expect(projectEntry.status).toBe(200);
   const projectEntryHtml = await projectEntry.text();
