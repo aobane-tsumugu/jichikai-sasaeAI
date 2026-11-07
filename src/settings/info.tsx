@@ -33,7 +33,7 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
       <form method="post" action={adminPath(ward, "/settings/info")}>
         <h2>住民向けのページで伝えること</h2>
         <p class="panel">{PUBLIC_PRIVACY_NOTICE}</p>
-        <p class="muted">利用目的、委託先、消し方はこの文で案内します。消す希望は公開用の連絡先から受け付けます。</p>
+        <p class="muted">利用目的、委託先、消し方はこの文で案内します。住民から消してほしいと頼まれるのは、この公開用の連絡先です。</p>
         <label for="contact">公開用の連絡先</label>
         <p class="muted">住民向けのページに載ります。役員個人の電話番号やメールは書かず、自治会の窓口にしてください。</p>
         <textarea id="contact" name="contact" rows={4} maxlength={LIMITS.publicContact}>

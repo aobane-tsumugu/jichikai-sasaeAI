@@ -196,7 +196,7 @@ admin.get("/settings", (c) => {
         <li><a class="row-link" href={adminPath(ward, "/settings/info")}><b>自治会の情報</b><span>連絡先、班の名前、通知の時刻。</span></a></li>
         <li><a class="row-link" href={adminPath(ward, "/close/activity")}><b>自治会の説明</b><span>役員の仕事、加入すると担うことや得られることを、書けるところから住民向けのページに載せます。</span></a></li>
         <li><a class="row-link" href={adminPath(ward, "/settings/templates")}><b>決まった連絡の文</b><span>雨の変更の連絡など、くり返し出す文です。</span></a></li>
-        <li><a class="row-link" href={adminPath(ward, "/settings/deletion")}><b>消す希望</b><span>住民から消してほしいと頼まれたものを消します。</span></a></li>
+        <li><a class="row-link" href={adminPath(ward, "/settings/deletion")}><b>住民から頼まれたものを消す</b><span>住民の方から自分の分を消してほしいと頼まれたときに使います。</span></a></li>
       </ul>
       <ul class="links">
         <li><a href="/contact">SasaeAIに問い合わせる</a></li>
