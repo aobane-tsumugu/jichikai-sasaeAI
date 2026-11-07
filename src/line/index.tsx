@@ -17,7 +17,7 @@ import { PROJECT_KINDS, PROJECT_KIND_LABEL, type ProjectKind } from "../project/
 import { dateWords, openInquiries } from "../project/followup";
 import { inquirySubject } from "../project/inquiry-send";
 import { assignProject, withdrawJob } from "../intake/api";
-import { getJob, getOriginal, listJobs, listOriginals } from "../intake/store";
+import { getJob, getOriginal, jobSummaries, listJobs, listOriginals } from "../intake/store";
 import { pendingMaterialGroups } from "../intake/groups";
 import { WhichProject } from "../intake/which-project";
 import { adminPath } from "../core/auth";
@@ -47,14 +47,6 @@ const shortLine = (text: string, max = 36) => {
   const line = text.split("\n")[0]!.trim();
   return line.length > max ? `${line.slice(0, max)}…` : line;
 };
-
-async function readSummaries(db: D1Database, wardId: string): Promise<Map<string, string>> {
-  const rows = await db.prepare("SELECT job_id, CASE WHEN json_valid(body) THEN json_extract(body, '$.summary') END AS summary FROM readings WHERE ward_id = ?")
-    .bind(wardId).all<{ job_id: string; summary: string | null }>();
-  const summaries = new Map<string, string>();
-  for (const row of rows.results) if (row.summary?.trim() && !summaries.has(row.job_id)) summaries.set(row.job_id, row.summary.trim());
-  return summaries;
-}
 
 export async function listInboxItems(db: D1Database, wardId: string): Promise<InboxRow[]> {
   const result = await db.prepare(`
@@ -122,7 +114,7 @@ admin.get("/inbox", async (c) => {
   const db = c.env.DB;
   const [items, jobs, projects, groups, inquiries, clarifications, summaries] = await Promise.all([
     listInboxItems(db, ward.wardId), listJobs(db, ward.wardId, { limit: 100 }), openProjects(db, ward.wardId),
-    pendingMaterialGroups(db, ward.wardId), openInquiries(db, ward.wardId), listClarifications(db, ward.wardId), readSummaries(db, ward.wardId),
+    pendingMaterialGroups(db, ward.wardId), openInquiries(db, ward.wardId), listClarifications(db, ward.wardId), jobSummaries(db, ward.wardId),
   ]);
   const adminJobs = jobs.filter((j) => j.via === "admin" && !j.withdrawn_at);
   // 閉じた行事に入れたものも、行事の名前で読む。
@@ -282,7 +274,7 @@ admin.post("/inbox/city/:jobId", async (c) => {
 admin.get("/inbox/city/:jobId/pick", async (c) => {
   const { ward } = c.var;
   const jobId = c.req.param("jobId");
-  const [job, originals, projects, summaries, questions, groups] = await Promise.all([getJob(c.env.DB, ward.wardId, jobId), listOriginals(c.env.DB, ward.wardId, jobId), openProjects(c.env.DB, ward.wardId), readSummaries(c.env.DB, ward.wardId), listClarifications(c.env.DB, ward.wardId), pendingMaterialGroups(c.env.DB, ward.wardId)]);
+  const [job, originals, projects, summaries, questions, groups] = await Promise.all([getJob(c.env.DB, ward.wardId, jobId), listOriginals(c.env.DB, ward.wardId, jobId), openProjects(c.env.DB, ward.wardId), jobSummaries(c.env.DB, ward.wardId), listClarifications(c.env.DB, ward.wardId), pendingMaterialGroups(c.env.DB, ward.wardId)]);
   if (!job || job.via !== "admin" || job.withdrawn_at) return c.notFound();
   const summary = summaries.get(jobId) ?? "";
   const original = (id: string) => adminPath(ward, `/intake/originals/${id}`);
@@ -304,7 +296,7 @@ admin.get("/inbox/:itemId/pick", async (c) => {
     c.env.DB.prepare(`SELECT i.job_id, i.original_kind, i.original_text, i.received_at, i.matched_project_id, i.matched_project_name, i.match_reason, i.sender_display_name, i.sender_label, j.project_id AS job_project_id
       FROM line_inbox_items i LEFT JOIN jobs j ON j.ward_id = i.ward_id AND j.job_id = i.job_id WHERE i.ward_id = ? AND i.item_id = ?`)
       .bind(ward.wardId, itemId).first<{ job_id: string | null; original_kind: string; original_text: string | null; received_at: string; matched_project_id: string | null; matched_project_name: string | null; match_reason: string | null; sender_display_name: string | null; sender_label: string | null; job_project_id: string | null }>(),
-    openProjects(c.env.DB, ward.wardId), readSummaries(c.env.DB, ward.wardId), listClarifications(c.env.DB, ward.wardId), pendingMaterialGroups(c.env.DB, ward.wardId),
+    openProjects(c.env.DB, ward.wardId), jobSummaries(c.env.DB, ward.wardId), listClarifications(c.env.DB, ward.wardId), pendingMaterialGroups(c.env.DB, ward.wardId),
   ]);
   if (!item) return c.notFound();
   const sender = item.sender_display_name || item.sender_label;

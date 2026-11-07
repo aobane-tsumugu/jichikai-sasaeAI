@@ -69,7 +69,7 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
   const inquiryPath = `${root}/inquiries/${inquiry.inquiry_id}`;
   const inquiryPage = await read(inquiryPath);
   expect(inquiryPage).toContain("返事を書いて送ると、来たところへ届き");
-  expect(inquiryPage).toContain('<button name="operation" value="send">1か所に送る</button>');
+  expect(inquiryPage).toContain('<button name="operation" value="send">返事を1か所に送る</button>');
   expect(inquiryPage).toContain('<button class="secondary" name="operation" value="record">どう答えたかを残す</button>');
   expect(inquiryPage).toContain("公式LINEで返事を送れない人がいます");
   expect(inquiryPage).toContain("送り先が分からないため送れません");
@@ -163,8 +163,7 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
   expect(await follow(await postForm(realApp, cityPath, { operation: "save", answerDraft: fixture.reportText, dueOn: fixture.eventDay }, cookie))).toContain("出した日がまだ空です");
   expect(await read(cityPath)).toContain(fixture.reportText);
   const today = await read(`${root}/projects/today`);
-  expect(today).toContain("締切のあるもの");
-  expect(today).toContain("締切のないもの");
+  expect(today).toContain("これからの仕事");
   expect(today).not.toContain("まだ答えていない世帯");
   expect(await read(`${root}/archive/map`)).toContain('class="row-link"');
 

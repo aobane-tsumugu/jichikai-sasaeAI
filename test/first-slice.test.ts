@@ -117,7 +117,7 @@ describe("秋の収穫祭の最初の一片", () => {
     const queuedDutyHtml = await queuedDutyPage.text();
     expect(queuedDutyPage.status).toBe(200);
     expect(queuedDutyHtml).toContain('data-ai-status="read"');
-    expect(queuedDutyHtml).toContain("順番を待っています");
+    expect(queuedDutyHtml).toContain("AIが下書きを作り始めるところです");
     expect(queuedDutyHtml).toContain(`action="/${ward.slug}/admin/projects/${projectId}/draft/duty_roster/save"`);
     const savedManualDuty = await postForm(realApp, `/${ward.slug}/admin/projects/${projectId}/draft/duty_roster/save`, {
       based_on: String(beforeDraft?.project.stateVersion ?? 0), title: "当番表", scope: "space", text: "担当を役員で記入します。",

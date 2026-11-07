@@ -53,7 +53,7 @@ it("資料のない一年目から仕事・質問・下書き・別の雨の知�
     source: { kind: "original", ref: original.originalId, locator: FIRST_SLICE.previousLocator },
   });
   if (question.status !== "added") throw new Error("質問を作れません");
-  expect(await (await get(realApp, `${path}/map`, cookie)).text()).toContain("質問に答える");
+  expect(await (await get(realApp, `${path}/map`, cookie)).text()).toContain("質問が1つあります");
   expect(await (await get(realApp, `${path}/questions`, cookie)).text()).toContain(`/intake/originals/${original.originalId}`);
   expect((await postForm(realApp, `${path}/draft/announcement/save`, {
     title: "案内", scope: "public", based_on: String((await state()).project.stateVersion),

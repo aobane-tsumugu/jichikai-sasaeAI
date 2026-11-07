@@ -93,8 +93,8 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
   const task = await c.env.DB.prepare(`SELECT status FROM jobs WHERE ward_id = ? AND project_id = ? AND task = 'draft'
     AND instruction LIKE ? ORDER BY created_at DESC LIMIT 1`).bind(ward.wardId, id, `%対象の文書: ${kindRaw}。%`).first<{ status: string }>();
   const taskLabel: Record<string, string> = {
-    read: "順番を待っています",
-    connecting: "下書きを作っています",
+    read: "AIが下書きを作り始めるところです。閉じてもかまいません",
+    connecting: "AIが下書きを作っています。閉じてもかまいません",
     done: "AIの下書きができました。内容を見てください",
     attention: "AIの下書きを作れませんでした。ここで書いて保存するか、下の「AIに言葉で頼む」からもう一度頼めます。",
     failed: "AIの下書きを作れませんでした。ここで書いて保存するか、下の「AIに言葉で頼む」からもう一度頼めます。",
@@ -185,6 +185,7 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
       {project.kind === "duty" && kindRaw === "duty_roster" ? null : <details class="fold" id="redo"><summary>AIに言葉で頼む</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/start`)}>
         <div class="field"><label for="instruction">頼むこと</label><input id="instruction" name="instruction" type="text" maxlength={800} /><p class="help-text">{project.kind === "event" ? "例: 雨のときの場所の変更を入れてください" : minutes ? "例: 送った紙から決めたことをまとめてください" : "例: 送った資料の内容を入れてください"}</p></div><button class="secondary">AIに頼む</button>
       </form></div></details>}
+      <p class="muted">下のボタンを押しても、まだ配られません。次の画面で内容を確かめてから配ります。</p>
       <div class="action-bar page-action"><button type="submit" form="draft-form" name="after" value={paperFirst ? "paper" : "confirm"}>{paperFirst ? "保存して紙の見え方を見る" : "保存して配る内容を見る"}</button><button class="secondary" type="submit" form="draft-form">保存だけする</button></div>
     </> : null}
   </Layout>, retry?.status ?? 200);

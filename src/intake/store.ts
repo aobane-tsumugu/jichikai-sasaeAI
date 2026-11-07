@@ -23,6 +23,15 @@ export async function listOriginals(db: D1Database, wardId: string, jobId: strin
   return res.results;
 }
 
+/** 資料ごとの一行の要約。一覧に、ファイル名の代わりに出す。 */
+export async function jobSummaries(db: D1Database, wardId: string): Promise<Map<string, string>> {
+  const rows = await db.prepare("SELECT job_id, CASE WHEN json_valid(body) THEN json_extract(body, '$.summary') END AS summary FROM readings WHERE ward_id = ?")
+    .bind(wardId).all<{ job_id: string; summary: string | null }>();
+  const summaries = new Map<string, string>();
+  for (const row of rows.results) if (row.summary?.trim() && !summaries.has(row.job_id)) summaries.set(row.job_id, row.summary.trim());
+  return summaries;
+}
+
 export async function getOriginal(db: D1Database, wardId: string, originalId: string): Promise<OriginalRow | null> {
   return db
     .prepare("SELECT * FROM originals WHERE ward_id = ? AND original_id = ?")

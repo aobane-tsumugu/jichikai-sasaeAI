@@ -77,7 +77,6 @@ admin.get("/print/:projectId", async (c) => {
     <h2>書き込んで撮って送る紙</h2><p>電話や役員会で決まったことを、紙に書いて撮って送れます。案内を配る前から使えます。</p>
     <ul class="rows">{(["meeting", "sponsors"] as const).map((kind) => <li><a class="row-link" href={adminPath(ward, `/print/${id}/paper/${kind}`)}><b>{kindLabel(kind)}</b></a></li>)}</ul>
     <p class="link-line"><a href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>書いた紙を撮って送る</a></p>
-    <p class="link-line"><a href={adminPath(ward, `/publish/${id}`)}>配った案内や回答票を印刷する</a></p>
     <details class="fold"><summary>家にプリンタがないとき</summary><div><p>紙を開いて、スマホやパソコンの印刷の画面でPDFに保存します。保存したPDFは、コンビニのコピー機の案内に沿って送ると印刷できます。</p></div></details>
   </AdminPage>);
 });
