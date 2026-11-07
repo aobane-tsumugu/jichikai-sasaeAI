@@ -22,7 +22,7 @@ import { SEND_SCRIPT } from "../intake/browser-script";
 import { getSquads } from "../settings/store";
 import { lookupPrintQr } from "../print/qr";
 import { ArticleBody } from "../publish";
-import { addHelpOffer, helpTimeChoices, listHelpOffers, listHelpOpportunities, type HelpOpportunity } from "./help";
+import { addHelpOffer, getHelpOfferBySubmission, helpTimeChoices, listHelpOffers, listHelpOpportunities, type HelpOpportunity } from "./help";
 import {
   addAnswer,
   chooseRosterColumns,
@@ -565,17 +565,20 @@ pub.post("/help/:projectId", async (c) => {
   const name = asString(form.helper_name).trim();
   const times = asString(form.helper_times).trim();
   const submissionId = asString(form.submission_id);
-  const href = `/${c.var.ward.slug}/help/${encodeURIComponent(projectId)}`;
-  const [opportunity] = await listHelpOpportunities(c.env.DB, c.var.ward.wardId, projectId);
-  if (!opportunity) return c.html(<ResidentError wardName={c.var.ward.name} message="手伝いの受付は終わりました。" next="確認したいことは、班長か役員にお知らせください。" href={`/${c.var.ward.slug}/`} label="区のページへ" />, 400);
-  const choices = helpTimeChoices(opportunity.body);
-  const invalid = !name || !times ? "お名前と手伝える時間帯を入れてください。" : name.length > 120 || times.length > 240 ? "お名前か時間帯が長すぎます。短くしてください。" : choices.length && !choices.includes(times) ? "募集にある時間帯を選んでください。" : "";
-  if (invalid) {
-    const context = await residentContext(c.env.DB, c.var.ward.wardId, projectId);
-    const newer = context.documents.some((document) => (document.kind === "notice" || document.kind === "announcement") && document.publishedAt > opportunity.publishedAt);
-    return c.html(<HelpForm wardName={c.var.ward.name} slug={c.var.ward.slug} projectId={projectId} opportunity={opportunity} contact={context.contact} newer={newer} choices={choices} name={name} times={times} error={invalid} submissionId={submissionId} />, 400);
+  // 受け付けた送信の再読み込みは、今の募集条件で判定し直さず保存内容へ戻す。
+  let offered = submissionId ? await getHelpOfferBySubmission(c.env.DB, c.var.ward.wardId, projectId, submissionId) : null;
+  if (!offered) {
+    const [opportunity] = await listHelpOpportunities(c.env.DB, c.var.ward.wardId, projectId);
+    if (!opportunity) return c.html(<ResidentError wardName={c.var.ward.name} message="手伝いの受付は終わりました。" next="確認したいことは、班長か役員にお知らせください。" href={`/${c.var.ward.slug}/`} label="区のページへ" />, 400);
+    const choices = helpTimeChoices(opportunity.body);
+    const invalid = !name || !times ? "お名前と手伝える時間帯を入れてください。" : name.length > 120 || times.length > 240 ? "お名前か時間帯が長すぎます。短くしてください。" : choices.length && !choices.includes(times) ? "募集にある時間帯を選んでください。" : "";
+    if (invalid) {
+      const context = await residentContext(c.env.DB, c.var.ward.wardId, projectId);
+      const newer = context.documents.some((document) => (document.kind === "notice" || document.kind === "announcement") && document.publishedAt > opportunity.publishedAt);
+      return c.html(<HelpForm wardName={c.var.ward.name} slug={c.var.ward.slug} projectId={projectId} opportunity={opportunity} contact={context.contact} newer={newer} choices={choices} name={name} times={times} error={invalid} submissionId={submissionId} />, 400);
+    }
+    offered = await addHelpOffer(c.env.DB, c.var.ward.wardId, projectId, name, times, submissionId);
   }
-  const offered = await addHelpOffer(c.env.DB, c.var.ward.wardId, projectId, name, times, submissionId);
   if (!offered) return c.html(<ResidentError wardName={c.var.ward.name} message="手伝いの受付は終わりました。" next="確認したいことは、班長か役員にお知らせください。" href={`/${c.var.ward.slug}/`} label="区のページへ" />, 400);
   const context = await residentContext(c.env.DB, c.var.ward.wardId, projectId);
   return c.html(<Layout title="申し込みを受け付けました" siteName={c.var.ward.name}>

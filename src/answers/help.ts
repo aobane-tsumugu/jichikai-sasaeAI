@@ -84,10 +84,14 @@ export function helpTimeChoices(body: string): string[] {
   return [...new Set(choices)];
 }
 
+export async function getHelpOfferBySubmission(db: D1Database, wardId: string, projectId: string, submissionId: string): Promise<HelpOffer | null> {
+  return db.prepare(`SELECT offer_id AS offerId, name, times FROM project_help_offers WHERE ward_id = ? AND project_id = ? AND submission_id = ?`)
+    .bind(wardId, projectId, submissionId).first<HelpOffer>();
+}
+
 export async function addHelpOffer(db: D1Database, wardId: string, projectId: string, name: string, times: string, submissionId?: string): Promise<HelpOffer | null> {
   const existing = () => submissionId
-    ? db.prepare(`SELECT offer_id AS offerId, name, times FROM project_help_offers WHERE ward_id = ? AND project_id = ? AND submission_id = ?`)
-      .bind(wardId, projectId, submissionId).first<HelpOffer>()
+    ? getHelpOfferBySubmission(db, wardId, projectId, submissionId)
     : db.prepare(`SELECT offer_id AS offerId, name, times FROM project_help_offers WHERE ward_id = ? AND project_id = ? AND name = ? AND times = ? LIMIT 1`)
       .bind(wardId, projectId, name, times).first<HelpOffer>();
   const same = await existing();
