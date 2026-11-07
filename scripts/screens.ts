@@ -143,7 +143,7 @@ async function discoverPrint() {
 }
 
 const shots: Shot[] = [
-  { stage: 0, name: "最初の画面", path: `${admin}/`, heading: "いま進めていること" },
+  { stage: 0, name: "最初の画面", path: `${admin}/`, heading: "の自治会の仕事を進める画面です" },
   { stage: 0, name: "名簿", path: `${admin}/answers/roster`, heading: "名簿" },
   { stage: 0, name: "今やること", path: `${admin}/projects/today`, heading: "今やること" },
   { stage: 0, name: "問い合わせと要望", path: `${admin}/inquiries`, heading: "問い合わせと要望" },

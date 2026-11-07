@@ -12,6 +12,13 @@ export function nextMapTask(tasks: readonly MapTaskView[], today: string): MapTa
   return future[0] ?? unfinished.sort((a, b) => (a.periodEnd ?? "9999").localeCompare(b.periodEnd ?? "9999") || a.sortOrder - b.sortOrder)[0];
 }
 
+/** 仕事を押した時に開く画面。段取りと最初の画面で同じにする。 */
+export function mapTaskPath(projectId: string, kind: string, task: Pick<MapTaskView, "taskId" | "taskKey">): string {
+  if (task.taskKey === "answers") return `/answers/${projectId}`;
+  if (task.taskKey === "report" && kind === "event") return `/close/${projectId}`;
+  return `/projects/${projectId}/map/${task.taskId}`;
+}
+
 /** 月の境目で区切る。帯と今日の線も同じ期間を使う。 */
 export function mapCalendar(tasks: readonly MapTaskView[], year: number) {
   const dates = tasks.flatMap((task) => [task.periodStart, task.periodEnd]).filter((date): date is string => !!date).sort();
