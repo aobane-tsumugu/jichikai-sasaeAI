@@ -6,6 +6,7 @@ import { Choices } from "../core/choice";
 import { formatJstDate, eventPeriodText } from "../core/time";
 import { Notice } from "../core/ui";
 import { listOpenProjects } from "../project/api";
+import { getOrCreateWardNotices } from "../project/state";
 import { getEditableDocument } from "../project/actions";
 import { PROJECT_KIND_LABEL, type DocumentKind } from "../project/model";
 import type { ProjectSummary } from "../project/types";
@@ -23,6 +24,7 @@ export const MESSAGE_KINDS: { kind: DocumentKind; title: string; note: string }[
   { kind: "report", title: "終わった報告", note: "終わったあとに、何をして、どうだったかを知らせます。" },
 ];
 const isMessageKind = (value: string): value is DocumentKind => MESSAGE_KINDS.some((entry) => entry.kind === value);
+const WITHOUT_PROJECT = "ward-notices";
 
 const projectNote = (project: ProjectSummary) => {
   const day = project.deadlines.event_day;
@@ -36,7 +38,7 @@ async function picker(c: Context<AdminEnv>, error?: string, chosen: { kind?: str
   const { ward, account } = c.var;
   const projects = (await listOpenProjects(c.env.DB, ward.wardId)).filter((project) => MESSAGE_KINDS.some((entry) => forResidents(project, entry.kind)));
   const kind = chosen.kind ?? c.req.query("kind") ?? "";
-  const projectId = chosen.projectId ?? c.req.query("project") ?? (projects.length === 1 ? projects[0]!.projectId : "");
+  const projectId = chosen.projectId ?? c.req.query("project") ?? (!projects.length ? WITHOUT_PROJECT : projects.length === 1 ? projects[0]!.projectId : "");
   const fixed = projects.find((project) => project.projectId === c.req.query("project"));
   // 同じ準備で、まだ住民に送っていない下書きがあれば先に出す。同じものを二つ作らないため。
   const unsent = await c.env.DB.prepare(`SELECT d.project_id, d.kind, COALESCE(v.title, d.title) AS title, v.created_at FROM documents d
@@ -49,31 +51,38 @@ async function picker(c: Context<AdminEnv>, error?: string, chosen: { kind?: str
   const back = fixed ? { href: adminPath(ward, `/projects/${fixed.projectId}/map`), label: `${fixed.title}のやることへ` } : { href: adminPath(ward, "/"), label: "最初の画面へ" };
   return c.html(<AdminPage ward={ward} account={account} title="住民へのメッセージを作る" back={back}>
     <h1>住民へのメッセージを作る</h1>
+    <p class="lead">何を伝えるかと、どの準備のことかを選んでください。連絡事項は、準備に結び付けずに作れます。</p>
     {error ? <Notice error>{error}</Notice> : null}
     {shown.length ? <><p>まだ住民に送っていない下書きがあります。続きから直して送れます。</p><ul class="links">{shown.map((row) => <li><a href={adminPath(ward, `/projects/${row.project_id}/draft/${row.kind}?edit=1`)}>{row.title}（{formatJstDate(row.created_at)}に保存）</a></li>)}</ul></> : null}
-    {!projects.length ? <><p class="lead">住民へのメッセージは、準備ごとに作ります。準備中のものが、まだありません。</p>
-      <a class="button" href={adminPath(ward, "/projects")}>新しく準備を始める</a></> : <form method="post" action={adminPath(ward, "/messages")}>
+    <form method="post" action={adminPath(ward, "/messages")}>
       <Choices name="kind" legend="何を伝えますか" items={MESSAGE_KINDS.map((entry) => ({ value: entry.kind, title: entry.title, note: entry.note, checked: entry.kind === kind }))} />
       {fixed ? <input type="hidden" name="projectId" value={fixed.projectId} />
-        : <Choices name="projectId" legend="どの準備のことですか" items={projects.map((project) => ({ value: project.projectId, title: project.title, note: projectNote(project), checked: project.projectId === projectId }))} />}
+        : <Choices name="projectId" legend="どの準備のことですか" items={[
+          ...projects.map((project) => ({ value: project.projectId, title: project.title, note: projectNote(project), checked: project.projectId === projectId })),
+          { value: WITHOUT_PROJECT, title: "どの準備でもない", note: "ごみの出し方の変更など、自治会全体への連絡事項を作ります。", checked: projectId === WITHOUT_PROJECT },
+        ]} />}
       <div class="action-bar page-action"><button>作る</button></div>
-      <p class="muted">押すと、{fixed ? fixed.title : "選んだ準備"}に集まっている日時や場所などが入った下書きが開きます。AIが文を整える間も、手で直せます。まだ住民には送りません。</p>
-    </form>}
+      <p class="muted">押すと、下書きが開きます。準備を選ぶと、集まっている日時や場所などが入ります。AIが文を整える間も、手で直せます。まだ住民には送りません。</p>
+    </form>
   </AdminPage>, error ? 400 : 200);
 }
 
 export function mountMessageRoutes(admin: Hono<AdminEnv>) {
   admin.get("/messages/new", (c) => picker(c));
   admin.post("/messages", async (c) => {
-    const { ward } = c.var;
+    const { ward, account } = c.var;
     const form = await c.req.formData();
     const kind = String(form.get("kind") ?? "");
-    const projectId = String(form.get("projectId") ?? "");
-    const project = (await listOpenProjects(c.env.DB, ward.wardId)).find((entry) => entry.projectId === projectId);
+    let projectId = String(form.get("projectId") ?? "");
     if (!isMessageKind(kind)) return picker(c, "何を伝えるかを選んでください。", { projectId });
+    if (projectId === WITHOUT_PROJECT && kind !== "notice") return picker(c, "どの準備でもないものは、連絡事項を選んでください。", { kind, projectId });
+    const project = projectId === WITHOUT_PROJECT
+      ? await getOrCreateWardNotices(c.env.DB, ward.wardId, Number(new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 4)), account.accountId)
+      : (await listOpenProjects(c.env.DB, ward.wardId)).find((entry) => entry.projectId === projectId);
     if (!project) return picker(c, "どの準備のことかを選んでください。", { kind });
     const label = MESSAGE_KINDS.find((entry) => entry.kind === kind)!.title;
     if (!forResidents(project, kind)) return picker(c, `${project.title}の${label}は、住民ではなく役員や当番の担当に向けたものなので、ここでは作れません。ほかの準備を選んでください。`, { kind, projectId });
+    projectId = project.projectId;
     // event の連絡事項は、下書きが無いと雨の変更の画面になる。ここから来た時はいつもの下書きを開く。
     const path = `${adminPath(ward, `/projects/${projectId}/draft/${kind}`)}?edit=1`;
     if (await getEditableDocument(c.env.DB, ward.wardId, projectId, kind)) return c.redirect(path, 303);
