@@ -1,4 +1,5 @@
 // U51。PMが架空の区へ流すHTTPの通し確認。引数はwalkthrough-meetingと同じ。
+import { isJudgeWard, JUDGE_WARDS } from "./judge-wards.ts";
 import type { MeetingOptions, MeetingPorts } from "./walkthrough-meeting.ts";
 import { kindsMaterial } from "../test/fixtures/kinds.ts";
 import { KIND_FILES, KINDS_FIXTURE_YEAR, kindFilesForm } from "../test/fixtures/kinds-files.ts";
@@ -85,7 +86,7 @@ export function checkKindsDecision(text: string, decision: string) {
 export async function runKindsWalkthrough(options: MeetingOptions, ports: MeetingPorts) {
   const base = new URL(options.base);
   assert(["http:", "https:"].includes(base.protocol) && base.pathname === "/" && !base.search && !base.hash && !base.username && !base.password, "--baseには資格情報や区のパスを含まないURLを指定してください");
-  assert(/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(options.ward) && options.ward !== "demoku", "demokuでは通し確認を実行しません。確認用の自治会のURL名を指定してください");
+  assert(/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(options.ward) && !isJudgeWard(options.ward), "demokuとsasaedaiでは通し確認を実行しません。確認用の自治会のURL名を指定してください");
   const root = `/${options.ward}`, admin = root + "/admin";
   const source = options.files ? kindsMaterial(KINDS_FIXTURE_YEAR) : kindsMaterial();
   const projects: Record<string, string> = {};
@@ -374,7 +375,7 @@ async function main() {
   const args = process.argv.slice(2);
   const arg = (key: string) => { const i = args.indexOf(key); return i < 0 ? undefined : args[i + 1]; };
   const base = arg("--base"), ward = arg("--ward"), creds = arg("--creds");
-  if (!base || !ward || !creds || ward === "demoku") {
+  if (!base || !ward || !creds || isJudgeWard(ward)) {
     console.error("使い方: npm run walkthrough-kinds -- --base <URL> --ward <架空の自治会のURL名> --creds <資格情報ファイル> [--files]。demokuでは実行しません。");
     process.exitCode = 2; return;
   }

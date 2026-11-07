@@ -1,4 +1,5 @@
 // staging の役員画面と区のページを HTTP でたどり、項目ごとの結果を残す。
+import { isJudgeWard, JUDGE_WARDS } from "./judge-wards.ts";
 // 資格情報と作成した招待 URL は画面表示・記録に含めない。
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -52,7 +53,7 @@ export async function checkInquiry(slug: string, ports: CheckPorts): Promise<{ r
 }
 
 export async function checkWorkersRoute(slug: string, projectId: string, fixtureText: string, ports: CheckPorts): Promise<void> {
-  if (["kakuu", "demoku"].includes(slug.trim().toLowerCase())) throw new Error("予備経路にkakuuとdemokuは使えません");
+  if (slug.trim().toLowerCase() === "kakuu" || isJudgeWard(slug)) throw new Error("予備経路にkakuuとdemokuとsasaedaiは使えません");
   const wardId = await fictionalWard(slug, ports);
   const w = sqlText(wardId);
   const flagSql = `SELECT use_workers_route, updated_at FROM ward_ai_route_flags WHERE ward_id = ${w}`;
@@ -131,12 +132,12 @@ if (args.includes("--help") || !ward || !baseArg || !credsArg) {
   if (args.includes("--help")) return;
   process.exit(2);
 }
-if (args.includes("--workers-route-ward") && (!workersWard || workersWard.startsWith("--") || workersWard !== ward || ["kakuu", "demoku"].includes(workersWard.toLowerCase()))) {
+if (args.includes("--workers-route-ward") && (!workersWard || workersWard.startsWith("--") || workersWard !== ward || ["kakuu", ...JUDGE_WARDS].includes(workersWard.toLowerCase()))) {
   console.error("--workers-route-wardは--wardと同じ専用の架空区を指定してください。kakuuとdemokuは使えません。");
   process.exit(2);
 }
-if (ward === "demoku") {
-  console.error("クロード区では通し確認を実行しません。確認用の区を指定してください。");
+if (isJudgeWard(ward)) {
+  console.error("審査員用の区では通し確認を実行しません。確認用の区を指定してください。");
   process.exit(2);
 }
 

@@ -1,4 +1,5 @@
 // 架空の区専用。送るのは署名付きの受信要求だけで、LINEの送信APIは呼ばない。
+import { isJudgeWard, JUDGE_WARDS } from "./judge-wards.ts";
 export type SqlRow = Record<string, unknown>;
 export type Query = (sql: string) => Promise<SqlRow[]>;
 export type Expected = { kind: "答えに数える" | "資料に入る" | "残さない" | "問い合わせ"; household?: string; district?: string; people?: number };
@@ -37,7 +38,7 @@ function fail(message: string): never { throw new SimError(message); }
 const sqlText = (value: string) => `'${value.replaceAll("'", "''")}'`;
 
 export function validateTarget(options: SimOptions): URL {
-  if (options.ward.trim().toLowerCase() === "demoku" || options.wardId.trim().toLowerCase() === "demoku") fail("demokuには送れません。");
+  if (isJudgeWard(options.ward) || isJudgeWard(options.wardId)) fail(`${JUDGE_WARDS.join("と")}には送れません。`);
   if (!/^[a-z0-9][a-z0-9-]{1,39}$/.test(options.ward) || !/^[a-zA-Z0-9_-]{1,100}$/.test(options.wardId)) fail("区の指定を確認してください。");
   let base: URL;
   try { base = new URL(options.base); } catch { return fail("--baseにURLを指定してください。"); }

@@ -1,4 +1,5 @@
 // 総会をHTTPで通す道具。本物のAIを使う実行はPMが行う。
+import { isJudgeWard, JUDGE_WARDS } from "./judge-wards.ts";
 // npm run walkthrough-meeting -- --base <URL> --ward <区のURL名> --creds <資格情報ファイル> [--files]
 import { KIND_FILES, MEETING_FIXTURE_NOW, kindFilesForm } from "../test/fixtures/kinds-files.ts";
 import type { FixtureLoader, KindFileGroup } from "../test/fixtures/kinds-files.ts";
@@ -92,7 +93,7 @@ export function checkMeetingMinutes(text: string, source: ReturnType<typeof meet
 export async function runMeetingWalkthrough(options: MeetingOptions, ports: MeetingPorts) {
   const base = new URL(options.base);
   assert(["http:", "https:"].includes(base.protocol) && base.pathname === "/" && !base.search && !base.hash && !base.username && !base.password, "--baseには資格情報や区のパスを含まないURLを指定してください");
-  assert(/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(options.ward) && options.ward !== "demoku", "demokuでは通し確認を実行しません。確認用の自治会のURL名を指定してください");
+  assert(/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(options.ward) && !isJudgeWard(options.ward), "demokuとsasaedaiでは通し確認を実行しません。確認用の自治会のURL名を指定してください");
   const root = `/${options.ward}`;
   const admin = root + "/admin";
   const projectTitle = "架空の総会 通し確認";
@@ -349,8 +350,8 @@ async function main() {
     console.error("使い方: npm run walkthrough-meeting -- --base <URL> --ward <自治会のURL名> --creds <資格情報ファイル> [--files]");
     process.exitCode = 2; return;
   }
-  if (ward === "demoku") {
-    console.error("demokuでは通し確認を実行しません。確認用の区を指定してください。");
+  if (isJudgeWard(ward)) {
+    console.error("demokuとsasaedaiでは通し確認を実行しません。確認用の区を指定してください。");
     process.exitCode = 2; return;
   }
   const text = readFileSync(resolve(creds), "utf8");

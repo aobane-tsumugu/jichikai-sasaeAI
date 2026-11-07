@@ -1,4 +1,5 @@
 // staging の役員画面を HTTP でたどる。資格情報は表示・記録しない。
+import { isJudgeWard, JUDGE_WARDS } from "./judge-wards.ts";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,8 +15,8 @@ if (!ward || !baseArg || (!onlyPublic && !arg("--creds"))) {
   console.error("使い方: npm run walkthrough -- --base <URL> --ward <自治会のURL名> --creds <資格情報ファイル> [--only-public]");
   process.exit(2);
 }
-if (ward === "demoku") {
-  console.error("クロード区では通し確認を実行しません。確認用の区を指定してください。");
+if (isJudgeWard(ward)) {
+  console.error("審査員用の区では通し確認を実行しません。確認用の区を指定してください。");
   process.exit(2);
 }
 const base = new URL(baseArg).toString().replace(/\/$/, "");
