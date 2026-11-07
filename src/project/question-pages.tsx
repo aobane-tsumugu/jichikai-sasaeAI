@@ -91,12 +91,12 @@ questionPages.get("/projects/:projectId/questions", async (c) => {
   const draftLabel = duty ? "当番表の下書きを見る" : "案内の下書きを見る";
   const answered = c.req.query("notice") === "answered";
   const next = <section class="next"><strong>{answered ? "答えを残しました" : "次は"}</strong>
-    <p>{questions.length ? "残りの質問に答えられます。答えなくても知らせられます。" : "質問はありません。あとから下書きで直せます。"}</p>
+    <p>{questions.length ? "残りの質問に答えられます。" : answered ? "AIからの質問は、もうありません。答えは下書きに使われます。下書きであとから直せます。" : "AIが資料を読んで分からない所があると、ここで聞きます。今は聞くことはありません。"}</p>
     <a class="button" href={questions[0] ? `#question-${questions[0].questionId}` : draftHref}>{questions.length ? "残りの質問に答える" : draftLabel}</a>
   </section>;
   return c.html(<Layout title="質問に答える" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {state.project.title}のやることへ</a>
-    <h1>分かるものだけ答えてください</h1><p class="lead">答えなくても知らせられます。</p>
+    <h1>{questions.length ? `${state.project.title}について、AIからの質問が${questions.length}つあります` : `${state.project.title}について、AIからの質問はありません`}</h1>{questions.length ? <p class="lead">分かるものだけ答えてください。答えなくても、案内は住民に知らせられます。</p> : null}
     <ErrorNotice code={c.req.query("error")} messages={{ answer_failed: "答えを入れられませんでした。もう一度お試しください。", exemption_answer_failed: "免除の答えを入れられませんでした。理由は200文字までです。すでに答えていないか、下の質問を確かめてください。", exemption_draft_failed: "免除は記録しました。当番表の下書きを開き、「今の名簿と免除を下書きに反映する」を押してください。" }} />
     {c.req.query("notice") === "exempted" ? <Notice>今年の当番の免除を記録しました。役員が直した担当と知らせた内容はそのままです。下書きで担当を確かめられます。<p><a class="button secondary" href={adminPath(ward, "/rota/exemptions")}>免除の記録を見る・取り消す</a></p></Notice> : c.req.query("notice") === "kept" ? <Notice>当番から外さず、答えを残しました。</Notice> : null}
     {c.req.query("notice") === "unknown" ? <Notice>分からないとして残しました。あとから下書きで直せます。</Notice> : c.req.query("notice") === "later" ? <Notice>あとで答えられるように残しました。</Notice> : null}

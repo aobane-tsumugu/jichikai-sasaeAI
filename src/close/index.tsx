@@ -147,6 +147,10 @@ admin.get("/close/:projectId", async (c) => {
   const pack = getDraftPack("report", project.kind);
   const internalReport = pack.scope === "staff";
   if (!project.closedAt && !(await prepareDrafts(c.env.DB, ward.wardId, id, c.var.account.accountId))) return c.notFound();
+  // 当日が済む前に開いた時は、まだ終わっていないことと戻る道を一番上に書く。中止で終わりにする時のために、欄は出したままにする。
+  const closeToday = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+  const closeDay = project.deadlines.event_day;
+  const notYet = !project.closedAt && (!closeDay || closeDay > closeToday);
   if (!project.closedAt && c.req.query("reopened")) return c.html(<AdminPage ward={ward} account={c.var.account} title="終わりを取り消しました">
     <h1>終わりを取り消しました</h1><p class="lead">{internalReport ? pack.title : "報告"}とやることを直せます。</p>
     <section class="next"><strong>次は</strong><p>{internalReport ? `残した${pack.title}を書き直せます。` : "やることから仕事を続けられます。"}</p><a class="button" href={adminPath(ward, internalReport ? `/close/${id}#report-staff` : `/projects/${id}/map`)}>{internalReport ? `${pack.title}を直す` : "やることへ"}</a></section>
@@ -221,6 +225,7 @@ admin.get("/close/:projectId", async (c) => {
       <h2>間違えたときは</h2><p>終わりを取り消すと、{internalReport ? pack.title : "報告"}とやることを直せます。返事の受付と、実行委員と班長のページも元に戻ります。</p>
       <form method="post" action={`${root}/reopen`}><div class="action-links"><button class="secondary">終わりを取り消す</button></div></form>
     </> : <>
+      {notYet ? <div class="notice warn"><strong>{project.title}は、まだ終わっていません</strong><p>{closeDay ? `当日は${formatJstDate(closeDay)}で、まだ来ていません。` : "まだ当日が決まっていません。"}終わりにするのは、当日が済んで、住民に報告を載せるときです。中止したときは、このまま終わりにできます。</p><a class="button" href={adminPath(ward, `/projects/${id}/map`)}>{project.title}のやることへ戻る</a></div> : null}
       <p class="lead">{internalReport ? pack.title : "報告"}と、来年への一言を残します。終わりにしたあとも取り消せます。</p>
       {internalReport ? <p><a class="button secondary" href={adminPath(ward, `/projects/${id}/draft/notice`)}>住民への連絡を作る</a></p> : null}
       <div class="notice warn"><strong>終わりにすると消えるものがあります</strong><p>手伝いだけの申し込みの名前と時間帯は消えます。終わりを取り消しても戻りません。</p></div>
@@ -245,7 +250,7 @@ admin.get("/close/:projectId", async (c) => {
           <label for={`next-${task.task_id}`}>来年変えること</label><textarea id={`next-${task.task_id}`} name="nextYear" rows={2} maxlength={1200}>{task.next_year}</textarea>
         </div></details>) : <p>残っている仕事はありません。報告だけでも終わりにできます。</p>}
         <h2>終わりにすると、こうなります</h2><ul><li>{internalReport ? `${pack.title}が役員の記録に残ります` : "報告が住民向けのページに載ります"}</li><li>実行委員と班長のページを見せるのをやめます</li><li>返事の受付が終わります</li></ul>
-        <div class="action-bar"><button>終わりにする</button></div>
+        <div class="action-bar"><button class={notYet ? "secondary" : undefined}>終わりにする</button></div>
       </form>
     </>}
   </AdminPage>);

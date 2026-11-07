@@ -18,3 +18,21 @@ it("電話の返事で参加するを選んで人数を空けると、何を直�
   const ok = await postForm(realApp, path, { household: "架空 電話の世帯", district: "", attend: "yes", children_count: "", adults_count: "1", seniors_count: "" }, cookie);
   expect(ok.status).toBe(303);
 });
+
+it("当日の前に終わりにする画面を開くと、まだ終わっていないことと戻る道が一番上に出て、終わりにするボタンは小さくなる", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の日のない訓練", year: 2026, accountId: account.accountId });
+  const html = await (await realApp.request(`/${ward.slug}/admin/close/${project.projectId}`, { headers: { cookie } }, env)).text();
+  expect(html).toContain("架空の日のない訓練は、まだ終わっていません");
+  expect(html).toContain("まだ当日が決まっていません。終わりにするのは、当日が済んで、住民に報告を載せるときです。");
+  expect(html).toContain('<button class="secondary">終わりにする</button>');
+});
+
+it("案内をまだ知らせていない準備の出欠の返事の画面は、まだ無い回答票を撮れと言わず、やることへ戻る道を出す", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空のまだ知らせていない祭り", year: 2026, accountId: account.accountId });
+  const html = await (await realApp.request(`/${ward.slug}/admin/answers/${project.projectId}`, { headers: { cookie } }, env)).text();
+  expect(html).toContain("架空のまだ知らせていない祭りは、まだ住民に案内を知らせていません。");
+  expect(html).toContain(`href="/${ward.slug}/admin/projects/${project.projectId}/map">架空のまだ知らせていない祭りのやることを開く</a>`);
+  expect(html).not.toContain("回答票が手元にあれば、撮って送れます。");
+});

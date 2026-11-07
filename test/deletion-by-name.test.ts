@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { expect, it } from "vitest";
 import { seedAdmin } from "../src/core/testing";
 import { createProject } from "../src/project/api";
-import { get, realApp } from "./helpers";
+import { get, postForm, realApp } from "./helpers";
 
 it("住民の名前で探すと、その人の返事と問い合わせだけが選ばれた形で出て、選んだ物だけが消える", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
@@ -19,23 +19,25 @@ it("住民の名前で探すと、その人の返事と問い合わせだけが�
   expect(first).toContain("頼んだ方のお名前");
   expect(first).not.toContain("つが見つかりました");
 
-  const found = await (await get(realApp, `${root}?name=${encodeURIComponent("山田")}`, cookie)).text();
+  // 名前は URL に入れず、送信の中身で探す。
+  expect(first).toContain(`method="post" action="${root}/search"`);
+  const found = await (await postForm(realApp, `${root}/search`, { name: "山田" }, cookie)).text();
   expect(found).toContain("「山田」で探すと、次の2つが見つかりました。");
   expect(found).toContain('value="answer:answer-yamada" checked');
   expect(found).toContain('value="inquiry:inquiry-yamada" checked');
   expect(found).not.toContain('value="answer:answer-tanaka"');
 
-  const none = await (await get(realApp, `${root}?name=${encodeURIComponent("鈴木")}`, cookie)).text();
+  const none = await (await postForm(realApp, `${root}/search`, { name: "鈴木" }, cookie)).text();
   expect(none).toContain("「鈴木」さんの分は見つかりませんでした。");
 
   // 似た名前の別の人（山下）は印を外した想定で、山田の返事と問い合わせだけを送る。
   const form = new URLSearchParams();
-  form.append("name", "山田");
   form.append("target", "answer:answer-yamada");
   form.append("target", "inquiry:inquiry-yamada");
   const response = await realApp.request(`${root}/person`, { method: "POST", headers: { cookie, "content-type": "application/x-www-form-urlencoded", origin: "http://localhost" }, body: form.toString() }, env);
   expect(response.status).toBe(303);
   expect(response.headers.get("location")).toContain("queued=1");
+  expect(response.headers.get("location")).not.toContain("name=");
   const left = await env.DB.prepare("SELECT answer_id FROM project_answers WHERE ward_id = ? ORDER BY answer_id").bind(ward.wardId).all<{ answer_id: string }>();
   expect(left.results.map((row) => row.answer_id)).toEqual(["answer-tanaka", "answer-yamashita"]);
   expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM inquiry_records WHERE ward_id = ?").bind(ward.wardId).first("n")).toBe(0);

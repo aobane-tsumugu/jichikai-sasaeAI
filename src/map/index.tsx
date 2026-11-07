@@ -86,7 +86,7 @@ admin.get("/projects/:projectId/map", async (c) => {
           {calendar.dated && today >= calendar.first && today <= calendar.last ? <div class="map-today"><span>今日</span></div> : null}
         </div> : <p>仕事はまだありません。下の「仕事を足す、外した仕事を戻す」から足せます。</p>}
       </section><aside>
-        <ul class="rows"><li><a class="row-link" href={adminPath(ward, `/projects/${id}/questions`)}><b>{questions.length ? `AIからの質問が${countWord(questions.length)}あります` : "AIからの質問はありません"}</b><span>{tasks.some((task) => task.taskKey === "announcement" && task.progress === "done") ? "答えなくても進められます。" : "答えなくても知らせられます。"}</span></a></li></ul>
+        {questions.length ? <ul class="rows"><li><a class="row-link" href={adminPath(ward, `/projects/${id}/questions`)}><b>{`AIからの質問が${countWord(questions.length)}あります`}</b><span>{tasks.some((task) => task.taskKey === "announcement" && task.progress === "done") ? "分かるものだけ答えてください。答えなくても進められます。" : "分かるものだけ答えてください。答えなくても、案内は住民に知らせられます。"}</span></a></li></ul> : null}
         <h2>最近届いた資料</h2>
         {materials.results.length ? <ul class="photo-grid">{materials.results.slice(0, 4).map((material) => { const name = summaries.get(material.job_id)?.split("\n")[0]?.slice(0, 36) || material.filename || "書いたこと"; const href = adminPath(ward, `/intake/originals/${material.original_id}`); return <li><a href={href}>
           {material.media_type.startsWith("image/") ? <img class="photo" src={`${href}?raw=1`} alt={name} loading="lazy" /> : <span class="photo-none">{material.filename || "書いたこと"}</span>}
