@@ -12,21 +12,24 @@ import { get, postForm, realApp } from "./helpers";
 
 const read = async (path: string, cookie: string) => (await get(realApp, path, cookie)).text();
 
+// まだ書かれていない項目の数は、見出しの件数でなく、その一文に並ぶ名前の数で数える。
+const emptyCount = (html: string) => { const start = html.indexOf("<h2>まだ書かれていないこと</h2>"); if (start < 0) return 0; const end = html.indexOf("。規約や", start); return html.slice(start, end).split("</a>").length - 1; };
+
 it("十五項目を基本に、書く、外す、戻す、足す、名前を変える", async () => {
   const { ward, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   const list = await read(`${root}/know`, cookie);
   expect(KNOW_BASE).toHaveLength(15);
   for (const base of KNOW_BASE) expect(list).toContain(base.title);
-  expect(list).toContain("まだ書かれていないこと（15）");
+  expect(emptyCount(list)).toBe(15);
   await postForm(realApp, `${root}/know/meeting`, { body: "毎年4月。半数以上の出席で成立。" }, cookie);
   const after = await read(`${root}/know`, cookie);
   expect(after).toContain("毎年4月。半数以上の出席で成立。");
-  expect(after).toContain("まだ書かれていないこと（14）");
+  expect(emptyCount(after)).toBe(14);
   await postForm(realApp, `${root}/know/duties/remove`, {}, cookie);
   const removed = await read(`${root}/know`, cookie);
   expect(removed).toContain("外した項目（1つ）");
-  expect(removed).toContain("まだ書かれていないこと（13）");
+  expect(emptyCount(removed)).toBe(13);
   await postForm(realApp, `${root}/know/duties/restore`, {}, cookie);
   await postForm(realApp, `${root}/know/events/title`, { title: "祭りと行事" }, cookie);
   const added = await postForm(realApp, `${root}/know`, { title: "架空の水路の管理" }, cookie);
@@ -35,7 +38,7 @@ it("十五項目を基本に、書く、外す、戻す、足す、名前を変�
   const final = await read(`${root}/know`, cookie);
   expect(final).toContain("祭りと行事");
   expect(final).toContain("架空の水路の管理");
-  expect(final).toContain("まだ書かれていないこと（15）");
+  expect(emptyCount(final)).toBe(15);
   expect((await get(realApp, `${root}/know/none`, cookie)).status).toBe(404);
 });
 
