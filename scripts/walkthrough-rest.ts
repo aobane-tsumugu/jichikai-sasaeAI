@@ -330,7 +330,7 @@ if (projectId && publicLive) {
     if (confirmed.status !== 303) throw new Error("答え行を確定できません");
     const totals = await get(answerPath);
     const answerList = await get(answerPath + "?view=list");
-    if (!totals.html.includes("参加する") || !answerList.html.includes("直して入れ直す")) throw new Error("入れた返事が一覧と集計に出ません");
+    if (!/参加(?:は|しないは)\d+世帯/.test(unescapeHtml(totals.html)) || !answerList.html.includes("直して入れ直す")) throw new Error("入れた返事が一覧と集計に出ません");
     record(2, "回答票", "通過", "fixturesの回答票を読み取り、確認画面から一行を確定して一覧・集計を確認", confirmed.status, start);
   } catch (error) { fail(2, "回答票", error, start); }
 } else skip(2, "回答票", "配布済みの案内がなく、回答票の対象がありません");

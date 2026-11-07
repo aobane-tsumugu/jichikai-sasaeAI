@@ -415,7 +415,7 @@ async function runFull() {
   if ((await post(close.action, close.values)).status !== 303) throw new Error("閉じる操作に失敗");
   if (!(await get(wardPath + "/p/" + project)).html.includes("実施しました")) throw new Error("公開ページに実施報告がありません");
   const archive = await get(admin + "/archive/" + project);
-  if (!archive.html.includes("これをもとに新しく始める")) throw new Error("記録から始める入口がありません");
+  if (!archive.html.includes("これをもとに今年の")) throw new Error("記録から始める入口がありません");
   const seedPage = await get(admin + "/archive/" + project + "?view=seed");
   const seed = readForm(seedPage.html, "/archive/" + project + "/seed");
   seed.fields.title = "架空 秋の収穫祭 " + (new Date().getFullYear() + 1);
