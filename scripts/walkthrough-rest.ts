@@ -220,8 +220,9 @@ if (projectId && publicLive) {
 if (projectId) {
   const start = Date.now();
   try {
-    const [today, map] = await Promise.all([get(admin + "/projects/today"), get(admin + "/archive/map")]);
-    if (!today.response.ok || !map.response.ok || !today.html.includes(projectTitle) || !map.html.includes(projectTitle)) throw new Error("今やることと区の段取りの両方に行事が見えません");
+    // 今やることは締切のある物だけを並べる。日付の無い行事は入口と区の段取りで見る。
+    const [today, home, map] = await Promise.all([get(admin + "/projects/today"), get(admin + "/"), get(admin + "/archive/map")]);
+    if (!today.response.ok || !home.response.ok || !map.response.ok || !home.html.includes(projectTitle) || !map.html.includes(projectTitle)) throw new Error("入口と区の段取りの両方に行事が見えません");
     record(3, "今やることと区の段取り", "通過", "役員画面の入口と区の段取りで新しい行事を確認", map.response.status, start);
   } catch (error) { fail(3, "今やることと区の段取り", error, start); }
 } else skip(3, "今やることと区の段取り", "行事を開けませんでした");

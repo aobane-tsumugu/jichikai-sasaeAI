@@ -186,7 +186,7 @@ intakeAdmin.get("/intake/read", async (c) => {
       return <section class="panel"><h2>{group.title}の資料のようです</h2>
         <dl class="facts"><dt>資料</dt><dd>{group.materials.length}件</dd>{date ? <><dt>資料の日付</dt><dd>{formatDateText(date)}</dd></> : null}{place ? <><dt>場所</dt><dd>{place}</dd></> : null}</dl>
         <form method="post" action={adminPath(ward, "/intake/start")}><input type="hidden" name="group" value={group.key} />
-          <div class="field"><label for={`day-${index}`}>今年の行事の日（分かれば）</label><input id={`day-${index}`} name="eventDay" type="date" /><p class="help-text">段取りの日付に使います。あとでも直せます。</p></div>
+          <div class="field"><label for={`day-${index}`}>今年の行事の日（分かれば。あとでも直せます）</label><input id={`day-${index}`} name="eventDay" type="date" /></div>
           <div class="action-links"><button class={index === 0 ? undefined : "secondary"}>{group.title}を始める</button></div>
         </form>
       </section>;
