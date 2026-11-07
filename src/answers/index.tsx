@@ -349,7 +349,7 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
       </> : <>
         <p>{namesText}</p>
         {!closed ? <section class="next"><a class="button" href={`${root}?view=send`}>預かった回答票を撮って送る</a><p>撮って送ると、AIが読んで、上の数に入れます。電話で聞いた返事は、下の「電話で聞いた返事を入れる」から入れます。</p></section> : null}
-        <p>{roster.length ? closed ? "" : deadlinePassed ? (remaining ? `締切が過ぎたので、返事のない${remaining}世帯も欠席として数えています。欠席は合わせて${notAttending + remaining}世帯です。` : "名簿の世帯から、全部返事が届きました。") : (remaining ? `まだ返事のない世帯は${remaining}世帯です。` : "名簿の世帯から、全部返事が届きました。") : "世帯の名簿がまだ無いので、まだ返事のない世帯は出せません。名簿を入れると、班ごとに出せます。"}</p>
+        <p>{roster.length ? closed ? "" : deadlinePassed ? (remaining ? `締切が過ぎたので、返事のない${remaining}世帯も欠席として数えています。欠席は合わせて${notAttending + remaining}世帯です。` : "名簿の世帯から、全部返事が届きました。") : (remaining ? `まだ返事のない世帯は${remaining}世帯です。` : "名簿の世帯から、全部返事が届きました。") : "世帯の名簿がまだないので、まだ返事のない世帯は出せません。名簿を入れると、班ごとに出せます。"}</p>
         <ul class="links">
           {!closed ? <li><a href={`${root}?view=hand`}>電話で聞いた返事を入れる</a></li> : null}
           <li><a href={`${root}?view=list`}>返事を一覧で見て直す</a></li>
@@ -657,6 +657,8 @@ function AnswerForm({ wardName, slug, projectId, title, squads, labels, publishe
       <input type="hidden" name="submission_id" value={asString(values.submission_id) || newId()} />
       <div class="field"><label for="household">代表者のお名前</label><input id="household" name="household" type="text" autocomplete="name" maxlength={120} value={asString(values.household)} required /><p class="help-text">ふつうは世帯主の方のお名前です。ご家族のどなたが答えてもかまいません。例: 山田 太郎</p></div>
       {selected ? <><dl class="facts"><dt>班</dt><dd>{selected}</dd></dl><details class="fold" open={!!error}><summary>班が違うときは選び直す</summary><div><DistrictSelect districts={squads} selected={district} /></div></details></>
+        // 班の名前が入っていない自治会では、選べるのが「分からない」一つになるので、班を聞かない。
+        : !squads.length ? <input type="hidden" name="district" value="" />
         : <fieldset><legend>班</legend><DistrictSelect districts={squads} selected={district} unset={!("district" in values)} /><p class="muted">分からないときは、そのまま送ってかまいません。役員が確かめます。</p></fieldset>}
       <AttendanceFields title={title} selected={asString(values.attend)} />
       <CountFields labels={labels} answer={Object.keys(values).length ? counts ?? undefined : undefined} rawValues={values} />

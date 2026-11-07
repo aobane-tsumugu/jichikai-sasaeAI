@@ -159,6 +159,8 @@ export async function unlinkKnowSource(db: D1Database, wardId: string, id: strin
 export interface WardFile {
   original_id: string; job_id: string; filename: string; media_type: string; received_at: string;
   project_title: string | null; sender: string | null; via: string;
+  /** 役員の画面から送った時の、送った役員の名前。 */
+  account_name: string | null;
   /** 自治会のLINEで届いた物の受け箱の一件。行き先を決める画面へ行く時に使う。 */
   item_id: string | null;
 }
@@ -169,7 +171,8 @@ export const WARD_FILES_PAGE = 40;
 export async function listWardFiles(db: D1Database, wardId: string, page: number): Promise<{ files: WardFile[]; more: boolean }> {
   const rows = await db.prepare(`SELECT o.original_id, o.job_id, o.filename, o.media_type, o.received_at, p.title AS project_title, j.via,
       COALESCE((SELECT i.sender_display_name FROM line_inbox_items i WHERE i.ward_id = o.ward_id AND i.job_id = o.job_id LIMIT 1), j.sender_label) AS sender,
-      (SELECT i.item_id FROM line_inbox_items i WHERE i.ward_id = o.ward_id AND i.job_id = o.job_id LIMIT 1) AS item_id
+      (SELECT i.item_id FROM line_inbox_items i WHERE i.ward_id = o.ward_id AND i.job_id = o.job_id LIMIT 1) AS item_id,
+      (SELECT a.name FROM accounts a WHERE a.ward_id = j.ward_id AND a.account_id = j.account_id) AS account_name
     FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
     LEFT JOIN projects p ON p.ward_id = j.ward_id AND p.project_id = j.project_id
     WHERE o.ward_id = ? AND o.withdrawn_at IS NULL AND j.withdrawn_at IS NULL
