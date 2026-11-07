@@ -11,6 +11,7 @@ import { dateWords, daysRemaining } from "../project/followup";
 import { countWord } from "../project/model";
 import { inboxDecided, listInboxItems } from "../line";
 import { mapTaskPath, nextMapTask } from "../map/next";
+import { listKnowItems } from "../know/store";
 import { nearInquiryDates } from "../line/digest";
 import { info } from "./info";
 import { formatJstDate, shortDate } from "../core/time";
@@ -75,9 +76,14 @@ admin.get("/", async (c) => {
     <h2>記録</h2><p class="muted">閉じた行事の段取り、配ったもの、報告です。次の役員もここを読みます。</p>
     <ul class="rows">{records.map((record) => <li><a class="row-link" href={adminPath(ward, `/archive/${record.project_id}`)}><b>{record.year}年 {record.title}</b><span>押すと、記録を読めます</span></a>
       {record.continued ? null : <p class="link-line"><a href={`${adminPath(ward, `/archive/${record.project_id}`)}?view=seed`}>これをもとに今年を始める</a></p>}</li>)}</ul></> : null;
+  const know = await listKnowItems(c.env.DB, ward.wardId);
+  const stale = know.items.filter((item) => item.state === "old");
+  const knowRow = stale.length ? <ul class="year-list"><li><a class="year-row old" href={adminPath(ward, "/know")}><b>見直す時期が{stale.length}項目あります</b><span class="note">{stale.slice(0, 3).map((item) => item.title).join("、")}</span></a></li></ul> : null;
   const place = (path: string, name: string, note: string) => <li><a class="row-link" href={adminPath(ward, path)}><b>{name}</b><span>{note}</span></a></li>;
   const places = <><h2>ほかにできること</h2><ul class="rows two">
     {projects.length ? <>{place("/projects/today", "今やること", "締切のある仕事を近い順に見ます")}{place("/answers", "答えを見る", "住民から届いた出欠と手伝いを見ます")}</> : null}
+    {place("/know", "役員が知っておくこと", "自治会を動かすのに知っておきたいことを見ます")}
+    {place("/files", "区の資料", "送った紙やファイルを全部見ます")}
     {place("/archive", "記録を読む", "閉じた行事の段取り、配ったもの、報告を読みます")}
     {projects.length ? <>{place("/archive/map", "一年の予定", "区の仕事を月ごとに見ます")}{place("/answers/roster", "名簿", "代表者の名前と班を入れます")}</> : null}
     {projects.length ? <>{place("/requests/city", "行政の依頼", "市から届いた依頼と締切を見ます")}{place("/inquiries", "問い合わせと要望", "住民からの問い合わせに返事をします")}</> : null}
@@ -111,7 +117,7 @@ admin.get("/", async (c) => {
         <li>AIが読んで、日時、場所、協賛先などを取り出します。</li><li>資料から、今年の段取りができます。</li><li>案内の下書きができます。直して配るのは役員です。</li>
       </ul>
       <details class="hint"><summary>資料がどこにあるか分からないとき</summary><div><p>見つかったものから一枚だけでも送れます。何もないときは「ない。何の準備かを選ぶ」から始められます。ふつうの段取りが出て、あとで直せます。</p></div></details>
-      {received}{aboutFold}
+      {received}{places}{aboutFold}
     </> : <>
       {about}{heading("送った資料")}<p>{sent}回分を預かっています。読み終わった分から、段取りを作れます。</p>
       <p class="muted">{read ? `読み終わりました${read}件。` : ""}{reading ? `読んでいます${reading}件。` : ""}{delayed ? `読み取りが遅れています${delayed}件。送り直す必要はありません。` : ""}{failed ? `読めませんでした${failed}件。もう一度読むか、このまま進められます。` : ""}</p>
@@ -121,7 +127,7 @@ admin.get("/", async (c) => {
     </> : <>
       {about}{heading("次にすること")}
       <section class="next"><strong>{next.title}</strong><p>{next.body}</p><a class="button" href={adminPath(ward, next.href)}>{next.label}</a></section>
-      {memory}
+      {memory}{knowRow}
       {near.length ? <div class="notice"><strong>{near[0]}</strong><p>{inquiryNotice(digest)}</p><a class="quiet" href={adminPath(ward, "/inquiries")}>問い合わせを見る</a></div> : null}
       {received}
       <h2>進めている行事</h2><p class="muted">押すと、その行事の段取りが開きます。</p>

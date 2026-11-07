@@ -6,7 +6,7 @@ export const BASE_CSS = `
   --fg: #1a1a18; --muted: #3f3f3a;
   --accent: #14507a; --accent-strong: #0f3f61; --accent-fg: #ffffff;
   --info-bg: #e6eff6; --ok: #174f2a; --ok-bg: #e6f1e9;
-  --warn: #6a4300; --warn-bg: #fbf0d9; --danger: #8f1d18; --danger-bg: #fbe9e7;
+  --warn: #6a4300; --warn-bg: #fbf0d9; --danger: #8f1d18; --danger-bg: #fbe9e7; --stale: #7a3400; --stale-bg: #fce8d8;
   --line: #c9c7bd; --line-strong: #6f6f68; --focus: #b34700;
 }
 :root {
@@ -189,6 +189,41 @@ details.none-of-these { margin: var(--space-2) 0; }
 details.none-of-these > summary { display: flex; align-items: center; justify-content: center; min-height: var(--tap); padding: var(--space-2) var(--space-3); border: 2px solid var(--accent); border-radius: var(--radius); background: var(--panel); color: var(--accent); font-weight: 700; cursor: pointer; }
 details.none-of-these > div { padding: var(--space-3) 0 0; }
 .question-block + .question-block { margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--line); }
+/* 型がこの区の事実に変わる: 状態は色と言葉の両方で伝える */
+.state { display: inline-block; padding: 0 var(--space-2); border: 1px solid currentColor; border-radius: var(--radius); font-size: var(--text-note); font-weight: 700; line-height: 1.6; white-space: nowrap; }
+.state.example { color: var(--muted); background: var(--sunk); }
+.state.checking { color: var(--warn); background: var(--warn-bg); }
+.state.fact { color: var(--accent); background: var(--info-bg); }
+.state.old { color: var(--stale); background: var(--stale-bg); }
+.state-legend { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-2) 0 var(--space-3); }
+.year-list { display: grid; gap: var(--space-2); margin: var(--space-2) 0 var(--space-3); padding: 0; list-style: none; }
+.year-row { display: block; min-height: var(--tap); padding: var(--space-2) var(--space-3); border: 1px solid var(--line-strong); border-left-width: 8px; border-radius: var(--radius); background: var(--panel); color: var(--fg); text-decoration: none; }
+.year-row b { display: block; line-height: 1.4; }
+.year-row span.value { display: block; line-height: 1.5; }
+.year-row span.note { display: block; color: var(--muted); font-size: var(--text-note); line-height: 1.5; }
+.year-row.example { border-left-color: var(--line-strong); background: var(--sunk); }
+.year-row.checking { border-left-color: var(--warn); background: var(--warn-bg); }
+.year-row.fact { border-left-color: var(--accent); background: var(--panel); }
+.year-row.old { border-left-color: var(--stale); background: var(--stale-bg); }
+.year-month { margin: var(--space-4) 0 0; font-size: var(--text-h3); }
+.year-month .now { margin-left: var(--space-2); color: var(--accent); font-size: var(--text-note); }
+.start-count { margin: var(--space-2) 0; font-size: var(--text-h3); font-weight: 700; }
+.start-bar { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 3px; margin: var(--space-2) 0 var(--space-3); }
+.start-bar i { display: block; height: .75rem; border: 1px solid var(--accent); border-radius: 2px; background: var(--panel); }
+.start-bar i.in { background: var(--accent); }
+.year-map .map-months span { grid-template-columns: repeat(4, 1fr); }
+.year-map .map-row { min-height: var(--tap); }
+.year-map .map-name { padding-top: var(--space-1); padding-bottom: var(--space-1); }
+.year-map .map-name b { color: var(--fg); text-decoration: none; }
+.year-map .map-row.example { background: var(--sunk); }
+.year-map .map-row.example .map-name b { font-weight: 500; }
+.year-map .map-row.example .map-track i { background: var(--line-strong); }
+.year-map .map-row.checking { background: var(--warn-bg); }
+.year-map .map-row.checking .map-track i { background: var(--warn); }
+.year-map .map-row.fact { background: var(--panel); }
+.year-map .map-row.fact .map-track i { background: var(--accent); }
+.year-map .map-row.old { background: var(--stale-bg); }
+.year-map .map-row.old .map-track i { background: var(--stale); }
 .links { margin: var(--space-3) 0; padding: 0; list-style: none; }
 .links li { border-bottom: 1px solid var(--line); }
 .links a { display: flex; align-items: center; min-height: var(--tap); font-weight: 600; }

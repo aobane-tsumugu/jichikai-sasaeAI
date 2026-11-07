@@ -25,7 +25,7 @@ export interface TemplateTask {
 export const MAP_TEMPLATES: Record<string, readonly TemplateTask[]> = {
   event: [
     { key: "committee", name: "実行委員を決める", start: -75, end: -55, opens: ["committee", "materials"], guide: "実行委員になってくれる人を決めます。決まったら名簿に入れると、案内や当番表で使えます。" },
-    { key: "venue", name: "会場を押さえる", start: -70, end: -45, opens: ["ledger", "materials", "draft"], guide: "会場を電話などで押さえます。決まったら、借りた所と日を運営メモに残せます。来年の担当の人も読めます。" },
+    { key: "venue", name: "会場を押さえる", start: -70, end: -45, opens: ["ledger", "materials", "draft"], guide: "会場を電話などで押さえます。決まったら、借りたところと日を運営メモに残せます。来年の担当の人も読めます。" },
     { key: "sponsors", name: "協賛をお願いする", start: -60, end: -25, opens: ["sponsors", "ledger", "materials"], guide: "協賛をお願いする先を回ります。協賛先の一覧を印刷して持って行けます。" },
     { key: "announcement", name: "案内を配る", start: -45, end: -30, opens: ["draft", "materials"], draftKind: "announcement", guide: "案内の下書きを直して配ります。配ると、区のページと紙に同じ内容が出ます。" },
     { key: "answers", name: "参加と手伝いの答えを集める", start: -30, end: -14, opens: ["answers", "materials"], guide: "住民から届く出欠と手伝いを集めます。紙、電話、スマホの答えが一つにまとまります。" },

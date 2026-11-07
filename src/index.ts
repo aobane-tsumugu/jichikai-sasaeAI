@@ -13,6 +13,7 @@ import { check } from "./check";
 import { close } from "./close";
 import { draft } from "./draft";
 import { intake } from "./intake";
+import { know } from "./know";
 import { line } from "./line";
 import { map } from "./map";
 import { printPages } from "./print/pages";
@@ -27,6 +28,7 @@ export const bundles: Record<string, Bundle> = {
   photos,
   settings,
   intake,
+  know,
   ai,
   project,
   map,

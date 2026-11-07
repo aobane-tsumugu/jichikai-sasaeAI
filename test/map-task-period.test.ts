@@ -28,7 +28,7 @@ it("逆の日付を保存せずに入力を残し、直した仕事を今の時�
     const invalid = await postForm(realApp, f.path, values, f.cookie);
     expect(invalid.status).toBe(400);
     const html = await invalid.text();
-    expect(html).toContain("始める日が終わる日より後になっています。");
+    expect(html).toContain("始める日が終わる日よりあとになっています。");
     expect(html).toContain(`action="${f.path}"`);
     expect(html).toMatch(/<details\b(?=[^>]*class="fold")(?=[^>]*\bopen)[^>]*><summary>時期や担当を直す/);
     for (const key of ["name", "start", "end"] as const) {

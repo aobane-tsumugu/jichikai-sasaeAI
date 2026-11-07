@@ -178,7 +178,7 @@ admin.post("/projects/:projectId/map/:taskId", async (c) => {
   const form = await c.req.formData(); const id = c.req.param("projectId"); const taskId = c.req.param("taskId");
   const values = { name: String(form.get("name") ?? ""), start: String(form.get("start") ?? ""), end: String(form.get("end") ?? ""), progress: String(form.get("progress")), seat_id: String(form.get("seat_id") ?? "") };
   const ok = ["open", "started", "done"].includes(values.progress) && await setMapTask(c.env.DB, c.var.ward.wardId, id, taskId, { ...values, progress: values.progress as "open" | "started" | "done", seatId: values.seat_id || null });
-  if (!ok) return taskPage(c, { values, message: values.start && values.end && values.start > values.end ? "始める日が終わる日より後になっています。日付を直してください。" : "仕事の名前、日付、担当を確認してください。" });
+  if (!ok) return taskPage(c, { values, message: values.start && values.end && values.start > values.end ? "始める日が終わる日よりあとになっています。日付を直してください。" : "仕事の名前、日付、担当を確認してください。" });
   return c.redirect(`${adminPath(c.var.ward, `/projects/${id}/map/${taskId}`)}?notice=saved`, 303);
 });
 for (const [operation, progress] of [["done", "done"], ["reopen", "open"]] as const) admin.post(`/projects/:projectId/map/:taskId/${operation}`, async (c) => {
