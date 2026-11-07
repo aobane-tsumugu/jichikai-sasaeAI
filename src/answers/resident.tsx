@@ -39,7 +39,7 @@ export async function residentContext(db: D1Database, wardId: string, projectId:
     }
     return "";
   };
-  return { documents, contact: item("public_contact") || contact, labels, item };
+  return { documents, hasNotice: documents.some((document) => document.kind === "notice"), contact: item("public_contact") || contact, labels, item };
 }
 
 export function publishedItem(body: string, key: string): string {
@@ -61,6 +61,8 @@ export function ReceptionClosed({ closed, due }: { closed: boolean; due: string 
   </section>;
 }
 
-export function EventDetails({ item, due }: { item: (key: string) => string; due?: string | null }) {
+export function EventDetails({ item, due, hasNotice = false }: { item: (key: string) => string; due?: string | null; hasNotice?: boolean }) {
+  // 知らせは本文が正。受付結果で古い項目を足し戻さず、案内へ戻って読めるようにする。
+  if (hasNotice) return <p>お知らせがあります。日時や場所は案内で確かめてください。</p>;
   return <dl class="facts">{[["date_time", "いつ"], ["place", "どこで"], ["rain_plan", "雨のとき"]].map(([key, label]) => item(key!) ? <><dt>{label}</dt><dd>{formatDateText(item(key!))}</dd></> : null)}{due ? <><dt>答えの締切</dt><dd>{formatJstDate(due)}まで</dd></> : null}</dl>;
 }

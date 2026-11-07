@@ -122,7 +122,8 @@ it("名簿のない初年度から人数を答え、班と古い答えを保ち�
     const offeredHtml = await offered.text();
     expect(offeredHtml).toContain("申し込みを受け付けました");
     expect(offeredHtml).toContain(FIRST_SLICE.helperTime);
-    expect(offeredHtml).toContain(FIRST_SLICE.layoutPosition);
+    expect(offeredHtml).toContain("日時や場所は案内で確かめてください。");
+    expect(offeredHtml).not.toContain(FIRST_SLICE.layoutPosition);
     expect(offeredHtml).toContain(FIRST_SLICE.firstOfficer);
     expect((await postForm(realApp, `${answersPath}/deadline`, { due_on: "2027-09-30" }, cookie)).status).toBe(303);
     const closed = await (await get(realApp, noticePath)).text();

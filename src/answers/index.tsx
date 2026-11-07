@@ -581,7 +581,7 @@ pub.post("/help/:projectId", async (c) => {
   return c.html(<Layout title="申し込みを受け付けました" siteName={c.var.ward.name}>
     <h1>申し込みを受け付けました</h1><p>ありがとうございました。この画面は閉じてかまいません。</p>
     <dl><dt>お名前</dt><dd>{offered.name}</dd><dt>時間帯</dt><dd>{offered.times}</dd></dl>
-    <section class="next"><strong>次は</strong><EventDetails item={context.item} /><p>手伝える時間帯: {offered.times}</p><p>変更は区のページに載せます。</p></section>
+    <section class="next"><strong>次は</strong><EventDetails item={context.item} hasNotice={context.hasNotice} /><p>手伝える時間帯: {offered.times}</p>{!context.hasNotice ? <p>変更は区のページに載せます。</p> : null}</section>
     <p class="link-line"><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>案内を読む</a></p>
     <h2>都合が悪くなったときは</h2><p>間違えたときも、下の連絡先へお知らせください。</p><ResidentContact contact={context.contact} />
   </Layout>);
@@ -652,7 +652,7 @@ pub.post("/answer/:projectId", async (c) => {
   const received = (answer: AnswerRow | null) => c.html(<Layout title="答えを受け付けました" siteName={c.var.ward.name}>
     <h1>答えを受け付けました</h1><p>ありがとうございました。この画面は閉じてかまいません。</p>
     {answer ? <dl><dt>代表者</dt><dd>{answer.household}</dd><dt>班</dt><dd>{answer.district || "班が分からない"}</dd><dt>{answer.peopleCount === 0 ? "答え" : "人数"}</dt><dd>{countText(answer, context.labels)}</dd></dl> : null}
-    {answer && answer.peopleCount > 0 ? <section class="next"><strong>次は</strong><EventDetails item={context.item} /><p>変更は案内で確かめられます。</p></section> : null}
+    {answer && answer.peopleCount > 0 ? <section class="next"><strong>次は</strong><EventDetails item={context.item} hasNotice={context.hasNotice} />{!context.hasNotice ? <p>変更は案内で確かめられます。</p> : null}</section> : null}
     <h2>間違えたときは</h2><p>もう一度送らず、下の連絡先にお知らせください。役員が直します。</p><ResidentContact contact={context.contact} />
     <p class="link-line"><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>案内へ戻る</a></p>
   </Layout>);

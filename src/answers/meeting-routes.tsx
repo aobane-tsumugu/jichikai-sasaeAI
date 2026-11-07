@@ -251,7 +251,7 @@ export function installMeetingRoutes(admin: Hono<AdminEnv>, pub: Hono<WardEnv>) 
       const answer = await getAnswer(c.env.DB, ward.wardId, id, answerId);
       return c.html(<Layout title="答えを受け付けました" siteName={ward.name}><h1>答えを受け付けました</h1><p class="lead">ありがとうございました。この画面は閉じてかまいません。</p>
         {answer ? <dl class="facts"><dt>代表者</dt><dd>{answer.household}</dd><dt>班</dt><dd>{answer.district || "班が分からない"}</dd><dt>答え</dt><dd>{meetingText(answer)}</dd></dl> : null}
-        {answer?.meetingStatus === "attend" ? <section class="next"><strong>次は</strong><EventDetails item={context.item} /></section> : null}
+        {answer?.meetingStatus === "attend" ? <section class="next"><strong>次は</strong><EventDetails item={context.item} hasNotice={context.hasNotice} /></section> : null}
         <h2>間違えたときは</h2><p>もう一度送らず、下の連絡先にお知らせください。役員が直します。</p><ResidentContact contact={context.contact} /><div class="action-links"><a class="button secondary" href={`/${ward.slug}/p/${id}`}>案内へ戻る</a></div></Layout>);
     };
     if (previous) return received(previous.answer_id);
