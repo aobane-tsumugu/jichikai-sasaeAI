@@ -348,6 +348,12 @@ async function eraseProject(env: Env, item: QueueRow): Promise<void> {
       await eraseJob(env, item, { jobId: job.job_id, cursor: resumed?.[2] ?? null });
       return;
     }
+    // 文書を消すとチラシの所在も連動して消えるため、先に画像本体と見本を消す。
+    const flyers = await env.DB.prepare("SELECT r2_path, preview_r2_path FROM notice_flyers WHERE ward_id = ? AND project_id = ?")
+      .bind(wardId, projectId).all<{ r2_path: string | null; preview_r2_path: string | null }>();
+    for (const path of new Set(flyers.results.flatMap((flyer) => [flyer.r2_path, flyer.preview_r2_path]))) {
+      if (path) await deleteRecordObject(env, wardId, path);
+    }
     await env.DB.batch([
       env.DB.prepare("UPDATE projects SET seed_project_id = NULL WHERE ward_id = ? AND seed_project_id = ?").bind(wardId, projectId),
       ...PROJECT_DELETE_TABLES.map((table) => env.DB.prepare(`DELETE FROM ${table} WHERE ward_id = ? AND project_id = ?`).bind(wardId, projectId)),
