@@ -151,7 +151,14 @@ async function prepareQuestions(env: Env, wardId: string, batch: Batch, now: Dat
       }
     }
     if (!item.project_id && originals.results[0]) {
-      const candidates = await env.DB.prepare("SELECT title FROM projects WHERE ward_id = ? AND closed_at IS NULL ORDER BY created_at DESC LIMIT 6")
+      // 区のページで読める配布物がある行事だけを、送った人に示す。
+      const candidates = await env.DB.prepare(`SELECT p.title FROM projects p WHERE p.ward_id = ? AND p.closed_at IS NULL
+        AND EXISTS (SELECT 1 FROM publication_records r
+          JOIN document_versions v ON v.ward_id = r.ward_id AND v.version_id = r.version_id
+          WHERE r.ward_id = p.ward_id AND r.project_id = p.project_id AND v.scope = 'public' AND r.unpublished_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM publication_records newer WHERE newer.ward_id = r.ward_id
+            AND newer.document_id = r.document_id AND newer.version_no > r.version_no))
+        ORDER BY p.created_at DESC LIMIT 6`)
         .bind(wardId).all<{ title: string }>();
       pending.push({ originalId: originals.results[0].original_id, topic: "project", text: "この写真は、どの行事のものですか。", options: candidates.results.map((candidate) => candidate.title).filter((title) => title.length <= 20) });
     }
@@ -181,7 +188,9 @@ async function prepareQuestions(env: Env, wardId: string, batch: Batch, now: Dat
   const questions = await listClarifications(env.DB, wardId, batch.batch_id);
   for (const question of questions.filter((q) => !q.sent_at && !q.answer)) {
     let text = question.text;
-    try { text = await writeClarification(getClient(env), [question], items.results.length); } catch { /* 保存した質問を使う。 */ }
+    if (question.topic !== "project") {
+      try { text = await writeClarification(getClient(env), [question], items.results.length); } catch { /* 保存した質問を使う。 */ }
+    }
     text = text.replace(/\d+\s*枚目[のは、\s]*/g, "この写真の");
     if (question.topic === "unreadable") text += "\n文字で答えるか、撮り直した写真を送ってください。分からないでもかまいません。";
     await env.DB.prepare("UPDATE line_clarifications SET message_text = ? WHERE ward_id = ? AND clarification_id = ?")
