@@ -77,7 +77,7 @@ it("自治会の資料は行き先の無い紙も出し、項目につなげて�
   expect(files).toContain("まだどれの資料にもしていません");
   // 押した先で、どれの資料にするかを決められる画面へ行く。
   expect(files).toContain(`href="${root}/inbox/city/${received.jobId}/pick"`);
-  expect(await read(`${root}/inbox/city/${received.jobId}/pick`, cookie)).toContain("自治会の基本情報");
+  expect(await redirectedTalkPage(`${root}/inbox/city/${received.jobId}/pick`, cookie)).toContain("自治会の基本情報");
   await postForm(realApp, `${root}/know/meeting/links`, { originalId }, cookie);
   const linked = await read(`${root}/files`, cookie);
   expect(linked).toContain(KNOW_BASE.find((base) => base.key === "meeting")!.title);
