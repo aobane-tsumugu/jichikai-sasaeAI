@@ -1,4 +1,4 @@
-import { getRoster, type RosterEntry } from "../answers/api";
+import { getRoster, normalizeHousehold, type RosterEntry } from "../answers/api";
 import { latestSpaceTables, readPublicationTables } from "../space/publication-tables";
 import type { RowData } from "../project/model";
 import { exemptions, householdKey, rotaDate, type Exemption } from "./store";
@@ -46,7 +46,7 @@ export async function householdHistory(db: D1Database, wardId: string): Promise<
   for (const entry of roster) group(entry);
   for (const record of exempt) group(record).exemptions.push(record);
   const locate = (name: string, entries: RosterEntry[]) => {
-    const matches = entries.filter((entry) => entry.household.normalize("NFKC").trim() === name.normalize("NFKC").trim());
+    const matches = entries.filter((entry) => normalizeHousehold(entry.household) === normalizeHousehold(name));
     return matches.length === 1 ? matches[0]! : { household: name, district: "世帯を特定できない記録" };
   };
   for (const project of projects.results) {

@@ -78,3 +78,30 @@ it("複数で担当した当番を各世帯で読み返せ、同名の世帯は�
     expect(section).toContain(`${root}/archive/${project.projectId}`);
   }
 });
+
+it("履歴の名前照合も名簿とそろえ、空白や英字の違いで世帯を誤って選ばない", async () => {
+  const { ward, account } = await seedAdmin(env.DB);
+  // 名前と当番は試験用の架空のもの。同名の世帯は班だけが違う。
+  const first = { household: "架空 甲", district: "1班" };
+  const second = { household: "架空 Alice", district: "1班" };
+  const ambiguous = [{ household: "架空  同名", district: "1班" }, { household: "架空 同名", district: "2班" }];
+  await replaceRoster(env.DB, ward.wardId, [first, second, ...ambiguous], { household: 0, district: 1 });
+  const project = await createProject(env.DB, ward.wardId, {
+    kind: "event", title: "架空の会場準備", year: 2026, accountId: account.accountId,
+  });
+  expect((await applyChange(env.DB, ward.wardId, project.projectId, {
+    kind: "row", table: "duties", data: { slot: "午前", task: "架空の受付", assignee: "架空  甲、架空 ALICE、架空 同名" },
+    source: { kind: "person", accountId: account.accountId }, confidence: "high", packVersion: "fictional-history@1",
+  })).status).toBe("applied");
+
+  const history = await householdHistory(env.DB, ward.wardId);
+  for (const entry of [first, second]) {
+    expect(history.find((item) => item.household === entry.household && item.district === entry.district)?.records)
+      .toEqual([expect.objectContaining({ projectId: project.projectId, what: "架空の会場準備 / 午前 / 架空の受付" })]);
+  }
+  for (const entry of ambiguous) {
+    expect(history.find((item) => item.household === entry.household && item.district === entry.district)?.records).toEqual([]);
+  }
+  expect(history.find((item) => item.district === "世帯を特定できない記録")?.records)
+    .toEqual([expect.objectContaining({ who: "架空 同名", projectId: project.projectId })]);
+});
