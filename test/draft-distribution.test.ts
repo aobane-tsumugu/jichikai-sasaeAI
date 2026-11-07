@@ -112,13 +112,15 @@ it("去年から下書きを作り、新しい資料が入っても全戸に配�
     const publishHtml = await (await get(realApp, `${root}/publish/${project.projectId}`, cookie)).text();
     const reportSection = publishHtml.split('<section class="panel"').find((section) => section.includes(`value="${report.documentId}"`));
     expect(reportSection).toBeDefined();
-    expect(reportSection).not.toContain('name="lineDelivery"');
+    // 終わった報告も、ほかのメッセージと同じく自治会のLINEで送るかを選べる。ここでは「送らない」を選ぶ。
     const reportConfirm = await postForm(realApp, `${root}/publish/${project.projectId}/confirm`, {
       ...confirmFields, ...report, recipientScope: "all_households", lineDelivery: "send",
     }, cookie);
-    expect(await reportConfirm.text()).toContain("今回は自治会のLINEに送りません。");
+    const reportConfirmHtml = await reportConfirm.text();
+    expect(reportConfirmHtml).toContain('name="lineDelivery"');
+    expect(reportConfirmHtml).not.toContain("今回は自治会のLINEに送りません。");
     expect((await postForm(realApp, `${root}/publish/${project.projectId}/send`, {
-      ...sendFields, ...report, lineDelivery: "send",
+      ...sendFields, ...report, lineDelivery: "skip",
     }, cookie)).status).toBe(303);
     expect(await env.DB.prepare("SELECT line_status FROM publication_records WHERE ward_id = ? AND project_id = ? AND version_id = ?")
       .bind(ward.wardId, project.projectId, report.versionId).first()).toEqual({ line_status: "not_sent" });

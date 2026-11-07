@@ -111,7 +111,8 @@ async function getDrafts(db: D1Database, wardId: string, projectId: string): Pro
 const admin = new Hono<AdminEnv>();
 
 /** 自治会のLINEで送る種類。報告は住民向けのページと紙だけに出す。 */
-export const canSendLine = (kind: string) => ["announcement", "recruitment", "notice"].includes(kind);
+/** 住民へのメッセージの四つは、どれも自治会のLINEで送るかを役員が選べる。送らない時は送るたびに選ぶ。 */
+export const canSendLine = (kind: string) => ["announcement", "recruitment", "notice", "report"].includes(kind);
 
 async function markDistributedTask(db: D1Database, wardId: string, projectId: string, accountId: string, taskKey: string, versionId: string) {
   const task = await db.prepare(`SELECT progress_source_kind FROM project_map_tasks
