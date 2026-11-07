@@ -15,11 +15,13 @@ import { WardBucket } from "../core/storage";
 import type { ReceivePart } from "./receive";
 import type { Waitable } from "./types";
 import { lookupPrintQr } from "../print/qr";
-import { getProjectState } from "../project/api";
+import { getProjectState, listProjects } from "../project/api";
+import { startTemplateText } from "../project/start-template";
+import { yearItemsForStart } from "../know/year";
 import { formatDateText } from "../core/time";
 import { WhichProject } from "./which-project";
 import { PROJECT_KINDS } from "../project/model";
-import { pendingMaterialGroups, startMaterialGroup } from "./groups";
+import { materialGroupTemplate, pendingMaterialGroups, startMaterialGroup } from "./groups";
 import { documentTitle } from "../project/heading";
 import { PhotoCheckNotice, photoChecks } from "./photo-check";
 import { talkMark, talkPath } from "../line/talks";
@@ -186,6 +188,10 @@ intakeAdmin.get("/intake/read", async (c) => {
   const { ward } = c.var;
   const groups = await pendingMaterialGroups(c.env.DB, ward.wardId);
   const projects = await projectDirectory().listOpen(c.env.DB, ward.wardId);
+  const [past, yearItems] = await Promise.all([
+    listProjects(c.env.DB, ward.wardId, { includeClosed: true }),
+    yearItemsForStart(c.env.DB, ward.wardId),
+  ]);
   const open = projects.map((project) => ({ project_id: project.projectId, name: project.title }));
   return c.html(<Layout title="読み終わったもの" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/intake/received")}>← 送ったものへ</a>
@@ -202,7 +208,7 @@ intakeAdmin.get("/intake/read", async (c) => {
       const place = oneValue([...fields.filter((f) => f.name === "場所").map((f) => f.value), ...suggestions.map((s) => s.place)]);
       return <section class="panel"><h2>{group.joins?.title ?? group.title}の資料のようです</h2>
         <dl class="facts"><dt>資料</dt><dd>{group.materials.length}件</dd>{date ? <><dt>資料の日付</dt><dd>{formatDateText(date)}</dd></> : null}{place ? <><dt>場所</dt><dd>{place}</dd></> : null}</dl>
-        <WhichProject id={`group-${index}`} question="この資料は、次の準備のものですか？" projects={open} suggested={group.joins?.projectId} suggestedName={group.joins ? "" : group.title} suggestedKind={group.kind} action={adminPath(ward, "/intake/start")} hidden={{ group: group.key }} withDay />
+        <WhichProject id={`group-${index}`} question="この資料は、次の準備のものですか？" projects={open} suggested={group.joins?.projectId} suggestedName={group.joins ? "" : group.title} startText={startTemplateText(group.title, materialGroupTemplate(group, past, yearItems), "materials")} action={adminPath(ward, "/intake/start")} hidden={{ group: group.key }} withDay />
       </section>;
     })}
     {groups.length === 0 ? <><p>まだ読み終わっていない資料は、送ったものから見られます。</p>

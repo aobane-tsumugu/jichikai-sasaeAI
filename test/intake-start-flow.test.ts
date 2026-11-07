@@ -15,6 +15,7 @@ it("新任の役員が題は案内・年不明の実際のフォームから送�
   const { ward, cookie } = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
+  await env.DB.prepare("INSERT INTO ward_year_items (ward_id, item_id, title) VALUES (?, 'autumn', ?)").bind(ward.wardId, FIRST_SLICE.nextYearTitle).run();
   const tasks: Promise<unknown>[] = [];
   const ctx = { waitUntil: (task: Promise<unknown>) => { tasks.push(task); }, passThroughOnException() {} } as unknown as ExecutionContext;
   const client = new Anthropic({ apiKey: "fixture-not-a-real-key", maxRetries: 0, fetch: async (_url, init) => {
@@ -25,7 +26,7 @@ it("新任の役員が題は案内・年不明の実際のフォームから送�
     return Response.json({ id: "fixture-suggest", type: "message", role: "assistant", model: "claude-sonnet-5-5", stop_reason: "end_turn", stop_sequence: null,
       content: [{ type: "text", text: JSON.stringify({ project_suggestions: content.originals.map((original) => ({
         original_id: original.original_id, title: original.filename === "当番.txt" ? FIRST_SLICE.dutyTitle : FIRST_SLICE.nextYearTitle,
-        kind: original.filename === "当番.txt" ? "duty" : "event",
+        year_item: original.filename === "当番.txt" ? "garbage-duty" : "autumn",
         date_text: original.filename === "案内.txt" ? "10月24日（土）" : "", place: original.filename === "案内.txt" ? FIRST_SLICE.previousPlace : "",
       })) }) }], usage: { input_tokens: 100, output_tokens: 50 } });
   } });

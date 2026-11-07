@@ -6,9 +6,9 @@
 
 /** 包みの版。どの版で読んだかを readings に残し、直した後に古い版で読んだ物を選んで読み直せるようにする。 */
 export const READ_PACK_VERSION = {
-  general: "read-general@4",
+  general: "read-general@5",
   answer_sheet: "read-answer-sheet@7",
-  restore: "read-restore@4",
+  restore: "read-restore@5",
   /** モデルを通さない読み取り（Word、Excel、文字） */
   direct: "read-direct@2",
 } as const;
@@ -119,13 +119,36 @@ export interface OriginalYear {
   year: number | null;
 }
 
-/** 行事の見立て。資料の年や今年の決定は含めない。古い読み取りには無い。 */
+/** 資料に書かれた名前と、一年の予定のどの行か。資料の年や今年の決定は含めない。 */
 export interface ProjectSuggestion {
   original_id: string;
   title: string;
-  kind: "event" | "general_meeting" | "city_request" | "board_meeting" | "duty" | "request";
+  year_item?: string;
+  /** 古い読み取りを読むためだけに残す。新しい読みでは書かせない。 */
+  kind?: "event" | "general_meeting" | "city_request" | "board_meeting" | "duty" | "request";
   date_text?: string;
   place?: string;
+}
+
+/** 古いkindだけの読みも受け取る。新しい読みのyear_itemを落とさない。 */
+export function cleanProjectSuggestions(value: unknown, originalIds: string[]): ProjectSuggestion[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.flatMap((entry: unknown) => {
+    if (!entry || typeof entry !== "object") return [];
+    const item = entry as Record<string, unknown>;
+    const legacyKind = ["event", "general_meeting", "city_request", "board_meeting", "duty", "request"].includes(String(item.kind))
+      ? item.kind as ProjectSuggestion["kind"] : undefined;
+    if (typeof item.original_id !== "string" || !originalIds.includes(item.original_id) || seen.has(item.original_id)
+      || typeof item.title !== "string" || !item.title.trim() || item.title.trim().length > 100
+      || typeof item.year_item !== "string" && !legacyKind) return [];
+    seen.add(item.original_id);
+    return [{ original_id: item.original_id, title: item.title.trim(),
+      ...(typeof item.year_item === "string" ? { year_item: item.year_item.trim() } : {}),
+      ...(legacyKind ? { kind: legacyKind } : {}),
+      date_text: typeof item.date_text === "string" ? item.date_text.slice(0, 2000) : "",
+      place: typeof item.place === "string" ? item.place.slice(0, 2000) : "" }];
+  });
 }
 
 export interface Reading {
@@ -210,11 +233,10 @@ export const GENERAL_READING_SCHEMA = {
       type: "array",
       items: {
         type: "object", additionalProperties: false,
-        required: ["original_id", "title", "kind", "date_text", "place"],
+        required: ["original_id", "title", "year_item", "date_text", "place"],
         properties: {
-          original_id: str, title: str,
+          original_id: str, title: str, year_item: str,
           date_text: str, place: str,
-          kind: { type: "string", enum: ["event", "general_meeting", "city_request", "board_meeting", "duty", "request"] },
         },
       },
     },

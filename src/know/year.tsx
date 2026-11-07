@@ -69,6 +69,20 @@ const inRange = (month: number, base: YearBase) => {
 interface RecordRow { project_id: string; title: string; kind: string; year: number; event_day: string | null; event_end: string | null }
 interface YearItem { item_id: string; title: string; month: number | null; date_text: string; recurrence_text: string; added: number; removed_at: string | null; source_original_id: string | null }
 
+/** 読みで照らし合わせる一年の予定。外した行は候補にも型にも使わない。 */
+export async function yearItemsForStart(db: D1Database, wardId: string): Promise<{ key: string; title: string }[]> {
+  const rows = await db.prepare("SELECT item_id, title, removed_at FROM ward_year_items WHERE ward_id = ?")
+    .bind(wardId).all<Pick<YearItem, "item_id" | "title" | "removed_at">>();
+  const items = YEAR_BASE.flatMap((base) => {
+    const row = rows.results.find((entry) => entry.item_id === base.key);
+    return row?.removed_at ? [] : [{ key: base.key, title: row?.title || base.title }];
+  });
+  for (const row of rows.results) {
+    if (!row.removed_at && row.title && !YEAR_BASE.some((base) => base.key === row.item_id)) items.push({ key: row.item_id, title: row.title });
+  }
+  return items;
+}
+
 export async function wardYear(db: D1Database, ward: WardInfo, projects: readonly ProjectSummary[], states: readonly (ProjectState | null)[], today: string) {
   const [materialCounts, answerCounts] = await Promise.all([
     db.prepare(`SELECT j.project_id, COUNT(*) AS n FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id

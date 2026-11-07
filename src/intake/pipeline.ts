@@ -13,6 +13,7 @@ import { newId, nowIso } from "../core/ids";
 import type { Env } from "../env";
 import { createAnthropic, MODEL } from "../ai/anthropic";
 import { applyWardReading } from "../know/apply";
+import { yearItemsForStart } from "../know/year";
 import { dispatchProject } from "../ai/session";
 import { matchProject, MATCH_NEW, MATCH_MULTIPLE, MATCH_UNRELATED, MATCH_UNCERTAIN, MATCH_PACK_VERSION, OFFICER_MATCH_PACK_VERSION } from "../ai/match";
 import { projectApi } from "../ai/project-binding";
@@ -114,12 +115,13 @@ async function performRead(
       (o) => o.r2_path && (o.media_type.startsWith("image/") || o.media_type === "application/pdf"),
     );
     const client = (deps?.createClient ?? ((e: Env) => createAnthropic(e, { maxRetries: 1 })))(env);
+    const yearItems = job.read_kind === "answer_sheet" ? [] : await yearItemsForStart(env.DB, wardId);
     let direct = (await getReadings(env.DB, wardId, jobId)).find((row) => row.source === "direct");
     let directUsage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0 };
     if (!job.project_id && job.via !== "line_direct" && job.via !== "line_group" && direct && "fields" in direct.body && direct.body.project_suggestions === undefined) {
       try {
         const directOriginals = (await listOriginals(env.DB, wardId, jobId)).filter((o) => !o.media_type.startsWith("image/") && o.media_type !== "application/pdf");
-        const suggested = await suggestProjects(client, direct.body, directOriginals);
+        const suggested = await suggestProjects(client, direct.body, directOriginals, yearItems);
         direct = { ...direct, body: { ...direct.body, project_suggestions: suggested.suggestions, ward_facts: suggested.wardFacts, year_entries: suggested.yearEntries },
           pack_version: `${direct.pack_version}/${SUGGEST_PACK_VERSION}`, model: suggested.model };
         directUsage = { ...suggested.usage, cache_read_input_tokens: suggested.usage.cache_read_input_tokens ?? 0 };
@@ -166,7 +168,7 @@ async function performRead(
     const answerLabels = job.read_kind === "answer_sheet" ? await getAnswerLabels(env.DB, wardId) : undefined;
     const answerFeatures = job.read_kind === "answer_sheet" && job.project_id
       ? await projectFeatures(env.DB, wardId, job.project_id) : null;
-    const result = await (deps?.readImpl ?? readOriginals)(client, { kind: job.read_kind, originals: readable, answerLabels, generalMeeting: answerFeatures?.delegation });
+    const result = await (deps?.readImpl ?? readOriginals)(client, { kind: job.read_kind, originals: readable, yearItems, answerLabels, generalMeeting: answerFeatures?.delegation });
     const placed = await finishRead(env.DB, {
       wardId,
       jobId,

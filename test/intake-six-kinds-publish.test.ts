@@ -6,7 +6,8 @@ import { setClientFactory } from "../src/ai/deps";
 import { seedAdmin } from "../src/core/testing";
 import { pendingMaterialGroups } from "../src/intake/groups";
 import { setPipelineDeps } from "../src/intake/pipeline";
-import { getProjectState } from "../src/project/api";
+import { createProject, getProjectState } from "../src/project/api";
+import { MAP_TEMPLATES } from "../src/map/template";
 import type { DocumentKind, ProjectKind, Scope } from "../src/project/model";
 import { documentTitle } from "../src/project/heading";
 import { get, postForm, realApp } from "./helpers";
@@ -22,20 +23,33 @@ const cases: { kind: ProjectKind; title: string; first: DocumentKind; scope: Sco
 ];
 
 // 六種類の受付から複数の配布までを実際のD1・R2で順に通すため、この試験だけ30秒待つ。
-it("六つの種類の架空資料から適切な下書きに進み、出欠が要る案内だけに入口を出し、配った仕事を済みにする", async () => {
+it("去年の仕事を持つ六つの予定の資料から適切な下書きに進み、出欠が要る案内だけに入口を出し、配った仕事を済みにする", async () => {
   const { ward, cookie } = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
+  await env.DB.prepare("INSERT INTO ward_year_items (ward_id, item_id, title, added) VALUES (?, 'other-only', '別の自治会の予定（架空）', 1)")
+    .bind(other.ward.wardId).run();
+  // 種類はAIに当てさせず、去年の同じ予定に残った仕事を今年へ写す。
+  for (const entry of cases) {
+    await env.DB.prepare("INSERT INTO ward_year_items (ward_id, item_id, title, added) VALUES (?, ?, ?, 1)")
+      .bind(ward.wardId, `year-${entry.kind}`, entry.title).run();
+    const past = await createProject(env.DB, ward.wardId, { kind: entry.kind, title: entry.title, year: 2025 });
+    await env.DB.prepare("UPDATE projects SET closed_at = ? WHERE ward_id = ? AND project_id = ?")
+      .bind("2025-12-31T00:00:00Z", ward.wardId, past.projectId).run();
+  }
   const ctx = createExecutionContext();
   // 外部モデルの通信だけを代える。フォーム、読み取り、R2、D1、配る操作は本体を使う。
   const client = new Anthropic({ apiKey: "fixture-not-a-real-key", maxRetries: 0, fetch: async (_url, init) => {
-    const request = JSON.parse(String(init?.body)) as { messages: { content: string }[] };
-    const content = JSON.parse(request.messages[0]!.content) as { originals: { original_id: string; filename: string }[] };
+    const request = JSON.parse(String(init?.body)) as { system: string; messages: { content: string }[] };
+    expect(request.system).toContain("kindは書かず");
+    const content = JSON.parse(request.messages[0]!.content) as { year_items: { key: string; title: string }[]; originals: { original_id: string; filename: string }[] };
+    for (const entry of cases) expect(content.year_items).toContainEqual({ key: `year-${entry.kind}`, title: entry.title });
+    expect(content.year_items.some((item) => item.key === "other-only")).toBe(false);
     return Response.json({ id: "fixture-six-kinds", type: "message", role: "assistant", model: "claude-sonnet-5-5", stop_reason: "end_turn", stop_sequence: null,
       content: [{ type: "text", text: JSON.stringify({ project_suggestions: content.originals.map((original) => {
         const fixture = cases.find((entry) => original.filename === `${entry.kind}.txt`);
         if (!fixture) throw new Error("種類の架空資料がありません");
-        return { original_id: original.original_id, kind: fixture.kind, title: fixture.title, date_text: "", place: "" };
+        return { original_id: original.original_id, year_item: `year-${fixture.kind}`, title: fixture.title, date_text: "", place: "" };
       }) }) }], usage: { input_tokens: 100, output_tokens: 100 } });
   } });
   setPipelineDeps({ createClient: () => client });
@@ -54,7 +68,7 @@ it("六つの種類の架空資料から適切な下書きに進み、出欠が�
     expect(await pendingMaterialGroups(env.DB, other.ward.wardId)).toHaveLength(0);
 
     for (const entry of cases) {
-      const group = groups.find((value) => value.kind === entry.kind);
+      const group = groups.find((value) => value.yearItem === `year-${entry.kind}`);
       if (!group) throw new Error(`${entry.kind}の資料がまとまっていません`);
       const startContext = createExecutionContext();
       const started = await realApp.fetch(new Request(`http://localhost${root}/intake/start`, {
@@ -69,6 +83,7 @@ it("六つの種類の架空資料から適切な下書きに進み、出欠が�
       const state = await getProjectState(env.DB, ward.wardId, id);
       if (!state) throw new Error("始めた仕事がありません");
       expect(state.project.kind).toBe(entry.kind);
+      expect(state.mapTasks.map((task) => task.taskKey)).toEqual(MAP_TEMPLATES[entry.kind]!.map((task) => task.key));
       const title = documentTitle(entry.kind, entry.first);
       const result = await (await get(realApp, resultPath, cookie)).text();
       expect(result).toContain(`${title}の下書きを見る`);
