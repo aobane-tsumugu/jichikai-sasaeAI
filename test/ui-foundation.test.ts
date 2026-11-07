@@ -10,9 +10,9 @@ it("入力の誤りから戻って行事を開き、住民も書き直して答�
   const root = `/${ward.slug}/admin`;
   const invalid = await postForm(realApp, `${root}/projects`, { kind: "unknown" }, cookie);
   expect(invalid.status).toBe(303);
-  expect(invalid.headers.get("location")).toBe(`${root}/projects?error=choose_kind`);
+  expect(invalid.headers.get("location")).toBe(`${root}/projects?error=need_title`);
   const guidance = await (await get(realApp, invalid.headers.get("location")!, cookie)).text();
-  expect(guidance).toContain("何の準備かを選んでください");
+  expect(guidance).toContain("名前を入れてください");
   expect(guidance).toContain(`${ward.name} 役員の画面`);
   expect(guidance).toContain('>最初の画面</a>');
   expect(guidance).toContain('<body ontouchstart="">');

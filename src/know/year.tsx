@@ -4,6 +4,7 @@ import { newId } from "../core/ids";
 import { eventPeriodText, seasonText } from "../core/time";
 import type { WardInfo } from "../env";
 import type { ProjectState, ProjectSummary } from "../project/types";
+import type { ProjectKind } from "../project/model";
 import { Hono } from "hono";
 import { AdminPage } from "../core/admin-ui";
 import { cleanName } from "../core/password";
@@ -13,25 +14,29 @@ import { createProject, getProjectState, listOpenProjects } from "../project/api
 import { getKnowItem, KNOW_LIMITS, saveKnowItem } from "./store";
 import { WEEKDAYS } from "../rota/schedule";
 
-export interface YearBase { key: string; title: string; kind: string; from: number; to: number; recurrence?: string; knowKey?: string }
+/** 予定ごとの、今年の準備を始める時のやることの並び（決定ログ L-312、L-313）。kind は中の種類の列に入れる値で、役員には見せない。tasks が無い時は、その種類の型の全部。 */
+export interface YearTemplate { kind: ProjectKind; tasks?: readonly string[] }
+/** 知らせる、当日、まとめるだけの短い一般の型。行事でない物に会場、協賛、当番表の仕事を付けない。 */
+export const SHORT_TEMPLATE: YearTemplate = { kind: "event", tasks: ["announcement", "day", "report"] };
+export interface YearBase { key: string; title: string; kind: string; from: number; to: number; recurrence?: string; knowKey?: string; template: YearTemplate }
 
 /** 05_JOBS の仕事を月に置いた一般の例。区に合わないものは外せる。 */
 export const YEAR_BASE: readonly YearBase[] = [
-  { key: "general-meeting", title: "定期総会", kind: "general_meeting", from: 4, to: 4 },
-  { key: "dues", title: "会費の集金", kind: "", from: 4, to: 5 },
-  { key: "spring-clean", title: "春の清掃", kind: "", from: 5, to: 5 },
-  { key: "drill", title: "防災訓練", kind: "", from: 9, to: 9 },
-  { key: "summer", title: "夏の行事", kind: "event", from: 7, to: 8 },
-  { key: "elders", title: "敬老の行事", kind: "", from: 9, to: 9 },
-  { key: "autumn", title: "秋の行事", kind: "event", from: 10, to: 11 },
-  { key: "autumn-clean", title: "秋の清掃", kind: "", from: 11, to: 11 },
-  { key: "year-end", title: "年末の役員会", kind: "board_meeting", from: 12, to: 12 },
-  { key: "new-year", title: "新年の集まり", kind: "", from: 1, to: 1 },
-  { key: "officers", title: "役員を決める", kind: "", from: 2, to: 2 },
-  { key: "settlement", title: "決算と総会の準備", kind: "", from: 3, to: 3 },
-  { key: "garbage-duty", title: "ごみ当番", kind: "duty", from: 4, to: 3, recurrence: "毎週月曜", knowKey: "duties" },
-  { key: "bulletin-delivery", title: "市報や回覧の配布", kind: "", from: 4, to: 3, recurrence: "毎月", knowKey: "delivery" },
-  { key: "hall-care", title: "集会所の管理", kind: "", from: 4, to: 3, recurrence: "随時", knowKey: "safety" },
+  { key: "general-meeting", title: "定期総会", kind: "general_meeting", from: 4, to: 4, template: { kind: "general_meeting" } },
+  { key: "dues", title: "会費の集金", kind: "", from: 4, to: 5, template: SHORT_TEMPLATE },
+  { key: "spring-clean", title: "春の清掃", kind: "", from: 5, to: 5, template: SHORT_TEMPLATE },
+  { key: "drill", title: "防災訓練", kind: "", from: 9, to: 9, template: { kind: "event", tasks: ["announcement", "answers", "day", "report"] } },
+  { key: "summer", title: "夏の行事", kind: "event", from: 7, to: 8, template: { kind: "event" } },
+  { key: "elders", title: "敬老の行事", kind: "", from: 9, to: 9, template: { kind: "event", tasks: ["committee", "announcement", "answers", "day", "report"] } },
+  { key: "autumn", title: "秋の行事", kind: "event", from: 10, to: 11, template: { kind: "event" } },
+  { key: "autumn-clean", title: "秋の清掃", kind: "", from: 11, to: 11, template: SHORT_TEMPLATE },
+  { key: "year-end", title: "年末の役員会", kind: "board_meeting", from: 12, to: 12, template: { kind: "board_meeting" } },
+  { key: "new-year", title: "新年の集まり", kind: "", from: 1, to: 1, template: { kind: "event", tasks: ["announcement", "answers", "day", "report"] } },
+  { key: "officers", title: "役員を決める", kind: "", from: 2, to: 2, template: SHORT_TEMPLATE },
+  { key: "settlement", title: "決算と総会の準備", kind: "", from: 3, to: 3, template: SHORT_TEMPLATE },
+  { key: "garbage-duty", title: "ごみ当番", kind: "duty", from: 4, to: 3, recurrence: "毎週月曜", knowKey: "duties", template: { kind: "duty" } },
+  { key: "bulletin-delivery", title: "市報や回覧の配布", kind: "", from: 4, to: 3, recurrence: "毎月", knowKey: "delivery", template: SHORT_TEMPLATE },
+  { key: "hall-care", title: "集会所の管理", kind: "", from: 4, to: 3, recurrence: "随時", knowKey: "safety", template: SHORT_TEMPLATE },
 ];
 
 export type YearState = "example" | "fact" | "checking";
@@ -102,10 +107,12 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
       return;
     }
     if (!day) {
-      // 同じ種類の行があれば重ね、無ければ今の時期に置く。進めている行事は必ず地図に出す。
-      const base = YEAR_BASE.find((entry) => !used.has(entry.key) && similar(entry.title, project.title)) ?? YEAR_BASE.find((entry) => !used.has(entry.key) && entry.kind === project.kind);
+      // 名前の似た行があれば重ねる。種類だけでは重ねない（種類は役員に聞かず、短い型の物も行事として持つため。L-312）。
+      // 一年の予定に足した時期があればそこに、無ければ今の時期に置く。進めている準備は必ず表に出す。
+      const base = YEAR_BASE.find((entry) => !used.has(entry.key) && similar(entry.title, project.title)) ?? (project.kind === "event" ? undefined : YEAR_BASE.find((entry) => !used.has(entry.key) && entry.kind === project.kind));
       if (base) used.add(base.key);
-      const from = base ? position(base.from) : position(monthOf(today), dayOf(today));
+      const added = overrides.results.find((row) => row.added && !row.removed_at && row.month && row.title === project.title);
+      const from = base ? position(base.from) : added ? position(added.month!) : position(monthOf(today), dayOf(today));
       const taskless = state && !state.mapTasks.length;
       rows.push({ key: project.projectId, title: project.title, note: taskless ? "仕事はまだありません。やることから足せます" : "日はまだ決まっていません", state: "fact", level: levelOf(materialsOf(project.projectId) + answersOf(project.projectId)), from, to: base ? position(base.to, 30) + 1 : from + 4, href: adminPath(ward, `/projects/${project.projectId}/map`), order: from });
       return;
@@ -136,6 +143,8 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
       state: "fact", level: levelOf(row.source_original_id ? 1 : 0), from: 0, to: 100, href: adminPath(ward, `/year/${row.item_id}`), order: 0 });
   }
   for (const row of overrides.results.filter((entry) => entry.added && !entry.removed_at && !entry.recurrence_text && entry.month)) {
+    // 今年の準備を始めた予定は、準備の行が同じ予定を表すので、二つ出さない。
+    if (projects.some((project) => project.title === row.title)) continue;
     const at = position(row.month!);
     if (row.source_original_id) claim("", row.month!, row.title);
     rows.push({ key: row.item_id, title: row.title, note: row.date_text || (row.source_original_id ? "届いた資料から読み取りました" : ""), state: "fact", level: levelOf(row.source_original_id ? 1 : 0), from: at, to: at + 4, href: adminPath(ward, `/year/${row.item_id}`), order: at });
@@ -222,7 +231,7 @@ yearRecurringAdmin.get("/year", async (c) => {
       <form method="post" action={adminPath(ward, "/year")}>
         <div class="field"><label for="year-title">名前</label><input id="year-title" name="title" required maxlength={KNOW_LIMITS.title} /></div>
         <div class="field"><label for="year-month">時期</label><select id="year-month" name="month"><option value="0">通年</option>{[4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3].map((month) => <option value={String(month)}>{month}月</option>)}</select></div>
-        <div class="field"><label for="year-recurrence">くり返し（通年のとき）</label><input id="year-recurrence" name="recurrence" maxlength={200} placeholder="毎週月曜、毎月、随時など" /></div>
+        <div class="field"><label for="year-recurrence">くり返し（通年のとき）</label><input id="year-recurrence" name="recurrence" maxlength={200} placeholder="毎週月曜、毎月、随時など" /><p class="help-text">月を選ぶと、表のその月に置きます。通年を選ぶと、表の一年を通した帯にし、ここに書いたくり返しを添えます。</p></div>
         <button class="secondary">この予定を足す</button>
       </form></div></details>
     {taken.length ? <details class="fold"><summary>外した予定（{taken.length}つ）</summary><div>{taken.map((base) => <form method="post" action={adminPath(ward, `/year/${base.key}/restore`)}><p>{base.title}</p><button class="secondary">この予定を戻す</button></form>)}</div></details> : null}

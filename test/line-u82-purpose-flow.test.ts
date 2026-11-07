@@ -1,4 +1,5 @@
 import { redirectedTalkPage } from "./fixtures/line-u83-page";
+import { flyerMaterials } from "../src/draft/notice-flyers";
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "cloudflare:workers";
 import { expect, it, vi } from "vitest";
@@ -246,26 +247,21 @@ it.each(["参考資料", "この準備の資料"])("U82: 目的不明には一�
   } finally { s.cleanup(); }
 });
 
-it("U82: 役員の住民に知らせたいは確認だけにし、下書きを作らない", async () => {
-  const s = await setup("share");
+it("L-311: 役員の「住民に知らせたい」は当てて聞かず、参考として入り、住民へのメッセージの画像に選べる", async () => {
+  // 前の作りの AI が share を返しても、参考として入れる。
+  const s = await setup("share" as NonNullable<MatchResult["intent"]>);
   try {
     await s.send("住民に知らせたい");
     const received = await s.photo(await s.send(null));
     await s.settle();
-    expect(await getBundleDecision(env.DB, s.ward.wardId, received.bundle_id)).toMatchObject({ action: "confirm_share" });
-    expect((await listClarifications(env.DB, s.ward.wardId)).map((q) => q.text)).toEqual([SHARE_QUESTION]);
+    expect(await getBundleDecision(env.DB, s.ward.wardId, received.bundle_id)).toMatchObject({ action: "reference" });
+    expect(await listClarifications(env.DB, s.ward.wardId)).toEqual([]);
     expect(s.dispatch).not.toHaveBeenCalled();
     expect((await s.state()).documents).toHaveLength(0);
     expect((await s.state()).project.deadlines.event_day).toBeUndefined();
-    const question = (await listClarifications(env.DB, s.ward.wardId))[0];
-    if (!question) throw new Error("知らせる前の確認がありません");
+    expect((await flyerMaterials(s.runtime, s.ward.wardId, s.project.projectId)).map((photo) => photo.original_id)).toContain(received.original.original_id);
     const talk = await redirectedTalkPage(`/${s.ward.slug}/admin/inbox/${received.item_id}/pick`, s.cookie, s.runtime);
-    expect(talk).toContain("住民に知らせたいという言葉と一緒に届いた写真です。住民に知らせますか。");
-    expect(talk).toContain("どちらを選んでも、ここからは住民に届きません。");
-    expect((await postForm(realApp, `/${s.ward.slug}/admin/inbox/questions/${question.id}`, { answer: "知らせる" }, s.cookie, s.runtime)).status).toBe(303);
-    expect(await getBundleDecision(env.DB, s.ward.wardId, received.bundle_id)).toMatchObject({ action: "reference", decided_by: "officer" });
-    expect(s.dispatch).not.toHaveBeenCalled();
-    expect((await s.state()).documents).toHaveLength(0);
+    expect(talk).not.toContain(SHARE_QUESTION);
     expect(await isOfficerSource(s.runtime, s.ward.wardId, "group", s.group)).toBe(true);
     expect(await isOfficerSource(s.runtime, s.ward.wardId, "group", "fictional-other-group")).toBe(false);
     expect(await isOfficerSource(s.runtime, s.ward.wardId, "user", s.group)).toBe(false);

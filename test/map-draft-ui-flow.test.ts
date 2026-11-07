@@ -69,7 +69,7 @@ it("資料のない一年目から仕事・質問・下書き・別の雨の知�
   const draft = await (await get(realApp, `${path}/draft/announcement`, cookie)).text();
   expect(draft).toMatch(/name="title" value="[^"]+のご案内"/);
   expect(draft).toContain(`value="${FIRST_SLICE.layoutPosition}"`);
-  expect(draft).toContain("保存して知らせる内容を見る");
+  expect(draft).toContain('name="after" value="send">住民に送る</button>');
   const fields = { title: "案内", scope: "public", based_on: String((await state()).project.stateVersion), text: FIRST_SLICE.publicAnnouncement, item_place: FIRST_SLICE.layoutPosition };
   expect((await postForm(realApp, `${path}/draft/announcement/save`, fields, cookie)).status).toBe(303);
   const saved = await (await get(realApp, `${path}/draft/announcement?notice=saved`, cookie)).text();

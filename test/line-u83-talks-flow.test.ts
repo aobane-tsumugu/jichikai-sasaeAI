@@ -81,7 +81,7 @@ it("U83: トーク、参考への直し、AIの上書き防止、分割と戻す
   expect(page).toContain(`${topic.anchor}">AIからの質問のところへ移る</a>`);
   expect(page).not.toContain("届いた順に読めます。");
   const edit = `${path}/topics/${topic.anchor.slice(6)}`;
-  const corrected = await postForm(realApp, edit, { action: "reference", projectId: project.projectId, summary: fixture.summary }, cookie);
+  const corrected = await postForm(realApp, edit, { choice: `reference:${project.projectId}`, summary: fixture.summary }, cookie);
   expect(corrected.status).toBe(303);
   expect(await getBundleDecision(env.DB, ward.wardId, bundle)).toMatchObject({ action: "reference", decided_by: "officer", project_id: project.projectId });
   await saveAiBundleDecision(env.DB, ward.wardId, bundle, "別のAIの判断", "material", null, new Date());

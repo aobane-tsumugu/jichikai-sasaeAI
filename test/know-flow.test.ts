@@ -119,7 +119,7 @@ it("行き先のない写真は聞かずに自治会の資料へ残し、名簿�
   expect(after).not.toContain("この資料で、世帯の名簿を入れ直しますか？");
   expect(after).toContain("架空の紙2");
   const pick = await redirectedTalkPage(`${root}/inbox/item-1/pick`, cookie);
-  expect(pick).toContain("自治会の基本情報にするとき");
+  expect(pick).toContain("自治会の決まりの元の資料にする");
   expect(pick).toContain("総会");
 });
 
@@ -179,10 +179,11 @@ it("地図の行から種類と名前を選んだ状態で行事を始められ�
   const { ward, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   const page = await read(`${root}/year/general-meeting`, cookie);
-  expect(page).toContain(`/projects?kind=general_meeting&amp;title=`);
-  const start = await read(`${root}/projects?kind=general_meeting&title=${encodeURIComponent("定期総会")}`, cookie);
+  expect(page).toContain(`/projects?title=${encodeURIComponent("定期総会")}`);
+  const start = await read(`${root}/projects?title=${encodeURIComponent("定期総会")}`, cookie);
   expect(start).toContain('value="定期総会"');
-  expect(start).toContain('<input type="hidden" name="kind" value="general_meeting"/>');
+  expect(start).not.toContain('name="kind"');
+  expect(start).toContain("よくある自治会の定期総会のやることを置きます。");
 });
 
 it("行事が増えてもトップの地図は今に近い行に絞り、全部は一年の画面で見る", async () => {
@@ -215,7 +216,7 @@ it("紙は行事から外して自治会の資料だけに置け、移しても�
   await env.DB.prepare("UPDATE jobs SET status = 'done' WHERE ward_id = ? AND job_id = ?").bind(ward.wardId, got.jobId).run();
   const pick = await redirectedTalkPage(`${root}/inbox/city/${got.jobId}/pick`, cookie);
   expect(pick).toContain("どうするか");
-  expect(pick).toContain("自治会の資料");
+  expect(pick).toContain("自治会全体の資料にする");
   const moved = await postForm(realApp, `${root}/inbox/city/${got.jobId}`, { operation: "assign", projectId: second.projectId }, cookie);
   const movedPage = await read(moved.headers.get("location")!, cookie);
   expect(movedPage).toContain("架空の秋祭りの資料にしました");
@@ -278,13 +279,14 @@ it("一年の行から始めると何の準備かを聞かず、やることの�
   const root = `/${ward.slug}/admin`;
   const row = await read(`${root}/year/general-meeting`, cookie);
   expect(row).toContain("今年の定期総会の準備を始める");
-  const form = await read(`${root}/projects?kind=general_meeting&title=${encodeURIComponent("定期総会")}`, cookie);
-  expect(form).toContain("今年の定期総会の準備を始める");
+  const form = await read(`${root}/projects?title=${encodeURIComponent("定期総会")}`, cookie);
+  expect(form).toContain("今年の定期総会を始める");
+  expect(form).toContain("よくある自治会の定期総会のやることを置きます。");
   expect(form).not.toContain("何の準備ですか");
-  expect(form).toContain('<input type="hidden" name="kind" value="general_meeting"/>');
+  expect(form).not.toContain('name="kind"');
   const plain = await read(`${root}/projects`, cookie);
-  expect(plain).toContain("何の準備ですか");
-  expect(plain).toContain("ごみ当番のように、順番で回すもの");
+  expect(plain).not.toContain("何の準備ですか");
+  expect(plain).toContain("だいたいの時期");
   const undated = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の日のない祭り", year: 2026, accountId: account.accountId });
   const undatedMap = await read(`${root}/projects/${undated.projectId}/map`, cookie);
   expect(undatedMap).toContain("まず、日を決めます");
@@ -297,18 +299,18 @@ it("一年の行から始めると何の準備かを聞かず、やることの�
   expect(datedMap).not.toContain("まず、日を決めます");
 });
 
-it("種類の決まっていない予定から始める時と、何もないところから始める時は、何の準備かを最初から選ばずに聞く", async () => {
+it("L-312: 種類の決まっていない予定から始める時も、何もないところから始める時も、何の準備かを聞かない", async () => {
   const { ward, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   const dues = await read(`${root}/year/dues`, cookie);
   expect(dues).toContain(`/projects?title=${encodeURIComponent("会費の集金")}`);
-  expect(dues).not.toContain("kind=event");
+  expect(dues).not.toContain("kind=");
   const form = await read(`${root}/projects?title=${encodeURIComponent("会費の集金")}`, cookie);
-  expect(form).toContain("何の準備ですか");
+  expect(form).not.toContain("何の準備ですか");
   expect(form).toContain('value="会費の集金"');
-  expect(form).not.toMatch(/name="kind" value="[a-z_]+" checked/);
+  expect(form).not.toContain('name="kind"');
   const plain = await read(`${root}/projects`, cookie);
-  expect(plain).not.toMatch(/name="kind" value="[a-z_]+" checked/);
+  expect(plain).not.toContain('name="kind"');
   const meeting = await read(`${root}/projects?kind=general_meeting&title=${encodeURIComponent("定期総会")}`, cookie);
-  expect(meeting).toContain('<input type="hidden" name="kind" value="general_meeting"/>');
+  expect(meeting).not.toContain('name="kind"');
 });

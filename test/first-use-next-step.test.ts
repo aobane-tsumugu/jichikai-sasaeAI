@@ -21,7 +21,7 @@ it("初めての役員に行事・資料・実行委員と班長のページの�
   const projectEntryHtml = await projectEntry.text();
   expect(projectEntryHtml).toContain("<h1>新しく準備を始める</h1>");
   expect(projectEntryHtml).toContain(`<form method="post" action="${root}/projects">`);
-  expect(projectEntryHtml).toContain('<button type="submit">始める</button>');
+  expect(projectEntryHtml).toContain('<button type="submit">一年の予定に足して始める</button>');
 
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "最初の行事（架空）", year: 2026, accountId: account.accountId,

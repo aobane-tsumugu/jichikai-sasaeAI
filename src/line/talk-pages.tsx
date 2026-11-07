@@ -2,16 +2,16 @@ import { Hono, type Context } from "hono";
 import type { AdminEnv } from "../env";
 import { adminPath } from "../core/auth";
 import { Layout, Notice, Hint } from "../core/ui";
+import { Choices } from "../core/choice";
 import { adminResult } from "../core/admin-ui";
 import { formatJst, formatJstDate } from "../core/time";
 import { getOriginal, jobSummaries, rosterCandidates } from "../intake/store";
 import { WardBucket } from "../core/storage";
 import { listKnowItems } from "../know/store";
-import { PROJECT_KINDS, PROJECT_KIND_LABEL } from "../project/model";
 import { questionOptionLabel } from "../project/question-pages";
 import { listClarifications, type ClarificationRow } from "./clarifications";
 import { listTalks, conversationFor, conversationPath, talkPage, talkPath, type Talk, type TalkTopic } from "./talks";
-import { PURPOSE_QUESTION, SHARE_QUESTION } from "./bundle-decisions";
+import { PURPOSE_QUESTION } from "./bundle-decisions";
 import { changeBoundary, checkEditable, editTopic, saveUndo, undoTalk } from "./talk-edits";
 import { senderText } from "./sender";
 
@@ -31,8 +31,8 @@ function actionText(topic: TalkTopic, names: Map<string, string>) {
     case "inquiry": return `→ 問い合わせにしました。${topic.inquiry?.answer ? "返事を残しました。" : "返事はまだです。"}`;
     case "know": return "→ 自治会の基本情報にしました。";
     case "unrelated": return "→ 関係ないものにしました。直すと戻せます。";
-    case "confirm_share": return "→ 住民に知らせるか、まだ決めていません。";
-    case "confirm_purpose": return "→ 写真と言葉を確認しています。";
+    case "confirm_share": return `→ ${name ? `${name}の参考にしました。` : "参考にしました。"}`;
+    case "confirm_purpose": return "→ どの準備で使うか、見本として残すかを、役員に聞いています。";
     default: return `→ ${name ? `${name}の資料にしました。` : "自治会の資料にしました。"}`;
   }
 }
@@ -73,7 +73,7 @@ function talkFacts(talk: Talk, questions: ClarificationRow[], names: Map<string,
   const open = questions.filter((q) => jobs.has(q.job_id) && !q.answer);
   const asking = (topic: TalkTopic) => open.some((q) => topic.posts.some((post) => post.jobId === q.job_id));
   const replying = (topic: TalkTopic) => !!topic.inquiry && !topic.inquiry.answer && (!topic.decision || topic.decision.action === "inquiry");
-  const undecided = (topic: TalkTopic) => !asking(topic) && (topic.decision?.action === "confirm_purpose" || topic.decision?.action === "confirm_share");
+  const undecided = (topic: TalkTopic) => !asking(topic) && topic.decision?.action === "confirm_purpose";
   const replies = talk.topics.filter(replying).length;
   const choices = talk.topics.filter(undecided).length;
   const parts = [
@@ -107,11 +107,6 @@ function questionView(question: ClarificationRow, project: string | undefined) {
       after: `「${use}」を選ぶと、写真から読んだことを${project ? `${project}の中身` : "自治会の資料"}に入れます。「参考にする」を選ぶと、写真に書かれた日時や場所を${project ?? "今年の予定"}には入れず、参考として残します。`,
     };
   }
-  if (question.text === SHARE_QUESTION) return {
-    text: "住民に知らせたいという言葉と一緒に届いた写真です。住民に知らせますか。",
-    label: questionOptionLabel,
-    after: "どちらを選んでも、ここからは住民に届きません。この写真は参考として残し、答えも一緒に残します。",
-  };
   return { text: question.text, label: questionOptionLabel, after: "" };
 }
 
@@ -193,6 +188,7 @@ talkAdmin.get("/inbox/talks/:talkId", async (c) => {
       const summary = topic.decision?.summary || (topic.inquiry ? `住民からの質問（${first.text}）です。` : summaries.get(first.jobId ?? "")?.split("\n")[0]) || "届いた写真と言葉です。";
       const back = adminPath(ward, conversationPath(talk, topic));
       const current = topic.decision?.project_id ?? first.projectId;
+      const currentName = current ? names.get(current) : undefined;
       const action = topic.decision?.action ?? (topic.inquiry ? "inquiry" : "material");
       const edit = `${path}/topics/${topic.anchor.slice(6)}`;
       return <section class="talk-topic" id={topic.anchor}>
@@ -217,19 +213,27 @@ talkAdmin.get("/inbox/talks/:talkId", async (c) => {
         {topic.inquiry && action === "inquiry" ? <p><a class="button secondary" href={adminPath(ward, `/inquiries/${topic.inquiry.inquiry_id}`)}>返事を書く</a></p> : null}
         <details class="fold"><summary>直す</summary><div>
           <form method="post" action={edit}>
+            {/* 名前だけの選択肢を並べず、今の判断を先に書き、選ぶ物ごとに、何のための物かと選ぶと何が起きるかを添える。 */}
+            <p>今は、{topic.decision?.decided_by === "officer" ? "役員が" : "AIが"}{actionText(topic, names).replace("→ ", "")}違うときだけ、下から選び直してください。</p>
             <label for={`summary-${topic.anchor}`}>何の話か</label><input id={`summary-${topic.anchor}`} name="summary" value={summary} maxlength={500} required />
-            <label for={`action-${topic.anchor}`}>どうするか</label><select id={`action-${topic.anchor}`} name="action">
-              <option value="material" selected={action === "material" || action === "confirm_purpose" || action === "confirm_share"}>資料にする</option>
-              <option value="reference" selected={action === "reference"}>参考にする</option><option value="inquiry" selected={action === "inquiry"}>問い合わせ</option>
-              <option value="know" selected={action === "know"}>自治会の基本情報</option><option value="unrelated" selected={action === "unrelated"}>関係ない</option>
-            </select>
-            <label for={`project-${topic.anchor}`}>どれの資料・参考にするか</label><select id={`project-${topic.anchor}`} name="projectId">
-              <option value="">自治会の資料</option>{activeProjects.map((project) => <option value={project.project_id} selected={project.project_id === current}>{project.title}</option>)}
-              <option value="new">新しく準備を始める</option></select>
-            <details class="fold"><summary>新しく準備を始めるとき</summary><div><label for={`name-${topic.anchor}`}>名前</label><input id={`name-${topic.anchor}`} name="projectName" maxlength={100} />
-              <label for={`kind-${topic.anchor}`}>何の準備ですか</label><select id={`kind-${topic.anchor}`} name="kind">{PROJECT_KINDS.map((kind) => <option value={kind}>{PROJECT_KIND_LABEL[kind]}</option>)}</select></div></details>
-            <details class="fold"><summary>自治会の基本情報にするとき</summary><div><label for={`know-${topic.anchor}`}>どの内容か</label><select id={`know-${topic.anchor}`} name="knowId">{know.items.map((item) => <option value={item.id}>{item.title}</option>)}</select></div></details>
-            <Hint text="すでに下書きに入った内容は残ることがあります。別の資料や参考に直したときは、住民に知らせる前に下書きを見て直してください。" />
+            <Choices name="choice" legend="どうするか" items={[
+              ...(currentName ? [
+                { value: `material:${current}`, title: `${currentName}の資料にする`, note: `日時や場所などを${currentName}の今年の中身に入れ、案内の下書きにも使います。`, checked: action === "material" },
+                { value: `reference:${current}`, title: `${currentName}の見本として残す`, note: `今年の中身には入れず、${currentName}を作る時に見られるように残します。よその催しのチラシや、去年の物の時に選びます。`, checked: action === "reference" },
+              ] : []),
+              { value: "material:other", title: currentName ? "別の準備の資料にする" : "準備の資料にする", note: "下で選んだ準備の今年の中身に入れます。まだ無い準備なら、名前を入れると新しく始めます。",
+                extra: <div class="field"><label for={`project-${topic.anchor}`}>どの準備か</label><select id={`project-${topic.anchor}`} name="otherProjectId">
+                  {activeProjects.filter((project) => project.project_id !== current).map((project) => <option value={project.project_id}>{project.title}</option>)}
+                  <option value="new">新しく準備を始める</option></select>
+                  <label for={`name-${topic.anchor}`}>新しく始める時の名前</label><input id={`name-${topic.anchor}`} name="projectName" maxlength={100} /></div> },
+              { value: "material:", title: "自治会全体の資料にする", note: "一つの準備に限らない資料として、AIが読んで、自治会の基本情報や一年の予定に入れます。規約、名簿、年間の予定表などの時に選びます。", checked: action === "material" && !currentName },
+              { value: "know:", title: "自治会の決まりの元の資料にする", note: "下で選んだ決まり（会費、役員の割り振りなど）の、元の資料としてつなぎます。",
+                checked: action === "know",
+                extra: <div class="field"><label for={`know-${topic.anchor}`}>どの決まりか</label><select id={`know-${topic.anchor}`} name="knowId">{know.items.map((item) => <option value={item.id}>{item.title}</option>)}</select></div> },
+              { value: "inquiry:", title: "住民からの問い合わせにする", note: "返事を書く画面に並べます。資料にはしません。", checked: action === "inquiry" },
+              { value: "unrelated:", title: "取っておかない", note: "資料にも問い合わせにもせず、使いません。このトークには残り、あとから直せます。", checked: action === "unrelated" },
+            ]} />
+            <Hint text="すでに下書きに入った内容は残ることがあります。別の資料や見本に直したときは、住民に送る前に下書きを見て直してください。" />
             <button>この内容に直す</button>
           </form>
           <h2>どこからどこまでか</h2>
@@ -281,6 +285,12 @@ async function edit(c: Context<AdminEnv>, boundary: boolean) {
   if (!talk || !topic) return c.notFound();
   const back = { href: adminPath(ward, conversationPath(talk, topic)), label: "元の会話に戻る" };
   const form = await c.req.formData();
+  const choice = String(form.get("choice") ?? "");
+  if (choice) {
+    const [chosen, target = ""] = choice.split(":");
+    form.set("action", chosen ?? "");
+    form.set("projectId", target === "other" ? String(form.get("otherProjectId") ?? "") : target);
+  }
   try {
     const postIndex = talk.posts.findIndex((p) => p.id === String(form.get("postId") ?? ""));
     const previous = postIndex > 0 ? talk.posts[postIndex - 1] : null;

@@ -91,7 +91,7 @@ export async function listClarifications(db: D1Database, wardId: string, batchId
   const result = await db.prepare(`SELECT c.clarification_id AS id, c.batch_id, c.job_id, c.original_id, c.topic, c.text,
     c.options, c.question_id, c.answer, c.sent_at, c.message_text, c.sent_message_id, c.answered_unknown, j.project_id FROM line_clarifications c
     JOIN jobs j ON j.ward_id = c.ward_id AND j.job_id = c.job_id
-    WHERE c.ward_id = ? AND j.withdrawn_at IS NULL
+    WHERE c.ward_id = ? AND j.withdrawn_at IS NULL AND c.text <> '住民に知らせますか'
     AND NOT EXISTS (SELECT 1 FROM line_inbox_items i JOIN inquiry_records q ON q.ward_id = i.ward_id AND q.line_bundle_id = i.bundle_id
       WHERE i.ward_id = c.ward_id AND i.job_id = c.job_id AND NOT EXISTS (SELECT 1 FROM line_bundle_decisions d
         WHERE d.ward_id = i.ward_id AND d.bundle_id = i.bundle_id AND d.action <> 'inquiry'))
@@ -425,6 +425,20 @@ export async function completeScreenClarifications(env: Env, wardId: string, dep
 
 /** 既存の質問フォームに残った役員の答えを、そのまとまりの判断へ戻す。 */
 async function resolveBundlePurposeAnswers(env: Env, wardId: string, now: Date): Promise<void> {
+  // 前の作りで「住民に知らせますか」と聞いたまま答えの無いものは、参考として入れ、問いを外す（L-311）。
+  // 知らせるかどうかは、役員が住民へのメッセージを作る時に決め、写真はその画面で選べる。
+  const pending = await env.DB.prepare(`SELECT d.* FROM line_bundle_decisions d LEFT JOIN line_clarifications c
+    ON c.ward_id = d.ward_id AND c.clarification_id = d.clarification_id
+    WHERE d.ward_id = ? AND d.decided_by = 'ai' AND d.action = 'confirm_share' AND (c.answer IS NULL OR c.clarification_id IS NULL)`)
+    .bind(wardId).all<BundleDecision>();
+  for (const decision of pending.results) {
+    const changed = await env.DB.prepare(`UPDATE line_bundle_decisions SET action = 'reference', decided_at = ?, updated_at = ?
+      WHERE ward_id = ? AND bundle_id = ? AND decided_by = 'ai' AND action = 'confirm_share'`)
+      .bind(now.toISOString(), now.toISOString(), wardId, decision.bundle_id).run();
+    if (decision.clarification_id) await env.DB.prepare("DELETE FROM line_clarifications WHERE ward_id = ? AND clarification_id = ? AND answer IS NULL")
+      .bind(wardId, decision.clarification_id).run();
+    if (changed.meta.changes) await connectOfficerBundle(env, wardId, { ...decision, action: "reference" });
+  }
   const answered = await env.DB.prepare(`SELECT d.*, c.answer FROM line_bundle_decisions d
     JOIN line_clarifications c ON c.ward_id = d.ward_id AND c.clarification_id = d.clarification_id
     JOIN jobs j ON j.ward_id = c.ward_id AND j.job_id = c.job_id

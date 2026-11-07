@@ -21,7 +21,7 @@ it("資料のない一年目に案内を手で保存し、出欠の入口と当�
   expect(materials).toContain("下書きの一覧を開く");
 
   const dutyDraft = await (await get(realApp, `${root}/projects/${id}/draft/duty_roster`, cookie)).text();
-  expect(dutyDraft).toContain("実行委員と班長に見せる当番表です。直して保存しても、まだ知らせません。");
+  expect(dutyDraft).toContain("実行委員と班長に見せる当番表です。直して保存しても、まだ載せません。");
   expect(dutyDraft).toContain("当番表の説明");
   expect(dutyDraft).toContain("当番表の行はまだありません。");
   const recruitment = await (await get(realApp, `${root}/projects/${id}/draft/recruitment`, cookie)).text();
