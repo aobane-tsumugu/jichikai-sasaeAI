@@ -16,7 +16,7 @@ it("資料を送らずに名簿へ一人足し、外しても履歴を残し、�
   await saveDocument(env.DB, ward.wardId, id, account.accountId, { kind: "duty_roster", title: "当番表", scope: "space", basedOn: 0, body: JSON.stringify({ text: "架空の説明", items: [] }) });
   const rows = async () => (await getProjectState(env.DB, ward.wardId, id))!.tables.committee;
 
-  expect(await (await get(realApp, path, cookie)).text()).toContain("人を足す");
+  expect(await (await get(realApp, path, cookie)).text()).toContain("<button>名簿に足す</button>");
   expect((await postForm(realApp, path, person, cookie)).headers.get("location")).toContain("saved=1");
   expect(await rows()).toMatchObject([{ scope: "current", data: person, source: { kind: "person" } }]);
   expect((await env.DB.prepare("SELECT stale_since_version FROM documents WHERE ward_id = ? AND project_id = ? AND kind = 'duty_roster'").bind(ward.wardId, id).first<{ stale_since_version: number | null }>())?.stale_since_version).not.toBeNull();
@@ -40,7 +40,7 @@ it("資料を送らずに名簿へ一人足し、外しても履歴を残し、�
   expect(await (await get(realApp, `/${ward.slug}/admin/projects/${id}`, cookie)).text()).toContain("外しました");
   const notice = await (await get(realApp, `${path}?removed=1`, cookie)).text();
   expect(notice).toContain("名簿から外しました");
-  expect(notice).toContain("今年の実行委員名簿はまだありません");
+  expect(notice).toContain("の実行委員は、まだ入っていません。");
 
   expect((await postForm(realApp, `${path}/${rowId}/remove`, {}, cookie)).status).toBe(409);
   expect((await postForm(realApp, path, person, cookie)).status).toBe(303);

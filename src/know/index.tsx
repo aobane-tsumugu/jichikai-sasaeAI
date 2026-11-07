@@ -39,20 +39,24 @@ function Row({ ward, item }: { ward: AdminEnv["Variables"]["ward"]; item: KnowIt
 admin.get("/know", async (c) => {
   const { ward, account } = c.var;
   const { items, removed } = await listKnowItems(c.env.DB, ward.wardId);
-  const old = items.filter((item) => item.state === "old");
-  const filled = items.filter((item) => item.state !== "empty").length;
+  // 色の札や「何項目のうち何項目」に縮めず、書かれている中身と、見直しが要ることを文で書く（トップと同じ決まり）。
+  const needs = items.filter((item) => item.state === "checking" || item.state === "old");
+  const written = items.filter((item) => item.state !== "empty");
+  const empty = items.filter((item) => item.state === "empty");
+  const shown = (item: (typeof items)[number]) => firstLine(item.body || item.auto).slice(0, 80);
+  const path = (item: (typeof items)[number]) => adminPath(ward, `/know/${encodeURIComponent(item.id)}`);
+  const first = needs[0];
   return c.html(<AdminPage ward={ward} account={account} title="自治会の基本情報" back={{ href: adminPath(ward, "/"), label: "最初の画面へ" }}>
     <h1>自治会の基本情報</h1>
-    <p class="lead">自治会を動かすのに知っておきたいことの一覧です。写真やファイルを送ると、AIが読み取って入れます。違うところは直せます。書かれていなくても、仕事は止まりません。</p>
+    <p class="lead">新しい役員が知っておきたい、この自治会の決まりや手順です。届いた資料からAIが読み取って入れ、役員が直せます。書かれていなくても、準備は進められます。</p>
     {c.req.query("n") === "added" ? <Notice>項目を足しました。</Notice> : c.req.query("n") === "removed" ? <Notice>項目を外しました。下の「外した項目」から戻せます。</Notice> : c.req.query("n") === "restored" ? <Notice>項目を戻しました。</Notice> : null}
-    <p>{items.length}項目のうち{filled}項目が書かれています。{old.length ? `${old.length}項目は見直す時期です。` : ""}</p>
-    <div class="state-legend"><strong class="legend-title">色の見方</strong><ul>
-      <li><span class="state example">まだ書かれていません</span>資料を送るか、押して書くと入ります</li>
-      <li><span class="state checking">AIからの質問があります</span>新しく届いた資料に、違う内容が書かれていました</li>
-      <li><span class="state fact">この自治会の内容</span>資料から読み取ったか、役員が書いた内容です</li>
-      <li><span class="state old">見直す時期です</span>書いてから時間がたちました</li>
-    </ul></div>
-    <ul class="year-list">{items.map((item) => <Row ward={ward} item={item} />)}</ul>
+    {first ? <section class="next"><p>{first.state === "checking" ? `「${first.title}」について、新しく届いた資料に違うことが書かれていました。どちらが今の内容か教えてください。` : `「${first.title}」は、${first.note || "入れてから時間がたっています"}。今も合っているか見てください。`}{shown(first) ? `今は「${shown(first)}」と書かれています。` : ""}</p>
+      <a class="button" href={path(first)}>「{first.title}」を見て直す</a></section> : null}
+    {needs.length > 1 ? <p>ほかに、{needs.slice(1).map((item) => `「${item.title}」`).join("、")}も、見直す時期か、AIからの質問があります。</p> : null}
+    {written.length ? <><h2>書かれていること</h2><ul class="links">{written.map((item) => <li><a href={path(item)}>{item.title}</a>{shown(item) ? `　${shown(item)}` : ""}</li>)}</ul></> : null}
+    {empty.length ? <><h2>まだ書かれていないこと（{empty.length}）</h2>
+      <p>{empty.map((item, index) => <>{index ? "、" : ""}<a href={path(item)}>{item.title}</a></>)}。規約や去年の総会の資料を送ると、AIが読み取って入れます。押して書くこともできます。</p>
+      <div class="action-links"><a class="button secondary" href={adminPath(ward, "/intake")}>写真やファイルを送る</a></div></> : null}
     <details class="fold"><summary>項目を足す</summary><div><form method="post" action={adminPath(ward, "/know")}>
       <div class="field"><label for="know-title">項目の名前</label><input id="know-title" name="title" type="text" required maxlength={KNOW_LIMITS.title} /><p class="help-text">この自治会で知っておきたいことを足せます。</p></div>
       <button class="secondary">この項目を足す</button>
