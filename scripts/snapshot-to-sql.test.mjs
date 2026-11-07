@@ -140,7 +140,8 @@ test("全ての保存対象に記録を持つ区を、紙番号・実行委員�
   for (const [table, rows] of Object.entries(data.tables)) {
     if (!providerTables.has(table)) assert.ok(rows.length > 0, `${table}の記録が試験にありません`);
   }
-  data.tables = Object.fromEntries(Object.entries(data.tables).reverse());
+  // 比較記録を先頭に置いても、二つの元の資料と準備を先に戻せることを確かめる。
+  data.tables = { original_comparisons: data.tables.original_comparisons, ...Object.fromEntries(Object.entries(data.tables).reverse()) };
   roundTrip(t, data);
 });
 
