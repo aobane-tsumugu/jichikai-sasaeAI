@@ -14,12 +14,18 @@ export async function getDigestSettings(db: D1Database, wardId: string): Promise
   } catch { return { ...DEFAULT_DIGEST }; }
 }
 
-export async function saveDigestSettings(db: D1Database, wardId: string, form: Record<string, unknown>, accountId: string | null): Promise<boolean> {
-  if (form.digest_cutoff === undefined && form.digest_send === undefined) return true;
+export function digestSettingsFromForm(form: Record<string, unknown>): DigestSettings | null {
   const cutoff = form.digest_cutoff; const send = form.digest_send;
   const eventDays = Number(form.digest_event_days); const dueDays = Number(form.digest_due_days);
-  if (!validTime(cutoff) || !validTime(send) || !Number.isInteger(eventDays) || eventDays < 0 || eventDays > 365 || !Number.isInteger(dueDays) || dueDays < 0 || dueDays > 365) return false;
-  await setSetting(db, wardId, KEY, JSON.stringify({ cutoff, send, eventDays, dueDays }), accountId);
+  if (!validTime(cutoff) || !validTime(send) || !Number.isInteger(eventDays) || eventDays < 0 || eventDays > 365 || !Number.isInteger(dueDays) || dueDays < 0 || dueDays > 365) return null;
+  return { cutoff, send, eventDays, dueDays };
+}
+
+export async function saveDigestSettings(db: D1Database, wardId: string, form: Record<string, unknown>, accountId: string | null): Promise<boolean> {
+  if (form.digest_cutoff === undefined && form.digest_send === undefined) return true;
+  const value = digestSettingsFromForm(form);
+  if (!value) return false;
+  await setSetting(db, wardId, KEY, JSON.stringify(value), accountId);
   return true;
 }
 
@@ -43,12 +49,13 @@ export const inquiryNotice = (value: DigestSettings, hasGroup = true) => `${hasG
   ? `問い合わせは毎日${timeLabel(value.cutoff)}に締め、${value.send > value.cutoff ? "その日" : "翌日"}の${timeLabel(value.send)}に、前回の締めからの分を役員グループへ知らせます。来ない日は送りません。`
   : "役員グループへの知らせは、まだ使えません。問い合わせはこの画面で見られます。"}行事の${value.eventDays}日前や締切の${value.dueDays}日前からは、知らせを待たずに、ときどき見てください。`;
 
-export function DigestFields({ value }: { value: DigestSettings }) {
-  return <details class="fold"><summary>問い合わせの知らせの時刻と、近い日の案内</summary><div>
+export function DigestFields({ value, rawValues, open = false }: { value: DigestSettings; rawValues?: Record<string, unknown>; open?: boolean }) {
+  const field = (name: string, saved: string | number) => typeof rawValues?.[name] === "string" ? String(rawValues[name]) : saved;
+  return <details class="fold" open={open}><summary>問い合わせの知らせの時刻と、近い日の案内</summary><div>
     <p>役員グループへ知らせます。時刻は日本時間です。送る時刻から5分ほど遅れることがあります。</p>
-    <label for="digest-cutoff">問い合わせを締める時刻</label><input id="digest-cutoff" name="digest_cutoff" type="time" value={value.cutoff} required />
-    <label for="digest-send">知らせを送る時刻</label><input id="digest-send" name="digest_send" type="time" value={value.send} required />
-    <label for="digest-event-days">行事の何日前から、ときどき見る案内を出すか</label><input id="digest-event-days" name="digest_event_days" type="number" min="0" max="365" value={value.eventDays} required />
-    <label for="digest-due-days">締切の何日前から、ときどき見る案内を出すか</label><input id="digest-due-days" name="digest_due_days" type="number" min="0" max="365" value={value.dueDays} required />
+    <label for="digest-cutoff">問い合わせを締める時刻</label><input id="digest-cutoff" name="digest_cutoff" type="time" value={field("digest_cutoff", value.cutoff)} required />
+    <label for="digest-send">知らせを送る時刻</label><input id="digest-send" name="digest_send" type="time" value={field("digest_send", value.send)} required />
+    <label for="digest-event-days">行事の何日前から、ときどき見る案内を出すか</label><input id="digest-event-days" name="digest_event_days" type="number" min="0" max="365" value={field("digest_event_days", value.eventDays)} required />
+    <label for="digest-due-days">締切の何日前から、ときどき見る案内を出すか</label><input id="digest-due-days" name="digest_due_days" type="number" min="0" max="365" value={field("digest_due_days", value.dueDays)} required />
   </div></details>;
 }
