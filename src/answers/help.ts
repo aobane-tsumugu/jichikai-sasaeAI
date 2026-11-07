@@ -1,4 +1,5 @@
 import { newId, nowIso } from "../core/ids";
+import { PENDING } from "../project/document-body";
 
 export interface HelpOpportunity {
   projectId: string;
@@ -80,7 +81,8 @@ export function helpTimeChoices(body: string): string[] {
   const items: unknown[] = value.items;
   for (const item of items) {
     if (typeof item !== "object" || item === null || !("key" in item) || item.key !== "helper_slots" || !("content" in item) || typeof item.content !== "string") continue;
-    choices.push(...item.content.split(/[\n\r、,]+/).map((time) => time.trim()).filter(Boolean));
+    // 確認中の印は選択肢にせず、残らなければ既存の自由入力を使う。
+    choices.push(...item.content.split(/[\n\r、,]+/).map((time) => time.trim()).filter((time) => time && !time.includes(PENDING)));
   }
   return [...new Set(choices)];
 }
