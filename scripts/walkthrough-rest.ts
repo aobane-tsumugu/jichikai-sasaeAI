@@ -335,12 +335,12 @@ if (projectId && publicLive) {
   } catch (error) { fail(2, "回答票", error, start); }
 } else skip(2, "回答票", "配布済みの案内がなく、回答票の対象がありません");
 
-// 3. 今やることと区の地図で新しいプロジェクトを確認する。
+// 3. 今やることと一年の画面で新しいプロジェクトを確認する（終わったものの一年の予定の画面は外した）。
 if (projectId) {
   const start = Date.now();
   try {
     // 今やることは締切のある物だけを並べる。日付の無い行事は入口と区の段取りで見る。
-    const [today, home, map] = await Promise.all([get(admin + "/projects/today"), get(admin + "/"), get(admin + "/archive/map")]);
+    const [today, home, map] = await Promise.all([get(admin + "/projects/today"), get(admin + "/"), get(admin + "/year")]);
     if (!today.response.ok || !home.response.ok || !map.response.ok || !home.html.includes(projectTitle) || !map.html.includes(projectTitle)) throw new Error("入口と区のやることの両方に行事が見えません");
     record(3, "今やることと区のやること", "通過", "役員画面の入口と区のやることで新しい行事を確認", map.response.status, start);
   } catch (error) { fail(3, "今やることと区のやること", error, start); }
