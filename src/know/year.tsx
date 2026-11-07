@@ -1,6 +1,7 @@
 // 区の一年の地図。一般の自治会の一年を仮に置き、行事と届いた紙でこの区の内容に変えていく。
 import { adminPath } from "../core/auth";
 import { newId } from "../core/ids";
+import { formatJstDate } from "../core/time";
 import type { WardInfo } from "../env";
 import type { ProjectState, ProjectSummary } from "../project/types";
 
@@ -11,7 +12,7 @@ export const YEAR_BASE: readonly YearBase[] = [
   { key: "general-meeting", title: "定期総会", kind: "general_meeting", from: 4, to: 4 },
   { key: "dues", title: "会費の集金", kind: "", from: 4, to: 5 },
   { key: "spring-clean", title: "春の清掃", kind: "", from: 5, to: 5 },
-  { key: "drill", title: "防災訓練", kind: "", from: 6, to: 6 },
+  { key: "drill", title: "防災訓練", kind: "", from: 9, to: 9 },
   { key: "summer", title: "夏の行事", kind: "event", from: 7, to: 8 },
   { key: "elders", title: "敬老の行事", kind: "", from: 9, to: 9 },
   { key: "autumn", title: "秋の行事", kind: "event", from: 10, to: 11 },
@@ -46,9 +47,9 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
   ]);
   const removed = new Set(overrides.results.filter((row) => row.removed_at).map((row) => row.item_id));
   const used = new Set<string>();
+  const similar = (a: string, b: string) => Array.from({ length: Math.max(a.length - 1, 0) }, (_, index) => a.slice(index, index + 2)).some((part) => b.includes(part));
   const rows: YearRow[] = [];
   // 名前の似た仮の行を先に置き換える。無ければ同じ種類の行。どちらも無ければ足すだけにする。
-  const similar = (a: string, b: string) => Array.from({ length: Math.max(a.length - 1, 0) }, (_, index) => a.slice(index, index + 2)).some((part) => b.includes(part));
   const claim = (kind: string, month: number, title: string) => {
     const open = YEAR_BASE.filter((entry) => !used.has(entry.key) && inRange(month, entry));
     const base = open.find((entry) => similar(entry.title, title)) ?? (kind ? open.find((entry) => entry.kind === kind) : undefined);
@@ -59,20 +60,18 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
     const state = states[index];
     if (!day) {
       // 同じ種類の行があれば重ね、無ければ今の時期に置く。進めている行事は必ず地図に出す。
-      const base = YEAR_BASE.find((entry) => !used.has(entry.key) && entry.kind === project.kind);
+      const base = YEAR_BASE.find((entry) => !used.has(entry.key) && similar(entry.title, project.title)) ?? YEAR_BASE.find((entry) => !used.has(entry.key) && entry.kind === project.kind);
       if (base) used.add(base.key);
       const from = base ? position(base.from) : position(monthOf(today), dayOf(today));
       const taskless = state && !state.mapTasks.length;
-      rows.push({ key: project.projectId, title: project.title, note: taskless ? "仕事はまだありません。段取りから足せます" : "日はまだ決まっていません", state: "example", from, to: base ? position(base.to, 30) + 1 : from + 4, href: adminPath(ward, `/projects/${project.projectId}/map`), order: from });
+      rows.push({ key: project.projectId, title: project.title, note: taskless ? "仕事はまだありません。段取りから足せます" : "日はまだ決まっていません", state: "fact", from, to: base ? position(base.to, 30) + 1 : from + 4, href: adminPath(ward, `/projects/${project.projectId}/map`), order: from });
       return;
     }
     const month = monthOf(day);
     const firstTask = state?.mapTasks.map((task) => task.periodStart).filter((value): value is string => Boolean(value)).sort()[0];
-    const filled = state?.items.filter((item) => item.current).length ?? 0;
-    const total = state?.items.length ?? 0;
     claim(project.kind, month, project.title);
     const start = firstTask && Number(firstTask.slice(0, 4)) === Number(day.slice(0, 4)) ? position(monthOf(firstTask), dayOf(firstTask)) : position(month, dayOf(day));
-    rows.push({ key: project.projectId, title: project.title, note: total ? `${total}項目のうち${filled}つ入っています` : "", state: total && filled >= total ? "fact" : "example", from: start, to: Math.max(position(month, dayOf(day)) + 2, start + 2), href: adminPath(ward, `/projects/${project.projectId}/map`), order: position(month, dayOf(day)) });
+    rows.push({ key: project.projectId, title: project.title, note: formatJstDate(day), state: "fact", from: start, to: Math.max(position(month, dayOf(day)) + 2, start + 2), href: adminPath(ward, `/projects/${project.projectId}/map`), order: position(month, dayOf(day)) });
   });
   for (const record of records.results) {
     if (!record.event_day || rows.some((row) => row.title === record.title)) continue;
