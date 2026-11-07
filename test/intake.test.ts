@@ -468,7 +468,7 @@ describe("画面", () => {
     expect(html).not.toContain("見えない.jpg");
     expect(html).toContain("読めませんでした");
     expect(html).toContain("もう一度読む");
-    expect(html).toContain("この資料を消す");
+    expect(html).toContain("選んだものを消す");
     expect(html).toContain("元に戻せないので");
   });
 

@@ -5,6 +5,7 @@ import { getClient } from "./deps";
 import { recordAiMatchUsage } from "../ops/metrics";
 import { getProjectState } from "../project/state";
 import { nowIso } from "../core/ids";
+import { formatJst, formatJstDate } from "../core/time";
 import type { ReadingBody } from "./schema";
 import type { Via } from "../intake/types";
 
@@ -15,6 +16,8 @@ export interface ComparedOriginal {
   document_date_source: string | null;
   received_at: string;
   via: Via;
+  /** 呼び分けの最後の手段。ほかで分けられる時は画面に出さない。 */
+  filename?: string | null;
 }
 
 export interface OriginalComparison {
@@ -58,27 +61,54 @@ function otherReadings(body: ReadingBody, excluded: string[]): object {
   };
 }
 
-export function originalCaption(original: ComparedOriginal, description: string): string {
-  if (!original.document_date) return `日付の分からない${description}`;
-  const day = `${Number(original.document_date.slice(5, 7))}月${Number(original.document_date.slice(8, 10))}日`;
+const VIA_TEXT: Record<Via, string> = { admin: "役員の画面", line_group: "役員のLINEグループ", line_direct: "個別のLINE",
+  space: "実行委員と班長のページ", answer: "出欠の返事", system: "SasaeAI" };
+/** 届いた日（日本時間）。同じ日に届いた二つを分ける時だけ時刻も書く。 */
+const arrival = (original: ComparedOriginal, withTime: boolean) => {
+  const day = formatJstDate(original.received_at).replace(/（.）$/, "");
+  return withTime ? `${day} ${formatJst(original.received_at).replace(/^.*日/, "")}` : day;
+};
+const arrivalText = (original: ComparedOriginal, withTime: boolean) => `${arrival(original, withTime)}に${VIA_TEXT[original.via]}から届いた`;
+const datedText = (original: ComparedOriginal) => {
+  const date = original.document_date!;
   const verb = original.document_date_source?.endsWith("created") ? "作った"
     : original.document_date_source === "exif_original" ? "撮った" : "保存した";
-  return `${day}に${verb}${description}`;
-}
+  return `${Number(date.slice(5, 7))}月${Number(date.slice(8, 10))}日に${verb}`;
+};
 
-function receiptText(original: ComparedOriginal): string {
-  const via: Record<Via, string> = { admin: "役員の画面", line_group: "役員のLINEグループ", line_direct: "個別のLINE",
-    space: "実行委員と班長のページ", answer: "出欠の返事", system: "SasaeAI" };
-  const date = new Date(original.received_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", hour12: false });
-  const source: Record<string, string> = { office_modified: "WordやExcelの保存した日", office_created: "WordやExcelの作った日",
-    pdf_modified: "PDFの保存した日", pdf_created: "PDFの作った日", exif_original: "写真を撮った日", file_last_modified: "端末に保存した日" };
-  return `資料の日付は${original.document_date ? `${original.document_date}（${source[original.document_date_source ?? ""] ?? "資料に残る日付"}）` : "分かりません"}。${date}に${via[original.via]}から届きました。`;
+/**
+ * 二つの資料の呼び名。資料に日付があればその日で、無ければ届いた日と送り方で呼ぶ（LINE で送った写真は撮った日が消える）。
+ * 二つが同じ呼び名になる時だけ、届いた時刻、届いた順、最後にファイル名を足す。役員にファイル名で見分けさせない。
+ */
+export function pairCaptions(pair: ComparedPair): [string, string] {
+  const [a, b] = pair.originals;
+  const [da, db] = pair.result.descriptions;
+  const plain = (original: ComparedOriginal, description: string, withTime: boolean) =>
+    original.document_date ? `${datedText(original)}${description}` : `${arrivalText(original, withTime)}${description}`;
+  let captions: [string, string] = [plain(a, da, false), plain(b, db, false)];
+  if (captions[0] !== captions[1]) return captions;
+  captions = [plain(a, da, true), plain(b, db, true)];
+  if (captions[0] !== captions[1]) return captions;
+  if (a.document_date && b.document_date) {
+    captions = [`${captions[0]}（${arrivalText(a, true)}方）`, `${captions[1]}（${arrivalText(b, true)}方）`];
+    if (captions[0] !== captions[1]) return captions;
+  }
+  if (a.received_at !== b.received_at) {
+    const aFirst = a.received_at < b.received_at;
+    return [`${captions[0]}のうち${aFirst ? "先" : "あと"}に届いた方`, `${captions[1]}のうち${aFirst ? "あと" : "先"}に届いた方`];
+  }
+  return [`${captions[0]}（${a.filename || "一つ目"}）`, `${captions[1]}（${b.filename || "二つ目"}）`];
 }
 
 export function comparisonText(pair: ComparedPair): string {
   const { originals, result } = pair;
-  return originals.map((original, index) => `${originalCaption(original, result.descriptions[index]!)}は、${receiptText(original)}`).join("")
-    + result.differences.join("。") + "。" + result.clues.join("。") + "。" + result.assessment;
+  const captions = pairCaptions(pair);
+  // 呼び名に届いた日が入っていない方だけ、いつどこから届いたかを書く。二つが同じ時刻に同じ所から届いた時は、見分けの役に立たないので書かない。
+  const arrivals = originals.map((original) => arrivalText(original, true));
+  const receipts = arrivals[0] === arrivals[1] ? "" : originals.map((_, index) => captions[index]!.includes("から届いた") ? "" : `${captions[index]}は、${arrivals[index]!.replace(/届いた$/, "届きました")}。`).join("");
+  // AI の文の終わりの「。」と重ねない。
+  const sentences = (list: string[]) => list.map((text) => text.trim().replace(/。+$/, "")).filter(Boolean).map((text) => `${text}。`).join("");
+  return receipts + sentences(result.differences) + sentences(result.clues) + result.assessment;
 }
 
 function parseComparison(value: unknown, ids: string[]): OriginalComparison {
@@ -95,7 +125,7 @@ function parseComparison(value: unknown, ids: string[]): OriginalComparison {
 export async function compareOriginals(db: D1Database, wardId: string, projectId: string, a: string, b: string): Promise<ComparedPair | null> {
   if (a === b) return null;
   const ids = [a, b].sort();
-  const originals = await db.prepare(`SELECT o.original_id, o.job_id, o.document_date, o.document_date_source, o.received_at, j.via
+  const originals = await db.prepare(`SELECT o.original_id, o.job_id, o.document_date, o.document_date_source, o.received_at, o.filename, j.via
     FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
     WHERE o.ward_id = ? AND o.original_id IN (?, ?) AND o.withdrawn_at IS NULL AND j.withdrawn_at IS NULL`)
     .bind(wardId, ids[0], ids[1]).all<ComparedOriginal>();

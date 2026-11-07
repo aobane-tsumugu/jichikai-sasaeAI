@@ -16,11 +16,12 @@ it("画面を開いたあとに処理が進んで取り下げられなかった�
   });
   const root = `/${ward.slug}/admin/intake`;
   const initialPage = await (await get(realApp, `${root}/received`, cookie)).text();
-  expect(initialPage).toContain(`${root}/${received.jobId}/withdraw`);
+  expect(initialPage).toContain(`action="${root}/withdraw"`);
+  expect(initialPage).toContain(`value="${received.jobId}"`);
   // ボタンのある画面を開いた後、裏の処理が繋げる段階へ進んだ場面。
   await env.DB.prepare("UPDATE jobs SET status = 'connecting' WHERE ward_id = ? AND job_id = ?")
     .bind(ward.wardId, received.jobId).run();
-  const response = await postForm(realApp, `${root}/${received.jobId}/withdraw`, {}, cookie);
+  const response = await postForm(realApp, `${root}/withdraw`, { job: received.jobId!, from: "received" }, cookie);
   expect(response.status).toBe(303);
   const location = response.headers.get("location")!;
   expect(new URL(location, "http://localhost").searchParams.has("error")).toBe(true);

@@ -101,7 +101,10 @@ it("日付が片方無いときは違うところと手がかりと見立てを�
   const state = await s.state();
   expect(state?.questions).toHaveLength(1);
   const question = state!.questions[0]!;
-  for (const text of ["日付の分からない案内", "9月12日に保存した案内", "抽選会", "変更しました", "役員会のメモ", "中身から見ると", "役員の画面", "届きました"]) expect(question.text).toContain(text);
+  for (const text of ["9月12日に保存した案内", "抽選会", "変更しました", "役員会のメモ", "中身から見ると", "役員の画面", "届いた"]) expect(question.text).toContain(text);
+  // 日付の無い方は、届いた日と送り方で呼ぶ。ファイル名では呼ばない
+  expect(question.text).toMatch(/\d+月\d+日に役員の画面から届いた案内/);
+  expect(question.text).not.toContain("日付の分からない");
   expect(question.text).not.toMatch(/latest|old\.docx/);
   expect(state?.items.find((item) => item.key === "due")?.references[0]?.content).toBe("10月3日");
   const { saveAIDraft } = await import("../src/project/actions");

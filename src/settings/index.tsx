@@ -103,7 +103,8 @@ admin.get("/", async (c) => {
     ? `届いた資料から、${known.slice(0, 4).join("、")}${known.length > 4 ? "など" : ""}が、この自治会の予定だと分かりました。ほかの予定は、よくある自治会の例を仮に置いています。`
     : "今は、よくある自治会の一年を仮に置いています。資料が届くと、この自治会の予定に変わります。";
   const yearMap = <><YearLegend /><YearMap rows={yearRows} today={year.today} />{yearRows.length < year.rows.length ? <p class="link-line"><a href={adminPath(ward, "/year")}>一年を全部見る（{year.rows.length}行）</a></p> : null}</>;
-  const sheets = (await c.env.DB.prepare("SELECT COUNT(*) AS n FROM originals WHERE ward_id = ? AND withdrawn_at IS NULL").bind(ward.wardId).first<{ n: number }>())?.n ?? 0;
+  // LINE で届いた言葉は資料に数えない（写真やファイルだけを数える）。
+  const sheets = (await c.env.DB.prepare("SELECT COUNT(*) AS n FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id WHERE o.ward_id = ? AND o.withdrawn_at IS NULL AND NOT (o.kind = 'text' AND j.via IN ('line_group', 'line_direct'))").bind(ward.wardId).first<{ n: number }>())?.n ?? 0;
   const GOAL = 10;
   // 進めている行事は作った順に新しい物から出す。年の順にすると、来年の行事に今年作った行事が押し出される。
   const order = (await c.env.DB.prepare("SELECT project_id FROM projects WHERE ward_id = ? AND is_ward_notices = 0 AND closed_at IS NULL ORDER BY created_at DESC, project_id LIMIT 5").bind(ward.wardId).all<{ project_id: string }>()).results.map((row) => row.project_id);

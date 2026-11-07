@@ -42,7 +42,7 @@ import {
 import { checkSourceShape, normalizeSource, placeSource, markReferenceSource } from "./source";
 import type { ApplyOptions, ApplyResult, ChangeInput, ItemChange, MapTaskChange, RowChange } from "./types";
 import { dedupeKeyOf, hashOf, quote, sameText, stableStringify } from "./util";
-import { compareOriginals, comparisonText, originalCaption } from "../ai/compare-originals";
+import { compareOriginals, comparisonText, pairCaptions } from "../ai/compare-originals";
 
 type Db = D1Database;
 
@@ -375,8 +375,9 @@ async function planOriginalConflict(ctx: Ctx, n: Normalized, change: ItemChange,
   if (!pair) return null;
   const oldIndex = pair.originals.findIndex((original) => original.original_id === before.source_ref);
   const newIndex = 1 - oldIndex;
-  const oldCaption = originalCaption(pair.originals[oldIndex]!, pair.result.descriptions[oldIndex]!);
-  const newCaption = originalCaption(pair.originals[newIndex]!, pair.result.descriptions[newIndex]!);
+  const captions = pairCaptions(pair);
+  const oldCaption = captions[oldIndex]!;
+  const newCaption = captions[newIndex]!;
   const previousQuestion = await ctx.db.prepare(`SELECT question_id FROM project_questions
     WHERE ward_id = ? AND project_id = ? AND target = ? AND json_extract(detail, '$.comparisonKey') = ? LIMIT 1`)
     .bind(ctx.wardId, ctx.projectId, change.itemKey, pair.key).first();
@@ -412,7 +413,7 @@ async function planOriginalConflict(ctx: Ctx, n: Normalized, change: ItemChange,
     detail: { itemKey: change.itemKey, options: [before.content, change.value.trim()], currentValueId: before.value_id,
       changeId: ctx.changeId, comparisonKey: pair.key, ...(reference ? { scope: "reference", refYear: placement.refYear } : {}),
       sources: [{ kind: "original", ref: before.source_ref, locator: before.source_locator ?? "全体", ...(before.source_year ? { year: before.source_year } : {}) }, n.source],
-      originals: pair.originals.map((original, index) => ({ originalId: original.original_id, description: originalCaption(original, pair.result.descriptions[index]!) })),
+      originals: pair.originals.map((original, index) => ({ originalId: original.original_id, description: captions[index]! })),
     },
   }];
   const hasCurrent = reference && Boolean(await ctx.db.prepare(`SELECT value_id FROM project_item_values

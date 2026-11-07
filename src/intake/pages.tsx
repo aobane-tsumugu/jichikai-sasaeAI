@@ -16,7 +16,7 @@ import type { ReceivePart } from "./receive";
 import type { Waitable } from "./types";
 import { lookupPrintQr } from "../print/qr";
 import { getProjectState } from "../project/api";
-import { formatDateText } from "../core/time";
+import { formatDateText, formatJstDate } from "../core/time";
 import { WhichProject } from "./which-project";
 import { PROJECT_KINDS } from "../project/model";
 import { pendingMaterialGroups, startMaterialGroup } from "./groups";
@@ -83,6 +83,39 @@ async function jobTitle(db: D1Database, wardId: string, job: JobListItem): Promi
 
 export const intakeAdmin = new Hono<AdminEnv>();
 
+const VIA_TEXT: Record<string, string> = { admin: "役員の画面", line_group: "役員のLINEグループ", line_direct: "個別のLINE", space: "実行委員と班長のページ" };
+const dayText = (iso: string) => formatJstDate(iso).replace(/（.）$/, "");
+const WITHDRAW_CONFIRM = "return confirm('選んだ資料と、読み取った内容を消します。元に戻せません。続けますか？')";
+
+/** 間違えて送った物を、選んでまとめて消す。一件ずつの畳みを並べない。消せるのは、まだどの準備にも入っていない物だけ。 */
+function WithdrawMany(props: { action: string; from: string; items: { jobId: string; title: string; note: string }[]; checked?: boolean }) {
+  return <form method="post" action={props.action} onsubmit={WITHDRAW_CONFIRM}>
+    <input type="hidden" name="from" value={props.from} />
+    <ul class="rows">{props.items.map((item) => <li><label class="check"><input type="checkbox" name="job" value={item.jobId} checked={props.checked} /> <span><b>{item.title}</b>{item.note ? <>　{item.note}</> : null}</span></label></li>)}</ul>
+    <button class="secondary danger">選んだものを消す</button>
+    <p class="muted">押すと、選んだ資料と読み取った内容を消します。元に戻せないので、送り直すには手元の写真やファイルが必要です。</p>
+  </form>;
+}
+
+const normalizeTitle = (title: string) => title.replace(/\s+/g, "").replace(/^(令和\d+|20\d{2})年度?の?/, "");
+/** 年間の予定に同じ名前の予定があれば、その月を返す。資料の名前と予定の名前は、片方がもう片方を含めば同じと見る。 */
+async function yearPlanMonth(db: D1Database, wardId: string, title: string): Promise<number | null> {
+  const name = normalizeTitle(title);
+  if (name.length < 2) return null;
+  const rows = (await db.prepare("SELECT title, month FROM ward_year_items WHERE ward_id = ? AND removed_at IS NULL AND title IS NOT NULL AND month IS NOT NULL")
+    .bind(wardId).all<{ title: string; month: number }>()).results;
+  const row = rows.find((item) => { const other = normalizeTitle(item.title); return other.length >= 2 && (other.includes(name) || name.includes(other)); });
+  return row ? row.month : null;
+}
+/** 4月始まりの年の中で、その月が今月より前か、今月か、あとか。 */
+function monthNote(month: number, now = new Date()): string {
+  const current = Number(new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric" }).formatToParts(now).find((p) => p.type === "month")?.value ?? "0");
+  const order = (m: number) => (m + 8) % 12;
+  if (order(month) < order(current)) return `年間の予定では${month}月の予定です。もう済んでいれば、準備を始めてから、報告を書いて終わりにできます。来年の担当の方が、この記録から始められます。`;
+  if (month === current) return `年間の予定では今月（${month}月）の予定です。`;
+  return `年間の予定では${month}月の予定です。届いた資料から始めると、去年のやり方を今年の準備に使えます。`;
+}
+
 /** 戻り先は、いまの区の役員画面の中だけを受ける。 */
 function returnPath(c: Context<AdminEnv>, value: string | undefined, fallback: string): string {
   if (!value) return fallback;
@@ -129,7 +162,8 @@ intakeAdmin.get("/intake/received", async (c) => {
   const back = returnPath(c, c.req.query("back"), adminPath(ward, project ? `/projects/${project.projectId}/map` : "/"));
   const sendHref = `${adminPath(ward, "/intake")}?${new URLSearchParams({ back, ...(project ? { project: project.projectId } : {}) })}`;
   const sentSince = Date.now() - 3_600_000;
-  const jobs = (await listJobs(c.env.DB, ward.wardId, { projectId, limit: 100 })).filter((job) => !job.withdrawn_at && (projectId || Date.parse(job.created_at) > sentSince));
+  // どの準備からでもなく開いた時は、この画面から送った物だけを出す。LINE に届いた物は、トークの画面で見る。
+  const jobs = (await listJobs(c.env.DB, ward.wardId, { projectId, limit: 100 })).filter((job) => !job.withdrawn_at && (projectId || (job.via === "admin" && Date.parse(job.created_at) > sentSince)));
   const slow = jobs.find((job) => job.status === "attention" || ((job.status === "received" || job.status === "reading") && Date.now() - Date.parse(job.created_at) > 90_000));
   const readHref = adminPath(ward, "/intake/read");
   const backLabel = project && back === adminPath(ward, `/projects/${project.projectId}/map`) ? `← ${project.title}のやることへ` : back === adminPath(ward, "/") ? "← 最初の画面へ" : "← 前の画面へ";
@@ -156,6 +190,8 @@ intakeAdmin.get("/intake/received", async (c) => {
     if (job.status === "failed") return "読めませんでした。もう一度読むか、このまま進められます。";
     return STATUS_LABEL[job.status];
   };
+  const withdrawable = await Promise.all(jobs.filter((job) => ["received", "reading", "read", "failed"].includes(job.status))
+    .map(async (job) => ({ jobId: job.job_id, title: await jobTitle(c.env.DB, ward.wardId, job), note: `${dayText(job.created_at)}に送りました。` })));
   return c.html(<Layout title="受け取りました" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>送った資料を受け取りました</h1>
     {c.req.query("n") === "retry" ? <div class="notice done" role="status"><strong>もう一度読みます</strong><p>読み終わると、やることと下書きに入ります。</p></div> : null}
@@ -174,8 +210,11 @@ intakeAdmin.get("/intake/received", async (c) => {
       {job.project_id ? <a href={adminPath(ward, `/projects/${job.project_id}/map`)}>{names.get(job.project_id) ?? ""}のやることを見る</a> : null}
       {job.status === "failed" ? <><form method="post" action={adminPath(ward, `/intake/${job.job_id}/retry`)}><button class="quiet">もう一度読む</button></form>
         <form method="post" action={adminPath(ward, `/intake/${job.job_id}/continue`)}><button class="quiet">このまま進める</button></form></> : null}
-      {["received", "reading", "read", "failed"].includes(job.status) ? <details class="fold"><summary>間違えて送ったときは</summary><div><form method="post" action={adminPath(ward, `/intake/${job.job_id}/withdraw`)} onsubmit="return confirm('送った資料と、読み取った内容を消します。元に戻せません。続けますか？')"><p>送った資料と読み取った内容を消します。元に戻せないので、送り直すには手元の写真やファイルが必要です。</p><button class="secondary danger">この資料を消す</button></form></div></details> : null}
     </li>))}</ul>
+    {withdrawable.length ? <details class="fold"><summary>間違えて送ったものを消す</summary><div>
+      <p>まだどの準備にも入っていない資料を、選んでまとめて消せます。</p>
+      <WithdrawMany action={adminPath(ward, "/intake/withdraw")} from={projectId ? `received:${projectId}` : "received"} items={withdrawable} />
+    </div></details> : null}
     {jobs.length === 0 ? <p>{projectId ? "送ったものはありません。" : "この1時間に送ったものはありません。"}</p> : null}
     <div class="action-links"><a class="button secondary" href={sendHref}>続けて送る</a></div>
     <p><a class="quiet" href={adminPath(ward, talkPath(await talkMark(ward.wardId, "", "admin", "")))}>役員の画面から送ったものを、送った順に見て直す</a></p>
@@ -187,12 +226,36 @@ intakeAdmin.get("/intake/read", async (c) => {
   const groups = await pendingMaterialGroups(c.env.DB, ward.wardId);
   const projects = await projectDirectory().listOpen(c.env.DB, ward.wardId);
   const open = projects.map((project) => ({ project_id: project.projectId, name: project.title }));
+  // 題の無い資料は、一件ずつ同じ行を並べず、何の資料かと、いつどこから届いたかを書いて一つにまとめる。
+  const untitledJobs = [...new Set(groups.filter((group) => !group.title).flatMap((group) => group.materials.map((m) => m.jobId)))];
+  const senders = new Map((await c.env.DB.prepare(`SELECT j.job_id, j.via, j.created_at, MAX(l.sender_display_name) AS sender FROM jobs j
+    LEFT JOIN line_inbox_items l ON l.ward_id = j.ward_id AND l.job_id = j.job_id
+    WHERE j.ward_id = ? AND j.job_id IN (SELECT value FROM json_each(?)) GROUP BY j.job_id`).bind(ward.wardId, JSON.stringify(untitledJobs))
+    .all<{ job_id: string; via: string; created_at: string; sender: string | null }>()).results.map((row) => [row.job_id, row]));
+  const untitledMaterials = (jobId: string) => groups.filter((group) => !group.title).flatMap((group) => group.materials).filter((m) => m.jobId === jobId);
+  // 規約や年間の予定のように、自治会の基本情報や一年に入れた資料は、分からなかった物とは書かない。
+  const usedForWard = (jobId: string) => untitledMaterials(jobId).some((m) => m.readings.some((r) => {
+    const body = r.body as { ward_facts?: unknown[]; year_entries?: unknown[] };
+    return Boolean(body.ward_facts?.length || body.year_entries?.length);
+  }));
+  // LINE で届いた言葉は資料ではない。トークの画面で見る。
+  const lineWords = (jobId: string) => ["line_group", "line_direct"].includes(senders.get(jobId)?.via ?? "") && untitledMaterials(jobId).every((m) => m.original.kind === "text");
+  const wardUsed = untitledJobs.filter((jobId) => usedForWard(jobId)).map((jobId) => untitledMaterials(jobId)[0]!.original.filename || "撮った写真");
+  const untitled = untitledJobs.filter((jobId) => !usedForWard(jobId) && !lineWords(jobId)).map((jobId) => {
+    const materials = untitledMaterials(jobId);
+    const first = materials[0]!;
+    const summary = [...new Set(materials.flatMap((m) => m.readings.map((r) => "summary" in r.body ? r.body.summary : "")).filter(Boolean))].join(" ");
+    const row = senders.get(jobId);
+    const from = row ? `${dayText(row.created_at)}に${row.sender ? `${row.sender}さんが` : ""}${VIA_TEXT[row.via] ?? "自治会のLINE"}から送りました。` : "";
+    const name = first.original.filename || (first.original.kind === "photo" ? "撮った写真" : first.original.kind === "text" ? "書いたこと" : "ファイル");
+    return { jobId, title: materials.length > 1 ? `${name}ほか${materials.length - 1}件` : name, note: `${summary}${summary && from ? " " : ""}${from}` };
+  });
   return c.html(<Layout title="読み終わったもの" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/intake/received")}>← 送ったものへ</a>
     <h1>{groups.length ? "読み終わりました" : "読み終わったものはまだありません"}</h1><p class="lead">{groups.length > 1 ? "どれの資料か分けました。違っていても、あとで直せます。" : groups.length ? "資料をまとめました。違っていても、あとで直せます。" : "読み終わると、ここに出ます。画面を閉じてもかまいません。"}</p>
     <ErrorNotice code={c.req.query("error")} messages={{ day: "今年の行事の日を入れ直してください。分からないときは空欄で進められます。" }} />
-    {groups.map((group, index) => {
-      if (!group.title) return <ul class="rows"><li><a class="row-link" href={adminPath(ward, "/files")}><b>まだどれの資料にもしていないもの</b><span>{group.materials.length}件。自治会の資料に入っています</span></a></li></ul>;
+    {c.req.query("n") === "withdrawn" ? <div class="notice done" role="status"><strong>{Number(c.req.query("count") ?? "0")}件の資料を消しました</strong><p>読み取った内容もいっしょに消しました。</p></div> : null}
+    {await Promise.all(groups.filter((group) => group.title).map(async (group, index) => {
       const ids = new Set(group.materials.map((m) => m.original.original_id));
       const fields = group.materials.flatMap((m) => m.readings.flatMap((r) => "fields" in r.body ? r.body.fields.filter((f) => ids.has(f.original_id)) : []));
       const suggestions = group.materials.flatMap((m) => m.readings.flatMap((r) => "fields" in r.body ? (r.body.project_suggestions ?? []).filter((s) => ids.has(s.original_id)) : []));
@@ -200,11 +263,19 @@ intakeAdmin.get("/intake/read", async (c) => {
       const oneValue = (values: (string | undefined)[]) => { const distinct = [...new Set(values.filter(Boolean))]; return distinct.length === 1 ? distinct[0] : undefined; };
       const date = oneValue([...fields.filter((f) => f.name === "日時").map((f) => f.value), ...suggestions.map((s) => s.date_text)]);
       const place = oneValue([...fields.filter((f) => f.name === "場所").map((f) => f.value), ...suggestions.map((s) => s.place)]);
+      const month = group.joins ? null : await yearPlanMonth(c.env.DB, ward.wardId, group.title);
       return <section class="panel"><h2>{group.joins?.title ?? group.title}の資料のようです</h2>
         <dl class="facts"><dt>資料</dt><dd>{group.materials.length}件</dd>{date ? <><dt>資料の日付</dt><dd>{formatDateText(date)}</dd></> : null}{place ? <><dt>場所</dt><dd>{place}</dd></> : null}</dl>
+        {month ? <p>{monthNote(month)}</p> : null}
         <WhichProject id={`group-${index}`} question="この資料は、次の準備のものですか？" projects={open} suggested={group.joins?.projectId} suggestedName={group.joins ? "" : group.title} suggestedKind={group.kind} action={adminPath(ward, "/intake/start")} hidden={{ group: group.key }} withDay />
       </section>;
-    })}
+    }))}
+    {wardUsed.length ? <p>{wardUsed.map((name) => `「${name}」`).join("、")}は、どの準備のものでもなく、自治会の基本情報と一年の予定に入れました。<a href={adminPath(ward, "/know")}>自治会の基本情報を見る</a></p> : null}
+    {untitled.length ? <section class="panel"><h2>どの準備の資料か分からなかったもの</h2>
+      <p>次の{untitled.length}件は、AIが読みましたが、どの準備の資料か分かりませんでした。消さなければ、自治会の資料に入れて残し、あとで探せます。自分の家の書類や写真のように、自治会と関係のないものを間違えて送ったときは、選んでまとめて消せます。</p>
+      <WithdrawMany action={adminPath(ward, "/intake/withdraw")} from="read" items={untitled} />
+      <p class="link-line"><a href={adminPath(ward, "/files")}>自治会の資料で見る</a></p>
+    </section> : null}
     {groups.length === 0 ? <><p>まだ読み終わっていない資料は、送ったものから見られます。</p>
       {projects.map((p) => <p class="link-line"><a href={adminPath(ward, `/projects/${p.projectId}/map`)}>{p.title}のやることを見る</a></p>)}
       <a class="button secondary" href={adminPath(ward, "/projects")}>資料がないので、名前を入れて始める</a></> : null}
@@ -338,6 +409,19 @@ intakeAdmin.post("/intake", async (c) => {
     if (err instanceof ReceiveError) return reply(false, ERROR_MESSAGE[err.code](err.filename), {}, 400, err.code);
     throw err;
   }
+});
+
+intakeAdmin.post("/intake/withdraw", async (c) => {
+  const { ward } = c.var;
+  const form = await c.req.formData();
+  const ids = [...new Set(form.getAll("job").map(String))].slice(0, 200);
+  let count = 0;
+  for (const id of ids) if (await withdrawJob(c.env, ward.wardId, id)) count += 1;
+  const from = String(form.get("from") ?? "");
+  const projectId = from.startsWith("received:") ? from.slice("received:".length) : "";
+  if (from === "read") return c.redirect(`${adminPath(ward, "/intake/read")}?${new URLSearchParams({ n: "withdrawn", count: String(count) })}`, 303);
+  if (ids.length && count === 0) return c.redirect(`${adminPath(ward, "/intake/received")}?error=withdraw_failed`, 303);
+  return c.redirect(`${adminPath(ward, "/intake/received")}?${new URLSearchParams({ n: "withdrawn", ...(projectId ? { project: projectId } : {}) })}`, 303);
 });
 
 intakeAdmin.post("/intake/:jobId/withdraw", async (c) => {

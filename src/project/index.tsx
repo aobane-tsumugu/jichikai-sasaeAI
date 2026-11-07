@@ -214,7 +214,9 @@ admin.get("/projects/:projectId", async (c) => {
       return <section class="panel"><b>{job.first_filename || "書いたこと"}</b><p class="muted">{job.status === "done" ? originals.some((original) => materialChangeText(state, original.original_id)) ? "読み終わりました。今年の内容に入れました" : "読み終わりました" : job.status === "failed" ? "読めませんでした" : "読み取りを進めています"}</p>
         <div class="material-links">{originals.map((original, index) => <a class="quiet" href={adminPath(ward, `/intake/originals/${original.original_id}`)}>元の資料を見る{originals.length > 1 ? `（${index + 1}枚目）` : ""}</a>)}</div>
         {readings.length ? <details class="hint"><summary>読み取った内容</summary><div>{readings.map((r) => <><p>{r.body.summary}</p>
-          {"fields" in r.body ? <>{r.body.fields.map((f) => <p>{f.name}: {f.value}（{f.locator}。{f.confidence === "high" ? "はっきり読めました" : f.confidence === "medium" ? "少し読みにくい字でした" : "読みにくい字でした"}）</p>)}{r.body.text_blocks.map((b) => <p>{b.text}（{b.locator}）</p>)}</> : r.body.rows.map((row) => <p>{row.household_name} / {row.ward_group}（{row.locator}）</p>)}
+          {"fields" in r.body ? <>{r.body.fields.map((f) => <p>{f.name}: {f.value}（{f.locator}。{f.confidence === "high" ? "はっきり読めました" : f.confidence === "medium" ? "少し読みにくい字でした" : "読みにくい字でした"}）</p>)}{r.body.text_blocks.map((b) => <p>{b.text}（{b.locator}）</p>)}
+            {/* 表の中にある日時や担当も、文と同じく読めるように出す。Word の表や Excel は、ここに中身の大事な所がある。 */}
+            {r.body.tables.map((table) => <div class="read-table"><table><caption>{table.name}</caption>{table.columns.length ? <thead><tr>{table.columns.map((column) => <th>{column}</th>)}</tr></thead> : null}<tbody>{table.rows.map((row) => <tr>{row.cells.map((cell) => <td>{cell}</td>)}</tr>)}</tbody></table></div>)}</> : r.body.rows.map((row) => <p>{row.household_name} / {row.ward_group}（{row.locator}）</p>)}
         </>)}</div></details> : null}
         {yearOriginals.length ? <form method="post" action={adminPath(ward, `/projects/${projectId}/materials/${yearOriginals[0]!.original_id}/this-year`)}>
           {yearOriginals.slice(1).map((original) => <input type="hidden" name="also" value={original.original_id} />)}
