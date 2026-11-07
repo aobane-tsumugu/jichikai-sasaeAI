@@ -158,19 +158,18 @@ admin.get("/inbox", async (c) => {
     {c.req.query("n") === "removed" ? <Notice>関係のないものとして外しました。数だけが残ります。</Notice> : null}
     {c.req.query("error") === "busy" ? <Notice error>資料を行事に入れているところです。少ししてから、もう一度開いてください。</Notice> : null}
     {nothing ? <><div class="notice" role="status"><strong>届いたものはありません</strong><p>公式LINEや、QRコードのない紙で届いたものが、ここに入ります。</p></div><section class="next"><strong>次は</strong><p>手元の資料を送れます。</p><a class="button" href={adminPath(ward, "/intake")}>資料を送る</a></section></> : <>
-    <p class="lead">公式LINEに届いた写真や文と、この画面から送った資料です。AIが読んで、行事に入れます。</p>
-    {toDecide ? <><h2>どの行事か確かめてください（{toDecide}件）</h2><p class="muted">AIだけでは決められなかったものです。あとで決めてもかまいません。</p>
+    {toDecide ? null : <p class="lead">公式LINEに届いた写真や文と、この画面から送った資料です。AIが読んで、行事に入れます。</p>}
+    {toDecide ? <><h2 class="tight">確かめてほしいもの（{toDecide}件）</h2><p class="muted">あとで決めてもかまいません。</p>
       <ul class="rows">
         {titled.map((group, index) => { const images = group.materials.filter((m) => m.original.media_type.startsWith("image/")).slice(0, 3); const count = group.materials.length; return <li class="panel">
-          {images.length ? <div class={images.length > 1 ? "photo-strip" : undefined}>{images.map((m) => <a href={detail(m.jobId)}><img class="photo" src={`${adminPath(ward, `/intake/originals/${m.original.original_id}`)}?raw=1`} alt={`${group.title}の写真`} loading="lazy" /></a>)}</div> : null}
-          {sentBy(group.materials[0]!.jobId) ? <p class="muted">{sentBy(group.materials[0]!.jobId)}</p> : null}
-          <p class="muted">AIは「{group.title}」の資料と読みました。{count > 1 ? `${count}件あります。` : ""}</p>
+          <div class="received-head">{images.length ? <a href={detail(images[0]!.jobId)}><img class="photo" src={`${adminPath(ward, `/intake/originals/${images[0]!.original.original_id}`)}?raw=1`} alt={`${group.title}の写真`} loading="lazy" /></a> : null}
+            <div><p><b>「{group.title}」の資料のようです</b></p>{count > 1 ? <p class="muted">{count}件あります</p> : null}{sentBy(group.materials[0]!.jobId) ? <p class="muted">{sentBy(group.materials[0]!.jobId)}</p> : null}</div></div>
           <WhichProject id={`group-${index}`} question={count > 1 ? `この${count}件は、次の行事のものですか？` : `この${images.length ? "写真" : "資料"}は、次の行事のものですか？`} projects={projects} suggested={group.joins?.projectId} suggestedName={group.joins ? "" : group.title} suggestedKind={group.kind} action={adminPath(ward, "/intake/start")} hidden={{ group: group.key }} />
           <p class="link-line"><a href={detail(group.materials[0]!.jobId)}>{count > 1 ? "一件ずつ大きく見る" : "大きく見る"}</a></p>
         </li>; })}
         {undecided.map((row) => <li class="panel">
-          {row.photo ? <a href={row.href}><img class="photo" src={row.photo} alt={`${row.title}の写真`} loading="lazy" /></a> : null}
-          <p><b>{row.title}</b></p><p class="muted">{formatJst(row.at)}　{row.note}{row.state ? `　${row.state}` : ""}</p>
+          <div class="received-head">{row.photo ? <a href={row.href}><img class="photo" src={row.photo} alt={`${row.title}の写真`} loading="lazy" /></a> : null}
+            <div><p><b>{row.title}</b></p><p class="muted">{formatJst(row.at)}　{row.note}{row.state ? `　${row.state}` : ""}</p></div></div>
           <WhichProject id={`row-${row.key}`} question={`この${row.photo ? "写真" : row.isText ? "文" : "資料"}は、次の行事のものですか？`} projects={projects} action={row.action} />
           <p class="link-line"><a href={row.href}>{row.photo ? "大きく見る" : "くわしく見る"}</a></p>
         </li>)}
