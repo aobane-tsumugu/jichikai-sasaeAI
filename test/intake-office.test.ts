@@ -165,6 +165,20 @@ describe("Excelの展開", () => {
     expect(JSON.stringify(result.tables)).toContain("2026-10-22");
   });
 
+  it("ISO日時の時刻・秒・時差を落とさず、日付だけの値もそのまま読む", async () => {
+    const values = ["2099-10-24T09:30:00", "2099-10-24T00:15:30.500Z", "2099-10-24T00:00:00+09:00", "2099-10-24"];
+    const workbook = {
+      ...XLSX,
+      "xl/styles.xml": `<styleSheet><numFmts><numFmt numFmtId="164" formatCode="yyyy/m/d h:mm:ss"/></numFmts><cellXfs><xf numFmtId="0"/><xf numFmtId="164"/></cellXfs></styleSheet>`,
+      "xl/worksheets/sheet1.xml": `<worksheet><sheetData>
+        <row r="1"><c r="A1" t="inlineStr"><is><t>架空の日程</t></is></c></row>
+        ${values.map((value, index) => `<row r="${index + 2}"><c r="A${index + 2}" t="d" s="1"><v>${value}</v></c></row>`).join("")}
+      </sheetData></worksheet>`,
+    };
+    const result = await extractOffice(await makeZip(workbook, false)) as { tables: { rows: string[][] }[] };
+    expect(result.tables[0]!.rows).toEqual([["架空の日程"], ...values.map((value) => [value])]);
+  });
+
   it("当番表の時刻には架空の日付を付けず、年月日と日ときはそのまま読む", async () => {
     const workbook = {
       ...XLSX,
