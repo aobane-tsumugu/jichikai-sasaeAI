@@ -10,12 +10,16 @@ import { listKnowItems } from "../know/store";
 import { PROJECT_KINDS, PROJECT_KIND_LABEL } from "../project/model";
 import { questionOptionLabel } from "../project/question-pages";
 import { listClarifications, type ClarificationRow } from "./clarifications";
-import { listTalks, conversationFor, talkPath, topicAnchor, type TalkTopic } from "./talks";
+import { listTalks, conversationFor, conversationPath, talkPage, talkPath, type TalkTopic } from "./talks";
 import { changeBoundary, checkEditable, editTopic, saveUndo, undoTalk } from "./talk-edits";
 
 export const talkAdmin = new Hono<AdminEnv>();
 const waitable = (c: Context<AdminEnv>) => { try { return c.executionCtx; } catch { return { waitUntil: () => undefined }; } };
 const clock = (at: string) => formatJst(at).match(/\d{1,2}:\d{2}/)?.[0] ?? formatJst(at);
+const withNotice = (path: string, notice: string) => {
+  const [page, anchor] = path.split("#");
+  return `${page}${page?.includes("?") ? "&" : "?"}n=${notice}${anchor ? `&at=${anchor.slice(6)}#${anchor}` : ""}`;
+};
 
 function actionText(topic: TalkTopic, names: Map<string, string>) {
   const decision = topic.decision;
@@ -64,6 +68,8 @@ talkAdmin.get("/inbox/talks/:talkId", async (c) => {
   const { ward } = c.var;
   const talk = (await listTalks(c.env.DB, ward.wardId)).find((t) => t.id === c.req.param("talkId"));
   if (!talk) return c.notFound();
+  const page = talkPage(talk, c.req.query("before"));
+  if (!page) return c.notFound();
   const [projects, questions, summaries, know, roster, undo] = await Promise.all([
     c.env.DB.prepare("SELECT project_id, title, closed_at FROM projects WHERE ward_id = ? ORDER BY created_at DESC")
       .bind(ward.wardId).all<{ project_id: string; title: string; closed_at: string | null }>(),
@@ -74,6 +80,7 @@ talkAdmin.get("/inbox/talks/:talkId", async (c) => {
   const answers = await c.env.DB.prepare("SELECT clarification_id, answer_text FROM line_clarification_answers WHERE ward_id = ?")
     .bind(ward.wardId).all<{ clarification_id: string; answer_text: string }>();
   const names = new Map(projects.results.map((p) => [p.project_id, p.title]));
+  const activeProjects = projects.results.filter((p) => !p.closed_at);
   const path = adminPath(ward, talkPath(talk.id));
   return c.html(<Layout title={talk.name} siteName={ward.name} adminHomeHref={adminPath(ward, "/")} noindex>
     <a class="back" href={adminPath(ward, "/inbox")}>← 届いたものへ</a><h1>{talk.name}</h1>
@@ -82,13 +89,15 @@ talkAdmin.get("/inbox/talks/:talkId", async (c) => {
     {c.req.query("n") === "undone" ? <div id="result"><Notice>元に戻しました。続けて会話を読めます。</Notice></div> : null}
     {undo ? <form method="post" action={`${path}/undo`}><input type="hidden" name="undoId" value={undo.undo_id} /><button class="secondary">直す前に戻す</button></form> : null}
     <style>{`.talk-topic{border:2px solid #82988c;border-radius:12px;padding:16px;margin:24px 0;overflow-wrap:anywhere}.talk-post{padding:16px 0;border-bottom:1px solid #d4ded7}.talk-photo{display:block;width:min(100%,220px);max-height:220px;object-fit:contain}.talk-topic input,.talk-topic select,.talk-topic textarea{max-width:100%;box-sizing:border-box}.talk-topic p,.talk-topic label,.talk-topic summary,.talk-topic button,.talk-topic time{font-size:18px}.talk-decision{font-size:20px;line-height:1.8}.talk-topic fieldset{min-width:0}`}</style>
-    {talk.topics.map((topic) => {
+    {page.older ? <p><a class="button secondary" href={`${path}?before=${page.older}`}>それより前の話題を見る</a></p> : null}
+    {c.req.query("before") !== undefined ? <p><a class="button secondary" href={path}>新しい話題を見る</a></p> : null}
+    {page.topics.map((topic) => {
       const photos = topic.posts.reduce((sum, p) => sum + p.originals.filter((o) => o.media_type.startsWith("image/")).length, 0);
       const words = topic.posts.some((p) => p.text);
       const first = topic.posts[0]!;
       const last = topic.posts[topic.posts.length - 1]!;
       const summary = topic.decision?.summary || (topic.inquiry ? `住民からの質問（${first.text}）です。` : summaries.get(first.jobId ?? "")?.split("\n")[0]) || "届いた写真と言葉です。";
-      const back = `${path}#${topic.anchor}`;
+      const back = adminPath(ward, conversationPath(talk, topic));
       const current = topic.decision?.project_id ?? first.projectId;
       const action = topic.decision?.action ?? (topic.inquiry ? "inquiry" : "material");
       const edit = `${path}/topics/${topic.anchor.slice(6)}`;
@@ -121,7 +130,7 @@ talkAdmin.get("/inbox/talks/:talkId", async (c) => {
               <option value="know" selected={action === "know"}>自治会の基本情報</option><option value="unrelated" selected={action === "unrelated"}>関係ない</option>
             </select>
             <label for={`project-${topic.anchor}`}>どれの資料・参考にするか</label><select id={`project-${topic.anchor}`} name="projectId">
-              <option value="">自治会の資料</option>{projects.results.filter((p) => !p.closed_at || p.project_id === current).map((project) => <option value={project.project_id} selected={project.project_id === current}>{project.title}</option>)}
+              <option value="">自治会の資料</option>{activeProjects.map((project) => <option value={project.project_id} selected={project.project_id === current}>{project.title}</option>)}
               <option value="new">新しく準備を始める</option></select>
             <details class="fold"><summary>新しく準備を始めるとき</summary><div><label for={`name-${topic.anchor}`}>名前</label><input id={`name-${topic.anchor}`} name="projectName" maxlength={100} />
               <label for={`kind-${topic.anchor}`}>何の準備ですか</label><select id={`kind-${topic.anchor}`} name="kind">{PROJECT_KINDS.map((kind) => <option value={kind}>{PROJECT_KIND_LABEL[kind]}</option>)}</select></div></details>
@@ -167,7 +176,7 @@ async function legacyEdit(c: Context<AdminEnv>, fromAdmin: boolean) {
   try {
     await checkEditable(c.env.DB, ward.wardId, topic.posts);
     await editTopic(c.env, waitable(c), ward.wardId, account.accountId, topic, form, () => saveUndo(c.env.DB, ward.wardId, talk, [topic.id]));
-    return c.redirect(`${adminPath(ward, talkPath(talk.id))}?n=changed&at=${topic.anchor.slice(6)}#${topic.anchor}`, 303);
+    return c.redirect(withNotice(adminPath(ward, conversationPath(talk, topic)), "changed"), 303);
   } catch { return c.redirect(`${adminPath(ward, "/inbox")}?error=input`, 303); }
 }
 
@@ -176,7 +185,7 @@ async function edit(c: Context<AdminEnv>, boundary: boolean) {
   const talk = (await listTalks(c.env.DB, ward.wardId)).find((t) => t.id === c.req.param("talkId"));
   const topic = talk?.topics.find((t) => t.anchor === `topic-${c.req.param("topicMark")}`);
   if (!talk || !topic) return c.notFound();
-  const back = { href: `${adminPath(ward, talkPath(talk.id))}#${topic.anchor}`, label: "元の会話に戻る" };
+  const back = { href: adminPath(ward, conversationPath(talk, topic)), label: "元の会話に戻る" };
   const form = await c.req.formData();
   try {
     const postIndex = talk.posts.findIndex((p) => p.id === String(form.get("postId") ?? ""));
@@ -185,8 +194,8 @@ async function edit(c: Context<AdminEnv>, boundary: boolean) {
     const beforeChange = () => saveUndo(c.env.DB, ward.wardId, talk, affected);
     const target = boundary ? await changeBoundary(c.env, waitable(c), ward.wardId, talk, topic, String(form.get("postId") ?? ""), String(form.get("operation") ?? ""), beforeChange)
       : (await editTopic(c.env, waitable(c), ward.wardId, account.accountId, topic, form, beforeChange), topic.id);
-    const anchor = await topicAnchor(target);
-    return c.redirect(`${adminPath(ward, talkPath(talk.id))}?n=changed&at=${anchor.slice(6)}#${anchor}`, 303);
+    const targetPath = await conversationFor(c.env.DB, ward.wardId, { bundleId: target });
+    return c.redirect(withNotice(adminPath(ward, targetPath ?? talkPath(talk.id)), "changed"), 303);
   } catch (error) {
     const busy = error instanceof Error && error.message === "busy";
     return adminResult(c, busy ? "今は資料を読んでつないでいます。" : "直せませんでした。", busy ? 409 : 400, back,

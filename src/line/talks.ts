@@ -44,6 +44,24 @@ export const talkMark = (wardId: string, destination: string, type: string, id: 
 export const topicAnchor = async (id: string) => `topic-${await sha256Hex(id)}`;
 export const talkPath = (id: string) => `/inbox/talks/${id}`;
 
+const TOPICS_PER_PAGE = 20;
+
+/** beforeの話題より前を、新しい方から20話題選び、表示は古い順に保つ。 */
+export function talkPage(talk: Talk, before?: string) {
+  const end = before === undefined ? talk.topics.length : talk.topics.findIndex((topic) => topic.anchor === before);
+  if (end < 0) return null;
+  const start = Math.max(0, end - TOPICS_PER_PAGE);
+  return { topics: talk.topics.slice(start, end), older: start > 0 ? talk.topics[start]!.anchor : null };
+}
+
+/** 話題を含む区切りと、その枠の印を一緒に返す。 */
+export function conversationPath(talk: Talk, topic: TalkTopic) {
+  const index = talk.topics.indexOf(topic);
+  const end = talk.topics.length - Math.floor((talk.topics.length - 1 - index) / TOPICS_PER_PAGE) * TOPICS_PER_PAGE;
+  const before = end < talk.topics.length ? `?before=${talk.topics[end]!.anchor}` : "";
+  return `${talkPath(talk.id)}${before}#${topic.anchor}`;
+}
+
 /**
  * トークを集める。資料、読み取り、判断は一件ずつ読まず、自治会の分をまとめて読む。
  * 役員の画面から送った物が数百ある自治会でも、画面を開くたびに件数だけ問い合わせを重ねないため。
@@ -192,7 +210,7 @@ export async function conversationFor(db: D1Database, wardId: string, find: { it
     const topic = talk.topics.find((t) => (find.bundleId && t.id === find.bundleId) || (find.inquiryId && t.inquiry?.inquiry_id === find.inquiryId)
       || (inquiry?.line_bundle_id && t.id === inquiry.line_bundle_id)
       || t.posts.some((p) => (find.itemId && p.itemId === find.itemId) || (find.jobId && p.jobId === find.jobId) || (inquiry?.line_event_id && p.eventId === inquiry.line_event_id)));
-    if (topic) return `${talkPath(talk.id)}#${topic.anchor}`;
+    if (topic) return conversationPath(talk, topic);
   }
   return null;
 }

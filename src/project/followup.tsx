@@ -14,7 +14,7 @@ import { applyChange, createProject, getProjectState, getProjectSummary, listPro
 import { getEditableDocument, saveDocument } from "./actions";
 import { ArticleBody } from "../publish";
 import { lineBundleContents } from "../line/photo-context";
-import { listTalks, talkPath } from "../line/talks";
+import { listTalks, conversationPath } from "../line/talks";
 
 type DisplayInquiry = InquiryRow & { line_bundle_id?: string | null; line_event_id?: string | null; photos?: string[]; conversation?: string };
 
@@ -66,7 +66,7 @@ async function inquiryRecords(db: D1Database, wardId: string): Promise<DisplayIn
       || Boolean(row.line_event_id && topic.posts.some((post) => post.eventId === row.line_event_id));
     const talk = talks.find((t) => t.topics.some(contains));
     const topic = talk?.topics.find(contains);
-    return { ...row, conversation: talk && topic ? `${talkPath(talk.id)}#${topic.anchor}` : undefined, photos: row.line_bundle_id
+    return { ...row, conversation: talk && topic ? conversationPath(talk, topic) : undefined, photos: row.line_bundle_id
       ? (await lineBundleContents(db, wardId, row.line_bundle_id)).photos.map((p) => p.item_id) : undefined };
   }));
 }
