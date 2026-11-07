@@ -38,19 +38,22 @@ mine.get("/", async (c) => {
   const active = methods.filter((m) => m.removed_at === null);
   const connections = signInConnections(c.env);
   const showKinds: SignInKind[] = ["password", "email", "line"];
-  return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="ログインの方法" back={{ href: adminPath(c.var.ward, "/settings/people"), label: "役員の一覧へ" }}>
-    <h1>ログインの方法</h1><p class="lead">二つにしておくと、片方が使えないときも自分で戻せます。一つでも使えます。</p>
+  const using = showKinds.filter((kind) => active.some((m) => m.kind === kind)).map((kind) => SIGN_IN_LABEL[kind]);
+  const addable = showKinds.filter((kind) => kind !== "password" && connections[kind] !== undefined && !active.some((m) => m.kind === kind));
+  return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="ログインの方法" back={{ href: adminPath(c.var.ward, "/settings"), label: "自治会の設定へ" }}>
+    <h1>ログインの方法</h1>
+    <p class="lead">{using.length ? `${c.var.account.name}さんは、${using.join("と")}でログインできます。` : `${c.var.account.name}さんのログインの方法は、まだありません。`}このスマホやパソコンでは、次から入力しなくてもログインできます。</p>
+    <p>{addable.length ? `${addable.map((kind) => SIGN_IN_LABEL[kind]).join("や")}でもログインできるようにしておくと、パスワードを忘れても自分で戻せます。` : "パスワードを忘れたときは、ほかの役員に「この画面を使える人」から、ログインし直すためのリンクを出してもらってください。"}</p>
     {showKinds.map((kind) => {
       const method = active.find((m) => m.kind === kind);
       const available = kind === "password" || connections[kind] !== undefined;
       if (!available) return null;
       return <section class="panel"><h2>{SIGN_IN_LABEL[kind]}</h2>
-        {method ? <p>{method.email ?? "使えるようになっています。"}</p> : <p>まだ使っていません。</p>}
+        {method ? <p>{method.email ? `${method.email}でログインできます。` : "この方法でログインできます。"}</p> : <p>この方法は、まだ使っていません。</p>}
         {(!method || kind === "email") ? <form method="post" action={kind === "password" ? `${mySignInPath(c.var.ward)}/password` : adminPath(c.var.ward, `/sign-in-connect/${kind}/start`)}>
           <input type="hidden" name="add" value="1" /><button class="secondary">{SIGN_IN_LABEL[kind]}を{method ? "変える" : "足す"}</button></form> : null}
       </section>;
     })}
-    <p>つないでいないものは、押すと足せます。</p>
   </AdminPage>);
 });
 

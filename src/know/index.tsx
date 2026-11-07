@@ -175,13 +175,15 @@ admin.get("/files", async (c) => {
   const titles = new Map([...items, ...removed].map((item) => [item.id, item.title]));
   return c.html(<AdminPage ward={ward} account={account} title="自治会の資料" back={{ href: adminPath(ward, "/"), label: "最初の画面へ" }}>
     <h1>自治会の資料</h1>
-    <p class="lead">届いた写真やファイルは、全部ここに入ります。分けなくてもかまいません。どれかの資料にしても、自治会の基本情報につなげても、しなくても残ります。</p>
+    <p class="lead">届いた写真やファイルは、全部ここに入ります。分けなくてもかまいません。押すと大きく見られ、どれの資料にするかや、自治会の基本情報につなげるかを決められます。決めなくても、ここに残ります。</p>
     <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>写真やファイルを送る</a></div>
     {files.length ? <ul class="photo-grid">{files.map((file) => {
-      const href = adminPath(ward, `/intake/originals/${file.original_id}`);
+      // 押した先で、どれの資料にするかを決められるようにする。元の資料の画面は見るだけで、決める所が無かった。
+      const original = adminPath(ward, `/intake/originals/${file.original_id}`);
+      const href = file.item_id ? adminPath(ward, `/inbox/${file.item_id}/pick`) : file.via === "admin" ? adminPath(ward, `/inbox/city/${file.job_id}/pick`) : original;
       const title = firstLine(summaries.get(file.job_id) ?? "").slice(0, 36) || file.filename || "届いた資料";
       const places = [file.project_title, ...(links.get(file.original_id) ?? []).map((id) => titles.get(id))].filter(Boolean);
-      return <li><a href={href}>{isImage(file.media_type) ? <img class="photo" src={`${href}?raw=1`} alt={title} loading="lazy" /> : <span class="photo-none">{file.filename || "届いた文"}</span>}
+      return <li><a href={href}>{isImage(file.media_type) ? <img class="photo" src={`${original}?raw=1`} alt={title} loading="lazy" /> : <span class="photo-none">{file.filename || "届いた文"}</span>}
         <b>{title}</b><span>{places.length ? `${places.join("、")}の資料にしています` : "まだどれの資料にもしていません"}</span><span>{`${formatJst(file.received_at)}に届きました`}</span><span>{fromWhom(file)}</span></a></li>;
     })}</ul> : <div class="notice" role="status"><strong>まだ資料はありません</strong><p>紙の写真、Word、PDFを送ると、ここに入ります。</p></div>}
     {more || page ? <div class="action-links">{page ? <a class="button secondary" href={`${adminPath(ward, "/files")}?page=${page - 1}`}>前の{WARD_FILES_PAGE}件を見る</a> : null}{more ? <a class="button secondary" href={`${adminPath(ward, "/files")}?page=${page + 1}`}>次の{WARD_FILES_PAGE}件を見る</a> : null}</div> : null}
@@ -234,7 +236,7 @@ admin.get("/year/:key", async (c) => {
   return c.html(<AdminPage ward={ward} account={account} title={base.title} back={{ href: adminPath(ward, "/year"), label: "この自治会の一年へ" }}>
     <h1>{base.title}</h1>
     <p class="lead">一般の自治会の例を仮に置いています。この自治会のことはまだ書かれていません。</p>
-    <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>この予定の写真やファイルを送る</a><a class="button secondary" href={`${adminPath(ward, "/projects")}?kind=${base.kind || "event"}&title=${encodeURIComponent(base.title)}`}>今年の{base.title}の準備を始める</a></div>
+    <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>この予定の写真やファイルを送る</a><a class="button secondary" href={`${adminPath(ward, "/projects")}?${base.kind ? `kind=${base.kind}&` : ""}title=${encodeURIComponent(base.title)}`}>今年の{base.title}の準備を始める</a></div>
     <details class="fold"><summary>この自治会にないので外す</summary><div><p>外しても、一年の画面の「外した予定」から戻せます。</p><form method="post" action={adminPath(ward, `/year/${base.key}/remove`)}><button class="secondary">外す</button></form></div></details>
   </AdminPage>);
 });

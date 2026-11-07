@@ -72,10 +72,12 @@ admin.get("/projects", async (c) => {
   const { ward } = c.var;
   const allProjects = await listProjects(c.env.DB, ward.wardId, { includeClosed: true });
   const seeds = allProjects.filter((project) => project.closedAt);
-  const presetKind = PROJECT_KINDS.find((kind) => kind === c.req.query("kind")) ?? PROJECT_KINDS[0];
+  // 何の準備かは、一年の予定から分かる時だけ決めて渡す。分からない時は最初から選ばず、例を見て選んでもらう。
+  const queryKind = PROJECT_KINDS.find((kind) => kind === c.req.query("kind"));
+  const presetKind = queryKind ?? PROJECT_KINDS[0];
   // 一年の表の行から来た時は、名前も何の準備かも決まっているので聞かない。
   const presetTitle = c.req.query("title")?.slice(0, 100) ?? "";
-  const fromYear = Boolean(presetTitle && c.req.query("kind"));
+  const fromYear = Boolean(presetTitle && queryKind);
   return c.html(<Layout title="新しく準備を始める" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a>
     <h1>{fromYear ? `今年の${presetTitle}の準備を始める` : "新しく準備を始める"}</h1><p class="lead">{fromYear ? "当日が分かれば入れてください。準備でふつうする仕事の一覧を用意します。あとで足したり外したりできます。" : "去年の同じものが「終わったもの」にあれば、そこから始められます。ないときは、何の準備かを選ぶと、その準備でふつうする仕事の一覧を用意します。あとで足したり外したりできます。"}</p>
@@ -83,7 +85,7 @@ admin.get("/projects", async (c) => {
     {seeds.length ? <><h2>去年の終わったものから始める</h2><ul class="rows">{[...seeds].sort((a, b) => b.year - a.year).slice(0, 3).map((project) => <li><a class="row-link" href={adminPath(ward, `/archive/${project.projectId}`)}><b>{project.year}年 {project.title}</b></a></li>)}</ul>{seeds.length > 3 ? <p><a class="quiet" href={adminPath(ward, "/archive")}>ほかの終わったものから始める</a></p> : null}</> : null}
     <form method="post" action={adminPath(ward, "/projects")}>
       {fromYear ? <><input type="hidden" name="kind" value={presetKind} /><input type="hidden" name="title" value={presetTitle} /></> : <>
-      <fieldset><legend>何の準備ですか</legend><div class="choice">{PROJECT_KINDS.map((kind) => <label><input type="radio" name="kind" value={kind} checked={kind === presetKind} required /> {PROJECT_KIND_LABEL[kind]}（{KIND_EXAMPLE[kind]}）</label>)}</div></fieldset>
+      <fieldset><legend>何の準備ですか</legend><div class="choice">{PROJECT_KINDS.map((kind) => <label><input type="radio" name="kind" value={kind} checked={kind === queryKind} required /> {PROJECT_KIND_LABEL[kind]}（{KIND_EXAMPLE[kind]}）</label>)}</div></fieldset>
       <div class="field"><label for="title">名前（あとで直せます）</label><input id="title" name="title" maxlength={100} placeholder="秋の収穫祭" value={presetTitle} /></div></>}
       <div class="field"><label for="eventDay">当日（分かれば）</label><input id="eventDay" name="eventDay" type="date" /><p class="help-text">入れると、準備を始める時期と終わる時期を、当日から数えて置きます。あとで直せます。</p></div>
       <input type="hidden" name="year" value={new Date().getFullYear()} />

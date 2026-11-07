@@ -111,7 +111,7 @@ loginRoutes.get("/login/help", (c) => {
     <p class="lead">自分で戻せる方法から、試してください。</p>
     {connections.email || connections.line ? <><h2>ほかの方法でログインする</h2><p>つないであるログインの方法なら、IDやパスワードが分からなくてもログインできます。</p>
       {(["email", "line"] as const).map((kind) => connections[kind] ? <form method="post" action={adminPath(c.var.ward, `/sign-in-connect/${kind}/start`)}><button class="secondary">{kind === "line" ? "LINE" : "メール"}でログインする</button></form> : null)}</> : null}
-    <h2>ほかにログインできるスマホやパソコンがあるとき</h2><p>ログインできるスマホやパソコンで「自治会の設定」を開き、「ログインの方法」から方法を足せます。</p>
+    <h2>ほかにログインできるスマホやパソコンがあるとき</h2><p>ログインできるスマホやパソコンで「自治会の設定」の「この画面を使える人」を開き、自分の名前の「ログインするためのリンクを出す」を押してください。出たリンクをこのスマホやパソコンで開くと、ログインし直せます。</p>
     <h2>自分で戻せないとき</h2><p>ほかの役員に頼んでください。「この画面を使える人」から、ログインするためのリンクを作ってもらえます。</p>
     <h2>ほかの役員もログインできないとき</h2><p>連絡のつく連絡先を伝えてください。登録したメールが使えなくなったときも、連絡のつく所へ連絡します。</p>
     <a class="button" href={`/contact?ward=${encodeURIComponent(c.var.ward.name)}`}>SasaeAIに問い合わせる</a>
