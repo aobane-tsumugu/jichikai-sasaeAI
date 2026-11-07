@@ -39,7 +39,7 @@ it("役員が実行委員と班長のページを開き、実行委員が合言�
   const after = await get(realApp, space, memberCookie!);
   expect(after.status).toBe(403);
   const closedHtml = await after.text();
-  expect(closedHtml).toContain("役員が見せるのをやめました。役員に聞いてください");
+  expect(closedHtml).toContain("役員が開けないようにしました。役員に聞いてください");
   expect(closedHtml).not.toContain("確認用の世帯（架空）");
   expect((await get(realApp, `${admin}/space/${project.projectId}`, cookie)).status).toBe(200);
 });

@@ -100,14 +100,14 @@ export async function createInvite(
        SELECT ?, ?, p.project_id, ?, ?, ?, ? FROM projects p JOIN project_spaces s ON s.ward_id = p.ward_id AND s.project_id = p.project_id AND s.closed_at IS NULL
        WHERE p.ward_id = ? AND p.project_id = ?`,
     ).bind(newId(), wardId, role, district, hashed, expires, wardId, projectId).run();
-    if ((result.meta.changes ?? 0) === 0) throw new Error("実行委員と班長のページを見せ始めてから作ってください。");
+    if ((result.meta.changes ?? 0) === 0) throw new Error("実行委員と班長のページを開けるようにしてから作ってください。");
   } else {
     const result = await db.prepare(
       `INSERT INTO project_space_invites (invite_id, ward_id, project_id, token_hash, district, role, expires_at, created_by_account_id)
        SELECT ?, ?, p.project_id, ?, ?, ?, ?, ? FROM projects p JOIN project_spaces s ON s.ward_id = p.ward_id AND s.project_id = p.project_id AND s.closed_at IS NULL
        WHERE p.ward_id = ? AND p.project_id = ?`,
     ).bind(newId(), wardId, hashed, district, role, expires, accountId, wardId, projectId).run();
-    if ((result.meta.changes ?? 0) === 0) throw new Error("実行委員と班長のページを見せ始めてから作ってください。");
+    if ((result.meta.changes ?? 0) === 0) throw new Error("実行委員と班長のページを開けるようにしてから作ってください。");
   }
   return token;
 }

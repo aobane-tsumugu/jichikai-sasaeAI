@@ -41,23 +41,22 @@ async function renderAdminSpace(c: Context<AdminEnv>, passphrase?: string) {
     ORDER BY published_at DESC, rowid DESC LIMIT 1`).bind(ward.wardId, projectId).first<{ document_id: string; version_no: number }>();
   const base = adminPath(ward.slug, `/space/${encodeURIComponent(projectId)}`);
   c.header("Cache-Control", "private, no-store");
-  return c.html(<AdminPage ward={ward} account={account} title="実行委員と班長のページ" back={{ href: adminPath(ward.slug, `/projects/${projectId}/map`), label: `${project.title}のやることへ` }}>
-    <h1>実行委員と班長のページ</h1><p class="lead">実行委員と班長が、役員から届いたものを見て、紙を撮って送るページです。住民向けのページとは別で、住民には見えません。</p>
+  return c.html(<AdminPage ward={ward} account={account} title={`${project.title}の実行委員と班長のページ`} back={{ href: adminPath(ward.slug, `/projects/${projectId}/map`), label: `${project.title}のやることへ` }}>
+    <h1>{project.title}の実行委員と班長のページ</h1><p class="lead">実行委員と班長だけが、スマホで開けるページです。住民には見えません。開くと、役員がこのページに載せた当番表や配置図などと、出欠の返事が見られます。班長に見えるのは、自分の班の返事だけです。実行委員と班長は、預かった回答票や当日の紙を撮って送れます。</p>
     {opened ? <>
-      <div class="notice done" role="status"><strong>見せています</strong><p>紙の案内を配ると、班長は班長への一枚のQRコードからこのページを見られます。</p></div>
+      <div class="notice done" role="status"><strong>合言葉を知っている人が開けるようにしています</strong><p>紙の案内を配ると、班長は班長への一枚のQRコードからこのページを見られます。</p></div>
       <section class="next"><strong>次は</strong>{published ? <><p>班長への一枚を印刷して、案内といっしょに渡してください。</p><a class="button" href={adminPath(ward.slug, `/print/${projectId}/${published.document_id}/${published.version_no}/leader`)}>班長への一枚を印刷する</a></> : <><p>案内を住民に知らせると、班長への一枚を印刷できます。</p><a class="button" href={adminPath(ward.slug, `/publish/${projectId}`)}>知らせる内容を見る</a></>}</section>
       <h2>実行委員に伝えること</h2>
       <dl class="facts">{passphrase ? <><dt>合言葉</dt><dd>{passphrase}</dd></> : null}<dt>入口のアドレス</dt><dd style="overflow-wrap: anywhere"><a href={`/${encodeURIComponent(ward.slug)}/space/${encodeURIComponent(projectId)}`}>{`${new URL(c.req.url).origin}/${encodeURIComponent(ward.slug)}/space/${encodeURIComponent(projectId)}`}</a></dd></dl>
-      {!passphrase ? <p>合言葉は見せ始めるときに表示します。分からないときは、下の「合言葉を変える」から作り直せます。</p> : null}
+      {!passphrase ? <p>合言葉は、開けるようにしたときに一度だけ出しました。分からないときは、下の「合言葉を変える」から作り直せます。</p> : null}
       <section class="panel" style="display: flex; gap: 1rem; align-items: center"><div class="qrbox" style="flex: none; width: 112px; height: 112px" dangerouslySetInnerHTML={{ __html: qrSvg(`${new URL(c.req.url).origin}/${encodeURIComponent(ward.slug)}/space/${encodeURIComponent(projectId)}`) }} /><p style="margin: 0">入口のQRコードです。スマホで読み取ると、合言葉を入れる画面が開きます。</p></section>
       <p class="muted">この合言葉と入口を、LINEや電話で実行委員に伝えてください。</p>
       <form method="post" action={`${base}/invite`}><input type="hidden" name="role" value="member" /><div class="action-links"><button class="secondary" type="submit">一人用の入口を作る</button></div><p class="muted">合言葉を使わずに入れる入口です。一度だけ使えます。</p></form>
-      <details class="fold"><summary>合言葉を変える</summary><div><form method="post" action={`${base}/open`}><label for="passphrase">新しい合言葉</label><input id="passphrase" name="passphrase" type="text" value={makePassphrase()} minlength={6} maxlength={120} required autocomplete="off" /><button class="secondary" type="submit">変えて見せ直す</button><p class="muted">今の合言葉と、作った入口は使えなくなります。合言葉を変えると、配った班長への一枚も作り直しです。</p></form></div></details>
-      <details class="fold"><summary>このページを見せるのをやめる</summary><div><p>やめると、渡した一人用の入口と班長への一枚のQRコードは使えなくなります。もう一度見せ始めるときは、新しい入口と紙を渡し直してください。</p><form method="post" action={`${base}/close`}><button class="secondary" type="submit">見せるのをやめる</button></form></div></details>
-      <p>間違えたときは、このページを見せるのをやめられます。やめたあとも、もう一度見せ始められます。新しい入口と紙は渡し直してください。</p>
+      <details class="fold"><summary>合言葉を変える</summary><div><form method="post" action={`${base}/open`}><label for="passphrase">新しい合言葉</label><input id="passphrase" name="passphrase" type="text" value={makePassphrase()} minlength={6} maxlength={120} required autocomplete="off" /><button class="secondary" type="submit">変えて開け直す</button><p class="muted">今の合言葉と、作った入口は使えなくなります。合言葉を変えると、配った班長への一枚も作り直しです。</p></form></div></details>
+      <details class="fold"><summary>実行委員と班長が開けないようにする</summary><div><p>やめると、渡した一人用の入口と班長への一枚のQRコードは使えなくなります。もう一度開けるようにするときは、新しい入口と紙を渡し直してください。</p><form method="post" action={`${base}/close`}><button class="secondary" type="submit">開けないようにする</button></form></div></details>
     </> : <>
-      <Notice>{project.closed_at ? `${project.title}は終わりにしました。` : space?.closed_at ? "見せるのをやめています。もう一度見せ始められます。" : "まだ見せていません。"}</Notice>
-      {!project.closed_at ? <form method="post" action={`${base}/open`}><label for="passphrase">合言葉</label><input id="passphrase" name="passphrase" type="text" value={makePassphrase()} minlength={6} maxlength={120} required autocomplete="off" /><p>この合言葉を使えます。書き換えることもできます。</p><button type="submit">見せ始める</button></form> : null}
+      <Notice>{project.closed_at ? `${project.title}は終わりにしました。` : space?.closed_at ? "今は、実行委員と班長が開けないようにしています。もう一度開けるようにできます。" : "今はまだ、だれも開けません。案内を住民に知らせる前に開けるようにしてもかまいません。"}</Notice>
+      {!project.closed_at ? <form method="post" action={`${base}/open`}><button type="submit">実行委員と班長が開けるようにする</button><p>押すと、合言葉と、入口のQRコードが出ます。合言葉はそのときに一度だけ出ます。書き写すか、そのまま実行委員に送ってください。班長には、案内を印刷するときに、QRコードの入った班長への一枚を渡します。</p><details class="fold"><summary>合言葉を自分で決める</summary><div><label for="passphrase">合言葉</label><input id="passphrase" name="passphrase" type="text" value={makePassphrase()} minlength={6} maxlength={120} required autocomplete="off" /><p>このまま使ってもかまいません。</p></div></details></form> : null}
     </>}
   </AdminPage>);
 }
@@ -74,7 +73,7 @@ admin.post("/space/:projectId/open", async (c) => {
   try {
     await openSpace(c.env.DB, c.var.ward.wardId, c.req.param("projectId"), passphrase, c.var.account.accountId);
   } catch {
-    return adminSpaceError(c, "見せ始められませんでした。入力した合言葉を確かめて、もう一度お試しください。");
+    return adminSpaceError(c, "開けるようにできませんでした。入力した合言葉を確かめて、もう一度お試しください。");
   }
   return renderAdminSpace(c, passphrase);
 });
@@ -92,9 +91,9 @@ admin.post("/space/:projectId/invite", async (c) => {
   try {
     const token = await createInvite(c.env.DB, c.var.ward.wardId, c.req.param("projectId"), role, district, c.var.account.accountId);
       const url = `${new URL(c.req.url).origin}/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(c.req.param("projectId"))}/join/${token}`;
-    return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="一人用の入口を作りました"><h1>一人用の入口を作りました</h1><p class="lead">相手に渡す入口です。相手が一度使うと、使えなくなります。</p><section class="next"><strong>次は</strong><p>下のアドレスを写して、LINEなどで相手にだけ送ってください。</p><label for="invite-url">相手に渡すアドレス</label><input id="invite-url" type="text" readonly value={url} onclick="this.select()" /><p class="help-text">欄を押すと、アドレスをまとめて選べます。「コピー」を選んでください。</p></section><h2>間違えたときは</h2><p>合言葉を変えて見せ直すと、作った入口は使えなくなります。</p><a class="quiet" href={adminPath(c.var.ward.slug, `/space/${encodeURIComponent(c.req.param("projectId"))}`)}>実行委員と班長のページに戻る</a></AdminPage>);
+    return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="一人用の入口を作りました"><h1>一人用の入口を作りました</h1><p class="lead">相手に渡す入口です。相手が一度使うと、使えなくなります。</p><section class="next"><strong>次は</strong><p>下のアドレスを写して、LINEなどで相手にだけ送ってください。</p><label for="invite-url">相手に渡すアドレス</label><input id="invite-url" type="text" readonly value={url} onclick="this.select()" /><p class="help-text">欄を押すと、アドレスをまとめて選べます。「コピー」を選んでください。</p></section><h2>間違えたときは</h2><p>合言葉を変えて開け直すと、作った入口は使えなくなります。</p><a class="quiet" href={adminPath(c.var.ward.slug, `/space/${encodeURIComponent(c.req.param("projectId"))}`)}>実行委員と班長のページに戻る</a></AdminPage>);
   } catch {
-    return adminSpaceError(c, "入口を作れませんでした。ページを見せ始めてから、もう一度作れます。");
+    return adminSpaceError(c, "入口を作れませんでした。ページを開けるようにしてから、もう一度作れます。");
   }
 });
 
@@ -108,7 +107,7 @@ admin.post("/space/:projectId/leader", async (c) => {
     const contact = await getPublicContact(c.env.DB, c.var.ward.wardId);
     return c.html(<PrintDocument title="班長への一枚" hint={<a href={adminPath(c.var.ward.slug, `/space/${c.req.param("projectId")}`)}>実行委員と班長のページに戻る</a>}><Sheet footer={<>{c.var.ward.name} {district}</>}><h1>{district}の班長さんへ</h1><p>このQRコードは、その班長にだけ渡してください。</p><PrintQr text={url} sizeMm={32} /><h2>次は</h2><p>案内といっしょに、班長への一枚を印刷して渡してください。</p><p>このQRコードから、班の返事を見たり、回答票を撮って送ったりできます。</p><p>「返事のあった世帯」に名前が出たら、紙は名前が読めないようにして捨ててかまいません。捨てにくいときは、ついでのときに役員に渡してください。</p><h2>間違えたときは</h2><p>役員に知らせてください。</p><p>{contact}</p></Sheet></PrintDocument>);
   } catch {
-    return adminSpaceError(c, "班長への一枚を作れませんでした。ページを見せ始めてから、もう一度作れます。");
+    return adminSpaceError(c, "班長への一枚を作れませんでした。ページを開けるようにしてから、もう一度作れます。");
   }
 });
 
@@ -313,7 +312,7 @@ async function closedNotice(c: Context<WardEnv>) {
   const state = projectId ? await getSpace(c.env.DB, c.var.ward.wardId, projectId) : null;
   const title = project?.closed_at || state?.closed_at ? "このページは見られなくなりました" : !state ? "まだ見られません" : "この入口は使えません";
   const contact = await getPublicContact(c.env.DB, c.var.ward.wardId);
-  return c.html(<Layout title={title} siteName={await spaceSiteName(c)} noindex><h1>{title}</h1><p>{title === "このページは見られなくなりました" ? "役員が見せるのをやめました。役員に聞いてください。" : title === "まだ見られません" ? "役員がまだ見せ始めていません。見られるはずのときは、役員に聞いてください。" : "班長への一枚のQRコードから開き直すか、合言葉でログインし直してください。ログインできないときは、役員に新しい入口を頼んでください。"}</p><p class="preserve-lines">{contact || "連絡先は役員に聞いてください。"}</p>{title === "この入口は使えません" ? <a class="button" href={`/${c.var.ward.slug}/space/${projectId}`}>合言葉でログインする</a> : null}<a class="quiet" href={`/${encodeURIComponent(c.var.ward.slug)}/`}>住民向けのページへ</a></Layout>, 403);
+  return c.html(<Layout title={title} siteName={await spaceSiteName(c)} noindex><h1>{title}</h1><p>{title === "このページは見られなくなりました" ? "役員が開けないようにしました。役員に聞いてください。" : title === "まだ見られません" ? "役員がまだ開けるようにしていません。見られるはずのときは、役員に聞いてください。" : "班長への一枚のQRコードから開き直すか、合言葉でログインし直してください。ログインできないときは、役員に新しい入口を頼んでください。"}</p><p class="preserve-lines">{contact || "連絡先は役員に聞いてください。"}</p>{title === "この入口は使えません" ? <a class="button" href={`/${c.var.ward.slug}/space/${projectId}`}>合言葉でログインする</a> : null}<a class="quiet" href={`/${encodeURIComponent(c.var.ward.slug)}/`}>住民向けのページへ</a></Layout>, 403);
 }
 
 export const space: Bundle = { admin, pub };

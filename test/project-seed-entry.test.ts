@@ -23,5 +23,5 @@ it("閉じたやることがある時だけ、新しい年の順にこれをも�
   for (const project of closed) expect(html).toContain(`href="${root}/archive/${project.projectId}"`);
   expect(html).not.toContain(`${root}/archive/${open.projectId}`);
   const record = await get(realApp, `${root}/archive/${closed[0]!.projectId}`, cookie);
-  expect(await record.text()).toContain("これをもとに新しく始める");
+  expect(await record.text()).toContain("これをもとに今年の");
 });

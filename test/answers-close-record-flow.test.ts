@@ -92,7 +92,8 @@ it("資料なしで答えを入れ、一度で閉じ、紹介と記録から翌�
   const savedRecord = await read(record);
   for (const value of [fixture.firstHousehold, fixture.requestedBy, fixture.nextYearDifficulty, fixture.nextYearChange]) expect(savedRecord).toContain(value);
   expect(savedRecord).toContain("<summary>案内</summary>");
-  expect(savedRecord.indexOf("これをもとに新しく始める")).toBeLessThan(savedRecord.indexOf("<h2>やること"));
+  expect(savedRecord.indexOf("これをもとに今年の")).toBeLessThan(savedRecord.indexOf("年の動き</h2>"));
+  expect(savedRecord.indexOf("これをもとに今年の")).toBeGreaterThan(0);
   const published = await postForm(realApp, `${close}/activity`, {
     action: "publish", introduction: fixture.reportText, membershipBurden: fixture.requestedBy, membershipBenefit: fixture.nextYearChange,
   }, cookie);

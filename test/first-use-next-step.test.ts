@@ -36,5 +36,5 @@ it("初めての役員に行事・資料・実行委員と班長のページの�
   ] });
   expect(await (await get(realApp, `${root}/projects/${project.projectId}/map`, cookie)).text()).not.toContain(materials);
   const space = await get(realApp, `${root}/space/${project.projectId}`, cookie);
-  expect(await space.text()).toContain("実行委員と班長が、役員から届いたものを見て、紙を撮って送るページです。");
+  expect(await space.text()).toContain("実行委員と班長だけが、スマホで開けるページです。住民には見えません。");
 });

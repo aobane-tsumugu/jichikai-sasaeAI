@@ -60,7 +60,7 @@ it("長い下書きを残して保存し直し、知らせたあとの班長へ�
   if (!leaderPath) throw new Error("班長への一枚への入口がありません");
   const leader = await get(realApp, leaderPath, cookie);
   expect(leader.status).toBe(200);
-  expect(await leader.text()).toContain("実行委員と班長のページを見せ始めてから印刷する");
+  expect(await leader.text()).toContain("実行委員と班長のページを開けるようにしてから印刷する");
   expect((await postForm(realApp, `${root}/space/${project.projectId}/open`, { passphrase: FIRST_SLICE.passphrase }, cookie)).status).toBe(200);
   const ready = await (await get(realApp, leaderPath, cookie)).text();
   expect(ready).toContain("班長の専用QRを作って印刷する");

@@ -249,7 +249,7 @@ admin.get("/close/:projectId", async (c) => {
           <label for={`difficulty-${task.task_id}`}>困ったこと</label><textarea id={`difficulty-${task.task_id}`} name="difficulty" rows={2} maxlength={1200}>{task.difficulty}</textarea>
           <label for={`next-${task.task_id}`}>来年変えること</label><textarea id={`next-${task.task_id}`} name="nextYear" rows={2} maxlength={1200}>{task.next_year}</textarea>
         </div></details>) : <p>残っている仕事はありません。報告だけでも終わりにできます。</p>}
-        <h2>終わりにすると、こうなります</h2><ul><li>{internalReport ? `${pack.title}が役員の記録に残ります` : "報告が住民向けのページに載ります"}</li><li>実行委員と班長のページを見せるのをやめます</li><li>返事の受付が終わります</li></ul>
+        <h2>終わりにすると、こうなります</h2><ul><li>{internalReport ? `${pack.title}が役員の記録に残ります` : "報告が住民向けのページに載ります"}</li><li>実行委員と班長のページを開けないようにします</li><li>返事の受付が終わります</li></ul>
         <div class="action-bar"><button class={notYet ? "secondary" : undefined}>終わりにする</button></div>
       </form>
     </>}
