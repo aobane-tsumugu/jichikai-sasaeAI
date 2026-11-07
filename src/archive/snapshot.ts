@@ -191,6 +191,7 @@ export function eraseSnapshotJob(snapshot: unknown, wardId: string, jobId: strin
   }
   remove("jobs", (row) => row.job_id === jobId);
   remove("originals", (row) => row.job_id === jobId || (typeof row.original_id === "string" && originalIds.has(row.original_id)));
+  remove("ward_material_links", (row) => typeof row.original_id === "string" && originalIds.has(row.original_id));
   for (const table of ["readings", "job_runs", "job_tool_calls", "intake_photo_checks", "line_photo_items", "line_clarifications", "line_clarification_answers"]) remove(table, (row) => row.job_id === jobId);
   remove("paper_reading_slices", (row) => row.job_id === jobId || row.source_job_id === jobId);
   for (const table of ["project_item_values", "project_rows", "project_changes"]) {
