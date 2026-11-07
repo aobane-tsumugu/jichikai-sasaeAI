@@ -153,7 +153,7 @@ const shots: Shot[] = [
   { stage: 1, name: "段取り", path: "project/map", heading: "段取り" },
   { stage: 1, name: "資料", path: "project", heading: "の届いた資料と今年の内容" },
   { stage: 1, name: "質問", path: "project/questions", heading: "分かるものだけ答えてください" },
-  { stage: 1, name: "送る", path: `${admin}/intake`, heading: "手元の紙や資料を送る" },
+  { stage: 1, name: "送る", path: `${admin}/intake`, heading: "写真やファイルを送る" },
   { stage: 1, name: "行事に資料を送る", path: "project/intake", heading: "に資料を送る" },
   { stage: 1, name: "行事の収支", path: "project/ledger", heading: "の収支" },
   { stage: 1, name: "送ったもの", path: `${admin}/intake/received`, heading: "受け取りました" },

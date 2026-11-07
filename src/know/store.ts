@@ -64,7 +64,7 @@ const ago = (months: number) => months >= 12 ? `${Math.floor(months / 12)}年${m
 
 function stateOf(base: KnowBase | undefined, value: string, seen: string | null, meetingClosedAt: string | null, now: Date): { state: KnowState; note: string } {
   if (!value) return { state: "empty", note: `入っていません。${base?.hint ?? ""}` };
-  if (!seen) return { state: "fact", note: "紙から読み取りました" };
+  if (!seen) return { state: "fact", note: "届いた資料から読み取りました" };
   if (base?.afterMeeting && meetingClosedAt && seen < meetingClosedAt) return { state: "old", note: "総会のあと直されていません" };
   const months = monthsBetween(seen, now);
   if (base && months >= base.months) return { state: "old", note: `${ago(months)}に見直しました` };

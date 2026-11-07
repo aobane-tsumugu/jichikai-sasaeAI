@@ -64,7 +64,7 @@ admin.get("/", async (c) => {
     {photos.length ? <div class="photo-strip">{photos.map((item) => <a href={adminPath(ward, `/inbox/${item.item_id}/pick`)}><img class="photo" src={adminPath(ward, `/inbox/${item.item_id}/original`)} alt="届いた写真" loading="lazy" /></a>)}</div> : null}
     <p>{lineInbox.length ? `公式LINEに${lineInbox.length}件届いています。` : ""}{undecided ? `${undecided}件に質問があります。` : ""}{inquiryCount ? `問い合わせが${countWord(inquiryCount)}あります。${inquiryWord ? `${countWord(inquiryWords.filter((words) => words.includes(inquiryWord)).length)}に「${inquiryWord}」と書かれています。` : ""}` : ""}</p>
     {undecided && projects.length ? null : <div class="action-links"><a class="button secondary" href={adminPath(ward, "/inbox")}>届いたものを見る</a></div>}</> : null;
-  const explain = "SasaeAIは、自治会の役員の仕事を支えるサービスです。手元の紙や写真を送ると、AIが読んで、段取りと案内の下書きを用意します。案内を配り、答えを集め、記録を残すまで、ここで進められます。役員だけが見られる画面です。";
+  const explain = "SasaeAIは、自治会の役員の仕事を支えるサービスです。手元の資料を撮って送るか、ファイルのまま送ると、AIが読んで、段取りと案内の下書きを用意します。案内を配り、答えを集め、記録を残すまで、ここで進められます。役員だけが見られる画面です。";
   const about = firstVisit ? <><h1>{ward.name}の自治会の仕事を進める画面です</h1><p class="lead">{explain}</p></> : null;
   const aboutFold = firstVisit ? null : <details class="hint"><summary>この画面について</summary><div><p>{explain}</p></div></details>;
   const heading = (text: string) => firstVisit ? <h2>{text}</h2> : <h1>{text}</h1>;
@@ -89,7 +89,7 @@ admin.get("/", async (c) => {
     {projects.length ? <>{place("/projects/today", "今やること", "締切のある仕事を近い順に見ます")}{place("/answers", "答えを見る", "住民から届いた出欠と手伝いを見ます")}</> : null}
     {place("/year", "この区の一年", "一年の行を足す、外す")}
     {place("/know", "役員が知っておくこと", "自治会を動かすのに知っておきたいことを見ます")}
-    {place("/files", "区の資料", "送った紙やファイルを全部見ます")}
+    {place("/files", "区の資料", "届いた写真やファイルを全部見ます")}
     {place("/archive", "記録を読む", "閉じた行事の段取り、配ったもの、報告を読みます")}
     {projects.length ? place("/answers/roster", "名簿", "代表者の名前と班を入れます") : null}
     {projects.length ? <>{place("/requests/city", "行政の依頼", "市から届いた依頼と締切を見ます")}{place("/inquiries", "問い合わせと要望", "住民からの問い合わせに返事をします")}</> : null}
@@ -104,10 +104,10 @@ admin.get("/", async (c) => {
     .sort((a, b) => (a.task.periodEnd ?? "9999").localeCompare(b.task.periodEnd ?? "9999"))[0] : undefined;
   const chosen = mine ?? nearest;
   const unseeded = records.find((record) => !record.continued);
-  const next = undecided ? { title: `届いた紙に質問が${undecided}件あります`, body: "答えると、行事や名簿に入ります。答えなくても、紙は区の資料に残ります。", href: "/inbox", label: "質問を見る" }
+  const next = undecided ? { title: `届いた写真やファイルのうち、${undecided}件に質問があります`, body: "答えると、行事や名簿に入ります。答えなくても、「区の資料」に残ります。", href: "/inbox", label: "質問を見る" }
     : chosen ? { title: `${chosen.project.title}　${chosen.task.name}`, body: `${mine ? "あなたの担当の仕事です。" : ""}${chosen.task.periodEnd ? `${shortDate(chosen.task.periodEnd)}まで。${daysRemaining(chosen.task.periodEnd)}。` : ""}押すと、この仕事の画面が開きます。`, href: mapTaskPath(chosen.project.projectId, chosen.project.kind, chosen.task), label: "この仕事を開く" }
     : unseeded ? { title: `${unseeded.year}年の${unseeded.title}をもとに今年を始める`, body: "去年の段取りを、新しい日に合わせて置き直します。全部を見直す必要はありません。", href: `/archive/${unseeded.project_id}?view=seed`, label: "今年を始める" }
-    : { title: "手元の紙や資料を送る", body: "案内の紙も、Wordも、写真も、そのまま送れます。AIが読んで、行事に入れます。", href: "/intake", label: "紙や資料を送る" };
+    : { title: "写真やファイルを送る", body: "紙の案内は撮って、WordやPDFはそのまま送れます。AIが読んで、行事に入れます。", href: "/intake", label: "写真やファイルを送る" };
   const year = await wardYear(c.env.DB, ward, projects, states, today);
   const yearRows = nearToday(year.rows, year.today);
   const yearMap = <><YearLegend /><YearMap rows={yearRows} today={year.today} />{yearRows.length < year.rows.length ? <p class="link-line"><a href={adminPath(ward, "/year")}>一年を全部見る（{year.rows.length}行）</a></p> : null}</>;
@@ -125,18 +125,18 @@ admin.get("/", async (c) => {
   return c.html(<AdminPage ward={ward} account={account} title="最初の画面" home>
     {!projects.length && !records.length ? <>
       {about}{questionCard}
-      <section class="next"><strong>{sheets >= GOAL ? "十枚届きました" : "まず、手元の紙を十枚送ってください"}</strong>
-        <p class="start-count">{sheets ? `${sheets}枚届きました。${sheets < GOAL ? `あと${GOAL - sheets}枚です。` : ""}` : "写真でも、Wordでも、PDFでも送れます。"}</p>
+      <section class="next"><strong>{sheets >= GOAL ? "十件届きました" : "まず、手元の資料を十件送ってください"}</strong>
+        <p class="start-count">{sheets ? `${sheets}件届きました。${sheets < GOAL ? `あと${GOAL - sheets}件です。` : ""}` : "紙は撮って、WordやPDFはそのまま送れます。"}</p>
         <div class="start-bar" aria-hidden="true">{Array.from({ length: GOAL }, (_, index) => <i class={index < sheets ? "in" : undefined} />)}</div>
-        <a class="button" href={adminPath(ward, "/intake")}>紙や資料を送る</a>
+        <a class="button" href={adminPath(ward, "/intake")}>写真やファイルを送る</a>
         <p style="margin: .5rem 0 0">公式LINEに写真を送っても入ります。分けたり名前を付けたりしなくてかまいません。</p></section>
       {read ? <p class="link-line"><a href={adminPath(ward, "/intake/read")}>読み終わった資料を見て、行事を始める</a></p> : null}
       {reading || delayed ? <p class="muted">{reading ? `${reading}件を読んでいます。` : ""}{delayed ? `${delayed}件は読み取りが遅れています。送り直す必要はありません。` : ""}</p> : null}
       <h2>この区の一年</h2><p class="muted">今は一般の自治会の例を仮に置いています。行事が入ると、この区の内容に変わります。</p>
       {yearMap}
-      <h2>どんな紙がよいか</h2><p class="muted">あるものだけでかまいません。上のものほど役立ちます。</p>
-      <ul><li>規約や会則</li><li>去年の総会の資料</li><li>年間の予定が分かる紙</li><li>世帯の名簿（班が分かるもの）</li><li>役員の一覧</li><li>去年の案内や回覧（二、三枚）</li><li>当番表や配置図</li><li>市から来た依頼の紙</li><li>会費や会計の報告</li></ul>
-      <details class="hint"><summary>手元に紙がないとき</summary><div><p>前の役員や、公民館の棚にあることが多いです。見つからないときは、何の準備かを選ぶと、ふつうの段取りから始められます。</p><p><a class="quiet" href={adminPath(ward, "/projects")}>紙がないので、何の準備かを選ぶ</a></p></div></details>
+      <h2>どんな資料がよいか</h2><p class="muted">あるものだけでかまいません。上のものほど役立ちます。</p>
+      <ul><li>規約や会則</li><li>去年の総会の資料</li><li>年間の予定が分かるもの</li><li>世帯の名簿（班が分かるもの）</li><li>役員の一覧</li><li>去年の案内や回覧（二、三枚）</li><li>当番表や配置図</li><li>市から来た依頼</li><li>会費や会計の報告</li></ul>
+      <details class="hint"><summary>手元に資料がないとき</summary><div><p>前の役員や、公民館の棚にあることが多いです。見つからないときは、何の準備かを選ぶと、ふつうの段取りから始められます。</p><p><a class="quiet" href={adminPath(ward, "/projects")}>資料がないので、何の準備かを選ぶ</a></p></div></details>
       {received}{places}{aboutFold}
     </> : <>
       {about}{questionCard}
@@ -150,7 +150,7 @@ admin.get("/", async (c) => {
       {projects.length > 5 ? <p class="link-line"><a href={adminPath(ward, "/year")}>ほかの行事（{projects.length - 5}件）は一年の画面で見る</a></p> : null}
       {memory}
       {received}
-      <div class="action-links"><a class="button secondary" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>新しい行事を始める</a></div>
+      <div class="action-links"><a class="button secondary" href={adminPath(ward, "/intake")}>写真やファイルを送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>新しい行事を始める</a></div>
       {sent ? <p class="link-line"><a href={adminPath(ward, "/intake/read")}>送った資料{sent}件を見る</a></p> : null}
       {places}{aboutFold}
     </>}

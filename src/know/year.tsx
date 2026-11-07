@@ -1,4 +1,4 @@
-// 区の一年の地図。一般の自治会の一年を仮に置き、行事と届いた紙でこの区の内容に変えていく。
+// 区の一年の地図。一般の自治会の一年を仮に置き、行事と届いた資料でこの区の内容に変えていく。
 import { adminPath } from "../core/auth";
 import { newId } from "../core/ids";
 import { formatJstDate } from "../core/time";
@@ -102,7 +102,7 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
   for (const row of overrides.results.filter((entry) => entry.added && !entry.removed_at && entry.month)) {
     const at = position(row.month!);
     if (row.source_original_id) claim("", row.month!, row.title);
-    rows.push({ key: row.item_id, title: row.title, note: row.date_text || (row.source_original_id ? "紙から読み取りました" : ""), state: "fact", level: levelOf(row.source_original_id ? 1 : 0), from: at, to: at + 4, href: adminPath(ward, `/year/${row.item_id}`), order: at });
+    rows.push({ key: row.item_id, title: row.title, note: row.date_text || (row.source_original_id ? "届いた資料から読み取りました" : ""), state: "fact", level: levelOf(row.source_original_id ? 1 : 0), from: at, to: at + 4, href: adminPath(ward, `/year/${row.item_id}`), order: at });
   }
   for (const base of YEAR_BASE) {
     if (used.has(base.key) || removed.has(base.key)) continue;

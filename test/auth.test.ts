@@ -40,7 +40,7 @@ describe("役員画面の入口", () => {
 
     const home = await get(realApp, `/${ward.slug}/admin/`, cookie!);
     expect(home.status).toBe(200);
-    expect(await home.text()).toContain("まず、手元の紙を十枚送ってください");
+    expect(await home.text()).toContain("まず、手元の資料を十件送ってください");
     expect(home.headers.get("cache-control")).toBe("no-store");
 
     // 札そのものは D1 に持たない

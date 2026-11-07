@@ -42,7 +42,7 @@ admin.get("/know", async (c) => {
   const filled = items.filter((item) => item.state !== "empty").length;
   return c.html(<AdminPage ward={ward} account={account} title="役員が知っておくこと" back={{ href: adminPath(ward, "/"), label: "最初の画面へ" }}>
     <h1>役員が知っておくこと</h1>
-    <p class="lead">自治会を動かすのに知っておきたいことの一覧です。紙を送るとAIが読み取って入れます。違うところは直せます。入っていなくても、仕事は止まりません。</p>
+    <p class="lead">自治会を動かすのに知っておきたいことの一覧です。写真やファイルを送ると、AIが読み取って入れます。違うところは直せます。入っていなくても、仕事は止まりません。</p>
     {c.req.query("n") === "added" ? <Notice>項目を足しました。</Notice> : c.req.query("n") === "removed" ? <Notice>項目を外しました。下の「外した項目」から戻せます。</Notice> : c.req.query("n") === "restored" ? <Notice>項目を戻しました。</Notice> : null}
     <p>{items.length}項目のうち{filled}項目が入っています。{old.length ? `${old.length}項目は見直す時期です。` : ""}</p>
     <div class="state-legend"><span class="state example">入っていません</span><span class="state checking">質問があります</span><span class="state fact">この区の内容</span><span class="state old">見直す時期です</span></div>
@@ -81,8 +81,8 @@ admin.get("/know/:itemId", async (c) => {
     {item.keepOut ? <div class="notice" role="status"><strong>このサービスでは{item.keepOut}を預かりません</strong><p>だれが持っているかだけ書いてください。</p></div> : null}
     {item.note && item.state === "old" ? <p><span class="state old">見直す時期です</span> {item.note}</p> : null}
     {item.auto ? <p>{item.auto}</p> : null}
-    {item.proposed ? <section class="panel"><p><span class="state checking">質問があります</span></p><p>新しい紙には、こう書かれていました。この内容にしますか？</p><p class="preserve-lines"><b>{item.proposed}</b></p>
-      {item.proposedOriginalId ? <p class="link-line"><a href={adminPath(ward, `/intake/originals/${item.proposedOriginalId}`)}>元の紙を見る</a></p> : null}
+    {item.proposed ? <section class="panel"><p><span class="state checking">質問があります</span></p><p>新しく届いた資料には、こう書かれていました。この内容にしますか？</p><p class="preserve-lines"><b>{item.proposed}</b></p>
+      {item.proposedOriginalId ? <p class="link-line"><a href={adminPath(ward, `/intake/originals/${item.proposedOriginalId}`)}>元の資料を見る</a></p> : null}
       <form method="post" action={`${base}/proposal`}><div class="action-links"><button class="secondary" name="use" value="yes">この内容にする</button><button class="secondary" name="use" value="no">今のままでよい</button></div></form></section> : null}
     <form method="post" action={base}>
       <div class="field"><label for="know-body">この区の内容</label><textarea id="know-body" name="body" rows={6} maxlength={KNOW_LIMITS.body}>{item.body}</textarea></div>
@@ -99,7 +99,7 @@ admin.get("/know/:itemId", async (c) => {
         <p><b>{firstLine(summaries.get(file.job_id) ?? "").slice(0, 36) || file.filename || "届いた資料"}</b></p>
         <p class="muted">{formatJst(file.received_at)}</p>
         <button class="secondary">この資料をつなげる</button></form></li>)}</ul></div></details> : null}
-    <p class="link-line"><a href={adminPath(ward, "/intake")}>紙や資料を送る</a></p>
+    <p class="link-line"><a href={adminPath(ward, "/intake")}>写真やファイルを送る</a></p>
     <details class="fold"><summary>名前を変える</summary><div><form method="post" action={`${base}/title`}>
       <div class="field"><label for="know-rename">項目の名前</label><input id="know-rename" name="title" type="text" value={item.title} required maxlength={KNOW_LIMITS.title} /></div>
       <button class="secondary">名前を保存する</button></form></div></details>
@@ -168,8 +168,8 @@ admin.get("/files", async (c) => {
   const titles = new Map([...items, ...removed].map((item) => [item.id, item.title]));
   return c.html(<AdminPage ward={ward} account={account} title="区の資料" back={{ href: adminPath(ward, "/"), label: "最初の画面へ" }}>
     <h1>区の資料</h1>
-    <p class="lead">送った紙やファイルは、全部ここに入ります。分けなくてもかまいません。行事や役員が知っておくことにつなげても、つなげなくても残ります。</p>
-    <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>紙や資料を送る</a></div>
+    <p class="lead">届いた写真やファイルは、全部ここに入ります。分けなくてもかまいません。行事や役員が知っておくことにつなげても、つなげなくても残ります。</p>
+    <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>写真やファイルを送る</a></div>
     {files.length ? <ul class="photo-grid">{files.map((file) => {
       const href = adminPath(ward, `/intake/originals/${file.original_id}`);
       const title = firstLine(summaries.get(file.job_id) ?? "").slice(0, 36) || file.filename || "届いた資料";
@@ -192,7 +192,7 @@ admin.get("/year", async (c) => {
   const taken = removed.results.map((row) => ({ key: row.item_id, title: row.added ? row.title : YEAR_BASE.find((base) => base.key === row.item_id)?.title ?? "" })).filter((row) => row.title);
   return c.html(<AdminPage ward={ward} account={account} title="この区の一年" back={{ href: adminPath(ward, "/"), label: "最初の画面へ" }}>
     <h1>この区の一年</h1>
-    <p class="lead">一般の自治会の一年を仮に置いています。行事や届いた紙で、この区の内容に変わっていきます。行を押すと開きます。</p>
+    <p class="lead">一般の自治会の一年を仮に置いています。行事や届いた資料で、この区の内容に変わっていきます。行を押すと開きます。</p>
     <YearLegend /><YearMap rows={year.rows} today={year.today} />
     <details class="fold"><summary>行を足す</summary><div><form method="post" action={adminPath(ward, "/year")}>
       <div class="field"><label for="year-title">名前</label><input id="year-title" name="title" type="text" required maxlength={KNOW_LIMITS.title} /></div>
@@ -217,7 +217,7 @@ admin.get("/year/:key", async (c) => {
   if (added) return c.html(<AdminPage ward={ward} account={account} title={added.title} back={{ href: adminPath(ward, "/year"), label: "この区の一年へ" }}>
     <h1>{added.title}</h1>
     <p class="lead">{added.month ? `${added.month}月` : ""}{added.date_text ? `　${added.date_text}` : ""}</p>
-    {added.source_original_id ? <p class="link-line"><a href={adminPath(ward, `/intake/originals/${added.source_original_id}`)}>読み取った元の紙を見る</a></p> : null}
+    {added.source_original_id ? <p class="link-line"><a href={adminPath(ward, `/intake/originals/${added.source_original_id}`)}>読み取った元の資料を見る</a></p> : null}
     <div class="action-links"><a class="button secondary" href={`${adminPath(ward, "/projects")}?title=${encodeURIComponent(added.title)}`}>「{added.title}」を始める</a></div>
     {added.removed_at ? <form method="post" action={adminPath(ward, `/year/${added.item_id}/restore`)}><button class="secondary">一年に戻す</button></form>
       : <details class="fold"><summary>この行を外す</summary><div><p>違う行や、この区にない行は外せます。外しても、一年の画面の「外した行」から戻せます。</p><form method="post" action={adminPath(ward, `/year/${added.item_id}/remove`)}><button class="secondary">外す</button></form></div></details>}
@@ -227,7 +227,7 @@ admin.get("/year/:key", async (c) => {
   return c.html(<AdminPage ward={ward} account={account} title={base.title} back={{ href: adminPath(ward, "/year"), label: "この区の一年へ" }}>
     <h1>{base.title}</h1>
     <p class="lead">一般の自治会の例を仮に置いています。この区のことはまだ入っていません。</p>
-    <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>この行事の紙や資料を送る</a><a class="button secondary" href={`${adminPath(ward, "/projects")}?kind=${base.kind || "event"}&title=${encodeURIComponent(base.title)}`}>「{base.title}」を始める</a></div>
+    <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>この行事の写真やファイルを送る</a><a class="button secondary" href={`${adminPath(ward, "/projects")}?kind=${base.kind || "event"}&title=${encodeURIComponent(base.title)}`}>「{base.title}」を始める</a></div>
     <details class="fold"><summary>この区にないので外す</summary><div><p>外しても、一年の画面の「外した行」から戻せます。</p><form method="post" action={adminPath(ward, `/year/${base.key}/remove`)}><button class="secondary">外す</button></form></div></details>
   </AdminPage>);
 });

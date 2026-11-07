@@ -81,7 +81,7 @@ admin.get("/archive/map", async (c) => {
         {entry.closed_at ? <a class="quiet" href={adminPath(ward, `/archive/${entry.project_id}?view=seed`)}>この記録から新しく始める</a> : null}
       </li>)}</ul></section>)}
     {rows.results.some((row) => !row.period_start) ? <p class="muted">時期が決まっていない仕事は「時期未定」の月にまとまります。</p> : null}
-    {rows.results.length === 0 ? <><p>予定はまだありません。資料を送ると、行事の段取りがここに入ります。</p><a class="button secondary" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a></> : null}
+    {rows.results.length === 0 ? <><p>予定はまだありません。資料を送ると、行事の段取りがここに入ります。</p><a class="button secondary" href={adminPath(ward, "/intake")}>写真やファイルを送る</a></> : null}
   </Layout>);
 });
 
