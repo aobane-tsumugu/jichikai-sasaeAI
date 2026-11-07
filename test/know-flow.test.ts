@@ -185,3 +185,14 @@ it("行事が増えてもトップの地図は今に近い行に絞り、全部�
   expect(home).toContain("一年を全部見る");
   expect((await read(`${root}/year`, cookie)).match(/class="map-row /g)!.length).toBeGreaterThan(30);
 });
+
+it("作ったばかりの行事は、行事が多い区でもトップから開け、質問は地図より上に出る", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const root = `/${ward.slug}/admin`;
+  for (let index = 0; index < 20; index += 1) await createProject(env.DB, ward.wardId, { kind: "event", title: `架空の古い集まり${index}`, year: 2026, eventDay: "2026-05-10", accountId: account.accountId });
+  const fresh = await createProject(env.DB, ward.wardId, { kind: "request", title: "架空の作ったばかりの要望", year: 2026, accountId: account.accountId });
+  const home = await read(`${root}/`, cookie);
+  expect(home).toContain(`/projects/${fresh.projectId}/map`);
+  expect(home).toContain("架空の作ったばかりの要望");
+  expect(home).toContain("ほかの行事（16件）は一年の画面で見る");
+});
