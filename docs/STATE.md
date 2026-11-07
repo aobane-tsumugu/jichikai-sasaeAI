@@ -85,7 +85,7 @@ scripts/walkthrough-rest.ts で staging の kakuu 区を動かした結果です
 
 対象外: 動画。料金の画面。顔を隠す機能と報告の写真（本人の裁定で外した）。メールの送信、LINE Login、Turnstile（本人の裁定で提出に入れない）。
 
-デモの区: 公開用は koukai（README に載せる）。審査員用は、今の demoku に本人が送った実在のチラシが入っているため、新しい区を作って自治会の LINE を付け替える案を本人に聞いている。審査員の案内は https://jichikai-guide.aobane-tsumugu.com/ で、画面の直しとデモのデータの後に写真と手順を直す。
+デモの区: 公開用は koukai（README に載せる）。審査員用はささえ台自治会 sasaedai（2026-11-08 に新しく作り、自治会の LINE と役員グループを付け替えた。最初から始まる状態）。前の審査員用の区 demoku は staging に残り、LINE は付いていない。審査員の案内は https://jichikai-guide.aobane-tsumugu.com/ で、デモのデータの後に写真と手順を直す。
 
 ## 使用量
 
