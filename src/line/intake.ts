@@ -39,7 +39,7 @@ export async function lineAiLimitReason(db: D1Database, wardId: string, eventId:
   // このUPDATE一つで順番を決め、同時に届いても上限より多くAIへ通さない。
   await db.prepare(`UPDATE line_webhook_receipts SET sender_hash = ?, sender_day = ?, sender_admitted = CASE
     WHEN ? = 0 OR (SELECT COUNT(*) FROM line_webhook_receipts r WHERE r.ward_id = ?
-      AND r.sender_hash = ? AND r.sender_day = ?) < ? THEN 1 ELSE 0 END
+      AND r.sender_hash = ? AND r.sender_day = ? AND r.sender_admitted = 1) < ? THEN 1 ELSE 0 END
     WHERE ward_id = ? AND event_id = ? AND sender_admitted IS NULL`)
     .bind(sender, day, limits.lineSenderDailyLimit, wardId, sender, day, limits.lineSenderDailyLimit, wardId, eventId).run();
   const receipt = await db.prepare("SELECT sender_admitted FROM line_webhook_receipts WHERE ward_id = ? AND event_id = ?")
