@@ -55,12 +55,12 @@ const PeoplePage = (props: { c: Context<AdminEnv>; view: View; notice?: string; 
   const { seats, accounts, entered, resets } = props.view;
   const base = (rest: string) => adminPath(ward, `/settings/people${rest}`);
   // 下の層から来た誤りの文も、この画面の言葉にそろえる。
+  const waiting = accounts.filter((a) => !entered.has(a.accountId));
   const words = (value: string) => value.replaceAll("アカウント", "役員").replaceAll("席", "役職").replaceAll("締め出", "ログインできないように");
   return <AdminPage ward={ward} account={me} title="この画面を使える人" back={{ href: adminPath(ward, "/settings"), label: "自治会の設定へ" }}>
-    <h1>この画面を使える人</h1><p class="lead">役員を足したり、ログインできなくなった人にリンクを出したりします。役職があるかないかで、できることは変わりません。</p>
+    <h1>この画面を使える人</h1><p class="lead">{accounts.length === 1 ? `この画面を使えるのは、今は${accounts[0]!.name}さん${accounts[0]!.accountId === me.accountId ? "（あなた）" : ""}だけです。下の「役員を足す」で足すと、その人に渡すログインのリンクが出ます。` : `この画面を使えるのは、${accounts.map((a) => `${a.name}さん${a.accountId === me.accountId ? "（あなた）" : ""}`).join("、")}の${accounts.length}人です。`}{waiting.length ? `${waiting.map((a) => `${a.name}さん`).join("、")}は、まだログインしていません。` : ""}役職があるかないかで、できることは変わりません。</p>
     {props.notice ? <><Notice>{words(props.notice)}</Notice><section class="next"><strong>次は</strong><p>ほかに直すものがなければ、最初の画面へ戻ってください。</p><a class="button" href={adminPath(ward, "/")}>最初の画面へ</a></section><p>間違えたときは、この画面でもう一度直せます。外した役員や役職は、下の欄から足せます。</p></> : null}
     {props.error ? <Notice error>{words(props.error)}入力した内容を確かめて、もう一度操作してください。</Notice> : null}
-    <div class="action-links"><a class="button" href="#add">役員を足す</a></div>
     <h2>役員（{accounts.length}人）</h2>
     {accounts.map((a) => { const mine = a.accountId === me.accountId; return <section class="panel">
       <h3>{a.name}{mine ? "（あなた）" : ""}</h3><p class="muted">{seats.find((seat) => seat.seatId === a.seatId)?.title ?? "役職なし"}　ID {a.loginId}　{entered.has(a.accountId) ? `スマホやパソコン ${a.devices.length}台` : "まだログインしていません"}</p>
@@ -79,7 +79,7 @@ const PeoplePage = (props: { c: Context<AdminEnv>; view: View; notice?: string; 
         <p>ログインできなくなったときは、本人に渡すリンクを出します。前のリンクとパスワードは使えなくなります。LINEとメールのつなぎ、覚えたスマホやパソコンはそのままです。</p>
         <form method="post" action={base(`/accounts/${a.accountId}/reset`)}><button class="secondary">ログインするためのリンクを出す</button></form>
         <h3>役員から外す</h3><p>この人はログインできなくなり、使っているスマホやパソコンからもログアウトします。同じ人をもう一度足すと、新しいリンクを渡します。最後の一人は外せません。</p>
-        <form method="post" action={base(`/accounts/${a.accountId}/remove`)}><button class="secondary">役員から外す</button></form>
+        <form method="post" action={base(`/accounts/${a.accountId}/remove`)} onsubmit={`return confirm(${JSON.stringify(`${a.name}さんを役員から外します。${a.name}さんはログインできなくなります。続けますか？`)})`}><button class="secondary">役員から外す</button></form>
       </div></details>
     </section>; })}
     {resets.length ? <details class="fold"><summary>リンクを出した記録</summary><div>{resets.map((r) => <p>{formatJst(r.created_at)}　{r.created_by_provider ? "SasaeAI" : r.actor}が、{r.name}さんのリンクを出しました。</p>)}</div></details> : null}

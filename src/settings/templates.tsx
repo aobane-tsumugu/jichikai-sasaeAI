@@ -31,11 +31,9 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
   const list = await getTemplates(c.env.DB, ward.wardId);
   c.header("Cache-Control", "no-store");
   return c.html(
-    <AdminPage ward={ward} account={account} title="決まった連絡の文" back={{ href: adminPath(ward, "/settings"), label: "自治会の設定" }}>
-      <h1>決まった連絡の文</h1><p class="lead">雨の変更など、繰り返し使う連絡の文を用意する画面です。直したい文の名前と本文を書き換えてください。</p>
-      <p class="muted">
-        {"{会場}"} のように波括弧で囲んだ言葉は、連絡を出すときに会場や日時などの中身に置き換わります。
-      </p>
+    <AdminPage ward={ward} account={account} title="決まった連絡の文" back={{ href: adminPath(ward, "/settings"), label: "自治会の設定へ" }}>
+      <h1>決まった連絡の文</h1><p class="lead">{list.length ? `決まった連絡の文は、今${list.map((t) => `「${t.name}」`).join("、")}の${list.length}つです。準備の「雨の変更を知らせる」で知らせるときは、この文をもとにします。` : "決まった連絡の文は、今はありません。"}</p>
+      <p class="muted">{"{会場}"}や{"{日時}"}のように {"{ }"} で囲んだ言葉は、知らせを作るときに、その準備の会場や日時に置き換わります。</p>
       {extra.notice ? <Notice>{extra.notice}</Notice> : null}
       {extra.error ? <Notice error>{extra.error}{extra.retry ? " 入れた内容は残っています。" : ""}</Notice> : null}
       {list.map((t) => (
@@ -53,7 +51,7 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
               class="secondary danger"
               formaction={base(c, `/${t.id}/remove`)}
               formnovalidate
-              onclick="return confirm('この決まった連絡の文を消します。')"
+              onclick={`return confirm(${JSON.stringify(`「${t.name}」を消します。元に戻せません。続けますか？`)})`}
             >
               消す
             </button>
@@ -69,7 +67,7 @@ async function show(c: Context<AdminEnv>, extra: { notice?: string; error?: stri
           <button type="submit">足す</button>
         </p>
       </form>
-      <form method="post" action={base(c, "/reset")} onsubmit="return confirm('保存した決まった連絡の文を全部消して、標準の決まった連絡の文に戻します。')">
+      <form method="post" action={base(c, "/reset")} onsubmit="return confirm('保存した決まった連絡の文を全部消して、標準の決まった連絡の文に戻します。消した文は元に戻せません。続けますか？')">
         <button type="submit" class="secondary">
           標準の決まった連絡の文に戻す
         </button> <Hint text="保存した決まった連絡の文をすべて消して、初めから用意された決まった連絡の文に戻します。" />

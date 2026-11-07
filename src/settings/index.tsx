@@ -24,6 +24,7 @@ import { people } from "./people";
 import { mySignInPath } from "./sign-in";
 import { templates } from "./templates";
 import { deletion } from "./deletion";
+import { listAccounts } from "./accounts";
 
 // 束 1: 区の設定（席とアカウント、区の情報、定型文）と役員画面の入口。
 // 他の束が設定を読む入口は store.ts（getPublicContact、getSquads、getTemplates）と keys.ts。
@@ -189,20 +190,30 @@ admin.get("/", async (c) => {
   </AdminPage>);
 });
 
-admin.get("/settings", (c) => {
+admin.get("/settings", async (c) => {
   const { ward, account } = c.var;
+  const [accounts, contact] = await Promise.all([listAccounts(c.env.DB, ward.wardId), getPublicContact(c.env.DB, ward.wardId)]);
+  // 要約の付いたリンクの一覧にせず、今どうなっているかを文で書き、することの言葉だけのリンクを下に置く（トップと同じ決まり）。
+  const alone = accounts.every((a) => a.accountId === account.accountId);
+  const names = accounts.map((a) => `${a.name}さん${a.accountId === account.accountId ? "（あなた）" : ""}`);
+  const contactLine = contact.split("\n").map((line) => line.trim()).filter(Boolean).join("　").slice(0, 80);
   return c.html(
     <AdminPage ward={ward} account={account} title="自治会の設定" back={{ href: adminPath(ward, "/"), label: "最初の画面へ" }}>
-      <h1>自治会の設定</h1><p class="lead">直したいものを選んでください。ふだんは直さなくてかまいません。</p>
-      <ul class="rows">
-        <li><a class="row-link" href={adminPath(ward, "/settings/people")}><b>この画面を使える人</b><span>役員を足す、外す。ログインするためのリンクを出す。なくしたスマホやパソコンでログインできないようにする。</span></a></li>
-        <li><a class="row-link" href={mySignInPath(ward)}><b>ログインの方法</b><span>LINEやメールをつなぎます。</span></a></li>
-        <li><a class="row-link" href={adminPath(ward, "/settings/info")}><b>自治会の情報</b><span>連絡先、班の名前、通知の時刻。</span></a></li>
-        <li><a class="row-link" href={adminPath(ward, "/close/activity")}><b>自治会の説明</b><span>役員の仕事、加入すると担うことや得られることを、書けるところから住民向けのページに載せます。</span></a></li>
-        <li><a class="row-link" href={adminPath(ward, "/settings/templates")}><b>決まった連絡の文</b><span>雨の変更の連絡など、くり返し出す文です。</span></a></li>
-        <li><a class="row-link" href={adminPath(ward, "/settings/deletion")}><b>住民から頼まれたものを消す</b><span>住民の方から自分の分を消してほしいと頼まれたときに使います。</span></a></li>
-      </ul>
+      <h1>自治会の設定</h1>
+      {alone ? <section class="next"><p>この画面を使えるのは、今は{account.name}さん（あなた）だけです。ほかの役員にも使ってもらうと、それぞれの手元の資料を送ってもらえます。</p>
+        <a class="button" href={adminPath(ward, "/settings/people#add")}>ほかの役員を足す</a>
+        <p>押すと、名前を入れる欄に移ります。足すと、その人に渡すログインのリンクが出ます。</p></section>
+        : <p class="lead">この画面を使えるのは、{names.join("、")}の{accounts.length}人です。</p>}
+      {contact ? <p>住民向けのページには、自治会の連絡先として「{contactLine}」が出ています。</p>
+        : <p>住民向けのページに出す自治会の連絡先が、まだ入っていません。今は住民向けのページに「班長か役員へお知らせください」とだけ出ていて、班長や役員を知らない方は連絡できません。<a href={adminPath(ward, "/settings/info")}>連絡先を入れる</a></p>}
       <ul class="links">
+        <li><a href={adminPath(ward, "/settings/people")}>ほかの役員を足す、外す</a></li>
+        <li><a href={adminPath(ward, "/settings/people")}>ログインできない役員にリンクを出す</a></li>
+        <li><a href={mySignInPath(ward)}>自分のログインの方法を見る</a></li>
+        <li><a href={adminPath(ward, "/settings/info")}>連絡先と班の名前を直す</a></li>
+        <li><a href={adminPath(ward, "/close/activity")}>住民向けのページに自治会の説明を書く</a></li>
+        <li><a href={adminPath(ward, "/settings/templates")}>雨の変更の連絡の文を直す</a></li>
+        <li><a href={adminPath(ward, "/settings/deletion")}>住民から頼まれたものを消す</a></li>
         <li><a href="/contact">SasaeAIに問い合わせる</a></li>
         <li><form method="post" action={adminPath(ward, "/logout")}><button class="quiet">ログアウトする</button></form></li>
       </ul>
