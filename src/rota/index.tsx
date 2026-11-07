@@ -27,7 +27,7 @@ export async function rotaPanel(db: D1Database, ward: WardInfo, projectId: strin
     <button class="secondary">一年分の日付を名簿の順に割り当てる</button></form>;
   return <section class="panel"><h2>{schedule ? "一年分の当番表" : comparison?.hasPreviousTable === false ? "名簿から当番の下書きを作る" : "去年の表と今の名簿"}</h2>
     <p>{schedule ? `${comparison?.year ?? ""}年の毎週${WEEKDAYS[schedule.weekday]}曜を名簿の順に割り当てます。その日に免除されている世帯は飛ばします。`
-      : comparison?.hasPreviousTable === false ? "去年の表がないため、班と世帯を名簿の順で並べます。名簿の順です。毎週回す当番は、曜日を一度選ぶと一年分の日付を入れられます。" : "去年の順番を保ち、免除の期間に当たる人と今の名簿にない人を担当から外します。班や団体で書かれた担当はそのまま残します。"}</p>
+      : comparison?.hasPreviousTable === false ? "去年の表がないため、班と世帯を名簿の順で並べます。名簿の順です。" : "去年の表の日と班と世帯を、今年の日に合わせて並べます。免除の期間に当たる人と今の名簿にない人を担当から外します。班や団体で書かれた担当はそのまま残します。"}</p>
     {schedule ? <details class="fold"><summary>曜日を直す</summary><div>{weeklyForm}</div></details> : <>{weeklyForm}<p>毎週回す当番でなければ、下の操作で去年の表や名簿から作れます。</p></>}
     {comparison ? <>
       {schedule ? <p>名簿に加わった世帯: {comparison.added.join("、") || "ありません。"}<br />名簿から外れた世帯: {comparison.removed.join("、") || "ありません。"}</p> : comparison.hasPreviousTable !== false ? <>
@@ -52,7 +52,7 @@ admin.post("/rota/:projectId/weekly", async (c) => {
   const { ward, account } = c.var;
   const id = c.req.param("projectId");
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
-  if (!project || project.closedAt || !(await projectFeatures(c.env.DB, ward.wardId, id)).has("assign")) return c.notFound();
+  if (!project || project.closedAt || !(await projectFeatures(c.env.DB, ward.wardId, id)).rota) return c.notFound();
   const value = String((await c.req.formData()).get("weekday") ?? "");
   const weekday = /^[0-6]$/.test(value) ? Number(value) : -1;
   const previous = await lastPreparation(c.env.DB, ward.wardId, id);
@@ -75,7 +75,7 @@ admin.use("/projects/:projectId/draft/duty_roster/start", async (c, next) => {
   const { ward } = c.var;
   const id = c.req.param("projectId");
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
-  if (!project || project.closedAt || !(await projectFeatures(c.env.DB, ward.wardId, id)).has("assign")) return next();
+  if (!project || project.closedAt || !(await projectFeatures(c.env.DB, ward.wardId, id)).rota) return next();
   const previous = await lastPreparation(c.env.DB, ward.wardId, id);
   await next();
   const location = c.res.headers.get("location");
@@ -88,7 +88,7 @@ admin.get("/rota/:projectId/result", async (c) => {
   const { ward } = c.var;
   const id = c.req.param("projectId");
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
-  if (!project || !(await projectFeatures(c.env.DB, ward.wardId, id)).has("assign")) return c.notFound();
+  if (!project || !(await projectFeatures(c.env.DB, ward.wardId, id)).rota) return c.notFound();
   const draft = adminPath(ward, `/projects/${id}/draft/duty_roster`);
   const title = c.req.query("done") === "updated" ? "今の名簿と免除を下書きに反映しました" : "当番の下書きを作りました";
   return c.html(<AdminPage ward={ward} account={c.var.account} title={title}

@@ -74,7 +74,7 @@ admin.get("/projects/:projectId/draft", async (c) => {
     {c.req.query("notice") === "restored" ? <Notice>前の下書きを戻して、新しい下書きとして保存しました。</Notice> : null}
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     {listDraftPacks().map((pack) => getDraftPack(pack.kind, taskDocumentKind(tasks, pack.kind))).map((pack) => <section class="panel"><h2><a href={adminPath(ward, `/projects/${id}/draft/${pack.kind}`)}>{pack.title}</a></h2><p>{written.results.some((row) => row.kind === pack.kind) || (pack.kind === "duty_roster" && dutyWritten) ? "下書きがあります。" : "まだありません。"}{SEE_LABEL[pack.scope]}</p>
-      <form method="post" action={adminPath(ward, `/projects/${id}/draft/${pack.kind}/start`)}><button class="secondary">{features.has("assign") && pack.kind === "duty_roster" ? "当番の下書きを作る" : "AIに下書きを頼む"}</button></form>
+      <form method="post" action={adminPath(ward, `/projects/${id}/draft/${pack.kind}/start`)}><button class="secondary">{features.rota && pack.kind === "duty_roster" ? "当番の下書きを作る" : "AIに下書きを頼む"}</button></form>
     </section>)}
     <div class="action-links"><a class="button secondary" href={adminPath(ward, `/publish/${id}`)}>知らせる画面へ</a></div>
   </Layout>);
@@ -141,11 +141,11 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
   const oldDates = [...new Set(state.items.find((item) => item.key === "date_time")?.references.flatMap((ref) => ref.content.match(/\d{1,2}月\d{1,2}日/g) ?? []) ?? [])].filter((date) => body.text.includes(date) && !dateValue.includes(date));
   const bodyCheck = c.req.query("notice") === "saved" ? documentBodyCheckMessage(c.req.query("check_body")) : null;
   const flyerState = FLYER_KINDS.includes(kindRaw) ? await flyerPanelState(c.env, ward.wardId, id, kindRaw) : null;
-  const rota = features.has("assign") && kindRaw === "duty_roster" ? await rotaPanel(c.env.DB, ward, id) : null;
+  const rota = features.rota && kindRaw === "duty_roster" ? await rotaPanel(c.env.DB, ward, id) : null;
   // 住民へのメッセージ（案内、募集、連絡、報告）で、住民向けの下書きは、この画面の一番下から住民に送る。
   const sendable = FLYER_KINDS.includes(kindRaw) && scope === "public";
   const sentBefore = versions.results.some((version) => version.published_at);
-  const rotaNotes = features.has("assign") && kindRaw === "duty_roster" ? await rotaRowNotes(c.env.DB, ward.wardId, id) : [];
+  const rotaNotes = features.rota && kindRaw === "duty_roster" ? await rotaRowNotes(c.env.DB, ward.wardId, id) : [];
   return c.html(<Layout title={`${pack.title}の下書きを直す`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, kindRaw === "duty_roster" ? `/projects/${id}/draft` : relatedTask ? `/projects/${id}/map/${relatedTask.taskId}` : `/projects/${id}/map`)}>← {kindRaw === "duty_roster" ? "下書きの一覧" : relatedTask ? relatedTask.name : `${project.title}のやること`}へ</a>
     <h1>{pack.title}の下書きを直す</h1>
@@ -183,7 +183,7 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
     </form>
     {kindRaw === "duty_roster" ? <section>
       <h2>当番の担当を直す</h2>
-      <p>{features.has("assign") ? "去年の表があればその順で、なければ名簿の順で下書きを入れます。時間帯や担当を直せます。" : "手伝いの申し込みと、世帯の返事にある手伝いから、AIが担当の下書きを入れます。"}直した行は、AIが上書きしません。</p>
+      <p>{features.rota ? "去年の表があればその順で、なければ名簿の順で下書きを入れます。時間帯や担当を直せます。" : "手伝いの申し込みと、世帯の返事にある手伝いから、AIが担当の下書きを入れます。"}直した行は、AIが上書きしません。</p>
       <div class="duty-rows">{state.tables.duties.filter((row) => row.scope === "current").map((row) => <form class="panel" method="post" action={adminPath(ward, `/projects/${id}/draft/duty-row/${row.rowId}`)}>
         <label for={`slot-${row.rowId}`}>時間帯</label><input id={`slot-${row.rowId}`} name="slot" value={String(row.data.slot ?? "")} maxlength={120} required />
         <label for={`task-${row.rowId}`}>持ち場</label><input id={`task-${row.rowId}`} name="task" value={String(row.data.task ?? "")} maxlength={200} />
@@ -202,7 +202,7 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
       </section>) : <p>前の下書きはまだありません。</p>}<p class="muted">今の下書きも残ります。</p>
     </div></details>
     {!project.closedAt ? <>
-      {features.has("assign") && kindRaw === "duty_roster" ? null : <details class="fold" id="redo"><summary>AIに言葉で頼む</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/start`)}>
+      {features.rota && kindRaw === "duty_roster" ? null : <details class="fold" id="redo"><summary>AIに言葉で頼む</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/start`)}>
         <div class="field"><label for="instruction">頼むこと</label><input id="instruction" name="instruction" type="text" maxlength={800} /><p class="help-text">{kindRaw === "notice" && features.attendance ? "例: 雨のときの場所の変更を入れてください" : minutes ? "例: 送った資料から決めたことをまとめてください" : "例: 送った資料の内容を入れてください"}</p></div><button class="secondary">AIに頼む</button>
       </form></div></details>}
       {sendable ? <><p class="muted">「{sentBefore ? "直した内容を住民に送る" : "住民に送る"}」を押すと、この内容を住民向けのページに載せ、{canSendLine(kindRaw) ? "上で選んだとおり自治会のLINEでも送り、" : ""}紙を印刷できるようにします。個人の名前や電話番号のように載せない方がよいものや、まだ決まっていないところが見つかったときだけ、送る前に確かめる画面を出します。</p>
@@ -376,7 +376,7 @@ admin.post("/projects/:projectId/draft/:kind/start", async (c) => {
   if (!project || project.closedAt) return c.notFound();
   const tasks = await projectTasks(c.env.DB, ward.wardId, id);
   const features = taskFeatures(tasks);
-  if (features.has("assign") && kindRaw === "duty_roster") {
+  if (features.rota && kindRaw === "duty_roster") {
     const ok = await prepareRota(c.env.DB, ward.wardId, id, account.accountId);
     return c.redirect(`${adminPath(ward, `/projects/${id}/draft/duty_roster`)}?${ok ? "notice=saved" : "error=rota_missing"}`, 303);
   }

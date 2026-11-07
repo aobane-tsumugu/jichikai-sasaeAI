@@ -27,7 +27,7 @@ export function taskDocumentKind(tasks: readonly FeatureTask[], document: Docume
   const f = taskFeatures(tasks);
   if (f.meeting) return f.delegation ? "general_meeting" : "board_meeting";
   if (f.submit && (["procedure", "report"].includes(document) || !f.attendance && !f.rota)) return f.request ? "request" : "city_request";
-  if (f.has("assign", "notify") && (document === "duty_roster" || !f.has("announcement"))) return "duty";
+  if (f.has("assign", "duty_roster", "notify") && (document === "duty_roster" || !f.has("announcement"))) return "duty";
   return "event";
 }
 /** 使う項目も仕事で決める。元の資料の値は削除しない。 */
@@ -59,8 +59,13 @@ export const MEETING_TASK_SQL = `EXISTS (SELECT 1 FROM project_map_tasks feature
       AND feature_task.name IN ('議案を決める', '議題を集める', '議事録をまとめる', '決めたことをまとめる', '委任と出欠を集める'))))`;
 export const DELEGATION_TASK_SQL = `EXISTS (SELECT 1 FROM project_map_tasks feature_task
   WHERE feature_task.ward_id = p.ward_id AND feature_task.project_id = p.project_id AND feature_task.removed_at IS NULL
-    AND (feature_task.task_key IN ('answers', 'delegation') OR (feature_task.task_key IS NULL
-      AND feature_task.name IN ('参加と手伝いの返事を集める', '出欠を集める', '委任と出欠を集める'))))`;
+    AND (feature_task.task_key = 'delegation' OR (feature_task.task_key IS NULL AND feature_task.name = '委任と出欠を集める')
+      OR (${MEETING_TASK_SQL} AND (feature_task.task_key = 'answers' OR (feature_task.task_key IS NULL
+        AND feature_task.name IN ('参加と手伝いの返事を集める', '出欠を集める'))))))`;
+export const ROTA_TASK_SQL = `EXISTS (SELECT 1 FROM project_map_tasks feature_task
+  WHERE feature_task.ward_id = p.ward_id AND feature_task.project_id = p.project_id AND feature_task.removed_at IS NULL
+    AND (feature_task.task_key IN ('assign', 'duty_roster') OR (feature_task.task_key IS NULL
+      AND feature_task.name IN ('担当を決める', '当番表を作る', '当番表と配置を決める'))))`;
 export const REPORT_TASK_SQL = `EXISTS (SELECT 1 FROM project_map_tasks feature_task
   WHERE feature_task.ward_id = p.ward_id AND feature_task.project_id = p.project_id AND feature_task.removed_at IS NULL
     AND (feature_task.task_key = 'report' OR (feature_task.task_key IS NULL AND feature_task.name = '報告をまとめる')))`;

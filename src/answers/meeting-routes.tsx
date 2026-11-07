@@ -12,6 +12,7 @@ import { isMeetingStatus, MEETING_LABELS, MeetingFields, meetingNoteFromBody, me
 import { saveMeetingAnswer } from "./meeting-store";
 import { isAnswerSheetReading } from "../ai/schema";
 import { formatJstDate } from "../core/time";
+import { DELEGATION_TASK_SQL } from "../project/task-features";
 
 type Meeting = { title: string; closed_at: string | null; due_on: string | null };
 type SheetReading = { original_id: string; filename: string; body: string | null };
@@ -21,7 +22,7 @@ const rootOf = (slug: string, id: string) => `/${encodeURIComponent(slug)}/admin
 async function getMeeting(db: D1Database, wardId: string, projectId: string): Promise<Meeting | null> {
   return db.prepare(`SELECT p.title, p.closed_at, d.due_on FROM projects p LEFT JOIN project_deadlines d
     ON d.ward_id = p.ward_id AND d.project_id = p.project_id AND d.kind = 'answer_due'
-    WHERE p.ward_id = ? AND p.project_id = ? AND p.kind = 'general_meeting'`)
+    WHERE p.ward_id = ? AND p.project_id = ? AND ${DELEGATION_TASK_SQL}`)
     .bind(wardId, projectId).first<Meeting>();
 }
 
