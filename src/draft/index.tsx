@@ -25,6 +25,7 @@ import { startMaterialDraft } from "./start";
 import { getMeetingMaterials, meetingMaterialInstruction, MeetingMaterialsView } from "./meeting-materials";
 import { rotaPanel, rotaRowNotes } from "../rota";
 import { prepareRota } from "../rota/store";
+import { FlyerPanel, flyerPanelState, mountFlyerRoutes, readFlyerInput, saveFlyer } from "./notice-flyers";
 
 const SEE_LABEL: Record<Scope, string> = { public: "だれでも読める", space: "実行委員と班長だけ", staff: "役員だけ" };
 const ERROR_MESSAGES: Readonly<Record<string, string>> = {
@@ -39,6 +40,7 @@ const ERROR_MESSAGES: Readonly<Record<string, string>> = {
 };
 
 const admin = new Hono<AdminEnv>();
+mountFlyerRoutes(admin);
 admin.get("/projects/:projectId/draft/rain-sent", rainSent);
 const isKind = (value: string): value is DocumentKind => (DOCUMENT_KINDS as readonly string[]).includes(value);
 function parseBody(raw: string): DraftBody {
@@ -128,6 +130,7 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
   const dateValue = body.items.find((item) => item.key === "date_time")?.content ?? "";
   const oldDates = [...new Set(state.items.find((item) => item.key === "date_time")?.references.flatMap((ref) => ref.content.match(/\d{1,2}月\d{1,2}日/g) ?? []) ?? [])].filter((date) => body.text.includes(date) && !dateValue.includes(date));
   const bodyCheck = c.req.query("notice") === "saved" ? documentBodyCheckMessage(c.req.query("check_body")) : null;
+  const flyerState = ["announcement", "notice"].includes(kindRaw) ? await flyerPanelState(c.env, ward.wardId, id, kindRaw) : null;
   const rota = project.kind === "duty" && kindRaw === "duty_roster" ? await rotaPanel(c.env.DB, ward, id) : null;
   const rotaNotes = project.kind === "duty" && kindRaw === "duty_roster" ? await rotaRowNotes(c.env.DB, ward.wardId, id) : [];
   return c.html(<Layout title={`${pack.title}の下書きを直す`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
@@ -145,7 +148,7 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
     <MeetingMaterialsView ward={ward} materials={meetingMaterials} />
     {minutes ? <a class="button secondary" href={adminPath(ward, `/close/${id}`)}>議事録を残して終わりにする</a> : null}
     {rota}
-    <form id="draft-form" method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/save`)}>
+    <form id="draft-form" method="post" enctype="multipart/form-data" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/save`)}>
       <input type="hidden" name="based_on" value={baseVersion} />
       <div class="field"><label for="title">題</label><input id="title" name="title" value={title} maxlength={100} required /></div>
       {project.kind !== "event" ? <p>紙の見出し: {paperHeading(project.title, document?.title ?? pack.title)}</p> : null}
@@ -155,6 +158,7 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
       {kindRaw === "duty_roster" ? (["date_time", "place", "helper_slots", "rain_plan"] as const).map(field) : null}
       <input type="hidden" name="item_content" value={body.items.find((item) => item.key === "content")?.content ?? ""} />
       {kindRaw === "duty_roster" ? body.items.filter((item) => !["date_time", "place", "helper_slots", "rain_plan", "content"].includes(item.key)).map((item) => <input type="hidden" name={`item_${item.key}`} value={item.content} />) : [...ITEMS_BY_KIND[project.kind]].filter((key) => !["date_time", "place", "rain_plan", "content"].includes(key)).sort((a, b) => Number(b === "helper_slots") - Number(a === "helper_slots")).map(field)}
+      {flyerState && !project.closedAt ? <FlyerPanel c={c} projectId={id} state={flyerState} /> : null}
       <p><button class="secondary" name="after" value="paper">保存して紙の見え方を見る</button></p><p class="muted">撮って役員のグループへ送ると、見てもらえます。まだ知らせていません。</p>
       {kindRaw === "duty_roster" ? null : <details class="fold"><summary>誰に見せるかを変える</summary><div class="choice">{SCOPES.map((value) => <label><input type="radio" name="scope" value={value} checked={value === scope} /> {value === "public" ? "だれでも読める" : value === "space" ? "実行委員と班長だけ" : "役員だけ"}</label>)}</div></details>}
     </form>
@@ -252,6 +256,8 @@ admin.post("/projects/:projectId/draft/rain-notice", async (c) => {
   const state = await getProjectState(c.env.DB, ward.wardId, id);
   if (!state || !state.documents.some((document) => document.kind === "announcement" && document.publishedVersionNo !== null)) return c.notFound();
   const body = JSON.stringify({ text, items: [{ key: "place", content: place }, { key: "date_time", content: dateTime }] });
+  const flyerInput = await readFlyerInput(c.env, ward.wardId, id, "notice", form);
+  if (typeof flyerInput === "string") return rainDraft(c, flyerInput);
   const ok = await saveDocument(c.env.DB, ward.wardId, id, account.accountId, {
     kind: "notice", title: "雨の変更のお知らせ", scope: "public",
     body, basedOn: state.project.stateVersion,
@@ -259,6 +265,8 @@ admin.post("/projects/:projectId/draft/rain-notice", async (c) => {
   if (!ok) return c.redirect(`${adminPath(ward, `/projects/${id}/draft/notice`)}?error=notice_save_failed`, 303);
   const saved = await latestFields(c, "notice");
   if (!saved) return c.notFound();
+  try { await saveFlyer(c.env, ward.wardId, id, saved.get("versionId")!, flyerInput); }
+  catch { return rainDraft(c, "連絡の文は保存しましたが、チラシの画像を保存できませんでした。連絡の下書きから画像を付け直してください。"); }
   saved.set("lineDelivery", form.get("lineDelivery") === "skip" ? "skip" : "send");
   const warnings = await checkPublicDraft(c.env.DB, ward.wardId, id, "notice", body);
   // 混入が見つかった時は既存の確認に出す。見つからなければ、見本の「配る」でそのまま配る。
@@ -286,6 +294,8 @@ admin.post("/projects/:projectId/draft/:kind/save", async (c) => {
   if (body.text.replace(/\r\n/g, "\n").length > DOCUMENT_TEXT_LIMIT) return retry(`本文が長いため保存できませんでした。${DOCUMENT_TEXT_LIMIT}文字以内にして、もう一度保存してください。`, 400);
   if (!title.trim() || title.length > 100) return retry("題を1文字以上100文字以内で書いて、もう一度保存してください。", 400);
   if (body.items.some((item) => item.content.length > 2000)) return retry("本文以外の欄は、それぞれ2000文字以内にして、もう一度保存してください。", 400);
+  const flyerInput = ["announcement", "notice"].includes(kindRaw) ? await readFlyerInput(c.env, ward.wardId, id, kindRaw, form) : null;
+  if (typeof flyerInput === "string") return retry(flyerInput, 400);
   let ok: boolean;
   try {
     ok = await saveDocument(c.env.DB, ward.wardId, id, account.accountId, { kind: kindRaw, title, scope: scopeRaw as Scope, body: JSON.stringify(body), basedOn: Number(basedOn) }, bodyChecks);
@@ -293,6 +303,13 @@ admin.post("/projects/:projectId/draft/:kind/save", async (c) => {
     return retry("保存を最後まで終えられませんでした。時間をおいて、もう一度保存してください。", 503);
   }
   if (!ok) return retry(state.project.closedAt ? `${state.project.title}は終わりにしました。終わりを取り消すと保存できます。` : "保存できませんでした。入力した内容を確かめて、もう一度保存してください。", 400);
+  if (flyerInput) {
+    try {
+      const saved = await latestFields(c, kindRaw);
+      if (!saved) return c.notFound();
+      await saveFlyer(c.env, ward.wardId, id, saved.get("versionId")!, flyerInput);
+    } catch { return retry("文は保存しましたが、チラシの画像を保存できませんでした。画像を選び直して保存してください。", 503); }
+  }
   if (ok && form.get("after") === "paper") {
     const saved = await latestFields(c, kindRaw);
     if (saved) return c.redirect(adminPath(ward, `/print/${id}/${saved.get("documentId")}/${saved.get("versionNo")}/preview`), 303);

@@ -10,7 +10,9 @@ import { Notice } from "../core/ui";
 import type { Context } from "hono";
 import { formatDateText, formatJst } from "../core/time";
 import type { AdminEnv } from "../env";
-import { getLineAllowance, lineAccessToken, LINE_NOT_CONFIGURED, sendLineTitleAndUrl } from "../line/api";
+import { broadcastLineText, getLineAllowance, lineAccessToken, LINE_NOT_CONFIGURED, sendLineTitleAndUrl } from "../line/api";
+import { getNoticeFlyer, noticeFlyerPath, noticeLineText } from "./notice-flyers";
+import { previousFlyer } from "../draft/notice-flyers";
 import { answerDeadlineFromDraft, getRoster, parseDistribution } from "../answers/api";
 import { checkPublicDraft } from "./check";
 import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, ITEM_SCREEN_LABEL, isItemKey, type DocumentKind, type ProjectKind } from "../project/model";
@@ -283,6 +285,7 @@ async function confirmPublication(c: Context<AdminEnv>) {
     (form.get("versionNo") && Number(form.get("versionNo")) !== draft.version_no)) return c.notFound();
   if (draft.scope !== "public" && draft.scope !== "space") return c.notFound();
   const publicScope = draft.scope === "public";
+  const flyer = publicScope ? await getNoticeFlyer(c.env.DB, ward.wardId, draft.version_id) : null;
   if (publicScope && draft.published_at) return c.notFound();
   // 当番表と進め方は、配ると今の表が一緒に残るので、確認にも表を出す。配り直せるのは表が変わった時だけ。
   const spaceTables = !publicScope && ["duty_roster", "procedure"].includes(draft.kind) ? await currentPublicationTables(c.env.DB, ward.wardId, projectId) : null;
@@ -338,7 +341,7 @@ async function confirmPublication(c: Context<AdminEnv>) {
       {warnings.filter((warning) => !warning.startsWith("まだ決まっていないところ")).map((warning) => <PublicWarning finding={warning} />)}
       {draft.body.includes(PENDING) ? <div class="notice warn"><strong>まだ決めていないところがあります</strong><p>「（確認中）」のところは、紙とページから外して知らせます。入れるときは下書きを直してください。</p><a class="quiet" href={adminPath(ward, `/projects/${projectId}/draft/${draft.kind}`)}>下書きを直す</a></div> : null}
       <div class="compare"><section class="compare-paper"><b>紙{copies ? `（${recipientScope === "all_households" ? "全戸" : "加入世帯"}に${copies}部）` : ""}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} kind={draft.kind} />{tablesPreview}{withAnswer ? <p class="answer-slip-preview"><b>回答票</b>　切り取って班長か役員に渡します。{project.kind === "general_meeting" ? "出席、委任、欠席の欄があります。" : "世帯の代表者（ふつうは世帯主）のお名前、人数、手伝いの欄があります。"}</p> : null}</div></section>
-        <section><b>{publicScope ? "住民向けのページ" : "実行委員と班長のページ"}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} kind={draft.kind} />{tablesPreview}{withAnswer ? <p class="muted">この下に「出欠を答える」のボタンが出ます。</p> : null}</div></section></div>
+        <section><b>{publicScope ? "住民向けのページ" : "実行委員と班長のページ"}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} kind={draft.kind} />{flyer?.flyer_id ? <img src={adminPath(ward, `/projects/${projectId}/flyer/${draft.version_id}`)} alt={draft.title} style="max-width:100%;height:auto" /> : null}{tablesPreview}{withAnswer ? <p class="muted">この下に「出欠を答える」のボタンが出ます。</p> : null}</div></section></div>
       <p class="compare-link"><a class="quiet" href={printHref}>紙の見え方を見る</a></p><p class="muted">{publicScope ? "知らせたあとも、住民向けのページからは取り下げられます。" : "実行委員と班長のページに載せます。住民向けのページには載りません。"}</p>
       <div class="action-bar"><button type="submit">{sendLabel}</button><a class="button secondary" href={editHref}>下書きに戻る</a></div>
     </form></div>
@@ -363,6 +366,11 @@ admin.post("/publish/:projectId/send", async (c) => {
       WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_id = ? AND v.version_no = ?`)
     .bind(ward.wardId, projectId, documentId, versionId, versionNo).first<DraftRow>();
   if (!row || row.scope !== "public" || row.published_at) return c.notFound();
+  const flyer = await getNoticeFlyer(c.env.DB, ward.wardId, versionId);
+  if (["announcement", "notice"].includes(row.kind) && !flyer && await previousFlyer(c.env.DB, ward.wardId, projectId, row.kind)) {
+    return adminResult(c, "前の知らせにはチラシの画像が付いていました。下書きで付け直すか、付けないかを選んでください。", 409,
+      { href: adminPath(ward, `/projects/${projectId}/draft/${row.kind}`), label: "下書きに戻る" }, "画像を選んでから、もう一度知らせてください。");
+  }
   if (row.kind === "duty_roster") return adminResult(c, "当番表は公開せず、実行委員と班長のページに載せてください。", 400, { href: adminPath(c.var.ward, `/publish/${encodeURIComponent(c.req.param("projectId"))}`), label: "知らせる画面に戻る" }, "知らせる内容と相手を確かめて、もう一度操作してください。");
   if (!(DOCUMENT_KINDS as readonly string[]).includes(row.kind)) return adminResult(c, "文書の種類を確認できません。", 400, { href: adminPath(c.var.ward, `/publish/${encodeURIComponent(c.req.param("projectId"))}`), label: "知らせる画面に戻る" }, "知らせる内容と相手を確かめて、もう一度操作してください。");
   const now = nowIso();
@@ -440,7 +448,14 @@ admin.post("/publish/:projectId/send", async (c) => {
           lineStatus = "failed";
           lineError = allowance.friends === null ? "集計の済んだ友だちの人数を取得できないため、自治会のLINEには送っていません。住民向けのページと紙は使えます。" : "今月、自治会のLINEで送れる通数が足りないため、送っていません。";
         } else {
-          await sendLineTitleAndUrl(token, paperHeading(project.title, row.title), publicUrl);
+          if (flyer?.flyer_id) {
+            const root = new URL(publicUrl).origin;
+            const answerUrl = `${root}/${ward.slug}/answer/${encodeURIComponent(projectId)}`;
+            await broadcastLineText(token, noticeLineText(paperHeading(project.title, row.title), publishedBody, answerUrl), fetch, {
+              originalContentUrl: root + noticeFlyerPath(ward.slug, versionId, flyer.flyer_id),
+              previewImageUrl: root + noticeFlyerPath(ward.slug, versionId, flyer.flyer_id, true),
+            });
+          } else await sendLineTitleAndUrl(token, paperHeading(project.title, row.title), publicUrl);
           lineStatus = "sent";
           lineSentAt = nowIso();
         }

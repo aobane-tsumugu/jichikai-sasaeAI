@@ -13,6 +13,8 @@ import { collectsAttendance, documentTitle, paperHeading } from "../project/head
 import type { DocumentKind, ProjectKind } from "../project/model";
 import { PUBLIC_PRIVACY_NOTICE } from "../settings/keys";
 import { activityFacts } from "./activity";
+import { WardBucket } from "../core/storage";
+import { noticeFlyerPath } from "../publish/notice-flyers";
 
 interface PublicProject {
   project_id: string;
@@ -26,6 +28,8 @@ interface PublicProject {
   body: string;
   published_at: string;
   unpublished_at: string | null;
+  version_id: string;
+  flyer_id: string | null;
 }
 
 interface PublicActivity { project_id: string; title: string; published_at: string; published_body: string; }
@@ -47,11 +51,12 @@ function parseActivity(raw: string): ActivityBody | null {
 
 async function listPublic(db: D1Database, wardId: string, projectId?: string, includeLowered = false): Promise<PublicProject[]> {
   const sql = `SELECT p.project_id, p.title, p.kind AS project_kind, p.closed_at, d.kind, v.version_no, d.document_id, COALESCE(v.title, d.title) AS document_title,
-      v.body, r.published_at, r.unpublished_at
+      v.body, v.version_id, f.flyer_id, r.published_at, r.unpublished_at
     FROM publication_records r
     JOIN projects p ON p.ward_id = r.ward_id AND p.project_id = r.project_id
     JOIN documents d ON d.ward_id = r.ward_id AND d.document_id = r.document_id
     JOIN document_versions v ON v.ward_id = r.ward_id AND v.version_id = r.version_id
+    LEFT JOIN notice_flyers f ON f.ward_id = r.ward_id AND f.version_id = r.version_id
     WHERE r.ward_id = ? AND v.scope = 'public'${includeLowered ? "" : " AND r.unpublished_at IS NULL AND NOT EXISTS (SELECT 1 FROM publication_records newer WHERE newer.ward_id = r.ward_id AND newer.document_id = r.document_id AND newer.version_no > r.version_no)"}${projectId ? " AND r.project_id = ?" : ""}
     ORDER BY r.published_at DESC, v.version_no DESC`;
   const statement = db.prepare(sql);
@@ -75,6 +80,22 @@ async function pageFooter(c: { env: { DB: D1Database }; var: { ward: { wardId: s
 
 const pub = new Hono<WardEnv>();
 
+// 原本のパスや下書きの番号から画像を読める入口は置かない。
+pub.get("/flyers/:versionId/:flyerId/:file", async (c) => {
+  const file = c.req.param("file");
+  if (file !== "image.jpg" && file !== "preview.jpg") return c.notFound();
+  const flyer = await c.env.DB.prepare(`SELECT f.r2_path, f.preview_r2_path FROM notice_flyers f
+    JOIN publication_records r ON r.ward_id = f.ward_id AND r.version_id = f.version_id AND r.project_id = f.project_id
+    JOIN document_versions v ON v.ward_id = r.ward_id AND v.version_id = r.version_id
+    WHERE f.ward_id = ? AND f.version_id = ? AND f.flyer_id = ?
+      AND r.unpublished_at IS NULL AND v.published_at IS NOT NULL AND v.scope = 'public'`)
+    .bind(c.var.ward.wardId, c.req.param("versionId"), c.req.param("flyerId")).first<{ r2_path: string; preview_r2_path: string }>();
+  c.header("Cache-Control", "no-store");
+  if (!flyer) return c.notFound();
+  const object = await new WardBucket(c.env.ORIGINALS, c.var.ward.wardId).get(file === "image.jpg" ? flyer.r2_path : flyer.preview_r2_path);
+  return object ? new Response(object.body, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } }) : c.notFound();
+});
+
 pub.get("/line", async (c) => {
   const lineUrl = await getOfficialLineUrl(c.env.DB, c.var.ward.wardId);
   const contact = await getPublicContact(c.env.DB, c.var.ward.wardId);
@@ -84,7 +105,7 @@ pub.get("/line", async (c) => {
     <p class="lead">自治会のLINEを友だちに追加すると、新しい案内や変更が、スマホのLINEに届きます。追加は、してもしなくてもかまいません。</p>
     {lineUrl ? <><div class="action-links"><a class="button" href={lineUrl}>LINEで友だちに追加する</a></div><p class="muted">LINEが開きます。</p></> : <p>この自治会のLINEは、まだ用意されていません。</p>}
     <h2>追加しなくても読めます</h2><p>案内は、このページと、紙の回覧、掲示でも読めます。LINEを使わない方は、追加しなくてかまいません。</p>
-    <h2>届くもの</h2><p>案内の題と、このページへのリンクが届きます。くわしい内容は、リンクを開いて、このページで読みます。</p>
+    <h2>届くもの</h2><p>案内の題とリンクが届きます。チラシが付いているときは、画像と日時・場所、返事のページへのリンクが届きます。くわしい内容は、住民向けのページで読めます。</p>
     <div class="sheet-preview"><p><b>届く知らせの例</b></p><p style="margin-bottom: 0; overflow-wrap: anywhere">秋の収穫祭のご案内<br />{`${new URL(c.req.url).origin}/${c.var.ward.slug}/p/akimatsuri`}</p></div>
     <h2>名前や世帯の登録はいりません</h2><p>友だちに追加すれば、受け取れます。名前、世帯、班を伝える必要はありません。LINEの中で、質問したり答えたりする必要もありません。</p>
     <h2>届かなくしたいとき</h2><p>LINEで、自治会のLINEのアカウントをブロックすると、届かなくなります。もう一度追加すれば、また届きます。</p>
@@ -252,6 +273,7 @@ pub.get("/p/:projectId", async (c) => {
         <h2>{latest.kind === "announcement" ? changes ? `${date(latest)}に知らせた案内` : "くわしい案内" : title}</h2>
         {latest.kind === "announcement" && changes ? <p>変わったところは、上のお知らせのとおりです。</p> : null}
         <ArticleBody body={latest.body} title={{ project: latest.title, document: latest.document_title }} kind={latest.kind} hide={latest.kind === "announcement" && !changes ? ["date_time", "place", "rain_plan", "due", "public_contact"] : []} />
+        {latest.flyer_id && !(latest.kind === "announcement" && newerNotice) ? <img src={noticeFlyerPath(c.var.ward.slug, latest.version_id, latest.flyer_id)} alt={latest.document_title} style="max-width:100%;height:auto" /> : null}
         <p class="muted">{date(latest)}に載せました</p>
         {earlier.map((older) => <details>
           <summary>変更前の{event ? "案内" : publicDocumentTitle(older)}（{date(older)}に載せたもの）</summary>

@@ -189,14 +189,18 @@ export async function sendLineTitleAndUrl(
   if (!response.ok) throw new Error(`LINE API request failed (${response.status})`);
 }
 
-/** 市の通知など、役員が内容を整えてから届ける文を公式 LINE で一斉送信する。 */
-export async function broadcastLineText(token: string, text: string, request: typeof fetch = fetch): Promise<void> {
+/** 役員が整えた文と、指定した場合はチラシを、一度の一斉送信で届ける。 */
+export async function broadcastLineText(token: string, text: string, request: typeof fetch = fetch,
+  image?: { originalContentUrl: string; previewImageUrl: string }): Promise<void> {
   const message = text.trim();
   if (!message || message.length > 5000) throw new Error("送る文を確かめてください。");
+  if (image && [image.originalContentUrl, image.previewImageUrl].some((url) => new URL(url).protocol !== "https:")) {
+    throw new Error("画像のURLはHTTPSにしてください。");
+  }
   const response = await request(`${LINE_API}/v2/bot/message/broadcast`, {
     method: "POST",
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body: JSON.stringify({ messages: [{ type: "text", text: message }] }),
+    body: JSON.stringify({ messages: [{ type: "text", text: message }, ...(image ? [{ type: "image", ...image }] : [])] }),
   });
   if (!response.ok) throw new Error(`LINE API request failed (${response.status})`);
 }
