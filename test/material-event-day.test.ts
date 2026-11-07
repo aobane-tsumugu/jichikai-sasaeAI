@@ -85,7 +85,7 @@ it("チラシの日時を段取りと一年とトップにつなぎ、手で入�
       const html = await response.text();
       expect(html).toContain(project.title);
       expect(html).toContain("11月19日");
-      if (path === "/") expect(html).toContain(`${project.title}　当番表と配置を決める`);
+      if (path === "/") expect(html).toContain("「当番表と配置を決める」");
     }
 
     // 年のない表記は、この行事の年から補う。

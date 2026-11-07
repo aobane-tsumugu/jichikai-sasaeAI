@@ -35,7 +35,7 @@ export interface YearRow { key: string; title: string; note: string; state: Year
 export const ACTIVITY_STEPS = [1, 5, 15, 40] as const;
 type Level = 1 | 2 | 3 | 4 | 5;
 const levelOf = (count: number): Level => (ACTIVITY_STEPS.filter((step) => count >= step).length + 1) as Level;
-const activityNote = (materials: number, answers: number) => [materials ? `資料${materials}件` : "", answers ? `出欠の返事${answers}件` : ""].filter(Boolean).join("　");
+const activityNote = (materials: number, answers: number) => materials || answers ? `${[materials ? `資料${materials}件` : "", answers ? `出欠の返事${answers}件` : ""].filter(Boolean).join("と")}が入っています。` : "";
 /** 凡例の段の言葉。境目から作るので、境目を直せば凡例も変わる。 */
 const levelLabels = (): string[] => ACTIVITY_STEPS.map((step, index) => index === 0 ? `${step - 1}件` : step - 1 === ACTIVITY_STEPS[index - 1] ? `${step - 1}件` : `${ACTIVITY_STEPS[index - 1]}〜${step - 1}件`).concat(`${ACTIVITY_STEPS[ACTIVITY_STEPS.length - 1]}件から`);
 
@@ -90,14 +90,14 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
     const firstTask = state?.mapTasks.map((task) => task.periodStart).filter((value): value is string => Boolean(value)).sort()[0];
     claim(project.kind, month, project.title);
     const start = firstTask && Number(firstTask.slice(0, 4)) === Number(day.slice(0, 4)) ? position(monthOf(firstTask), dayOf(firstTask)) : position(month, dayOf(day));
-    rows.push({ key: project.projectId, title: project.title, note: [formatJstDate(day), activityNote(materialsOf(project.projectId), answersOf(project.projectId))].filter(Boolean).join("　"), state: "fact", level: levelOf(materialsOf(project.projectId) + answersOf(project.projectId)), from: start, to: Math.max(position(month, dayOf(day)) + 2, start + 2), href: adminPath(ward, `/projects/${project.projectId}/map`), order: position(month, dayOf(day)) });
+    rows.push({ key: project.projectId, title: project.title, note: [formatJstDate(day), activityNote(materialsOf(project.projectId), answersOf(project.projectId))].filter(Boolean).join("。"), state: "fact", level: levelOf(materialsOf(project.projectId) + answersOf(project.projectId)), from: start, to: Math.max(position(month, dayOf(day)) + 2, start + 2), href: adminPath(ward, `/projects/${project.projectId}/map`), order: position(month, dayOf(day)) });
   });
   for (const record of records.results) {
     if (!record.event_day || rows.some((row) => row.title === record.title)) continue;
     const month = monthOf(record.event_day);
     claim(record.kind, month, record.title);
     const at = position(month, dayOf(record.event_day));
-    rows.push({ key: record.project_id, title: record.title, note: [`${record.year}年に終わったもの`, activityNote(materialsOf(record.project_id), answersOf(record.project_id))].filter(Boolean).join("　"), state: "fact", level: levelOf(materialsOf(record.project_id) + answersOf(record.project_id)), from: at, to: at + 2, href: adminPath(ward, `/archive/${record.project_id}`), order: at });
+    rows.push({ key: record.project_id, title: record.title, note: [`${record.year}年に終わったもの`, activityNote(materialsOf(record.project_id), answersOf(record.project_id))].filter(Boolean).join("。"), state: "fact", level: levelOf(materialsOf(record.project_id) + answersOf(record.project_id)), from: at, to: at + 2, href: adminPath(ward, `/archive/${record.project_id}`), order: at });
   }
   for (const row of overrides.results.filter((entry) => entry.added && !entry.removed_at && entry.month)) {
     const at = position(row.month!);
@@ -122,14 +122,9 @@ export function nearToday(rows: YearRow[], today: number, limit = 14): YearRow[]
 }
 
 export function YearLegend() {
-  return <><div class="state-legend"><strong class="legend-title">色の見方</strong><ul>
-      <li><span class="state example">仮の内容</span>よくある例。まだこの自治会の内容ではありません</li>
-      <li><span class="state checking">AIからの質問があります</span>押すと、質問を読んで答えられます</li>
-      <li><span class="state fact">この自治会の内容</span>届いた資料や準備中のものから分かった予定です</li>
-      <li><span class="state old">見直す時期です</span>入ってから時間がたちました</li>
-    </ul></div>
-    <div class="shade-legend"><p>紺が濃い予定ほど、送った資料や出欠の返事がたくさん入っています。</p>
-      <ol>{levelLabels().map((label, index) => <li><i class={`l${index + 1}`} />{label}</li>)}</ol></div></>;
+  return <div class="shade-legend"><p>灰色の予定は、よくある自治会の例を仮に置いたもので、まだこの自治会のことではありません。押すと、この自治会ではどうしているかを入れられます。紺の予定は、届いた資料や準備中のものから分かった、この自治会の予定です。紺が濃いほど、資料や出欠の返事がたくさん入っています。黄色の予定には、AIからの質問があります。</p>
+    <p>濃さの目安（資料と返事の数）:</p>
+    <ol>{levelLabels().map((label, index) => <li><i class={`l${index + 1}`} />{label}</li>)}</ol></div>;
 }
 
 export function YearMap({ rows, today }: { rows: YearRow[]; today: number }) {

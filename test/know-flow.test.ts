@@ -103,7 +103,7 @@ it("行き先のない写真は聞かずに自治会の資料へ残し、名簿�
   expect(inbox).toContain("この資料で、世帯の名簿を入れ直しますか？");
   expect(inbox).toContain("まだどれの資料にもしていません");
   expect(inbox).toContain("架空の紙1");
-  expect(await read(`${root}/`, cookie)).toContain("届いた写真やファイルのうち、1件にAIからの質問があります");
+  expect(await read(`${root}/`, cookie)).toContain("届いた写真やファイルのうち1件は、どれの資料かをAIが決められませんでした");
   expect(await read(`${root}/files`, cookie)).toContain("架空の紙1");
   await postForm(realApp, `${root}/inbox/roster/${rosterJob}/skip`, {}, cookie);
   const after = await read(`${root}/inbox`, cookie);
@@ -118,9 +118,9 @@ it("一年の地図は一般の例から始まり、行事が入ると置き換�
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   const empty = await read(`${root}/`, cookie);
-  expect(empty).toContain("まず、手元の資料を十件送ってください");
+  expect(empty).toContain("まず、手元にある自治会の資料を送ってください");
   expect(empty).toContain("年末の役員会");
-  expect(empty).toContain("仮の内容");
+  expect(empty).toContain("灰色の予定は、よくある自治会の例を仮に置いたもので");
   await postForm(realApp, `${root}/year/drill/remove`, {}, cookie);
   const year = await read(`${root}/year`, cookie);
   expect(year).toContain("外した予定（1つ）");
@@ -194,7 +194,7 @@ it("作ったばかりの行事は、行事が多い区でもトップから開�
   const home = await read(`${root}/`, cookie);
   expect(home).toContain(`/projects/${fresh.projectId}/map`);
   expect(home).toContain("架空の作ったばかりの要望");
-  expect(home).toContain("ほかに準備中のもの（16件）は一年の画面で見る");
+  expect(home).toContain("この自治会の一年を全部見る");
 });
 
 it("紙は行事から外して自治会の資料だけに置け、移しても前の行事の中身は消さずに知らせ、地図のどの行も外して戻せる", async () => {
