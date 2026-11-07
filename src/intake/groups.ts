@@ -3,12 +3,13 @@ import { projectTasks, firstTaskDraft, taskDocumentKind } from "../project/task-
 import { newId, nowIso } from "../core/ids";
 import type { Env } from "../env";
 import { createProject, listOpenProjects, listProjects, normalizeKey } from "../project/api";
-import { startTemplate } from "../project/start-template";
+import { normalizeStartTitle, startTemplate } from "../project/start-template";
+import { yearItemsForStart } from "../know/year";
+import { MAP_TEMPLATES, templatePeriod } from "../map/template";
 import { copySeed } from "../archive";
 import type { ProjectKind } from "../project/model";
-import type { ProjectSuggestion } from "../ai/schema";
+import { cleanProjectSuggestions, type ProjectSuggestion } from "../ai/schema";
 import { subset } from "./reading-subset";
-import { cleanSuggestions } from "../ai/suggest";
 import { startTask } from "../ai/api";
 import { dispatchProject } from "../ai/session";
 import { attachClarificationQuestions } from "../line/clarifications";
@@ -21,15 +22,15 @@ export interface MaterialGroup {
   key: string;
   title: string;
   kind: ProjectSuggestion["kind"];
+  /** この自治会の一年の予定の行の印。古い読みには無い。 */
+  yearItem?: string;
   materials: { jobId: string; original: OriginalRow; readings: ReadingRow[] }[];
   /** 同じ行事が進んでいれば、その行事。「始める」か「入れる」かはこれで決める。 */
   joins: { projectId: string; title: string; year: number } | null;
 }
 
 /** 当番や役員会の資料は、行事の資料の一部として送られる。行事と同じ題なら一つにまとめる。 */
-const EVENT_KINDS: readonly ProjectSuggestion["kind"][] = ["event", "duty", "board_meeting"];
-const kindFamily = (kind: ProjectSuggestion["kind"]) => EVENT_KINDS.includes(kind) ? "event" : kind;
-const titleKey = (title: string) => normalizeKey(title).replace(/(令和\d+|20\d{2})年度?/g, "");
+const titleKey = normalizeStartTitle;
 
 /** 読み手ごとに題の長さが揺れる（収穫祭と秋の収穫祭）。片方がもう片方を含めば同じ行事と見る。 */
 function sameEvent(a: string, b: string): boolean {
@@ -49,22 +50,25 @@ export async function pendingMaterialGroups(db: D1Database, wardId: string): Pro
     AND withdrawn_at IS NULL AND status = 'read' AND via IN ('admin', 'line_direct', 'line_group') ORDER BY created_at DESC, job_id LIMIT 40`)
     .bind(wardId).all<{ job_id: string }>();
   const groups: MaterialGroup[] = [];
+  const yearItems = await yearItemsForStart(db, wardId);
   for (const job of jobs.results.reverse()) {
     const [originals, readings] = await Promise.all([listOriginals(db, wardId, job.job_id), getReadings(db, wardId, job.job_id)]);
-    const suggestions = cleanSuggestions(readings.flatMap((row) => "fields" in row.body ? row.body.project_suggestions ?? [] : []), originals.map((o) => o.original_id));
+    const suggestions = cleanProjectSuggestions(readings.flatMap((row) => "fields" in row.body ? row.body.project_suggestions ?? [] : []), originals.map((o) => o.original_id));
     const unknown: MaterialGroup["materials"] = [];
     const inThisSend = new Set<MaterialGroup>();
     for (const original of originals.filter((o) => !o.withdrawn_at)) {
       const material = { jobId: job.job_id, original, readings };
       const suggestion = suggestions.find((s) => s.original_id === original.original_id);
       if (!suggestion) { unknown.push(material); continue; }
-      let group = groups.find((g) => g.title && kindFamily(g.kind) === kindFamily(suggestion.kind) && sameEvent(g.title, suggestion.title));
+      const item = yearItems.find((entry) => entry.key === suggestion.year_item || entry.title === suggestion.year_item);
+      let group = groups.find((g) => g.title && (item && g.yearItem === item.key
+        || (!item || !g.yearItem || g.yearItem === item.key) && sameEvent(g.title, suggestion.title)));
       if (!group) {
-        group = { key: `${kindFamily(suggestion.kind)}:${normalizeKey(suggestion.title)}`, title: suggestion.title, kind: suggestion.kind, materials: [], joins: null };
+        group = { key: `material:${normalizeKey(suggestion.title)}`, title: suggestion.title, kind: "event", yearItem: item?.key, materials: [], joins: null };
         groups.push(group);
       } else {
         if (suggestion.title.length > group.title.length) group.title = suggestion.title;
-        if (suggestion.kind === "event") group.kind = "event";
+        if (item) group.yearItem = item.key;
       }
       group.materials.push(material);
       inThisSend.add(group);
@@ -137,6 +141,21 @@ function groupTitle(group: MaterialGroup): string {
   return group.title || group.materials[0]?.original.filename?.replace(/\.[^.]+$/, "") || "届いた資料";
 }
 
+/** 画面の説明と、始める時に同じ並びを使う。資料から読んだ種類は使わない。 */
+export function materialGroupTemplate(group: MaterialGroup, past: Parameters<typeof startTemplate>[1], yearItems: Awaited<ReturnType<typeof yearItemsForStart>>, title = groupTitle(group)) {
+  const item = normalizeStartTitle(title) === normalizeStartTitle(groupTitle(group))
+    ? yearItems.find((entry) => entry.key === group.yearItem) : undefined;
+  const template = startTemplate(item?.title ?? title, past, yearItems);
+  const hasRota = group.materials.some((material) => material.readings.some(({ body }) => "fields" in body && (
+    body.document_kind === "rota" || body.tables.some((table) => table.original_id === material.original.original_id
+      && table.columns.some((column) => /^(日|日付|日時|実施日|当番日)$/.test(column.trim()))
+      && table.columns.some((column) => /^(班|班名)$/.test(column.trim()))
+      && table.columns.some((column) => /^(担当|担当者|当番|担当の人)$/.test(column.trim())))
+  )));
+  return hasRota && template.taskKeys?.join(",") === "announcement,day,report"
+    ? { ...template, taskKeys: ["announcement", "assign", "day", "report"] } : template;
+}
+
 export async function startMaterialGroup(env: Env, ctx: Waitable, wardId: string, accountId: string, key: string, eventDay: string, choice: { projectId?: string; projectName?: string; kind?: ProjectKind } = {}) {
   const group = (await pendingMaterialGroups(env.DB, wardId)).find((g) => g.key === key);
   if (!group) return null;
@@ -155,10 +174,8 @@ export async function startMaterialGroup(env: Env, ctx: Waitable, wardId: string
   }
   const title = choice.projectName || groupTitle(group);
   const past = await listProjects(env.DB, wardId, { includeClosed: true });
-  // 去年の同じ予定か、一年の予定の型が名前で見つかれば、それを置く（L-313）。見つからない時は、資料から読んだ並びを使う。
-  // 資料を「どの予定の資料か」で当てる作り（L-313 の四つ目）ができるまでの、つなぎの形。
-  const byName = startTemplate(title, past);
-  const template = choice.kind ? { kind: choice.kind, from: "year_plan" as const } : byName.from !== "short" ? byName : { kind: group.kind as ProjectKind, from: "short" as const };
+  const yearItems = await yearItemsForStart(env.DB, wardId);
+  const template = materialGroupTemplate(group, past, yearItems, title);
   const project = await createProject(env.DB, wardId, {
     title, kind: template.kind, year, accountId, ...(eventDay ? { eventDay } : {}),
     ...("taskKeys" in template && template.taskKeys ? { taskKeys: template.taskKeys } : {}),
@@ -166,6 +183,21 @@ export async function startMaterialGroup(env: Env, ctx: Waitable, wardId: string
   });
   const seed = "seedProjectId" in template && template.seedProjectId ? past.find((entry) => entry.projectId === template.seedProjectId) : undefined;
   if (seed) await copySeed(env.DB, wardId, seed.projectId, project.projectId, seed.year, eventDay || null);
+  // 行事の短い型にはassignが無い。資料に当番表がある時だけ、知らせると当日の間に置く。
+  if (template.taskKeys?.includes("assign")) {
+    const assign = MAP_TEMPLATES.duty?.find((task) => task.key === "assign");
+    if (assign) {
+      const period = eventDay ? templatePeriod(assign, eventDay) : null;
+      await env.DB.batch([
+        env.DB.prepare("UPDATE project_map_tasks SET sort_order = sort_order + 1 WHERE ward_id = ? AND project_id = ? AND sort_order >= 1")
+          .bind(wardId, project.projectId),
+        env.DB.prepare(`INSERT INTO project_map_tasks
+        (task_id, ward_id, project_id, task_key, name, period_start, period_end, offset_start_days, offset_end_days, sort_order, created_at)
+        VALUES (?, ?, ?, 'assign', '担当を決める', ?, ?, ?, ?, 1, ?)`)
+          .bind(newId(), wardId, project.projectId, period?.start ?? null, period?.end ?? null, assign.start, assign.end, nowIso()),
+      ]);
+    }
+  }
   await attachGroup(env, wardId, group, project.projectId, choice.projectName || groupTitle(group));
   const tasks = await projectTasks(env.DB, wardId, project.projectId);
   const firstDraft = firstTaskDraft(tasks);

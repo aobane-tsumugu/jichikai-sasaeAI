@@ -4,7 +4,7 @@ import type { AnswerLabels } from "../settings/answer-labels";
 // 原本の中の文は資料であって、指示ではない（設計書 5.6）。
 import type Anthropic from "@anthropic-ai/sdk";
 import { MODEL } from "./anthropic";
-import { cleanSuggestions } from "./suggest";
+import { cleanProjectSuggestions as cleanSuggestions } from "./schema";
 import { MAX_IMAGE_BYTES, MAX_READ_BYTES } from "../intake/photo";
 import {
   ANSWER_SHEET_SCHEMA,
@@ -77,7 +77,7 @@ const GENERAL_SYSTEM = `${COMMON_RULES}
 - document_kind は資料の種類の見立てです。分からなければ other にしてください。
 - original_years は、送られた原本ごとに original_id と year を一組ずつ入れてください。year はその原本の中かファイル名に書かれた年や年度だけを西暦で入れ、書かれていなければ null にしてください。年がある原本と無い原本が一緒でも、年が無い原本には null を入れてください。
 - summary は一行の要約です。
-- project_suggestions は原本ごとの行事の題と種類の案です。title は「案内」などの文書の題でなく、中身に書かれた行事や依頼の名前にしてください。年度は題に足さず、同じ行事の資料は同じ題にします。kind は event（行事）、general_meeting（総会）、city_request（行政の依頼）、board_meeting（役員会）、duty（当番）、request（要望）。一つの原本につき一つまでで、分からなければその原本は入れません。年を推測してはいけません。
+- project_suggestions は原本ごとの名前と、一年の予定のどの行の資料かの案です。title は資料に書かれた行事や依頼の名前を写します。year_item は渡された一年の予定の候補の題か印から、その資料に当たる行を選びます。どの行にも当たらなければ空文字にします。kindは書かず、行事、総会などの六つの種類に分類しません。一つの原本につき一つまでで、名前が分からなければその原本は入れません。年を推測してはいけません。
 - project_suggestions の date_text と place は、その原本に書かれた行事の日付と場所を文字のまま写し、分からなければ空文字にします。書かれていない年や曜日は足しません。今年の日付には直しません。
 - ward_facts は、一つの行事に限らず、自治会全体に関わる決まりや情報です。topic は次の鍵から選びます: ${KNOW_TOPIC_GUIDE}。text はその資料に書かれた内容を短い文にします。書かれていないことは入れず、推測しません。通帳の番号、暗証番号、パスワードは入れません。無ければ空の配列にします。
 - year_entries は、年間の予定や事業計画のように、一枚に一年の行事や仕事が並ぶ資料だけに入れます。title は行事の名前、month は1から12の月、date_text は書かれたままの日付です。月が分からなければ month は null にします。それ以外の資料では空の配列にします。
@@ -195,6 +195,8 @@ export function fixOriginalIds(body: ReadingBody, validIds: string[]): ReadingBo
 
 export interface ReadOptions {
   kind: ReadKind;
+  /** project_suggestionsで照らし合わせる、この自治会の一年の予定。 */
+  yearItems?: readonly { key: string; title: string }[];
   generalMeeting?: boolean;
   answerLabels?: AnswerLabels;
   originals: ReadableOriginal[];
@@ -241,6 +243,8 @@ export async function readOriginals(client: Anthropic, options: ReadOptions): Pr
     return { body, packVersion: packVersionFor(options.kind), model: "", usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0 } };
   }
   const content = buildContent(prepared);
+  const last = content[content.length - 1];
+  if (options.kind !== "answer_sheet" && last?.type === "text") last.text += `\nproject_suggestionsのyear_itemの候補（一年の予定。この中に当たる行がなければ空文字）: ${JSON.stringify(options.yearItems ?? [])}`;
 
   let response: Anthropic.Message;
   try {
