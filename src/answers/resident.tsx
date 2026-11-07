@@ -32,14 +32,36 @@ export async function residentContext(db: D1Database, wardId: string, projectId:
     ...documents.filter((document) => document.kind === "announcement"),
     ...documents.filter((document) => document.kind === "recruitment"),
   ];
+  const notices = documents.filter((document) => document.kind === "notice");
   const item = (key: string) => {
+    // 知らせがある行事の日時と場所は、知らせの本文に書かれた物だけを出す。古い項目や案内へ戻らない。
+    if (notices.length && (key === "date_time" || key === "place")) {
+      for (const notice of notices) {
+        const value = publishedItem(notice.body, key);
+        if (value && writtenInNotice(notice.body, value)) return value;
+      }
+      return "";
+    }
     for (const document of eventDocuments) {
       const value = publishedItem(document.body, key);
       if (value) return value;
     }
     return "";
   };
-  return { documents, hasNotice: documents.some((document) => document.kind === "notice"), contact: item("public_contact") || contact, labels, item };
+  return { documents, hasNotice: notices.length > 0, contact: item("public_contact") || contact, labels, item };
+}
+
+function noticeText(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as { text?: unknown };
+    return typeof parsed.text === "string" ? parsed.text : "";
+  } catch { return ""; }
+}
+
+/** 知らせの項目が本文にそのまま書かれているか。古い項目が残った時は出さない。 */
+function writtenInNotice(body: string, value: string): boolean {
+  const text = noticeText(body);
+  return text.includes(value) || text.includes(formatDateText(value));
 }
 
 export function publishedItem(body: string, key: string): string {
@@ -62,7 +84,7 @@ export function ReceptionClosed({ closed, due }: { closed: boolean; due: string 
 }
 
 export function EventDetails({ item, due, hasNotice = false }: { item: (key: string) => string; due?: string | null; hasNotice?: boolean }) {
-  // 知らせは本文が正。受付結果で古い項目を足し戻さず、案内へ戻って読めるようにする。
-  if (hasNotice) return <p>お知らせがあります。日時や場所は案内で確かめてください。</p>;
+  // 知らせの本文に日時も場所も書かれていない時は、案内へ戻って読めるようにする。
+  if (hasNotice && !item("date_time") && !item("place")) return <p>お知らせがあります。日時や場所は案内で確かめてください。</p>;
   return <dl class="facts">{[["date_time", "いつ"], ["place", "どこで"], ["rain_plan", "雨のとき"]].map(([key, label]) => item(key!) ? <><dt>{label}</dt><dd>{formatDateText(item(key!))}</dd></> : null)}{due ? <><dt>答えの締切</dt><dd>{formatJstDate(due)}まで</dd></> : null}</dl>;
 }

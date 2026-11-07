@@ -69,7 +69,7 @@ it("過ぎた締切を知らせて配り、雨の変更後に答えと手伝い�
     for (const path of [`${paperBase}/preview`, `${paperBase}/announcement`, `${paperBase}/answer`]) {
       expect(await read(path)).toContain("いない欄は、空けたままでかまいません");
     }
-    // 項目を持たない知らせだけのときは、配った案内の場所を使う。
+    // 知らせの本文に場所が書かれていないときは、古い場所を出さず案内へ戻す。
     await save("notice", { text: fixture.rainAnnouncement, items: [] });
     await publish("notice");
     const answerPath = `/${ward.slug}/answer/${id}`;
@@ -79,7 +79,9 @@ it("過ぎた締切を知らせて配り、雨の変更後に答えと手伝い�
     });
     const beforeRain = await answer();
     expect(beforeRain.status).toBe(200);
-    expect(await beforeRain.text()).toContain(`<dd>${fixture.previousPlace}</dd>`);
+    const beforeRainHtml = await beforeRain.text();
+    expect(beforeRainHtml).not.toContain(`<dd>${fixture.previousPlace}</dd>`);
+    expect(beforeRainHtml).toContain("日時や場所は案内で確かめてください。");
     await save("recruitment", { text: fixture.draftText, items: [{ key: "helper_slots", content: fixture.helperTime }] });
     await publish("recruitment");
     const rain = await postForm(realApp, `${root}/projects/${id}/draft/rain-notice`, {
