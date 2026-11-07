@@ -475,14 +475,27 @@ intakeAdmin.get("/intake/originals/:originalId", async (c) => {
   const summary = (await jobSummaries(c.env.DB, ward.wardId)).get(original.job_id);
   const line = await c.env.DB.prepare("SELECT sender_display_name FROM line_inbox_items WHERE ward_id = ? AND job_id = ? LIMIT 1").bind(ward.wardId, original.job_id).first<{ sender_display_name: string | null }>();
   const sender = line?.sender_display_name || job?.sender_label;
+  // この原本から AI が読み取った文と表。画面で開けないファイルは、これが中身の読める形になる。
+  const readings = await getReadings(c.env.DB, ward.wardId, original.job_id);
+  const blocks = readings.flatMap((reading) => "text_blocks" in reading.body ? reading.body.text_blocks.filter((block) => block.original_id === original.original_id) : []);
+  const tables = readings.flatMap((reading) => "tables" in reading.body ? reading.body.tables.filter((table) => table.original_id === original.original_id) : []);
+  const seen = new Set<string>();
+  const lines = blocks.filter((block) => { const key = block.text.trim(); if (!key || seen.has(key)) return false; seen.add(key); return true; });
+  const readContent = lines.length || tables.length ? <>
+    {lines.map((block) => <p>{block.text}</p>)}
+    {tables.map((table) => <div class="read-table"><table><caption>{table.name}</caption>{table.columns.length ? <thead><tr>{table.columns.map((column) => <th>{column}</th>)}</tr></thead> : null}<tbody>{table.rows.map((row) => <tr>{row.cells.map((cell) => <td>{cell}</td>)}</tr>)}</tbody></table></div>)}
+  </> : null;
+  const viewable = original.media_type === "text/plain" || ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"].includes(original.media_type);
   return c.html(<Layout title={title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={back}>← 前の画面へ</a><h1>{summary?.split("\n")[0]?.slice(0, 36) || title}</h1>
     <p class="lead">{original.media_type.startsWith("image/") ? object.customMetadata?.photoResizeFailed === "1" ? "写真の大きさを整えられなかったため、届いたまま保管しています。" : "紙の文字や行事の様子が分かる大きさで保管した写真です。" : original.media_type === "text/plain" && job?.via.startsWith("line") ? "自治会のLINEに届いたときのままの文です。" : "送ったときのままの資料です。"}この画面では直せません。</p>
     <dl class="facts">{summary ? null : <><dt>名前</dt><dd>{original.filename || (original.kind === "text" ? "届いた文" : "撮った写真")}</dd></>}<dt>届いた日</dt><dd>{formatDateText(original.received_at.slice(0, 10))}</dd>{job?.via.startsWith("line") ? <><dt>届き方</dt><dd>自治会のLINE（{job.via === "line_direct" ? "一対一" : "グループ"}）</dd><dt>送った人</dt><dd>{sender || "名前は分かりません"}</dd></> : null}{project ? <><dt>{notification ? "依頼" : "どれの資料か"}</dt><dd>{project.title}</dd></> : null}</dl>
     {original.media_type === "text/plain" ? <div class="panel preserve-lines">{await object.text()}</div>
       : ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(original.media_type) ? <div class="sheet-preview"><img class="original-image" src={raw} alt={original.filename || "届いた資料の写真"} /></div>
-      : original.media_type === "application/pdf" ? <iframe class="original-document" src={raw} title="元の資料のPDF" /> : <p>このファイルは、下のボタンから開いて読めます。</p>}
-    <a class="button secondary" href={raw}>元のファイルを開く</a><p class="muted">この画面では直せません。読み取った内容は、前の画面で直せます。</p>
+      : original.media_type === "application/pdf" ? <iframe class="original-document" src={raw} title="元の資料のPDF" /> : readContent ? <><h2>AIが読み取った中身</h2>{readContent}</> : <p>このファイルは、下のボタンから開いて読めます。</p>}
+    {viewable && readContent && original.media_type !== "text/plain" ? <details class="fold"><summary>AIが読み取った文</summary><div>{readContent}</div></details> : null}
+    <a class="button secondary" href={raw}>元のファイルを開く</a>
+    {project ? <p class="muted">読み取りが違っていたときは、<a href={adminPath(ward, `/projects/${project.projectId}`)}>{project.title}の届いた資料と今年の内容</a>で直せます。この画面の元の資料は変わりません。</p> : null}
     <a class="quiet" href={back}>前の画面へ戻る</a>
   </Layout>);
 });

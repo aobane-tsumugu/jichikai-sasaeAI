@@ -62,20 +62,19 @@ admin.get("/print/:projectId", async (c) => {
     FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
     WHERE d.ward_id = ? AND d.project_id = ? GROUP BY d.document_id ORDER BY d.created_at`).bind(ward.wardId, id)
     .all<{ document_id: string; kind: string; scope: string; title: string; latest: number; published: number | null }>();
-  return c.html(<AdminPage ward={ward} account={account} title="紙を印刷する" back={{ href: adminPath(ward, `/projects/${id}/map`), label: "← やることへ" }}>
-    <h1>紙を印刷する</h1>
+  return c.html(<AdminPage ward={ward} account={account} title={`${project.title}の紙を印刷する`} back={{ href: adminPath(ward, `/projects/${id}/map`), label: "← やることへ" }}>
+    <h1>{project.title}の紙を印刷する</h1>
     <p class="lead">使う紙を、全部ここから印刷できます。配る紙と、書き込んで撮って送る紙があります。</p>
-    <p>{project.title}</p>
     <h2>配る紙</h2><ul class="rows">{papers.results.map((paper) => {
       const base = `/print/${id}/${paper.document_id}/${paper.published ?? paper.latest}`;
       const withAnswer = taskCollectsAttendance(tasks, paper.kind);
       const extra = paper.kind === "announcement" ? [
-        ...(withAnswer ? [{ href: `${base}${paper.published === null ? "/preview?paper=answer" : "/answer"}`, title: "回答票だけ", note: "返事を書いて渡してもらう紙です" }] : []),
-        ...(paper.published !== null ? [{ href: `${base}/poster`, title: "掲示", note: "掲示板に貼る一枚です" }, ...(withAnswer ? [{ href: `${base}/leader`, title: "班長への一枚", note: "班長のページのQRコードが付いています" }] : [])] : []),
+        ...(withAnswer ? [{ href: `${base}${paper.published === null ? "/preview?paper=answer" : "/answer"}`, title: "回答票だけを印刷する" }] : []),
+        ...(paper.published !== null ? [{ href: `${base}/poster`, title: "掲示板に貼る一枚を印刷する" }, ...(withAnswer ? [{ href: `${base}/leader`, title: "班長への一枚を印刷する" }] : [])] : []),
       ] : [];
-      return <><li><a class="row-link" href={adminPath(ward, `${base}${paper.published === null ? "/preview" : ["duty_roster", "procedure"].includes(paper.kind) || paper.scope === "space" ? "/duty" : "/announcement"}`)}><b>{withAnswer ? "案内と回答票" : paper.title}</b><span>{paper.published === null ? "下書きです。まだ知らせていません。" : "知らせたときの紙です。"}</span></a>
-        </li>{extra.map((row) => <li><a class="row-link" href={adminPath(ward, row.href)}><b>{row.title}</b><span>{row.note}</span></a></li>)}</>;
-    })}</ul>{!papers.results.length ? <p>下書きを保存すると、ここから紙を開けます。</p> : null}
+      return <><li><a class="row-link" href={adminPath(ward, `${base}${paper.published === null ? "/preview" : ["duty_roster", "procedure"].includes(paper.kind) || paper.scope === "space" ? "/duty" : "/announcement"}`)}><b>{withAnswer ? "案内と回答票を印刷する" : `${paper.title}を印刷する`}</b><span>{paper.published === null ? "下書きです。まだ知らせていません。" : "知らせたときの紙です。"}</span></a>
+        </li>{extra.map((row) => <li><a class="row-link" href={adminPath(ward, row.href)}><b>{row.title}</b></a></li>)}</>;
+    })}</ul>{!papers.results.length ? <><p>{project.title}の案内はまだ書いていないので、配る紙はまだありません。案内の下書きを保存すると、ここから案内の紙を印刷できます。</p><p class="link-line"><a href={adminPath(ward, `/projects/${id}/draft/announcement`)}>案内の下書きを書く</a></p></> : null}
     <h2>書き込んで撮って送る紙</h2><p>電話や役員会で決まったことを、紙に書いて撮って送れます。案内を住民に知らせる前から使えます。</p>
     <ul class="rows">{(["meeting", "sponsors"] as const).filter((kind) => kind !== "sponsors" || features.sponsors).map((kind) => <li><a class="row-link" href={adminPath(ward, `/print/${id}/paper/${kind}`)}><b>{kindLabel(kind)}</b><span>{kind === "meeting" ? "準備中のもの一つにつき1枚ずつ出ます。この準備の紙が最初です。役員会で決まったことを、その準備の紙に書いてください。" : "この準備で協賛をお願いする先の一覧です。"}</span></a></li>)}</ul>
     <p class="link-line"><a href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>書いた紙を撮って送る</a></p>
@@ -101,7 +100,7 @@ admin.get("/print/:projectId/paper/:kind", async (c) => {
     })));
     return c.html(<PrintDocument title="役員会の記入欄" back={adminPath(ward, `/print/${id}`)}>{papers.map((paper) => <Sheet footer={<><span>{ward.name} 役員会の記入欄</span><span>{paperDate(new Date().toISOString()).replace("に配りました", "に印刷しました")}　紙の番号{paper.code}</span></>}>
       <h1>{paper.title} 役員会の記入欄</h1>
-      <p>役員会や電話で決まったことを、この紙に書いてください。書いたら、紙の番号が写るように撮って、役員の画面の「書いた紙を撮って送る」から送ってください。きれいに書かなくてかまいません。</p>
+      <p>役員会や電話で決まったことを、この紙に書いてください。きれいに書かなくてかまいません。書いたら、紙の番号が写るように撮って、役員の画面の「写真やファイルを送る」か、自治会のLINEに送ってください。この番号で、どの準備の紙かが分かります。</p>
       <PaperField label="決めたこと" heightMm={66} code={paper.code} text={paper.url} />
       <PaperField label="日時・場所・変更" heightMm={66} code={paper.code} text={paper.url} />
       <PaperField label="次にすること" heightMm={66} code={paper.code} text={paper.url} />
@@ -121,7 +120,7 @@ admin.get("/print/:projectId/paper/:kind", async (c) => {
   return c.html(<PrintDocument title={`${state.project.title}協賛先の一覧`} back={adminPath(ward, `/print/${id}`)}>
     <Sheet footer={<><span>{ward.name} 協賛先の一覧</span><span>{paperDate(new Date().toISOString()).replace("に配りました", "に印刷しました")}　紙の番号{code}</span></>}>
       <div class="paper-header"><div><h1>{state.project.title} 協賛先の一覧</h1>
-      <p>電話しながら、返事と額を書いてください。書いたら、紙の番号と一緒に撮って、役員の画面から送ってください。去年の額は、今年の返事ではありません。</p>
+      <p>{rows.length ? "電話しながら、返事と額を書いてください。" : "去年の協賛先は、届いた資料にありませんでした。電話しながら、空いた行に名前と返事と額を書いてください。"}書いたら、紙の番号と一緒に撮って、役員の画面か自治会のLINEに送ってください。{rows.some((entry) => entry.data.lastYearAmount) ? "去年の額は、今年の返事ではありません。" : ""}</p>
       </div><div class="paper-identity"><PrintQr text={url} sizeMm={24} /><span>紙の番号<br />{code}</span></div></div>
       <RowsTable table="sponsors" rows={rows} paperCode={code} />
       <p>返事は、出す、出さない、待ちのどれかを書きます。一番下の空いた行には、一覧にない協賛先を書けます。</p>
@@ -216,7 +215,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
     <div class="slip"><div class="slip-fields">
       {standalone ? <h1>{row.title} 回答票{generalMeeting ? "・委任状" : ""}{squad ? `　${squad}` : ""}</h1> : <h2>{row.title} 回答票{generalMeeting ? "・委任状" : ""}{squad ? `　${squad}` : ""}</h2>}
       {standalone ? <p>{[publishedItem(row.body, "date_time"), publishedItem(row.body, "place"), publishedItem(row.body, "rain_plan")].filter(Boolean).join("。")}</p> : null}
-      {generalMeeting ? <MeetingSlipFields note={note} squad={squad} /> : <><p>参加しないときも、答えてください。返事がないときは、欠席として数えます。</p>
+      {generalMeeting ? <MeetingSlipFields note={note} squad={squad} /> : <><p>参加しないときも、返事をもらえると、準備の数が正しく分かります。返事がないときは、欠席として数えます。</p>
       <FieldBox label="代表者のお名前" heightMm={standalone ? 30 : 19} />
       {!squad ? <FieldBox label="班（分からないときは空けてかまいません）" heightMm={10} /> : null}
       <div class="field-box"><p>□ 参加する　　□ 参加しない</p><strong>参加する人数</strong><div class="paper-counts">
@@ -233,7 +232,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   // 返す案内や時間帯の分も見積もる。文字を縮めず、長ければ回答票を別の紙にする。
   const onOneSheet = withAnswer && fitsAboveAnswer(row.body, generalMeeting
     ? note + due + contact + "□出席□委任□欠席。委任する相手のお名前。代表者のお名前。委任を選んだときは、この回答票を委任状として受け付けます。委任する相手を書かなかったときは、空欄のまま受け付けます。"
-    : labels.join("") + helperSlots + due + contact + "参加しないときも、答えてください。返事がないときは、欠席として数えます。□参加する□参加しない。いない欄は、空けたままでかまいません");
+    : labels.join("") + helperSlots + due + contact + "参加しないときも、返事をもらえると、準備の数が正しく分かります。返事がないときは、欠席として数えます。□参加する□参加しない。いない欄は、空けたままでかまいません");
   const tables = readPublicationTables(row.tables_snapshot);
   const published = (table: TableKey) => (tables ?? []).filter((entry) => entry.kind === table);
   const footer = (squad = "") => <><span>{ward.name}{squad ? ` ${squad}` : ""}</span><span>{distributed}　紙の番号 {paperCode}</span></>;

@@ -190,7 +190,7 @@ async function publishedPaper(id: string, kind: string) {
   if (!paperLinks.has(id)) {
     await openPath(`${admin}/print/${encodeURIComponent(id)}`);
     paperLinks.set(id, await page.locator("a[href]").evaluateAll((links) => links.map((link) => ({
-      href: link.getAttribute("href") ?? "", announcement: link.querySelector("b")?.textContent === "案内と回答票",
+      href: link.getAttribute("href") ?? "", announcement: link.querySelector("b")?.textContent === "案内と回答票を印刷する",
     }))));
   }
   const prefix = `${admin}/print/${encodeURIComponent(id)}/`;
