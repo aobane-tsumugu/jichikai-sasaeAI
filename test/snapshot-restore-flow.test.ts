@@ -53,6 +53,13 @@ it("日次の写しをSQLに戻し、役員画面・紙の番号・元の資料�
   await bucket.put(originalKey, originalBody, { httpMetadata: { contentType: "text/plain; charset=utf-8" } });
 
   const root = `/${ward.slug}/admin`;
+  // 消去待ちの受付と資料は戻さず、消去を続けるための記録は保つ。
+  expect(await env.DB.prepare("SELECT job_id FROM jobs WHERE ward_id = ? AND job_id = ?")
+    .bind(w, `${w}-deleted-job`).first()).toBeNull();
+  expect(await env.DB.prepare("SELECT original_id FROM originals WHERE ward_id = ? AND original_id = ?")
+    .bind(w, `${w}-deleted-original`).first()).toBeNull();
+  expect(await env.DB.prepare("SELECT target_id FROM ops_deletion_queue WHERE ward_id = ? AND queue_id = ?")
+    .bind(w, `${w}-queue`).first("target_id")).toBe(`${w}-deleted-job`);
   for (const [path, text] of [
     [`${root}/`, "架空の復元確認会"],
     [`${root}/projects/${p}`, "架空の復旧先公民館"],

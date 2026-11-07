@@ -1,10 +1,10 @@
-import { WARD_TABLE_POLICY } from "../archive/snapshot";
+import { eraseCopiedContent, eraseSnapshotJob, eraseSnapshotRecord, WARD_TABLE_POLICY } from "../archive/snapshot";
 import { CRON } from "../core/cron";
 import { newId, nowIso } from "../core/ids";
 import { WardBucket } from "../core/storage";
 import type { Env } from "../env";
-import { createAnthropic } from "../ai/anthropic";
-import { deleteSession } from "../ai/complete";
+import { getClient } from "../ai/deps";
+import { deleteSession, pendingSessions } from "../ai/complete";
 
 const EXPORT_TABLES = WARD_TABLE_POLICY.filter((entry) => entry.export === true);
 const WARD_DELETE_TABLES = WARD_TABLE_POLICY.filter((entry) => entry.deletion === true).map((entry) => entry.table).reverse();
@@ -12,7 +12,7 @@ const WARD_DELETE_TABLES = WARD_TABLE_POLICY.filter((entry) => entry.deletion ==
 interface QueueRow {
   queue_id: string;
   ward_id: string;
-  target_type: "job" | "ward" | "answer" | "project";
+  target_type: "job" | "ward" | "answer" | "project" | "inquiry" | "help_offer";
   target_id: string | null;
   cursor: string | null;
 }
@@ -42,10 +42,13 @@ export async function requestJobDeletion(db: D1Database, wardId: string, jobId: 
     db.prepare(`UPDATE jobs SET status = 'withdrawn', ticket_hash = NULL, withdrawn_at = ?, updated_at = ?
       WHERE ward_id = ? AND job_id = ? AND withdrawn_at IS NULL`).bind(requestedAt, requestedAt, wardId, jobId),
     db.prepare(`INSERT INTO ops_deletion_queue (queue_id, ward_id, target_type, target_id, requested_at)
-      VALUES (?, ?, 'job', ?, ?)`)
-      .bind(queueId, wardId, jobId, requestedAt),
+      SELECT ?, ?, 'job', ?, ? WHERE NOT EXISTS (SELECT 1 FROM ops_deletion_queue
+        WHERE ward_id = ? AND target_type = 'job' AND target_id = ? AND state IN ('pending', 'running', 'error'))`)
+      .bind(queueId, wardId, jobId, requestedAt, wardId, jobId),
   ]);
-  return queueId;
+  const queued = await db.prepare("SELECT queue_id FROM ops_deletion_queue WHERE ward_id = ? AND target_type = 'job' AND target_id = ? ORDER BY requested_at LIMIT 1")
+    .bind(wardId, jobId).first<{ queue_id: string }>();
+  return queued?.queue_id ?? queueId;
 }
 
 /**
@@ -76,10 +79,9 @@ async function eraseAnswer(env: Env, item: QueueRow): Promise<void> {
     if (typeof value !== "object" || value === null || Array.isArray(value)) { await bucket.delete(entry.key); continue; }
     const doc = value as { wardId?: unknown; tables?: Record<string, unknown> };
     if (doc.wardId !== wardId || typeof doc.tables !== "object" || doc.tables === null) { await bucket.delete(entry.key); continue; }
-    const rows = doc.tables.project_answers;
-    if (Array.isArray(rows)) doc.tables.project_answers = rows.filter((row) =>
-      typeof row !== "object" || row === null || (row as Record<string, unknown>).answer_id !== answerId);
-    await bucket.put(entry.key, JSON.stringify(doc), { httpMetadata: { contentType: "application/json; charset=utf-8" } });
+    const rewritten = eraseSnapshotRecord(doc, wardId, item.target_type, answerId);
+    if (rewritten === null) { await bucket.delete(entry.key); continue; }
+    await bucket.put(entry.key, rewritten, { httpMetadata: { contentType: "application/json; charset=utf-8" } });
   }
   if (page.truncated && page.cursor) {
     await env.DB.prepare("UPDATE ops_deletion_queue SET cursor = ?, state = 'running', last_error = '' WHERE queue_id = ? AND ward_id = ?")
@@ -88,7 +90,7 @@ async function eraseAnswer(env: Env, item: QueueRow): Promise<void> {
   }
   await env.DB.batch([
     env.DB.prepare("DELETE FROM ops_deletion_queue WHERE queue_id = ? AND ward_id = ?").bind(item.queue_id, wardId),
-    env.DB.prepare("INSERT INTO ops_deletion_marks (mark_id, ward_id, scope, deleted_at) VALUES (?, ?, 'record', ?)").bind(newId(), wardId, nowIso()),
+    env.DB.prepare("INSERT INTO ops_deletion_marks (mark_id, ward_id, scope, deleted_at, target_type, target_id) VALUES (?, ?, 'record', ?, ?, ?)").bind(newId(), wardId, nowIso(), item.target_type, item.target_id),
   ]);
 }
 
@@ -199,52 +201,6 @@ export async function inspectSnapshots(env: Env, wardId: string): Promise<Snapsh
   return files.sort((a, b) => b.key.localeCompare(a.key));
 }
 
-function eraseSnapshotJob(snapshot: unknown, wardId: string, jobId: string, originalIds: Set<string>, readingBodies: Set<string>): string | null {
-  if (typeof snapshot !== "object" || snapshot === null || Array.isArray(snapshot)) return null;
-  const doc = snapshot as { format?: unknown; wardId?: unknown; tables?: unknown };
-  if (doc.format !== 1 || doc.wardId !== wardId || typeof doc.tables !== "object" || doc.tables === null || Array.isArray(doc.tables)) return null;
-  const tables = doc.tables as Record<string, unknown>;
-  const remove = (table: string, match: (row: Record<string, unknown>) => boolean) => {
-    const rows = tables[table];
-    if (Array.isArray(rows)) tables[table] = rows.filter((row) =>
-      typeof row !== "object" || row === null || Array.isArray(row) || !match(row as Record<string, unknown>));
-  };
-  const changeIds = new Set<string>();
-  if (Array.isArray(tables.project_changes)) {
-    for (const value of tables.project_changes) {
-      if (typeof value !== "object" || value === null) continue;
-      const row = value as Record<string, unknown>;
-      if (typeof row.source_ref === "string" && originalIds.has(row.source_ref) && typeof row.change_id === "string") changeIds.add(row.change_id);
-    }
-  }
-  remove("project_questions", (row) =>
-    (typeof row.source_ref === "string" && originalIds.has(row.source_ref)) ||
-    (typeof row.change_id === "string" && changeIds.has(row.change_id)));
-  if (Array.isArray(tables.project_map_tasks)) {
-    for (const value of tables.project_map_tasks) {
-      if (typeof value !== "object" || value === null) continue;
-      const row = value as Record<string, unknown>;
-      if ((typeof row.progress_source_ref === "string" && originalIds.has(row.progress_source_ref)) ||
-          (typeof row.progress_change_id === "string" && changeIds.has(row.progress_change_id))) {
-        Object.assign(row, { progress: "open", progress_source_kind: null, progress_source_ref: null,
-          progress_source_locator: null, progress_confidence: null, progress_change_id: null });
-      }
-    }
-  }
-  remove("jobs", (row) => row.job_id === jobId);
-  remove("originals", (row) => row.job_id === jobId || (typeof row.original_id === "string" && originalIds.has(row.original_id)));
-  for (const table of ["readings", "job_runs", "job_tool_calls", "intake_photo_checks", "line_photo_items", "line_clarifications", "line_clarification_answers"]) remove(table, (row) => row.job_id === jobId);
-  remove("paper_reading_slices", (row) => row.job_id === jobId || row.source_job_id === jobId);
-  for (const table of ["project_item_values", "project_rows", "project_changes"]) {
-    remove(table, (row) => typeof row.source_ref === "string" && originalIds.has(row.source_ref));
-  }
-  remove("project_answers", (row) => typeof row.original_id === "string" && originalIds.has(row.original_id));
-  remove("line_inbox_items", (row) => row.job_id === jobId);
-  remove("archive_search_entries", (row) =>
-    (typeof row.source_id === "string" && originalIds.has(row.source_id)) ||
-    (typeof row.content === "string" && readingBodies.has(row.content)));
-  return JSON.stringify(doc);
-}
 
 async function rewriteJobSnapshots(env: Env, wardId: string, jobId: string, cursor: string | undefined): Promise<string | null> {
   const bucket = new WardBucket(env.ORIGINALS, wardId);
@@ -267,15 +223,51 @@ async function rewriteJobSnapshots(env: Env, wardId: string, jobId: string, curs
   return page.truncated ? page.cursor ?? null : null;
 }
 
+async function eraseJobCopies(env: Env, wardId: string, jobId: string): Promise<void> {
+  const originals = await env.DB.prepare("SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?")
+    .bind(wardId, jobId).all<{ original_id: string }>();
+  const projects = await env.DB.prepare(`SELECT project_id FROM jobs WHERE ward_id = ? AND job_id = ?
+    UNION SELECT project_id FROM project_rows WHERE ward_id = ? AND source_ref IN
+      (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)
+    UNION SELECT project_id FROM project_item_values WHERE ward_id = ? AND source_ref IN
+      (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)`)
+    .bind(wardId, jobId, wardId, wardId, jobId, wardId, wardId, jobId).all<{ project_id: string | null }>();
+  const tables: Record<string, Record<string, unknown>[]> = {};
+  for (const table of ["document_versions", "city_request_details", "project_close_reports", "archive_search_entries", "project_rows", "project_changes"]) {
+    tables[table] = (await env.DB.prepare(`SELECT * FROM ${table} WHERE ward_id = ?`).bind(wardId).all<Record<string, unknown>>()).results;
+  }
+  const before = new Map(Object.entries(tables).flatMap(([table, rows]) => rows.map((row) => [row, { table, json: JSON.stringify(row) }] as const)));
+  const oldSearch = new Set(tables.archive_search_entries?.map((row) => Number(row.entry_id)));
+  eraseCopiedContent(tables, new Set(originals.results.map((row) => row.original_id)), new Set(projects.results.flatMap((row) => row.project_id ? [row.project_id] : [])));
+  const statements: D1PreparedStatement[] = [];
+  for (const row of tables.document_versions ?? []) {
+    if (before.get(row)?.json !== JSON.stringify(row)) statements.push(env.DB.prepare(`UPDATE document_versions
+      SET body = ?, source_original_ids = ?, tables_snapshot = ? WHERE ward_id = ? AND version_id = ?`)
+      .bind(String(row.body), String(row.source_original_ids), row.tables_snapshot as string | null, wardId, String(row.version_id)));
+  }
+  for (const row of tables.city_request_details ?? []) {
+    if (before.get(row)?.json !== JSON.stringify(row)) statements.push(env.DB.prepare("UPDATE city_request_details SET submission_history = ?, answer_draft = ? WHERE ward_id = ? AND project_id = ?")
+      .bind(String(row.submission_history), String(row.answer_draft), wardId, String(row.project_id)));
+  }
+  for (const row of tables.project_close_reports ?? []) {
+    if (before.get(row)?.json !== JSON.stringify(row)) statements.push(env.DB.prepare("UPDATE project_close_reports SET body = ? WHERE ward_id = ? AND project_id = ? AND scope = ?")
+      .bind(String(row.body), wardId, String(row.project_id), String(row.scope)));
+  }
+  for (const row of tables.archive_search_entries ?? []) oldSearch.delete(Number(row.entry_id));
+  for (const id of oldSearch) statements.push(env.DB.prepare("DELETE FROM archive_search_entries WHERE ward_id = ? AND entry_id = ?").bind(wardId, id));
+  if (statements.length) await env.DB.batch(statements);
+}
+
 async function eraseJob(env: Env, item: QueueRow, projectJob?: { jobId: string; cursor: string | null }): Promise<"continue" | "done"> {
   const wardId = item.ward_id;
   const jobId = projectJob?.jobId ?? item.target_id ?? "";
   const cursor = projectJob ? projectJob.cursor : item.cursor;
   const nextCursor = (value: string) => projectJob ? `job:${jobId}:${value}` : value;
-  const job = await env.DB.prepare("SELECT session_id FROM jobs WHERE ward_id = ? AND job_id = ?")
-    .bind(wardId, jobId).first<{ session_id: string | null }>();
   if (cursor === null) {
-    if (job?.session_id && !(await deleteSession(env, wardId, jobId, job.session_id))) throw new Error("AI側の処理を消せませんでした");
+    for (const session of await pendingSessions(env.DB, wardId, jobId)) {
+      if (!(await deleteSession(env, wardId, jobId, session.session_id))) throw new Error("AI側の処理を消せませんでした");
+    }
+    if ((await pendingSessions(env.DB, wardId, jobId)).length) return "continue";
     await env.DB.prepare("UPDATE ops_deletion_queue SET cursor = ?, state = 'running', last_error = '' WHERE queue_id = ? AND ward_id = ?")
       .bind(nextCursor("snapshots"), item.queue_id, wardId).run();
     return "continue";
@@ -288,6 +280,7 @@ async function eraseJob(env: Env, item: QueueRow, projectJob?: { jobId: string; 
     return "continue";
   }
 
+  await eraseJobCopies(env, wardId, jobId);
   const originals = await env.DB.prepare("SELECT r2_path FROM originals WHERE ward_id = ? AND job_id = ? AND r2_path IS NOT NULL")
     .bind(wardId, jobId).all<{ r2_path: string }>();
   const inbox = await env.DB.prepare("SELECT original_object_key FROM line_inbox_items WHERE ward_id = ? AND job_id = ? AND original_object_key IS NOT NULL")
@@ -332,7 +325,7 @@ async function eraseJob(env: Env, item: QueueRow, projectJob?: { jobId: string; 
   const at = nowIso();
   await env.DB.batch([
     env.DB.prepare("DELETE FROM ops_deletion_queue WHERE queue_id = ? AND ward_id = ?").bind(item.queue_id, wardId),
-    env.DB.prepare("INSERT INTO ops_deletion_marks (mark_id, ward_id, scope, deleted_at) VALUES (?, ?, 'record', ?)").bind(newId(), wardId, at),
+    env.DB.prepare("INSERT INTO ops_deletion_marks (mark_id, ward_id, scope, deleted_at, target_type, target_id) VALUES (?, ?, 'record', ?, ?, ?)").bind(newId(), wardId, at, item.target_type, item.target_id),
   ]);
   return "done";
 }
@@ -389,7 +382,7 @@ async function eraseProject(env: Env, item: QueueRow): Promise<void> {
   }
   await env.DB.batch([
     env.DB.prepare("DELETE FROM ops_deletion_queue WHERE ward_id = ? AND queue_id = ?").bind(wardId, item.queue_id),
-    env.DB.prepare("INSERT INTO ops_deletion_marks (mark_id, ward_id, scope, deleted_at) VALUES (?, ?, 'record', ?)").bind(newId(), wardId, nowIso()),
+    env.DB.prepare("INSERT INTO ops_deletion_marks (mark_id, ward_id, scope, deleted_at, target_type, target_id) VALUES (?, ?, 'record', ?, ?, ?)").bind(newId(), wardId, nowIso(), item.target_type, item.target_id),
   ]);
 }
 
@@ -413,7 +406,7 @@ async function finishDeletion(env: Env, item: QueueRow): Promise<void> {
     await eraseJob(env, item);
     return;
   }
-  if (item.target_type === "answer" && item.target_id) {
+  if (["answer", "inquiry", "help_offer"].includes(item.target_type) && item.target_id) {
     await eraseAnswer(env, item);
     return;
   }
@@ -421,7 +414,7 @@ async function finishDeletion(env: Env, item: QueueRow): Promise<void> {
     const ai = await env.DB.prepare("SELECT agent_id FROM ward_ai WHERE ward_id = ?")
       .bind(item.ward_id).first<{ agent_id: string | null }>();
     if (ai?.agent_id) {
-      try { await createAnthropic(env).beta.agents.archive(ai.agent_id); }
+      try { await getClient(env).beta.agents.archive(ai.agent_id); }
       catch (error) { if ((error as { status?: number } | null)?.status !== 404) throw error; }
     }
     await env.DB.prepare("UPDATE ops_deletion_queue SET cursor = 'sessions', state = 'running', last_error = '' WHERE queue_id = ? AND ward_id = ?")
@@ -429,8 +422,7 @@ async function finishDeletion(env: Env, item: QueueRow): Promise<void> {
     return;
   }
   if (item.cursor === "sessions") {
-    const session = await env.DB.prepare("SELECT job_id, session_id FROM jobs WHERE ward_id = ? AND session_id IS NOT NULL ORDER BY connect_started_at LIMIT 1")
-      .bind(item.ward_id).first<{ job_id: string; session_id: string }>();
+    const session = (await pendingSessions(env.DB, item.ward_id))[0];
     if (session) {
       if (!(await deleteSession(env, item.ward_id, session.job_id, session.session_id))) throw new Error("AI側の処理を消せませんでした");
       return;
@@ -438,7 +430,7 @@ async function finishDeletion(env: Env, item: QueueRow): Promise<void> {
     const ai = await env.DB.prepare("SELECT vault_id FROM ward_ai WHERE ward_id = ?")
       .bind(item.ward_id).first<{ vault_id: string | null }>();
     if (ai?.vault_id) {
-      try { await createAnthropic(env).beta.vaults.delete(ai.vault_id); }
+      try { await getClient(env).beta.vaults.delete(ai.vault_id); }
       catch (error) { if ((error as { status?: number } | null)?.status !== 404) throw error; }
     }
     await env.DB.prepare("UPDATE ops_deletion_queue SET cursor = 'r2', state = 'running', last_error = '' WHERE queue_id = ? AND ward_id = ?")

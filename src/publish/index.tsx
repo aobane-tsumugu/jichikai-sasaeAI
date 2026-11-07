@@ -247,18 +247,21 @@ admin.post("/publish/:projectId/space", async (c) => {
       JOIN documents d ON d.ward_id = v.ward_id AND d.document_id = v.document_id
       WHERE v.ward_id = ? AND v.project_id = ? AND v.document_id = ? AND v.version_id = ? AND v.version_no = ?
         AND v.version_no = (SELECT MAX(v2.version_no) FROM document_versions v2 WHERE v2.ward_id = v.ward_id AND v2.document_id = v.document_id)
-        AND p.closed_at IS NULL AND d.scope = 'space' AND v.scope = 'space'`)
+        AND p.closed_at IS NULL AND d.scope = 'space' AND v.scope = 'space'
+      RETURNING version_id`)
       .bind(publishedVersionId, now, account.accountId, now, account.accountId, ward.wardId, projectId,
         ward.wardId, projectId, documentId, versionId, versionNo)
     : c.env.DB.prepare(`UPDATE document_versions SET published_at = ?, published_by_account_id = ?, project_title = ?, tables_snapshot = ${publicationTablesSql}
     WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_id = ? AND version_no = ? AND published_at IS NULL AND scope = 'space'
       AND version_no = (SELECT MAX(v.version_no) FROM document_versions v WHERE v.ward_id = ? AND v.document_id = ?)
       AND EXISTS (SELECT 1 FROM documents d WHERE d.ward_id = ? AND d.document_id = ? AND d.scope = 'space')
-      AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL)`)
+      AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL)
+    RETURNING version_id`)
     .bind(now, account.accountId, project.title, ward.wardId, projectId, ward.wardId, projectId, documentId, versionId, versionNo,
       ward.wardId, documentId, ward.wardId, documentId, ward.wardId, projectId);
-  const result = await publish.run();
-  if (result.meta.changes !== 1) return adminResult(c, "下書きの内容が変わったか、すでに配っています。配る画面で内容を確かめてください。", 409, { href: adminPath(c.var.ward, `/publish/${encodeURIComponent(c.req.param("projectId"))}`), label: "配る画面に戻る" }, "配る内容と配る相手を確かめて、もう一度操作してください。");
+  // 依存先を保存するトリガーの更新件数を含めず、配った文書そのものを確かめる。
+  const result = await publish.run<{ version_id: string }>();
+  if (result.results.length !== 1 || result.results[0]?.version_id !== publishedVersionId) return adminResult(c, "下書きの内容が変わったか、すでに配っています。配る画面で内容を確かめてください。", 409, { href: adminPath(c.var.ward, `/publish/${encodeURIComponent(c.req.param("projectId"))}`), label: "配る画面に戻る" }, "配る内容と配る相手を確かめて、もう一度操作してください。");
   await recordPublishedItems(c.env.DB, ward.wardId, projectId, publishedVersionId, account.accountId);
   for (const taskKey of draftTaskKeys(project.kind, row.kind)) {
     await markDistributedTask(c.env.DB, ward.wardId, projectId, account.accountId, taskKey, publishedVersionId);
@@ -402,20 +405,21 @@ admin.post("/publish/:projectId/send", async (c) => {
     if (!body || typeof body !== "object" || Array.isArray(body)) publishedBody = JSON.stringify({ text: publishedBody, items: [] });
     publishedBody = bodyWithPhotoInputs(publishedBody, photos);
   }
-  const publication = await c.env.DB.batch([
+  const publication = await c.env.DB.batch<{ version_id: string }>([
     c.env.DB.prepare(`UPDATE document_versions SET body = ?, published_at = ?, published_by_account_id = ?, project_title = ?, tables_snapshot = ${publicationTablesSql}
       WHERE ward_id = ? AND project_id = ? AND document_id = ? AND version_id = ? AND version_no = ?
         AND published_at IS NULL
         AND version_no = (SELECT MAX(v.version_no) FROM document_versions v WHERE v.ward_id = ? AND v.document_id = ?)
         AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL)
-        AND EXISTS (SELECT 1 FROM documents d WHERE d.ward_id = ? AND d.document_id = ? AND d.scope = 'public')`)
+        AND EXISTS (SELECT 1 FROM documents d WHERE d.ward_id = ? AND d.document_id = ? AND d.scope = 'public')
+      RETURNING version_id`)
       .bind(publishedBody, now, account.accountId, project.title, ward.wardId, projectId, ward.wardId, projectId, documentId, versionId, versionNo,
         ward.wardId, documentId, ward.wardId, projectId, ward.wardId, documentId),
     c.env.DB.prepare(`INSERT INTO publication_records
       (ward_id, publication_id, project_id, document_id, version_id, version_no, recipient_scope, distribution, line_status, published_at, published_by_account_id)
       SELECT ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ? WHERE EXISTS (
         SELECT 1 FROM document_versions v WHERE v.ward_id = ? AND v.version_id = ? AND v.published_at = ? AND v.published_by_account_id = ?
-      )`)
+      ) RETURNING version_id`)
       .bind(ward.wardId, publicationId, projectId, documentId, versionId, versionNo, recipientScope, JSON.stringify(distribution), now, account.accountId,
         ward.wardId, versionId, now, account.accountId),
     ...photoPublicationStatements(c.env.DB, ward.wardId, projectId, publicationId, photos),
@@ -428,7 +432,9 @@ admin.post("/publish/:projectId/send", async (c) => {
       WHERE project_deadlines.updated_by_account_id IS NULL`)
       .bind(answerDue, now, ward.wardId, projectId, publicationId)] : []),
   ]);
-  if (publication[0]?.meta.changes !== 1 || publication[1]?.meta.changes !== 1) {
+  // 本文の追記で依存先も保存されるため、トリガーを含む変更件数では成功を判定しない。
+  if (publication[0]?.results.length !== 1 || publication[0]?.results[0]?.version_id !== versionId ||
+      publication[1]?.results.length !== 1 || publication[1]?.results[0]?.version_id !== versionId) {
     return c.html(<AdminPage ward={ward} account={account} title="配る内容を確かめてください" back={{ href: adminPath(ward, `/publish/${projectId}`), label: "下書きに戻る" }}>
       <h1>配る内容を確かめてください</h1><p>下書きの内容が変わったか、すでに配っています。配る画面で内容を確かめてください。</p>
     </AdminPage>, 409);

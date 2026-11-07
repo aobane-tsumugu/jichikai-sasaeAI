@@ -1,6 +1,7 @@
 // 繋げるの完了。webhook（session.status_idled など）か、来なかった時の Cron で、セッションの events を引き直して決める。
 // 最新の session.status_idle の stop_reason（end_turn、requires_action、budget_reached）で、完了か要対応か失敗かを分ける。
 // 完了でも失敗でも、結果を列の記録（job_runs）に写してからセッションを消し、同じプロジェクトの次を送る。
+import { listRecordWardIds } from "../archive/snapshot";
 import { nowIso } from "../core/ids";
 import type { Env } from "../env";
 import type { JobRow } from "../intake/types";
@@ -169,10 +170,26 @@ export async function deleteSession(env: Env, wardId: string, jobId: string, ses
     }
   }
   if (!deleted) return false;
-  await env.DB.prepare("UPDATE jobs SET session_deleted_at = ? WHERE ward_id = ? AND job_id = ?")
-    .bind(nowIso(), wardId, jobId)
-    .run();
+  const at = nowIso();
+  await env.DB.batch([
+    env.DB.prepare("UPDATE jobs SET session_deleted_at = ? WHERE ward_id = ? AND job_id = ? AND session_id = ?")
+      .bind(at, wardId, jobId, sessionId),
+    env.DB.prepare("UPDATE job_runs SET session_deleted_at = ? WHERE ward_id = ? AND job_id = ? AND session_id = ?")
+      .bind(at, wardId, jobId, sessionId),
+  ]);
   return true;
+}
+
+/** 付け替えや再試行で現在の番号から外れた実行も回収する。 */
+export async function pendingSessions(db: D1Database, wardId: string, jobId?: string, idleOnly = false): Promise<Array<{ job_id: string; session_id: string }>> {
+  const result = await db.prepare(`SELECT job_id, session_id FROM (
+    SELECT job_id, session_id FROM jobs WHERE ward_id = ? AND session_id IS NOT NULL AND session_id <> '' AND session_deleted_at IS NULL
+    UNION SELECT job_id, session_id FROM job_runs WHERE ward_id = ? AND session_id <> '' AND session_deleted_at IS NULL
+  ) s WHERE (? IS NULL OR s.job_id = ?) ${idleOnly ? `AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.ward_id = ?
+    AND j.job_id = s.job_id AND j.session_id = s.session_id AND j.status = 'connecting')` : ""}
+  ORDER BY job_id, session_id LIMIT 20`)
+    .bind(wardId, wardId, jobId ?? null, jobId ?? null, ...(idleOnly ? [wardId] : [])).all<{ job_id: string; session_id: string }>();
+  return result.results;
 }
 
 /** Cron（五分ごと）。webhook が来なかった物を引き直し、繋げる順番を待っている物を送り、消し損ねを消す。 */
@@ -209,6 +226,11 @@ export async function sweepConnections(env: Env): Promise<{ checked: number; dis
   ).all<{ ward_id: string; job_id: string; session_id: string }>();
   let deleted = 0;
   for (const l of leftovers.results) if (await deleteSession(env, l.ward_id, l.job_id, l.session_id)) deleted += 1;
-
+  // 現在の番号が消えた仕事も、区ごとに実行履歴から後始末する。
+  for (const ward of await listRecordWardIds(env.DB)) {
+    for (const session of await pendingSessions(env.DB, ward.ward_id, undefined, true)) {
+      if (await deleteSession(env, ward.ward_id, session.job_id, session.session_id)) deleted += 1;
+    }
+  }
   return { checked: connecting.results.length, dispatched, deleted };
 }

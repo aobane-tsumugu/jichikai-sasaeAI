@@ -301,6 +301,7 @@ followupAdmin.post("/inquiries/:inquiryId", async (c) => {
 });
 
 followupAdmin.post("/inquiries/:inquiryId/remove", async (c) => {
+  // この削除と同じ書き込みのDB連動処理で、毎日の写しの消去も引き受ける。
   await c.env.DB.prepare("DELETE FROM inquiry_records WHERE ward_id = ? AND inquiry_id = ?").bind(c.var.ward.wardId, c.req.param("inquiryId")).run();
   return adminResult(c, "問い合わせの記録を消しました。", 200, { href: adminPath(c.var.ward, "/inquiries"), label: "問い合わせの一覧を開く" }, "ほかに届いている問い合わせを見られます。間違えて消したときは、受けたことを書く画面からもう一度残してください。");
 });
@@ -315,6 +316,7 @@ interface CityRequestRow {
 
 interface SubmittedItem {
   id: string; what: string; to: string; submittedOn: string; body: string | null; versionId: string | null;
+  sourceOriginalIds?: string[];
 }
 
 /** 提出時に残した本文を読む。今の下書きから過去の本文を推測しない。 */
@@ -487,7 +489,10 @@ async function recordSubmittedItem(
     requestId: id,
   }, { actorAccountId: accountId });
   if (result.status !== "applied" && result.status !== "same") return false;
-  const item: SubmittedItem = { id, what, to, submittedOn, body: answer?.body ?? null, versionId: answer?.version_id ?? null };
+  const source = answer ? await db.prepare("SELECT source_original_ids FROM document_versions WHERE ward_id = ? AND project_id = ? AND version_id = ?")
+    .bind(wardId, projectId, answer.version_id).first<{ source_original_ids: string }>() : null;
+  const item: SubmittedItem = { id, what, to, submittedOn, body: answer?.body ?? null, versionId: answer?.version_id ?? null,
+    sourceOriginalIds: JSON.parse(source?.source_original_ids ?? "[]") as string[] };
   await db.prepare(`UPDATE city_request_details SET submission_history = json_insert(submission_history, '$[#]', json(?))
     WHERE ward_id = ? AND project_id = ? AND NOT EXISTS (SELECT 1 FROM json_each(submission_history) WHERE json_extract(value, '$.id') = ?
       OR (json_extract(value, '$.what') = ? AND json_extract(value, '$.to') = ? AND json_extract(value, '$.submittedOn') = ? AND json_extract(value, '$.versionId') IS ?))`)

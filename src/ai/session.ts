@@ -353,9 +353,6 @@ async function openSession(env: Env, job: JobRow, ticket: string): Promise<strin
       { type: "user.message", content: [{ type: "text", text: firstMessage({ ticket, task: job.task, instruction: job.instruction }) }] },
     ],
   });
-  await env.DB.prepare("UPDATE jobs SET session_id = ? WHERE ward_id = ? AND job_id = ? AND status = 'connecting'")
-    .bind(session.id, job.ward_id, job.job_id)
-    .run();
   await startRun(env.DB, {
     wardId: job.ward_id,
     jobId: job.job_id,
@@ -364,6 +361,9 @@ async function openSession(env: Env, job: JobRow, ticket: string): Promise<strin
     model: MODEL.main,
     sessionId: session.id,
   });
+  await env.DB.prepare("UPDATE jobs SET session_id = ?, session_deleted_at = NULL WHERE ward_id = ? AND job_id = ? AND status = 'connecting'")
+    .bind(session.id, job.ward_id, job.job_id)
+    .run();
   return session.id;
 }
 

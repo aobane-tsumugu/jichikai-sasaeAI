@@ -34,6 +34,7 @@ export async function updateHelpOffer(db: D1Database, wardId: string, projectId:
 }
 
 export async function cancelHelpOffer(db: D1Database, wardId: string, projectId: string, offerId: string): Promise<HelpOfferReceipt | null> {
+  // DBの連動処理が、この削除と、閉じたときの削除を同じ消去待ちへ渡す。
   return db.prepare(`DELETE FROM project_help_offers WHERE ward_id = ? AND project_id = ? AND offer_id = ?
     AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL)
     RETURNING offer_id AS offerId, name, times, submission_id AS submissionId, created_at AS createdAt`)
