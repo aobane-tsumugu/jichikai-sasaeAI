@@ -85,6 +85,7 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
       env.DB.prepare("INSERT INTO line_group_notices (ward_id, group_id, first_joined_at) VALUES (?, 'fictional-group', '2026-11-06')").bind(w),
       env.DB.prepare("INSERT INTO line_webhook_receipts (ward_id, event_id, expires_at) VALUES (?, 'fictional-event', '2026-11-07')").bind(w),
       env.DB.prepare("INSERT INTO ops_deletion_marks (ward_id, mark_id, scope, deleted_at) VALUES (?, ?, 'record', '2026-11-06')").bind(w, w),
+      env.DB.prepare("INSERT INTO ops_monthly_ai_usage (ward_id, month, input_tokens, output_tokens) VALUES (?, '2026-11', 120, 30)").bind(w),
     ]);
     const bucket = new WardBucket(env.ORIGINALS, w);
     await bucket.put("originals/fictional.jpg", sourceBytes);

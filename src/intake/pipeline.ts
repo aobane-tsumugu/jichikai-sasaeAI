@@ -1,4 +1,6 @@
 import { getAnswerLabels } from "../settings/answer-labels";
+import { listRecordWardIds } from "../archive/snapshot";
+import { canStartJobAi, getWardAiLimits, recordAiMatchUsage } from "../ops/metrics";
 // 入った物の読みの流れ。画面の応答の後に waitUntil で裏で動かす。
 //
 // waitUntil は応答を返した後、最長 30 秒しか続かない（Cloudflare の文書）。読みがそれを超えると黙って止められるので、
@@ -21,13 +23,11 @@ import {
   claimRead,
   closeAbandonedRuns,
   endRun,
-  failExhaustedReads,
   failJob,
   finishRead,
   getJob,
   getReadings,
   listOriginals,
-  listStuckReads,
   MAX_READ_ATTEMPTS,
   releaseRead,
   startRun,
@@ -94,6 +94,7 @@ async function performRead(
   options: { leaseMs?: number; deps?: PipelineDeps },
 ): Promise<ReadOutcome> {
   const deps = options.deps ?? defaultDeps;
+  if (!await canStartJobAi(env.DB, wardId, jobId)) return "skipped";
   const attempt = await claimRead(env.DB, wardId, jobId, options.leaseMs ?? LEASE_AFTER_RESPONSE_MS);
   if (attempt === null) return "skipped";
 
@@ -109,7 +110,7 @@ async function performRead(
     const client = (deps?.createClient ?? ((e: Env) => createAnthropic(e, { maxRetries: 1 })))(env);
     let direct = (await getReadings(env.DB, wardId, jobId)).find((row) => row.source === "direct");
     let directUsage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0 };
-    if (!job.project_id && direct && "fields" in direct.body && direct.body.project_suggestions === undefined) {
+    if (!job.project_id && job.via !== "line_direct" && job.via !== "line_group" && direct && "fields" in direct.body && direct.body.project_suggestions === undefined) {
       try {
         const directOriginals = (await listOriginals(env.DB, wardId, jobId)).filter((o) => !o.media_type.startsWith("image/") && o.media_type !== "application/pdf");
         const suggested = await suggestProjects(client, direct.body, directOriginals);
@@ -182,7 +183,7 @@ async function performRead(
     else if (latest && (latest.via === "admin" || latest.via === "line_direct" || latest.via === "line_group")) await matchUnassignedAdminJob(env, wardId, jobId, client).catch((e) => console.error("届いたものの当てに失敗しました", describe(e)));
     if (placed) {
       await attachClarificationQuestions(env.DB, wardId, jobId).catch(() => undefined);
-      await processPhotoBatches(env, wardId).catch(() => undefined);
+      if (!(await getWardAiLimits(env.DB, wardId)).monthlyBlocked) await processPhotoBatches(env, wardId).catch(() => undefined);
     }
     return placed ? "read" : "skipped";
   } catch (err) {
@@ -273,6 +274,11 @@ async function saveAnswerSheetRows(
 async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, client: Anthropic): Promise<void> {
   const current = await getJob(env.DB, wardId, jobId);
   if (!current || current.project_id || !["admin", "line_direct", "line_group"].includes(current.via) || current.status !== "read") return;
+  if (!await canStartJobAi(env.DB, wardId, jobId)) return;
+  if (current.via === "line_direct" || current.via === "line_group") {
+    const { resumeLimitedLineText } = await import("../line/intake");
+    if (await resumeLimitedLineText(env, wardId, jobId)) return;
+  }
   const candidates = (await projectApi().listOpenProjects(env, wardId)).map((project) => ({
     id: project.projectId,
     title: project.title,
@@ -311,6 +317,7 @@ async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, 
   const summary = readings.map((reading) => "summary" in reading.body ? reading.body.summary : "").filter(Boolean).join("\n").slice(0, 2000);
   if (!summary || candidates.length === 0) return;
   const result = await matchProject(client, { candidates: hasPhoto ? await photoMatchCandidates(env.DB, wardId) : candidates, summary, photo: hasPhoto });
+  await recordAiMatchUsage(env.DB, wardId, result.usage);
   const selected = candidates.find((candidate) => candidate.id === result.choice);
   if (selected) {
     await assignReadJob(env, wardId, jobId, selected.id, result.reason, true);
@@ -340,13 +347,15 @@ async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, 
 
 /** 同時に届いた写真全体で一回当てる。10分後の文で決まらなければ既存の質問へ進む。 */
 async function matchLinePhotoBatch(env: Env, wardId: string, jobId: string, client: Anthropic, now = new Date()): Promise<void> {
+  if (!await canStartJobAi(env.DB, wardId, jobId)) return;
   const batch = await env.DB.prepare(`SELECT b.* FROM line_photo_batches b JOIN line_photo_items i
     ON i.ward_id = b.ward_id AND i.batch_id = b.batch_id WHERE b.ward_id = ? AND i.job_id = ?`)
     .bind(wardId, jobId).first<PhotoBatchContext & { expected_count: number | null }>();
   if (!batch || batch.match_finished_at) return;
   const items = await env.DB.prepare(`SELECT j.job_id, j.project_id, j.read_at FROM line_photo_items i
     JOIN jobs j ON j.ward_id = i.ward_id AND j.job_id = i.job_id
-    WHERE i.ward_id = ? AND i.batch_id = ? AND j.withdrawn_at IS NULL ORDER BY i.image_index, j.created_at, i.job_id`)
+    WHERE i.ward_id = ? AND i.batch_id = ? AND j.withdrawn_at IS NULL AND j.ai_limit_reason <> 'sender'
+    ORDER BY i.image_index, j.created_at, i.job_id`)
     .bind(wardId, batch.batch_id).all<{ job_id: string; project_id: string | null; read_at: string | null }>();
   if (!items.results.length || items.results.some((item) => !item.read_at)) return;
   if (batch.expected_count !== null && items.results.length < batch.expected_count) return;
@@ -374,6 +383,7 @@ async function matchLinePhotoBatch(env: Env, wardId: string, jobId: string, clie
       })));
       const result = await matchProject(client, { candidates, summary: JSON.stringify(summaries),
         photoContext: context });
+      await recordAiMatchUsage(env.DB, wardId, result.usage);
       reason = result.reason;
       const chosen = result.confident && candidates.find((candidate) => candidate.id === result.choice);
       if (chosen) {
@@ -402,6 +412,7 @@ async function matchLinePhotoBatch(env: Env, wardId: string, jobId: string, clie
 
 /** 五分ごとの既存処理から、読み終えた写真の待ち時間とAI障害を拾う。 */
 export async function matchPendingLinePhotos(env: Env, wardId: string, now = new Date()): Promise<void> {
+  if ((await getWardAiLimits(env.DB, wardId, now)).monthlyBlocked) return;
   const batches = await env.DB.prepare(`SELECT (SELECT i.job_id FROM line_photo_items i WHERE i.ward_id = b.ward_id
     AND i.batch_id = b.batch_id ORDER BY i.image_index, i.job_id LIMIT 1) AS job_id
     FROM line_photo_batches b WHERE b.ward_id = ? AND b.match_finished_at IS NULL AND b.prepared_at IS NULL
@@ -481,8 +492,39 @@ export function kickRead(env: Env, ctx: Waitable, wardId: string, jobId: string,
 
 /** Cron（五分ごと）。止まっている読みを拾い直す。 */
 export async function sweepReads(env: Env, deps?: PipelineDeps): Promise<{ picked: number; exhausted: number }> {
-  const exhausted = await failExhaustedReads(env.DB);
-  const stuck = await listStuckReads(env.DB);
+  let exhausted = 0;
+  const stuck: Array<{ ward_id: string; job_id: string }> = [];
+  const now = nowIso();
+  for (const ward of await listRecordWardIds(env.DB)) {
+    if ((await getWardAiLimits(env.DB, ward.ward_id)).monthlyBlocked) continue;
+    const failed = await env.DB.prepare(`UPDATE jobs SET status = 'failed', failure = 'error', lease_until = NULL,
+      finished_at = ?, updated_at = ? WHERE ward_id = ? AND ai_limit_reason = '' AND attempt >= ?
+      AND (status = 'received' OR (status = 'reading' AND lease_until < ?))`)
+      .bind(now, now, ward.ward_id, MAX_READ_ATTEMPTS, now).run();
+    exhausted += failed.meta.changes ?? 0;
+    const rows = await env.DB.prepare(`SELECT ward_id, job_id FROM jobs WHERE ward_id = ? AND ai_limit_reason <> 'sender'
+      AND attempt < ? AND ((status = 'received' AND read_at IS NULL AND updated_at < ?) OR (status = 'reading' AND lease_until < ?))
+      ORDER BY created_at LIMIT 20`)
+      .bind(ward.ward_id, MAX_READ_ATTEMPTS, new Date(Date.now() - 60_000).toISOString(), now)
+      .all<{ ward_id: string; job_id: string }>();
+    stuck.push(...rows.results);
+    // 読み終わってから月の上限に当たった資料は、読み直さず当て先の確認から続ける。
+    const waiting = await env.DB.prepare(`SELECT job_id FROM jobs WHERE ward_id = ? AND status IN ('read', 'received') AND read_at IS NOT NULL
+      AND project_id IS NULL AND ai_limit_reason = 'monthly' AND withdrawn_at IS NULL ORDER BY created_at LIMIT 20`)
+      .bind(ward.ward_id).all<{ job_id: string }>();
+    for (const job of waiting.results) {
+      if (!await canStartJobAi(env.DB, ward.ward_id, job.job_id)) continue;
+      try {
+        const client = (deps?.createClient ?? defaultDeps?.createClient ?? ((e: Env) => createAnthropic(e)))(env);
+        await matchUnassignedAdminJob(env, ward.ward_id, job.job_id, client);
+      } catch (error) {
+        await env.DB.prepare(`UPDATE jobs SET ai_limit_reason = 'monthly', status = 'received'
+          WHERE ward_id = ? AND job_id = ? AND status = 'read' AND project_id IS NULL AND withdrawn_at IS NULL`)
+          .bind(ward.ward_id, job.job_id).run();
+        console.error("待っていた資料の当て先を確認できませんでした", ward.ward_id, error instanceof Error ? error.name : "unknown");
+      }
+    }
+  }
   for (let i = 0; i < stuck.length; i += 3) {
     await Promise.all(
       stuck.slice(i, i + 3).map((s) =>

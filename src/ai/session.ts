@@ -191,7 +191,7 @@ export function newTicket(): string {
   return `tk_${randomToken(24)}`;
 }
 
-export type DispatchResult = "started" | "busy" | "empty" | "retry" | "failed";
+export type DispatchResult = "started" | "busy" | "empty" | "retry" | "failed" | "limited";
 
 /**
  * そのプロジェクトで、読み終わった一番古い入力を一つ、繋げる。同じプロジェクトで繋げている物があれば何もしない
@@ -201,13 +201,21 @@ export type DispatchResult = "started" | "busy" | "empty" | "retry" | "failed";
 export async function dispatchProject(env: Env, wardId: string, projectId: string): Promise<DispatchResult> {
   // 実在しない、閉じたプロジェクトには繋げない。入った物は読み終わりのまま待つ（付け替えられる）
   if (!(await projectDirectory().isOpen(env.DB, wardId, projectId))) return "empty";
+  const { getWardAiLimits } = await import("../ops/metrics");
+  const limits = await getWardAiLimits(env.DB, wardId);
+  await env.DB.prepare(`UPDATE jobs SET ai_limit_reason = ?, status = CASE WHEN ? = 1 THEN 'received' ELSE status END
+    WHERE ward_id = ? AND project_id = ?
+    AND status = 'read' AND ai_limit_reason <> 'sender' AND withdrawn_at IS NULL`)
+    .bind(limits.monthlyBlocked ? "monthly" : "", limits.monthlyBlocked ? 1 : 0, wardId, projectId).run();
+  if (limits.monthlyBlocked) return "limited";
   const ticket = newTicket();
   const hash = await sha256Hex(ticket);
   const now = nowIso();
   const claimed = await env.DB.prepare(
     `UPDATE jobs SET status = 'connecting', ticket_hash = ?, connect_started_at = ?, connect_attempt = connect_attempt + 1, updated_at = ?
       WHERE ward_id = ?
-        AND job_id = (SELECT job_id FROM jobs WHERE ward_id = ? AND project_id = ? AND status = 'read' ORDER BY created_at LIMIT 1)
+        AND job_id = (SELECT job_id FROM jobs WHERE ward_id = ? AND project_id = ? AND status = 'read'
+          AND ai_limit_reason <> 'sender' AND withdrawn_at IS NULL ORDER BY created_at LIMIT 1)
         AND NOT EXISTS (SELECT 1 FROM jobs WHERE ward_id = ? AND project_id = ? AND status = 'connecting')`,
   )
     .bind(hash, now, now, wardId, wardId, projectId, wardId, projectId)

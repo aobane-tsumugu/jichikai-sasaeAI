@@ -8,6 +8,7 @@ import type { JobRow } from "../intake/types";
 import { getJob } from "../intake/store";
 import { getClient } from "./deps";
 import { dispatchProject } from "./session";
+import { getWardAiLimits } from "../ops/metrics";
 
 /** 繋げるの待ち時間の上限（分）。上限に当たった入力は失敗にして次を送り、列を詰まらせない。数は実測後に直す仮の値。 */
 export const CONNECT_TIMEOUT_MS = 20 * 60_000;
@@ -195,42 +196,51 @@ export async function pendingSessions(db: D1Database, wardId: string, jobId?: st
 /** Cron（五分ごと）。webhook が来なかった物を引き直し、繋げる順番を待っている物を送り、消し損ねを消す。 */
 export async function sweepConnections(env: Env): Promise<{ checked: number; dispatched: number; deleted: number }> {
   const now = Date.now();
-  // 予約したがセッションを開く前に止まった物は、read に戻す
-  await env.DB.prepare(
-    `UPDATE jobs SET status = 'read', ticket_hash = NULL, updated_at = ?
-      WHERE status = 'connecting' AND session_id IS NULL AND connect_started_at < ?`,
-  )
-    .bind(nowIso(), new Date(now - 5 * 60_000).toISOString())
-    .run();
-
-  const connecting = await env.DB.prepare(
-    `SELECT ward_id, job_id FROM jobs WHERE status = 'connecting' AND session_id IS NOT NULL AND connect_started_at < ? LIMIT 20`,
-  )
-    .bind(new Date(now - 60_000).toISOString())
-    .all<{ ward_id: string; job_id: string }>();
-  for (const j of connecting.results) {
-    await checkSession(env, j.ward_id, j.job_id).catch((e) => console.error("セッションの確認に失敗しました", e instanceof Error ? e.name : ""));
-  }
-
-  const waiting = await env.DB.prepare(
-    `SELECT DISTINCT ward_id, project_id FROM jobs WHERE status = 'read' AND project_id IS NOT NULL LIMIT 20`,
-  ).all<{ ward_id: string; project_id: string }>();
+  let checked = 0;
   let dispatched = 0;
-  for (const w of waiting.results) {
-    if ((await dispatchProject(env, w.ward_id, w.project_id).catch(() => "failed")) === "started") dispatched += 1;
-  }
-
-  const leftovers = await env.DB.prepare(
-    `SELECT ward_id, job_id, session_id FROM jobs
-      WHERE session_id IS NOT NULL AND session_deleted_at IS NULL AND status <> 'connecting' LIMIT 20`,
-  ).all<{ ward_id: string; job_id: string; session_id: string }>();
   let deleted = 0;
-  for (const l of leftovers.results) if (await deleteSession(env, l.ward_id, l.job_id, l.session_id)) deleted += 1;
-  // 現在の番号が消えた仕事も、区ごとに実行履歴から後始末する。
   for (const ward of await listRecordWardIds(env.DB)) {
+    // 予約したがセッションを開く前に止まった物は、read に戻す
+    await env.DB.prepare(
+      `UPDATE jobs SET status = 'read', ticket_hash = NULL, updated_at = ?
+        WHERE ward_id = ? AND status = 'connecting' AND session_id IS NULL AND connect_started_at < ?`,
+    )
+      .bind(nowIso(), ward.ward_id, new Date(now - 5 * 60_000).toISOString())
+      .run();
+
+    const connecting = await env.DB.prepare(
+      `SELECT ward_id, job_id FROM jobs WHERE ward_id = ? AND status = 'connecting' AND session_id IS NOT NULL AND connect_started_at < ? LIMIT 20`,
+    )
+      .bind(ward.ward_id, new Date(now - 60_000).toISOString())
+      .all<{ ward_id: string; job_id: string }>();
+    for (const j of connecting.results) {
+      await checkSession(env, j.ward_id, j.job_id).catch((e) => console.error("セッションの確認に失敗しました", e instanceof Error ? e.name : ""));
+    }
+    checked += connecting.results.length;
+
+    if (!(await getWardAiLimits(env.DB, ward.ward_id)).monthlyBlocked) {
+      await env.DB.prepare(`UPDATE jobs SET status = 'read', ai_limit_reason = '' WHERE ward_id = ?
+        AND status = 'received' AND read_at IS NOT NULL AND project_id IS NOT NULL AND ai_limit_reason = 'monthly'
+        AND withdrawn_at IS NULL`).bind(ward.ward_id).run();
+    }
+
+    const waiting = await env.DB.prepare(
+      `SELECT DISTINCT ward_id, project_id FROM jobs WHERE ward_id = ? AND status = 'read' AND project_id IS NOT NULL
+        AND ai_limit_reason <> 'sender' AND withdrawn_at IS NULL LIMIT 20`,
+    ).bind(ward.ward_id).all<{ ward_id: string; project_id: string }>();
+    for (const w of waiting.results) {
+      if ((await dispatchProject(env, w.ward_id, w.project_id).catch(() => "failed")) === "started") dispatched += 1;
+    }
+
+    const leftovers = await env.DB.prepare(
+      `SELECT ward_id, job_id, session_id FROM jobs
+        WHERE ward_id = ? AND session_id IS NOT NULL AND session_deleted_at IS NULL AND status <> 'connecting' LIMIT 20`,
+    ).bind(ward.ward_id).all<{ ward_id: string; job_id: string; session_id: string }>();
+    for (const l of leftovers.results) if (await deleteSession(env, l.ward_id, l.job_id, l.session_id)) deleted += 1;
+    // 現在の番号が消えた仕事も、区ごとに実行履歴から後始末する。
     for (const session of await pendingSessions(env.DB, ward.ward_id, undefined, true)) {
       if (await deleteSession(env, ward.ward_id, session.job_id, session.session_id)) deleted += 1;
     }
   }
-  return { checked: connecting.results.length, dispatched, deleted };
+  return { checked, dispatched, deleted };
 }

@@ -28,6 +28,7 @@ export const WARD_TABLE_POLICY: readonly WardTablePolicy[] = [
   { table: "provider_ward_contacts", snapshot: true, export: "提供側が本人を確かめる手がかりで、区へ渡さない。", deletion: true },
   { table: "ward_settings", snapshot: true, export: true, deletion: true },
   { table: "ops_ward_limits", snapshot: true, export: true, deletion: true },
+  { table: "ops_monthly_ai_usage", snapshot: true, export: true, deletion: { cascade: "wards" } },
   { table: "ward_ai", snapshot: true, export: "提供側のAI接続と認証の設定なので区へ渡さない。", deletion: true },
   { table: "ward_ai_route_flags", snapshot: true, export: true, deletion: true },
   { table: "projects", snapshot: true, export: true, deletion: true },
