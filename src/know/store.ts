@@ -21,7 +21,7 @@ export const KNOW_BASE: readonly KnowBase[] = [
   { key: "meeting", title: "総会", hint: "開く時期、成立の決まり、委任の決まり、規約", months: 12, afterMeeting: true },
   { key: "roster", title: "世帯の名簿", hint: "世帯の代表者、班と班長、加入と転入の手続き", months: 12 },
   { key: "notices", title: "案内と回覧", hint: "案内の作り方、回覧の決まり", months: 24 },
-  { key: "delivery", title: "配り方", hint: "回覧板か全戸配布か、部数、印刷する場所", months: 24 },
+  { key: "delivery", title: "配り方", hint: "市報や回覧を配る時期、回覧板か全戸配布か、部数、印刷する場所", months: 24 },
   { key: "inquiries", title: "問い合わせと要望", hint: "住民の連絡先、行政への要望の出し方", months: 12 },
   { key: "answers", title: "出欠と手伝いの集め方", hint: "返事の集め方、締切の決め方", months: 24 },
   { key: "dues", title: "会費と募金", hint: "会費の額、集め方、募金の取りまとめ", months: 12, afterMeeting: true },
@@ -29,8 +29,8 @@ export const KNOW_BASE: readonly KnowBase[] = [
   { key: "city", title: "行政や他の団体の依頼", hint: "市の担当の窓口、毎年来る依頼", months: 12 },
   { key: "handover", title: "記録と引き継ぎ", hint: "預かっている書類の場所、備品、メールやSNSの入り口", months: 12, keepOut: "鍵とパスワード" },
   { key: "events", title: "行事", hint: "毎年の行事、頼んでいる業者や協賛先、保険", months: 12 },
-  { key: "duties", title: "当番と共同作業", hint: "ごみ集積所の当番、清掃や草刈りの決まり", months: 24 },
-  { key: "safety", title: "防災と施設", hint: "防災の組織と訓練、集会所、防犯灯", months: 24 },
+  { key: "duties", title: "当番と共同作業", hint: "ごみ当番の曜日、集会所の掃除、清掃や草刈りの決まり", months: 24 },
+  { key: "safety", title: "防災と施設", hint: "防災の組織と訓練、集会所の管理、見回り、防犯灯の球切れの連絡先", months: 24 },
 ];
 
 export const KNOW_LIMITS = { title: 60, body: 4000 } as const;

@@ -4,22 +4,32 @@ import { ErrorNotice, Layout, Notice } from "../core/ui";
 import { AdminPage } from "../core/admin-ui";
 import type { AdminEnv, WardInfo } from "../env";
 import { getRoster } from "../answers/api";
-import { addExemption, compareRota, exemptions, householdKey, householdLabel, lastPreparation, rotaDate, type Comparison } from "./store";
+import { addExemption, compareRota, exemptions, householdKey, householdLabel, lastPreparation, prepareRota, rotaDate, type Comparison } from "./store";
 import { getProjectSummary } from "../project/api";
 import { householdHistory } from "./history";
+import { rotaSchedule, WEEKDAYS } from "./schedule";
+import { yearRecurringAdmin } from "../know/year";
 
 const admin = new Hono<AdminEnv>();
+admin.route("/", yearRecurringAdmin);
 admin.use("/rota/*", async (c, next) => { c.header("Cache-Control", "private, no-store"); await next(); });
 
 export async function rotaPanel(db: D1Database, ward: WardInfo, projectId: string) {
   const proposal = await compareRota(db, ward.wardId, projectId);
   const preparation = await lastPreparation(db, ward.wardId, projectId);
+  const schedule = await rotaSchedule(db, ward.wardId, projectId);
   const comparison = proposal?.comparison;
   const root = adminPath(ward, `/projects/${projectId}/draft/duty_roster`);
-  return <section class="panel"><h2>{comparison?.hasPreviousTable === false ? "名簿から当番の下書きを作る" : "去年の表と今の名簿"}</h2>
-    <p>{comparison?.hasPreviousTable === false ? "去年の表がないため、班と世帯を名簿の順で並べます。名簿の順です。時間帯や担当は下の当番表で直せます。" : "去年の順番を保ち、免除の期間に当たる人と今の名簿にない人を担当から外します。班や団体で書かれた担当はそのまま残します。"}</p>
+  const weeklyForm = <form method="post" action={adminPath(ward, `/rota/${projectId}/weekly`)}>
+    <div class="field"><label for="weekly-weekday">何曜日に当番を回しますか</label><select id="weekly-weekday" name="weekday" required>
+      <option value="" selected={!schedule}>曜日を選んでください</option>{WEEKDAYS.map((day, index) => <option value={String(index)} selected={schedule?.weekday === index}>{day}曜日</option>)}</select></div>
+    <button class="secondary">一年分の日付を名簿の順に割り当てる</button></form>;
+  return <section class="panel"><h2>{schedule ? "一年分の当番表" : comparison?.hasPreviousTable === false ? "名簿から当番の下書きを作る" : "去年の表と今の名簿"}</h2>
+    <p>{schedule ? `${comparison?.year ?? ""}年の毎週${WEEKDAYS[schedule.weekday]}曜を名簿の順に割り当てます。その日に免除されている世帯は飛ばします。`
+      : comparison?.hasPreviousTable === false ? "去年の表がないため、班と世帯を名簿の順で並べます。名簿の順です。毎週回す当番は、曜日を一度選ぶと一年分の日付を入れられます。" : "去年の順番を保ち、免除の期間に当たる人と今の名簿にない人を担当から外します。班や団体で書かれた担当はそのまま残します。"}</p>
+    {schedule ? <details class="fold"><summary>曜日を直す</summary><div>{weeklyForm}</div></details> : <>{weeklyForm}<p>毎週回す当番でなければ、下の操作で去年の表や名簿から作れます。</p></>}
     {comparison ? <>
-      {comparison.hasPreviousTable !== false ? <>
+      {schedule ? <p>名簿に加わった世帯: {comparison.added.join("、") || "ありません。"}<br />名簿から外れた世帯: {comparison.removed.join("、") || "ありません。"}</p> : comparison.hasPreviousTable !== false ? <>
       <p class="muted">{comparison.year}年の{comparison.sourceTitle}と比べています。{!comparison.hasOldRoster ? "去年の名簿は残っていません。当番表にある名前と比べています。" : ""}</p>
       <dl class="facts">
         <dt>{comparison.hasOldRoster ? "名簿に加わった世帯" : "去年の表にない世帯"}</dt><dd>{comparison.added.join("、") || "ありません。"}</dd>
@@ -36,6 +46,22 @@ export async function rotaPanel(db: D1Database, ward: WardInfo, projectId: strin
       <li><a href={adminPath(ward, "/rota/history")}>世帯ごとの当番と役を読む</a></li></ul>
   </section>;
 }
+
+admin.post("/rota/:projectId/weekly", async (c) => {
+  const { ward, account } = c.var;
+  const id = c.req.param("projectId");
+  const project = await getProjectSummary(c.env.DB, ward.wardId, id);
+  if (!project || project.kind !== "duty" || project.closedAt) return c.notFound();
+  const value = String((await c.req.formData()).get("weekday") ?? "");
+  const weekday = /^[0-6]$/.test(value) ? Number(value) : -1;
+  const previous = await lastPreparation(c.env.DB, ward.wardId, id);
+  const ok = weekday >= 0 && await prepareRota(c.env.DB, ward.wardId, id, account.accountId, weekday);
+  if (!ok) return c.html(<AdminPage ward={ward} account={account} title="当番表を作れませんでした" back={{ href: adminPath(ward, `/projects/${id}/draft/duty_roster`), label: "当番の下書きへ戻る" }}>
+    <h1>当番表を作れませんでした</h1><p class="lead">曜日を選び、世帯の名簿が入っていることを確かめて、もう一度お試しください。</p>
+    <a class="button" href={adminPath(ward, `/projects/${id}/draft/duty_roster`)}>曜日を選び直す</a><a class="quiet" href={adminPath(ward, "/answers/roster")}>名簿を入れる・直す</a>
+  </AdminPage>, 400);
+  return c.redirect(`${adminPath(ward, `/rota/${id}/result`)}?notice=saved&done=${previous ? "updated" : "created"}`, 303);
+});
 
 export async function rotaRowNotes(db: D1Database, wardId: string, projectId: string): Promise<Comparison["entries"]> {
   const preparation = await lastPreparation(db, wardId, projectId);

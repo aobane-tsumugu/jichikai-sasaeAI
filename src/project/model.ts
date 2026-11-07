@@ -166,7 +166,7 @@ export const TABLES: Record<TableKey, TableDef> = {
   duties: {
     label: "当番",
     fields: {
-      slot: { label: "時間帯", def: TEXT },
+      slot: { label: "日付・時間帯", def: TEXT },
       task: { label: "持ち場", def: TEXT },
       assignee: { label: "担当", def: TEXT },
       attendance: {
@@ -288,6 +288,7 @@ export function cleanRowData(table: TableKey, raw: unknown): { ok: true; data: R
 /** 画面に出す列の値（列挙は日本語に、額は円に）。 */
 export function displayFieldValue(table: TableKey, name: string, value: string | number | undefined): string {
   if (value === undefined) return "";
+  if (table === "duties" && name === "slot" && /^\d{4}-\d{2}-\d{2}$/.test(String(value))) return formatJstDate(String(value));
   const field = TABLES[table].fields[name];
   if (field?.def.type === "enum") return field.def.labels[String(value)] ?? String(value);
   if (field?.def.type === "amount") return `${Number(value).toLocaleString("ja-JP")}円`;

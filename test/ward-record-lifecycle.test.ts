@@ -46,10 +46,13 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
     await env.DB.prepare("UPDATE accounts SET seat_id = ? WHERE ward_id = ? AND account_id = ?").bind(seat, w, account.accountId).run();
     const project = await createProject(env.DB, w, { kind: "event", title: "架空の控え確認会", year: 2026, accountId: account.accountId });
     const p = project.projectId;
+    const duty = await createProject(env.DB, w, { kind: "duty", title: "架空のごみ当番", year: 2026, accountId: account.accountId });
     const sourceBytes = Uint8Array.from(atob(SOURCE_PNG), (character) => character.charCodeAt(0));
     const sourceHash = "b".repeat(64);
     // ここで使うIDと本文と認証の値は全て試験用の架空のもの。
     await env.DB.batch([
+      // 当番の曜日も両方の自治会に入れ、写し・書き出し・親からの連動消去を確かめる。
+      env.DB.prepare("INSERT INTO rota_schedules (ward_id, project_id, weekday) VALUES (?, ?, 1)").bind(w, duty.projectId),
       env.DB.prepare(`INSERT INTO jobs (ward_id, job_id, project_id, via, task, status, created_at, updated_at)
         VALUES (?, ?, ?, 'line_direct', 'connect', 'done', '2026-11-06', '2026-11-06')`).bind(w, w, p),
       env.DB.prepare(`INSERT INTO originals (ward_id, original_id, job_id, position, kind, content_hash, media_type, byte_size, r2_path, received_at)
