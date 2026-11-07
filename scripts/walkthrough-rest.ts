@@ -5,6 +5,119 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FIRST_SLICE } from "../fixtures/first-slice.ts";
 
+type SqlRow = Record<string, unknown>;
+export interface CheckPorts {
+  query: (sql: string) => Promise<SqlRow[]>;
+  request: (path: string, init?: RequestInit) => Promise<Response>;
+  sleep: (ms: number) => Promise<void>;
+}
+const sqlText = (value: string) => `'${value.replaceAll("'", "''")}'`;
+
+async function fictionalWard(slug: string, ports: CheckPorts): Promise<string> {
+  const rows = await ports.query(`SELECT ward_id, name FROM wards WHERE ward_id = (SELECT ward_id FROM wards WHERE slug = ${sqlText(slug)}) AND slug = ${sqlText(slug)}`);
+  const row = rows[0];
+  if (rows.length !== 1 || typeof row?.ward_id !== "string" || typeof row.name !== "string" || !row.name.includes("架空")) throw new Error("D1で架空の区を確認できません");
+  return row.ward_id;
+}
+
+// 鍵の値は取らず、line-simと同じ架空専用の設定の名前だけを照合する。
+export async function checkInquiry(slug: string, ports: CheckPorts): Promise<{ result: "通過" | "飛ばす"; reason: string; status: number }> {
+  const admin = "/" + encodeURIComponent(slug) + "/admin";
+  const list = await ports.request(admin + "/inquiries");
+  const html = await list.text();
+  if (!list.ok || !html.includes("問い合わせ")) throw new Error("役員の問い合わせ一覧を開けません");
+  if (html.includes("届いている問い合わせはありません")) return { result: "飛ばす", reason: `${slug}区に問い合わせの記録がありません`, status: list.status };
+  const wardId = await fictionalWard(slug, ports);
+  const records = await ports.query(`SELECT inquiry_id, line_source_type FROM inquiry_records WHERE ward_id = ${sqlText(wardId)} ORDER BY received_at DESC, created_at DESC, inquiry_id LIMIT 1`);
+  const id = records[0]?.inquiry_id;
+  if (typeof id !== "string") throw new Error("一覧に対応する問い合わせの記録を確認できません");
+  // LINE由来の記録は専用設定を要する。送り先の無い記録には送る操作が出ない。
+  if (records[0]?.line_source_type) {
+    const channels = await ports.query(`SELECT destination, channel_secret_binding, access_token_binding FROM line_channels WHERE ward_id = ${sqlText(wardId)}`);
+    if (channels.length !== 1 || channels[0]?.destination !== "U" + "0".repeat(32) || channels[0]?.channel_secret_binding !== "LINE_SIM_CHANNEL_SECRET" || channels[0]?.access_token_binding !== "LINE_SIM_CHANNEL_ACCESS_TOKEN") throw new Error("架空専用のLINE設定ではないため返事を試していません");
+  }
+  const path = admin + "/inquiries/" + encodeURIComponent(id);
+  if (!html.includes(`href="${path}"`)) throw new Error("問い合わせ一覧から記録を開けません");
+  const page = await ports.request(path);
+  const detail = await page.text();
+  const form = [...detail.matchAll(/<form\b[^>]*action="([^"]+)"[^>]*>([\s\S]*?)<\/form>/gi)].find(match => match[1] === path && /<textarea\b[^>]*name="answer"/.test(match[2] ?? ""));
+  if (!page.ok || !form) throw new Error("問い合わせの返事の欄を確認できません");
+  if (!/<button\b[^>]*name="operation"[^>]*value="send"/.test(form[2] ?? "")) throw new Error("問い合わせの返事を送る操作がありません");
+  const answer = FIRST_SLICE.publicAnnouncement;
+  // 失敗時も再送しない。LINE_SIMの無効な鍵で、送れない結果を見る。
+  const response = await ports.request(path, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ operation: "send", answer }) });
+  const result = await response.text();
+  if (![400, 502].includes(response.status) || !result.includes("<h1>返事を送れませんでした</h1>") || !result.includes(answer) || !result.includes(`href="${path}"`)) throw new Error("架空の返事を送ろうとした結果と戻り先を確認できません");
+  return { result: "通過", reason: "役員の一覧から問い合わせと返事の欄を開き、架空の返事が送れない結果と書いた文、戻り先を確認。実LINEへの到達は未確認", status: response.status };
+}
+
+export async function checkWorkersRoute(slug: string, projectId: string, fixtureText: string, ports: CheckPorts): Promise<void> {
+  if (["kakuu", "demoku"].includes(slug.trim().toLowerCase())) throw new Error("予備経路にkakuuとdemokuは使えません");
+  const wardId = await fictionalWard(slug, ports);
+  const w = sqlText(wardId);
+  const flagSql = `SELECT use_workers_route, updated_at FROM ward_ai_route_flags WHERE ward_id = ${w}`;
+  const before = await ports.query(flagSql);
+  const previous = before[0];
+  if (before.length > 1 || previous && (![0, 1].includes(Number(previous.use_workers_route)) || typeof previous.updated_at !== "string")) throw new Error("元の予備経路の設定を読めません");
+  const updated = new Date().toISOString();
+  let restored = false;
+  try {
+    await ports.query(`INSERT INTO ward_ai_route_flags (ward_id, use_workers_route, updated_at) VALUES (${w}, 1, ${sqlText(updated)}) ON CONFLICT (ward_id) DO UPDATE SET use_workers_route = excluded.use_workers_route, updated_at = excluded.updated_at`);
+    if ((await ports.query(flagSql))[0]?.use_workers_route !== 1) throw new Error("予備経路の設定を確認できません");
+    const data = new FormData();
+    data.set("project_id", projectId);
+    const runId = crypto.randomUUID();
+    data.append("part", new Blob([fixtureText + "\n架空の予備経路の確認: " + runId], { type: "text/plain" }), "架空の予備経路_" + runId + ".txt");
+    data.append("part_kind", "file");
+    const sent = await ports.request("/" + encodeURIComponent(slug) + "/admin/intake", { method: "POST", headers: { accept: "application/json" }, body: data });
+    const receipt: unknown = await sent.json();
+    if (!sent.ok || !receipt || typeof receipt !== "object" || !("ok" in receipt) || receipt.ok !== true || !("jobId" in receipt) || typeof receipt.jobId !== "string") throw new Error("予備経路の架空資料を新しく1件受け付けられません");
+    const job = sqlText(receipt.jobId);
+    const until = Date.now() + 360_000;
+    do {
+      const rows = await ports.query(`SELECT j.status, j.read_at, j.finished_at, j.session_id, j.stop_reason,
+        (SELECT COUNT(*) FROM readings r WHERE r.ward_id = ${w} AND r.job_id = j.job_id) AS readings,
+        (SELECT COUNT(*) FROM job_runs r WHERE r.ward_id = ${w} AND r.job_id = j.job_id AND r.kind = 'connect' AND r.status = 'ok' AND r.session_id = '' AND r.ended_at IS NOT NULL) AS connected
+        FROM jobs j WHERE j.ward_id = ${w} AND j.job_id = ${job} AND j.project_id = ${sqlText(projectId)}`);
+      const row = rows[0];
+      if (rows.length !== 1 || !row) throw new Error("今回の資料の処理をD1で確認できません");
+      if (["failed", "attention", "withdrawn"].includes(String(row.status))) throw new Error("予備経路の読み取りか接続が止まりました");
+      if (row.status === "done") {
+        if (!row.read_at || !row.finished_at || row.session_id !== null || row.stop_reason !== "end_turn" || Number(row.readings) < 1 || Number(row.connected) < 1) throw new Error("読み取りとWorkers経路での接続完了の根拠がそろいません");
+        return;
+      }
+      await ports.sleep(3000);
+    } while (Date.now() < until);
+    throw new Error("6分以内に予備経路の完了を確認できませんでした");
+  } finally {
+    // 書き込みの応答が不明な時も元へ戻す。元の行が無ければ行自体を消す。
+    try {
+      if (previous) await ports.query(`UPDATE ward_ai_route_flags SET use_workers_route = ${Number(previous.use_workers_route)}, updated_at = ${sqlText(String(previous.updated_at))} WHERE ward_id = ${w}`);
+      else await ports.query(`DELETE FROM ward_ai_route_flags WHERE ward_id = ${w}`);
+      const after = await ports.query(flagSql);
+      restored = previous ? after.length === 1 && after[0]?.use_workers_route === previous.use_workers_route && after[0]?.updated_at === previous.updated_at : after.length === 0;
+    } catch { restored = false; }
+    if (!restored) throw new Error("予備経路の設定を元に戻せたことを確認できません。提供側でこの区の設定を確認してください");
+  }
+}
+
+async function queryD1(base: string, root: string, sql: string): Promise<SqlRow[]> {
+  const url = new URL(base);
+  const local = url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if (url.pathname !== "/" || url.search || url.hash || url.username || url.password || !local && url.origin !== "https://jichikai.aobane-tsumugu.com") throw new Error("D1の確認はローカルのHTTPか指定のstagingで行ってください");
+  const { execFile } = await import("node:child_process");
+  const output = await new Promise<string>((accept, reject) => execFile(process.execPath, [resolve(root, "node_modules/wrangler/bin/wrangler.js"), "d1", "execute", "DB", local ? "--local" : "--remote", "--json", "--command", sql],
+    { cwd: root, windowsHide: true, timeout: 60000, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, WRANGLER_SEND_METRICS: "false" } },
+    (error, stdout) => error ? reject(new Error("D1の確認を実行できません。接続とWranglerの実行環境を確認してください")) : accept(stdout)));
+  let data: unknown;
+  try { data = JSON.parse(output); } catch { throw new Error("D1の応答を読めません"); }
+  if (!Array.isArray(data) || data.length !== 1) throw new Error("D1の応答の形を確認できません");
+  const item: unknown = data[0];
+  if (!item || typeof item !== "object" || !("success" in item) || item.success !== true || !("results" in item) || !Array.isArray(item.results) || item.results.some((r: unknown) => !r || typeof r !== "object" || Array.isArray(r))) throw new Error("D1の結果を確認できません");
+  return item.results as SqlRow[];
+}
+
+async function main() {
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
 const arg = (key: string) => { const index = args.indexOf(key); return index < 0 ? undefined : args[index + 1]; };
@@ -12,8 +125,14 @@ const ward = arg("--ward");
 const baseArg = arg("--base");
 const credsArg = arg("--creds");
 const opsCredsArg = arg("--ops-creds");
-if (!ward || !baseArg || !credsArg) {
-  console.error("使い方: npm run walkthrough-rest -- --base <URL> --ward <区> --creds <役員の資格情報> [--ops-creds <運用の資格情報>]");
+const workersWard = arg("--workers-route-ward");
+if (args.includes("--help") || !ward || !baseArg || !credsArg) {
+  console.error("使い方: npm run walkthrough-rest -- --base <URL> --ward <区> --creds <役員の資格情報> [--ops-creds <運用の資格情報>] [--workers-route-ward <区のURL名>]\n予備経路は--wardと同じ専用の架空区を指定します。kakuuとdemokuは指定しないでください。D1はローカルのHTTPなら--local、指定のstagingなら--remoteで確認します。LINE由来の問い合わせの返事はLINE_SIM専用の区でだけ試します。LINE_SIMの送信の鍵はfictional-で始まる無効な値にしてください。");
+  if (args.includes("--help")) return;
+  process.exit(2);
+}
+if (args.includes("--workers-route-ward") && (!workersWard || workersWard.startsWith("--") || workersWard !== ward || ["kakuu", "demoku"].includes(workersWard.toLowerCase()))) {
+  console.error("--workers-route-wardは--wardと同じ専用の架空区を指定してください。kakuuとdemokuは使えません。");
   process.exit(2);
 }
 if (ward === "demoku") {
@@ -185,7 +304,7 @@ if (adminLoggedIn) {
     record(1, "新しい行事と案内", "通過", "手書きの案内を保存し、公式LINEを送らない選択で配布", distributed.status, start);
   } catch (error) { fail(1, "新しい行事と案内", error, start); }
 } else {
-  for (const [number, title] of [[2,"回答票"],[3,"今やることと区の段取り"],[5,"実態の一枚"],[6,"言葉で下書きを直す"],[7,"当番表の編集"],[8,"対象者への配布"],[10,"予備の列"],[11,"行政の依頼と運営メモ"],[12,"元の資料を消す"],[13,"引渡し"]] as const) skip(number, title, "役員画面に入れず、前提の行事がありません");
+  for (const [number, title] of [[2,"回答票"],[3,"今やることと区の段取り"],[5,"実態の一枚"],[6,"言葉で下書きを直す"],[7,"当番表の編集"],[8,"対象者への配布"],[11,"行政の依頼と運営メモ"],[12,"元の資料を消す"],[13,"引渡し"]] as const) skip(number, title, "役員画面に入れず、前提の行事がありません");
 }
 
 // 2. 架空の回答票を読み取り、役員が確認して確定する。
@@ -391,19 +510,28 @@ else {
   } catch (error) { fail(8, "対象者への配布", error, start); }
 }
 
-// 9. 住民からの問い合わせ入口が提供されているか確認する。LINE 署名が要る経路は使わない。
+const checkPorts: CheckPorts = { request: req, query: (sql) => queryD1(base, root, sql), sleep: (ms) => new Promise(done => setTimeout(done, ms)) };
+// 9. 架空専用の問い合わせを役員画面で開き、返事を試した結果を見る。
+if (!adminLoggedIn) skip(9, "問い合わせ", "役員画面に入れませんでした");
+else
 {
   const start = Date.now();
   try {
-    const wardPage = await get(wardPath + "/");
-    if (/action="[^"]*(?:inquir|contact|request)/i.test(wardPage.html)) skip(9, "問い合わせ", "住民向けのHTTP問い合わせ入口を画面で確認できません（LINE署名が要る経路は対象外）");
-    else skip(9, "問い合わせ", "住民向け問い合わせ画面がありません。役員の記録フォームは住民側の入口ではありません");
+    const result = await checkInquiry(ward, checkPorts);
+    record(9, "問い合わせ", result.result, result.reason, result.status, start);
   } catch (error) { fail(9, "問い合わせ", error, start); }
 }
 
-// 10. 専用の予備経路画面がある場合だけ開く。通常の手入力欄とは区別する。
-if (!projectId) skip(10, "予備の列", "前提の行事を開けませんでした");
-else skip(10, "予備の列", "役員画面に予備経路の専用画面はなく、通常の手入力画面です");
+// 10. 専用の架空区でだけ予備経路を使い、設定の復元まで確認する。
+if (!workersWard) skip(10, "予備の列", "--workers-route-ward がありません");
+else if (!projectId) skip(10, "予備の列", "前提の行事を開けませんでした");
+else {
+  const start = Date.now();
+  try {
+    await checkWorkersRoute(workersWard, projectId, FIRST_SLICE.publicAnnouncement, checkPorts);
+    record(10, "予備の列", "通過", "架空資料1件の読み取りとWorkers経路での接続完了をD1で確認し、設定を元に戻した", lastStatus, start);
+  } catch (error) { fail(10, "予備の列", error, start); }
+}
 
 // 11. 行政依頼と運営メモを保存する。帳簿と決算は対象外。
 if (!adminLoggedIn) skip(11, "行政の依頼と運営メモ", "役員画面に入れず、行政依頼を保存できません");
@@ -514,3 +642,8 @@ if (opsCredsArg) {
 
 if (opsLoggedIn) await post("/ops/logout", {});
 console.log("記録: " + evidence);
+}
+
+if (typeof process !== "undefined" && process.argv?.[1] && /(?:^|[\\/])walkthrough-rest\.ts$/.test(process.argv[1])) {
+  main().catch(() => { console.error("通し確認を続けられませんでした。接続と実行環境を確認してください。"); process.exitCode = 1; });
+}
