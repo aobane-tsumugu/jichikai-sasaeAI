@@ -44,7 +44,8 @@ it("通年のごみ当番を月曜で作り、免除と名簿変更を反映し�
   }, cookie)).status).toBe(303);
   expect((await getKnowItem(env.DB, ward.wardId, "delivery"))?.body).toBe("毎月、班長が市報を各世帯に配る。");
   const deliveryPage = await (await get(realApp, `${root}/year/${delivery.item_id}`, cookie)).text();
-  expect(deliveryPage).toContain("この自治会の市報の配布は、毎月です。");
+  expect(deliveryPage).toContain(`id="recurrence" name="recurrence" value="毎月"`);
+  expect(deliveryPage).not.toContain("よくある例として");
   expect(deliveryPage).toContain("毎月、班長が市報を各世帯に配る。");
   expect(deliveryPage).not.toContain("準備を始める");
   expect(deliveryPage).not.toContain("/prepare");
