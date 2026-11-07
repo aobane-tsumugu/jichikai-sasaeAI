@@ -32,14 +32,14 @@ async function addQuestion(db: D1Database, wardId: string, projectId: string, st
     .bind(wardId, projectId, questionId, state, questionId).run();
 }
 
-/** 一括取得にする前の取得と描画を残した比較用。送った人の表示を加え、HTMLの順序、文、リンク、フォームをまとめて比べる。 */
+/** 個別取得と描画による比較用。提出期限は種類によらず提出の記録へ進み、HTMLの順序、文、リンク、フォームをまとめて比べる。 */
 async function legacyMain(db: D1Database, wardId: string, root: string): Promise<string> {
   const entries: Array<{ date: string | null; until?: boolean; taskId?: string; projectId: string; project: string; label: string; href: string }> = [];
   for (const project of await listProjects(db, wardId)) {
     for (const [kind, date] of Object.entries(project.deadlines)) {
       if (kind === "event_day" && date < day(0)) continue;
       entries.push({ date, projectId: project.projectId, project: project.title, label: DEADLINE_LABEL[kind as DeadlineKind],
-        href: kind === "submit_due" && project.kind === "city_request" ? `/requests/city/${project.projectId}` : kind === "answer_due" ? `/answers/${project.projectId}` : `/projects/${project.projectId}/map` });
+        href: kind === "submit_due" ? `/requests/city/${project.projectId}` : kind === "answer_due" ? `/answers/${project.projectId}` : `/projects/${project.projectId}/map` });
     }
     const state = await getProjectState(db, wardId, project.projectId);
     if (!state) throw new Error("比較する架空の準備がありません");
@@ -67,7 +67,7 @@ async function legacyMain(db: D1Database, wardId: string, root: string): Promise
   return String(await html`<main><a class="back" href="${root}/">← 最初の画面へ</a><h1>今やること</h1>${inquirySection}${lead}${comingSection}${lateSection}${questionSection}</main>`);
 }
 
-it("三つの準備の締切・やること・質問が、修正前と同じHTMLで同じ順に出る", async () => {
+it("三つの準備の締切・やること・質問が、個別取得と同じHTMLで同じ順に出る", async () => {
   const { ward, cookie } = await seedAdmin(env.DB);
   const first = await createProject(env.DB, ward.wardId, { kind: "event", title: "あの準備（架空）", year: 2025, eventDay: day(-1) });
   const second = await createProject(env.DB, ward.wardId, { kind: "city_request", title: "あの準備（架空）", year: 2026 });

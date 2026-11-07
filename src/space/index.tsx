@@ -1,3 +1,4 @@
+import { projectFeatures } from "../project/task-features";
 import { getAnswerDeadline, getRoster, listAnswers } from "../answers/api";
 import { countText } from "../answers/counts";
 import { countMeetingAnswers } from "../answers/meeting-store";
@@ -262,7 +263,8 @@ async function renderSpace(c: Context<WardEnv>, direct: string | null) {
   </Layout>);
   const roster = await getRoster(c.env.DB, c.var.ward.wardId);
   const householdCount = roster.filter((row) => !leader || row.district === credential.district).length;
-  const meeting = project.kind === "general_meeting";
+  const features = await projectFeatures(c.env.DB, c.var.ward.wardId, projectId);
+  const meeting = features.delegation;
   const meetingAnswers = meeting ? (await listAnswers(c.env.DB, c.var.ward.wardId, projectId))
     .filter((answer) => (!leader || answer.district === (credential.district ?? "")) && isMeetingStatus(answer.meetingStatus)) : null;
   return c.html(<Layout title={leader ? "班長のページ" : "実行委員のページ"} siteName={`${c.var.ward.name} ${project.title}`} noindex>
@@ -272,7 +274,7 @@ async function renderSpace(c: Context<WardEnv>, direct: string | null) {
     {!leader ? <p>回答票、当番表、当日の紙のどれでもかまいません。写真かPDFを送れます。送った紙は、役員に届きます。</p> : null}
     </aside><section><h2>当番表</h2><p class="muted">役員がこのページに載せたときの当番表です。役員が載せ直すまで変わりません。</p>
     {data.tablesRecorded ? <><MaterialsTable table="duties" items={data.items} /><h2>配置図</h2><MaterialsTable table="layout" items={data.items} /></> : <p>{data.tablesPublished ? "載せたときの表の記録がありません。役員に聞いてください。" : "まだ載っていません。"}</p>}
-    <h2>実行委員名簿</h2>{data.tablesRecorded ? <MaterialsTable table="committee" items={data.items} /> : <p>まだ載っていません。</p>}
+    {features.committee || data.items.some((item) => item.kind === "committee") ? <><h2>実行委員名簿</h2>{data.tablesRecorded ? <MaterialsTable table="committee" items={data.items} /> : <p>まだ載っていません。</p>}</> : null}
     {data.documents.length ? data.documents.map((doc) => <section><h2>{doc.title}</h2><p>役員が実行委員と班長のページに載せた文書です。直している途中の文書は出ません。</p><details class="fold"><summary>{doc.title}を読む</summary><div>{articleParagraphs(doc.body).map((text) => <p class="preserve-lines">{text}</p>)}</div></details></section>) : <><h2>役員から届いたもの</h2><p>まだ載っていません。</p></>}
     <h2>案内</h2>{publications.length ? publications.map((doc) => <p><a class="quiet" href={`/${c.var.ward.slug}/p/${projectId}`}>{doc.title}（住民向けのページ）</a></p>) : <p>まだ載っていません。</p>}
     <h2>出欠</h2>{meetingAnswers ? <>
@@ -284,7 +286,7 @@ async function renderSpace(c: Context<WardEnv>, direct: string | null) {
     <div class="counts space-counts"><div class="count"><b>{data.attendance.length}<small>世帯</small></b><span>{householdCount ? `${householdCount}世帯のうち` : "返事のあった世帯"}</span></div><div class="count"><b>{data.attendance.reduce((sum, row) => sum + row.people_count, 0)}<small>人</small></b><span>参加する</span></div></div><p class="muted">紙で返事をした世帯も、回答票を送ると数に入ります。</p>
     {data.attendance.length ? <details class="fold"><summary>返事のあった世帯の一覧（{data.attendance.length}世帯）</summary><div><table class="stack"><thead><tr>{!leader ? <th>班</th> : null}<th>代表者</th><th class="num">人数</th></tr></thead><tbody>{data.attendance.map((row) => <tr>{!leader ? <td data-label="班">{row.district || "班が分からない"}</td> : null}<td data-label="代表者">{row.household}</td><td data-label="人数" class="num">{countText({ peopleCount: row.people_count, childrenCount: row.children_count, adultsCount: row.adults_count, seniorsCount: row.seniors_count }, labels)}</td></tr>)}</tbody></table></div></details> : <p>返事はまだありません。</p>}
     </>}
-    {leader ? <p class="muted">名前が出た世帯の回答票は、名前が読めないようにして捨ててかまいません。捨てにくいときは、ついでのときに役員に渡してください。</p> : <><h2>協賛先</h2><p>{data.tablesRecorded ? `${data.items.filter((item) => item.kind === "sponsors").length}軒のうち、${data.items.filter((item) => item.kind === "sponsors" && ["yes", "no"].includes(String(item.data.reply))).length}軒から返事がありました。` : ""}額と、お願いした内容は、このページには出ません。</p>{data.tablesRecorded ? <details class="fold"><summary>協賛先の一覧を開く（{data.items.filter((item) => item.kind === "sponsors").length}軒）</summary><div><MaterialsTable table="sponsors" items={data.items} /></div></details> : <p>まだ載っていません。</p>}</>}
+    {leader ? <p class="muted">名前が出た世帯の回答票は、名前が読めないようにして捨ててかまいません。捨てにくいときは、ついでのときに役員に渡してください。</p> : features.sponsors ? <><h2>協賛先</h2><p>{data.tablesRecorded ? `${data.items.filter((item) => item.kind === "sponsors").length}軒のうち、${data.items.filter((item) => item.kind === "sponsors" && ["yes", "no"].includes(String(item.data.reply))).length}軒から返事がありました。` : ""}額と、お願いした内容は、このページには出ません。</p>{data.tablesRecorded ? <details class="fold"><summary>協賛先の一覧を開く（{data.items.filter((item) => item.kind === "sponsors").length}軒）</summary><div><MaterialsTable table="sponsors" items={data.items} /></div></details> : <p>まだ載っていません。</p>}</> : null}
     {!leader ? <><h2>写真と届いたもの</h2>{data.originals.length ? data.originals.map((file) => <p><a class="quiet" href={`${base}/file/${encodeURIComponent(file.original_id)}`}>{file.filename}</a></p>) : <p>まだありません。</p>}</> : null}
     <h2>連絡先</h2><p class="preserve-lines">{contact || "役員に聞いてください。"}</p></section></div></div>
   </Layout>);

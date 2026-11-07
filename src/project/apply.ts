@@ -1,3 +1,4 @@
+import { projectFeatures } from "./task-features";
 // 差分の適用（設計書 5.4 の規則）。束 2 の MCP の手「差分を書く」と、役員画面の直しが呼ぶ。
 //
 // 守る規則:
@@ -22,7 +23,6 @@ import {
   DOCUMENT_KIND_LABEL,
   ITEM_LABEL,
   ITEM_SCREEN_LABEL,
-  ITEMS_BY_KIND,
   TABLES,
   cleanRowData,
   displayFieldValue,
@@ -150,9 +150,6 @@ async function checkChange(
   switch (change.kind) {
     case "item": {
       if (!isItemKey(change.itemKey)) return { ok: false, reason: "項目の名前が合いません" };
-      if (!(ITEMS_BY_KIND[project.kind as keyof typeof ITEMS_BY_KIND] as readonly string[]).includes(change.itemKey)) {
-        return { ok: false, reason: `この行事に「${ITEM_LABEL[change.itemKey]}」の項目はありません` };
-      }
       if (typeof change.value !== "string" || change.value.trim() === "") return { ok: false, reason: "項目の中身が空です" };
       if (change.value.length > MAX_VALUE) return { ok: false, reason: "項目の中身が長すぎます" };
       return { ok: true, value: { change, source, target: change.itemKey } };
@@ -660,7 +657,7 @@ async function planRow(ctx: Ctx, n: Normalized, change: RowChange): Promise<Plan
   const exemptionText = String(data.what ?? "");
   // 資料の免除は運営上の判断を聞く。理由を共用の記録へ流さない。
   if (table === "decisions" && n.source.kind !== "person" && /免除/.test(exemptionText) &&
-    (/当番/.test(exemptionText) || (ctx.project.kind === "duty" && !/会費|参加費|負担金/.test(exemptionText)))) {
+    (/当番/.test(exemptionText) || ((await projectFeatures(ctx.db, ctx.wardId, ctx.projectId)).rota && !/会費|参加費|負担金/.test(exemptionText)))) {
     return { status: "held", statements: [], bump: false, staleKinds: [],
       questions: await materialExemptionQuestions(ctx.db, ctx.wardId, ctx.projectId, ctx.project.year, exemptionText, n.source) };
   }

@@ -1,3 +1,4 @@
+import { projectTasks, firstTaskDraft, taskDocumentKind } from "../project/task-features";
 // 読み終わった資料を行事ごとに見せ、役員の「始める」で段取りにつなぐ。
 import { newId, nowIso } from "../core/ids";
 import type { Env } from "../env";
@@ -12,7 +13,6 @@ import { startTask } from "../ai/api";
 import { dispatchProject } from "../ai/session";
 import { attachClarificationQuestions } from "../line/clarifications";
 import { getDraftPack } from "../draft/packs";
-import { initialDraftKind } from "../map/template";
 import { getPublicContact } from "../settings/store";
 import { getJob, getReadings, listOriginals, setJobProject, type ReadingRow } from "./store";
 import type { OriginalRow, Waitable } from "./types";
@@ -40,7 +40,7 @@ function sameEvent(a: string, b: string): boolean {
 /** 読み手が付けた題と同じ行事が進んでいれば返す。題の揺れは資料どうしを束ねる時と同じに見る。 */
 function openProjectFor(group: Pick<MaterialGroup, "title" | "kind">, projects: Awaited<ReturnType<typeof listOpenProjects>>) {
   if (!group.title) return null;
-  return projects.find((p) => kindFamily(p.kind) === kindFamily(group.kind) && sameEvent(p.title, group.title)) ?? null;
+  return projects.find((p) => sameEvent(p.title, group.title)) ?? null;
 }
 
 /** 役員に分類を求めない。読めた題の分だけ分け、題の無い資料は一緒に送った一番大きなまとまりに入れる。 */
@@ -167,7 +167,9 @@ export async function startMaterialGroup(env: Env, ctx: Waitable, wardId: string
   const seed = "seedProjectId" in template && template.seedProjectId ? past.find((entry) => entry.projectId === template.seedProjectId) : undefined;
   if (seed) await copySeed(env.DB, wardId, seed.projectId, project.projectId, seed.year, eventDay || null);
   await attachGroup(env, wardId, group, project.projectId, choice.projectName || groupTitle(group));
-  const pack = getDraftPack(initialDraftKind(project.kind), project.kind);
+  const tasks = await projectTasks(env.DB, wardId, project.projectId);
+  const firstDraft = firstTaskDraft(tasks);
+  const pack = getDraftPack(firstDraft, taskDocumentKind(tasks, firstDraft));
   const contact = await getPublicContact(env.DB, wardId);
   await startTask(env, ctx, { wardId, projectId: project.projectId, task: "draft", accountId,
     instruction: `${pack.instruction}${contact ? `\n区の公開用の連絡先: ${contact}` : ""}\n対象の文書: ${pack.kind}。範囲: ${pack.scope}。dataにpack_versionを${pack.version}、based_on_state_versionを引いた状態の番号として含めてください。` });

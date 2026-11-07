@@ -1,6 +1,7 @@
+import { projectTasks, taskFeatures, taskCollectsAttendance } from "../../project/task-features";
 import { formatDateText } from "../../core/time";
 import { plainText, withoutPending, writtenInText } from "../../project/document-body";
-import { collectsAttendance, withoutTitleLine } from "../../project/heading";
+import { withoutTitleLine } from "../../project/heading";
 import { labelsFromBody } from "../../answers/counts";
 import { getAnswerLabels } from "../../settings/answer-labels";
 import { DraftPaper } from "./draft";
@@ -54,6 +55,8 @@ admin.get("/print/:projectId", async (c) => {
   const id = c.req.param("projectId");
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
   if (!project) return c.notFound();
+  const tasks = await projectTasks(c.env.DB, ward.wardId, id);
+  const features = taskFeatures(tasks);
   const papers = await c.env.DB.prepare(`SELECT d.document_id, d.kind, d.scope, d.title, MAX(v.version_no) AS latest,
     MAX(CASE WHEN v.published_at IS NOT NULL THEN v.version_no END) AS published
     FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
@@ -65,7 +68,7 @@ admin.get("/print/:projectId", async (c) => {
     <p>{project.title}</p>
     <h2>配る紙</h2><ul class="rows">{papers.results.map((paper) => {
       const base = `/print/${id}/${paper.document_id}/${paper.published ?? paper.latest}`;
-      const withAnswer = collectsAttendance(project.kind, paper.kind);
+      const withAnswer = taskCollectsAttendance(tasks, paper.kind);
       const extra = paper.kind === "announcement" ? [
         ...(withAnswer ? [{ href: `${base}${paper.published === null ? "/preview?paper=answer" : "/answer"}`, title: "回答票だけ", note: "返事を書いて渡してもらう紙です" }] : []),
         ...(paper.published !== null ? [{ href: `${base}/poster`, title: "掲示", note: "掲示板に貼る一枚です" }, ...(withAnswer ? [{ href: `${base}/leader`, title: "班長への一枚", note: "班長のページのQRコードが付いています" }] : [])] : []),
@@ -74,7 +77,7 @@ admin.get("/print/:projectId", async (c) => {
         </li>{extra.map((row) => <li><a class="row-link" href={adminPath(ward, row.href)}><b>{row.title}</b><span>{row.note}</span></a></li>)}</>;
     })}</ul>{!papers.results.length ? <p>下書きを保存すると、ここから紙を開けます。</p> : null}
     <h2>書き込んで撮って送る紙</h2><p>電話や役員会で決まったことを、紙に書いて撮って送れます。案内を住民に知らせる前から使えます。</p>
-    <ul class="rows">{(["meeting", "sponsors"] as const).map((kind) => <li><a class="row-link" href={adminPath(ward, `/print/${id}/paper/${kind}`)}><b>{kindLabel(kind)}</b><span>{kind === "meeting" ? "準備中のもの一つにつき1枚ずつ出ます。この準備の紙が最初です。役員会で決まったことを、その準備の紙に書いてください。" : "この準備で協賛をお願いする先の一覧です。"}</span></a></li>)}</ul>
+    <ul class="rows">{(["meeting", "sponsors"] as const).filter((kind) => kind !== "sponsors" || features.sponsors).map((kind) => <li><a class="row-link" href={adminPath(ward, `/print/${id}/paper/${kind}`)}><b>{kindLabel(kind)}</b><span>{kind === "meeting" ? "準備中のもの一つにつき1枚ずつ出ます。この準備の紙が最初です。役員会で決まったことを、その準備の紙に書いてください。" : "この準備で協賛をお願いする先の一覧です。"}</span></a></li>)}</ul>
     <p class="link-line"><a href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>書いた紙を撮って送る</a></p>
     <details class="fold"><summary>家にプリンタがないとき</summary><div><p>紙を開いて、スマホやパソコンの印刷の画面でPDFに保存します。保存したPDFは、コンビニのコピー機の案内に沿って送ると印刷できます。</p></div></details>
   </AdminPage>);
@@ -106,6 +109,7 @@ admin.get("/print/:projectId/paper/:kind", async (c) => {
   }
   const code = await makeProjectPaperCode(c.env.DB, ward.wardId, id);
   const url = projectPaperQrUrl(baseUrl, ward.slug, id);
+  if (!taskFeatures(state.mapTasks).sponsors) return c.notFound();
   const rows = state.tables.sponsors.filter((entry) => entry.scope === "current");
   // 去年しか無い相手も打診できるように載せる。去年の返事や額を今年の返事にしない。
   const names = new Set(rows.map((entry) => entry.matchKey));
@@ -134,13 +138,15 @@ admin.get("/print/:projectId/:documentId/:versionNo/preview", async (c) => {
     .bind(ward.wardId, c.req.param("projectId"), c.req.param("documentId"), Number(c.req.param("versionNo")))
     .first<{ title: string; kind: string; project_kind: string; project_title: string; body: string; version_no: number; scope: string; published_at: string | null }>();
   if (!row) return c.notFound();
+  const tasks = await projectTasks(c.env.DB, ward.wardId, c.req.param("projectId")!);
+  const features = taskFeatures(tasks);
   const tables = row.scope === "space" && ["duty_roster", "procedure"].includes(row.kind)
     ? await currentPublicationTables(c.env.DB, ward.wardId, c.req.param("projectId")) : undefined;
-  return c.html(<DraftPaper title={row.title} projectTitle={row.project_title} projectKind={row.project_kind} body={row.body} kind={row.kind}
+  return c.html(<DraftPaper title={row.title} projectTitle={row.project_title} projectKind={features.delegation ? "general_meeting" : taskCollectsAttendance(tasks, row.kind) ? "event" : "request"} body={row.body} kind={row.kind}
     tables={tables}
     back={adminPath(ward, `/projects/${c.req.param("projectId")}/draft/${row.kind}`)} wardName={ward.name}
-    squads={await getSquads(c.env.DB, ward.wardId)} labels={await getAnswerLabels(c.env.DB, ward.wardId)} answerOnly={collectsAttendance(row.project_kind, row.kind) && c.req.query("paper") === "answer"}
-    generalMeeting={row.project_kind === "general_meeting"} meetingNote={row.project_kind === "general_meeting" ? row.published_at ? meetingNoteFromBody(row.body) : await meetingNote(c.env.DB, ward.wardId) : ""} />);
+    squads={await getSquads(c.env.DB, ward.wardId)} labels={await getAnswerLabels(c.env.DB, ward.wardId)} answerOnly={taskCollectsAttendance(tasks, row.kind) && c.req.query("paper") === "answer"}
+    generalMeeting={features.delegation} meetingNote={features.delegation ? row.published_at ? meetingNoteFromBody(row.body) : await meetingNote(c.env.DB, ward.wardId) : ""} />);
 });
 
 const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
@@ -161,8 +167,10 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
       AND (r.publication_id IS NOT NULL OR (v.scope = 'space' AND v.published_at IS NOT NULL))
     ORDER BY r.published_at DESC LIMIT 1`).bind(ward.wardId, projectId, documentId, versionNo).first<PrintData>();
   if (!row) return c.notFound();
+  const tasks = await projectTasks(c.env.DB, ward.wardId, c.req.param("projectId")!);
+  const features = taskFeatures(tasks);
   if (kind === "meeting" || kind === "sponsors") return c.redirect(adminPath(ward, `/print/${projectId}/paper/${kind}`), 303);
-  const withAnswer = collectsAttendance(row.project_kind, row.kind);
+  const withAnswer = taskCollectsAttendance(tasks, row.kind);
   if (!withAnswer && (kind === "answer" || kind === "leader")) return c.notFound();
   const baseUrl = c.env.PUBLIC_BASE_URL || new URL(c.req.url).origin;
   const back = adminPath(ward, `/print/${projectId}/${documentId}/${versionNo}`);
@@ -173,7 +181,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   if (kind === "poster") {
     if (row.scope !== "public") return c.notFound();
     const wardUrl = `${baseUrl.replace(/\/+$/, "")}/${encodeURIComponent(ward.slug)}/`;
-    return c.html(<PosterPage wardName={ward.name} withAnswer={withAnswer} generalMeeting={row.project_kind === "general_meeting"} title={paperHeading(row.title, row.document_title)} body={row.body} wardUrl={wardUrl} due={due} contact={contact} distributed={distributed} back={back} copies={copies} />);
+    return c.html(<PosterPage wardName={ward.name} withAnswer={withAnswer} generalMeeting={features.delegation} title={paperHeading(row.title, row.document_title)} body={row.body} wardUrl={wardUrl} due={due} contact={contact} distributed={distributed} back={back} copies={copies} />);
   }
   const squads = await getSquads(c.env.DB, ward.wardId);
   const paperSquads = squads.length ? squads : [""];
@@ -202,7 +210,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
     <span>スマホでも答えられます。カメラを向けて、出てきた文字を押してください。</span></div>;
   const labels = labelsFromBody(row.body);
   const helperSlots = paperHelperSlots(publishedItem(row.body, "helper_slots") || "");
-  const generalMeeting = row.project_kind === "general_meeting";
+  const generalMeeting = features.delegation;
   const note = generalMeeting ? meetingNoteFromBody(row.body) : "";
   const answerSheet = (squad: string, standalone = false) => <div class={standalone ? "answer-slip standalone" : "answer-slip"}>
     <div class="slip"><div class="slip-fields">
@@ -316,7 +324,9 @@ async function PrintChooser({ c }: { c: import("hono").Context<AdminEnv> }) {
       AND (r.publication_id IS NOT NULL OR (v.scope = 'space' AND v.published_at IS NOT NULL))`)
     .bind(ward.wardId, projectId, documentId, Number(versionNo)).first<{ title: string; kind: string; project_kind: string; scope: string }>();
   if (!row) return c.notFound();
-  const withAnswer = collectsAttendance(row.project_kind, row.kind);
+  const tasks = await projectTasks(c.env.DB, ward.wardId, c.req.param("projectId")!);
+  const features = taskFeatures(tasks);
+  const withAnswer = taskCollectsAttendance(tasks, row.kind);
   const kinds = row.scope === "space" ? ["duty"] as const : row.kind === "announcement"
     ? printKinds.filter((kind) => withAnswer || (kind !== "answer" && kind !== "leader")) : ["announcement"] as const;
   return c.html(<AdminPage ward={ward} account={account} title="印刷用ページ" back={{ href: adminPath(ward, `/publish/${projectId}`), label: "知らせる画面へ戻る" }}>

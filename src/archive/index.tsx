@@ -1,3 +1,4 @@
+import { projectFeatures, taskFeatures } from "../project/task-features";
 import { countText, labelsFromBody } from "../answers/counts";
 import { getAnswerLabels } from "../settings/answer-labels";
 import { formatDateText, formatJstDate, periodText, shortDate } from "../core/time";
@@ -31,14 +32,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 type SeedFields = Record<"title" | "year" | "eventDay", string>;
 
-function seedPage(c: Context<AdminEnv>, project: ProjectSummary, values?: SeedFields) {
+async function seedPage(c: Context<AdminEnv>, project: ProjectSummary, values?: SeedFields) {
   const root = adminPath(c.var.ward, `/archive/${project.projectId}`);
   return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="終わったものをもとに新しく始める" back={{ href: root, label: `← ${project.year}年の${project.title}へ` }}>
     <h1>{project.year}年の{project.title}をもとに新しく始める</h1><p class="lead">去年のやることを、新しい日に合わせて置き直します。全部を見直す必要はありません。</p>
     {values || c.req.query("error") ? <p class="notice error" role="alert">名前、年、当日を確かめて、もう一度始めてください。</p> : null}
     <form method="post" action={`${root}/seed`}><div class="field"><label for="title">名前</label><input id="title" name="title" type="text" value={values?.title ?? project.title} maxlength={100} required /></div>
       <div class="field"><label for="year">年</label><input id="year" name="year" type="number" inputmode="numeric" value={values?.year ?? String(project.year + 1)} min="1900" max="2200" required /></div>
-      <div class="field"><label for="eventDay">当日</label><input id="eventDay" name="eventDay" type="date" value={values?.eventDay} required={project.kind === "event"} /></div><div class="action-bar"><button>始める</button></div></form><p class="muted">新しく始めても、去年のものは変わりません。</p>
+      <div class="field"><label for="eventDay">当日（分かれば）</label><input id="eventDay" name="eventDay" type="date" value={values?.eventDay} /></div><div class="action-bar"><button>始める</button></div></form><p class="muted">新しく始めても、去年のものは変わりません。</p>
   </AdminPage>, values ? 400 : 200);
 }
 
@@ -100,7 +101,7 @@ admin.get("/archive/search", async (c) => {
     {query.trim().length === 1 ? <p class="notice">二文字以上入れてください。</p> : null}
     {query.trim().length >= 2 ? <h2>見つかったもの（最大30件）</h2> : null}
     {results.map((result) => <article class="panel">
-      <p>{result.year}年 / {PROJECT_KIND_LABEL[result.project_kind as ProjectKind]} / {labels[result.record_type]}</p>
+      <p>{result.year}年 / {result.title} / {labels[result.record_type]}</p>
       <h2><a href={adminPath(ward, projectRecordPath(result))}>{result.title}</a></h2>
       {result.counterpart ? <p>相手: {result.counterpart}</p> : null}
       <p>{result.excerpt}</p>
@@ -198,7 +199,8 @@ admin.get("/archive/:projectId", async (c) => {
     listSubmittedItems(c.env.DB, ward.wardId, id),
   ]);
   const labels = documents.results.filter((document) => document.kind === "announcement").at(-1);
-  const meeting = project.kind === "general_meeting";
+  const features = state ? taskFeatures(state.mapTasks) : await projectFeatures(c.env.DB, ward.wardId, id);
+  const meeting = features.delegation;
   const meetingTotals = countMeetingAnswers(answers);
   const answerLabels = labels ? labelsFromBody(labels.body) : await getAnswerLabels(c.env.DB, ward.wardId);
   const totals = new Map<string, { people: number; helpers: number }>();
@@ -227,7 +229,7 @@ admin.get("/archive/:projectId", async (c) => {
       </> : null}
     </div></details>)}
     {!documents.results.length ? <p>知らせたものはありません。</p> : null}
-    {submittedItems.length || ["city_request", "request"].includes(project.kind) ? <SubmittedItems items={submittedItems} /> : null}
+    {submittedItems.length || features.submit ? <SubmittedItems items={submittedItems} /> : null}
 
     </section><aside>{meeting ? <MeetingCounts totals={meetingTotals} className="counts record-counts" /> : <div class="counts record-counts"><div class="count"><b>{answers.length}<small>世帯</small></b><span>返事のあった世帯</span></div><div class="count"><b>{answers.reduce((sum, answer) => sum + answer.peopleCount, 0)}<small>人</small></b><span>参加すると返事をした</span></div></div>}
       <ul class="links"><li class="link-line"><a href="#report">報告を読む</a></li><li class="link-line"><a href="#answers">返事の一覧を読む</a></li><li class="link-line"><a href="#orig">元の資料を読む（{originals.results.length}件）</a></li></ul>
@@ -283,7 +285,7 @@ admin.post("/archive/:projectId/seed", async (c) => {
   };
   const eventDay = values.eventDay.trim();
   const year = Number(values.year);
-  if ((eventDay && !DATE.test(eventDay)) || (source.kind === "event" && !eventDay)) return seedPage(c, source, values);
+  if (eventDay && !DATE.test(eventDay)) return seedPage(c, source, values);
   try {
     const next = await createProject(c.env.DB, ward.wardId, {
       kind: source.kind, title: values.title, year,

@@ -1,3 +1,4 @@
+import { projectTasks, taskFeatures, taskCollectsAttendance, distributedTaskKeys } from "../project/task-features";
 import { getAnswerLabels } from "../settings/answer-labels";
 import { meetingNote } from "../answers/meeting";
 import { deliveryAlert } from "../line/delivery-alert";
@@ -19,8 +20,7 @@ import { checkPublicDraft } from "./check";
 import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, ITEM_SCREEN_LABEL, isItemKey, type DocumentKind, type ProjectKind } from "../project/model";
 import { applyChange } from "../project/apply";
 import { recordPublishedItems } from "../project/actions";
-import { collectsAttendance, paperHeading, withoutTitleLine } from "../project/heading";
-import { draftTaskKeys } from "../map/template";
+import { paperHeading, withoutTitleLine } from "../project/heading";
 import { documentBodyCheckMessage, PENDING, plainText, withoutPending, writtenInText } from "../project/document-body";
 import { MaterialsTable } from "../space/materials";
 import { currentPublicationTables, publicationTablesDiffer, publicationTablesSql } from "../space/publication-tables";
@@ -129,6 +129,8 @@ async function markDistributedTask(db: D1Database, wardId: string, projectId: st
 admin.get("/publish/:projectId", async (c) => {
   const { ward, account } = c.var;
   const projectId = c.req.param("projectId");
+  const tasks = await projectTasks(c.env.DB, ward.wardId, projectId);
+  const features = taskFeatures(tasks);
   const project = await getProject(c.env.DB, ward.wardId, projectId);
   if (!project) return c.notFound();
   const drafts = await getDrafts(c.env.DB, ward.wardId, projectId);
@@ -163,7 +165,7 @@ admin.get("/publish/:projectId", async (c) => {
     const editHref = adminPath(ward, `/projects/${projectId}/draft/${kind}`);
     const printBase = adminPath(ward, `/print/${projectId}/${record.document_id}/${record.version_no}`);
     const printHref = `${printBase}/${kind === "duty_roster" ? "duty" : "announcement"}`;
-    const withAnswer = collectsAttendance(project.kind, kind);
+    const withAnswer = taskCollectsAttendance(tasks, kind);
     const paperLabel = withAnswer ? "案内と回答票" : DOCUMENT_KIND_LABEL[kind];
     const failed = record.line_status === "failed" || record.line_status === "not_configured";
     return c.html(<AdminPage ward={ward} account={account} title={lowered ? "住民向けのページから取り下げました" : rain ? "雨の変更を知らせました" : "知らせました"} back={{ href: mapHref, label: `${project.title}のやることへ` }}>
@@ -229,6 +231,8 @@ admin.post("/publish/:projectId/space", async (c) => {
   const documentId = String(form.get("documentId") ?? "");
   const versionId = String(form.get("versionId") ?? "");
   const versionNo = Number(form.get("versionNo"));
+  const tasks = await projectTasks(c.env.DB, ward.wardId, projectId);
+  const features = taskFeatures(tasks);
   const project = await getProject(c.env.DB, ward.wardId, projectId);
   if (!project || project.closed_at) return c.notFound();
   const row = await c.env.DB.prepare(`SELECT d.kind, d.scope, d.stale_since_version, v.version_id, v.version_no, v.published_at, v.tables_snapshot
@@ -265,7 +269,7 @@ admin.post("/publish/:projectId/space", async (c) => {
   const result = await publish.run();
   if (result.meta.changes !== 1) return adminResult(c, "下書きの内容が変わったか、すでに知らせています。知らせる画面で内容を確かめてください。", 409, { href: adminPath(c.var.ward, `/publish/${encodeURIComponent(c.req.param("projectId"))}`), label: "知らせる画面に戻る" }, "知らせる内容と相手を確かめて、もう一度操作してください。");
   await recordPublishedItems(c.env.DB, ward.wardId, projectId, publishedVersionId, account.accountId);
-  for (const taskKey of draftTaskKeys(project.kind, row.kind)) {
+  for (const taskKey of distributedTaskKeys(tasks, row.kind)) {
     await markDistributedTask(c.env.DB, ward.wardId, projectId, account.accountId, taskKey, publishedVersionId);
   }
   return c.redirect(adminPath(ward, `/publish/${projectId}?space=sent`), 303);
@@ -279,6 +283,8 @@ async function confirmPublication(c: Context<AdminEnv>) {
   const { ward, account } = c.var;
   const projectId = c.req.param("projectId")!;
   const form = c.req.method === "POST" ? await c.req.formData() : new FormData();
+  const tasks = await projectTasks(c.env.DB, ward.wardId, projectId);
+  const features = taskFeatures(tasks);
   const project = await getProject(c.env.DB, ward.wardId, projectId);
   if (!project || project.closed_at) return c.notFound();
   const drafts = await getDrafts(c.env.DB, ward.wardId, projectId);
@@ -298,7 +304,7 @@ async function confirmPublication(c: Context<AdminEnv>) {
   const distribution = distributionFromForm(form, roster, recipientScope === "all_households");
   if (!distribution) return c.html(<AdminPage ward={ward} account={account} title="部数を確かめてください"><h1>部数を確かめてください</h1><p>加入世帯に配る部数は名簿の世帯数までです。全戸に配るときは「全戸」を選んでください。</p><a class="button" href={adminPath(ward, `/publish/${projectId}/confirm?documentId=${draft.document_id}`)}>知らせる内容に戻る</a></AdminPage>, 400);
   const rain = draft.kind === "notice" && draft.title.includes("雨");
-  const withAnswer = publicScope && collectsAttendance(project.kind, draft.kind);
+  const withAnswer = publicScope && taskCollectsAttendance(tasks, draft.kind);
   const draftDue = withAnswer ? answerDeadlineFromDraft(draft.body, project.year) : null;
   const pastDue = draftDue && draftDue < new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date());
   const lineDelivery = !publicScope || !canSendLine(draft.kind) || form.get("lineDelivery") === "skip" ? "skip" : "send";
@@ -346,7 +352,7 @@ async function confirmPublication(c: Context<AdminEnv>) {
       {draft.stale_since_version !== null ? <Notice>新しいものが入っています。ここに表示した内容で知らせられます。直すときは下書きに戻ってください。</Notice> : null}
       {warnings.filter((warning) => !warning.startsWith("まだ決まっていないところ")).map((warning) => <PublicWarning finding={warning} />)}
       {draft.body.includes(PENDING) ? <div class="notice warn"><strong>まだ決めていないところがあります</strong><p>「（確認中）」のところは、紙とページから外して知らせます。入れるときは下書きを直してください。</p><a class="quiet" href={adminPath(ward, `/projects/${projectId}/draft/${draft.kind}`)}>下書きを直す</a></div> : null}
-      <div class="compare"><section class="compare-paper"><b>紙{copies ? `（${recipientScope === "all_households" ? "全戸" : "加入世帯"}に${copies}部）` : ""}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} kind={draft.kind} />{tablesPreview}{withAnswer ? <p class="answer-slip-preview"><b>回答票</b>　切り取って班長か役員に渡します。{project.kind === "general_meeting" ? "出席、委任、欠席の欄があります。" : "世帯の代表者（ふつうは世帯主）のお名前、人数、手伝いの欄があります。"}</p> : null}</div></section>
+      <div class="compare"><section class="compare-paper"><b>紙{copies ? `（${recipientScope === "all_households" ? "全戸" : "加入世帯"}に${copies}部）` : ""}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} kind={draft.kind} />{tablesPreview}{withAnswer ? <p class="answer-slip-preview"><b>回答票</b>　切り取って班長か役員に渡します。{features.delegation ? "出席、委任、欠席の欄があります。" : "世帯の代表者（ふつうは世帯主）のお名前、人数、手伝いの欄があります。"}</p> : null}</div></section>
         <section><b>{publicScope ? "住民向けのページ" : "実行委員と班長のページ"}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} kind={draft.kind} />{flyer?.flyer_id ? <img src={adminPath(ward, `/projects/${projectId}/flyer/${draft.version_id}`)} alt={draft.title} style="max-width:100%;height:auto" /> : null}{tablesPreview}{withAnswer ? <p class="muted">この下に「出欠を答える」のボタンが出ます。</p> : null}</div></section></div>
       <p class="compare-link"><a class="quiet" href={printHref}>紙の見え方を見る</a></p><p class="muted">{publicScope ? "知らせたあとも、住民向けのページからは取り下げられます。" : "実行委員と班長のページに載せます。住民向けのページには載りません。"}</p>
       <div class="action-bar"><button type="submit">{sendLabel}</button><a class="button secondary" href={editHref}>下書きに戻る</a></div>
@@ -360,6 +366,8 @@ admin.post("/publish/:projectId/send", async (c) => {
   const { ward, account } = c.var;
   const form = await c.req.formData();
   const projectId = c.req.param("projectId");
+  const tasks = await projectTasks(c.env.DB, ward.wardId, projectId);
+  const features = taskFeatures(tasks);
   const project = await getProject(c.env.DB, ward.wardId, projectId);
   const documentId = String(form.get("documentId") ?? "");
   const versionId = String(form.get("versionId") ?? "");
@@ -392,11 +400,11 @@ admin.post("/publish/:projectId/send", async (c) => {
   }
   if (form.has("targetMode")) distribution = distributionFromForm(form, roster, recipientScope === "all_households");
   if (!distribution) return adminResult(c, "紙の配布先が名簿と合いません。配布内容を選び直してください。", 400, { href: adminPath(c.var.ward, `/publish/${encodeURIComponent(c.req.param("projectId"))}`), label: "知らせる画面に戻る" }, "知らせる内容と相手を確かめて、もう一度操作してください。");
-  const draftDue = collectsAttendance(project.kind, row.kind) ? answerDeadlineFromDraft(row.body, project.year) : null;
+  const draftDue = taskCollectsAttendance(tasks, row.kind) ? answerDeadlineFromDraft(row.body, project.year) : null;
   // 過ぎた日を受付の締切に入れると、配った途端に回答が閉じる。去年の中身の案でも起きるので入れない
   const answerDue = draftDue && draftDue >= new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date()) ? draftDue : null;
   const answerLabels = await getAnswerLabels(c.env.DB, ward.wardId);
-  const generalMeeting = project.kind === "general_meeting" && row.kind === "announcement";
+  const generalMeeting = features.delegation && row.kind === "announcement";
   const note = generalMeeting ? { meetingNote: await meetingNote(c.env.DB, ward.wardId) } : {};
   let publishedBody = row.body;
   let parsed: unknown;
@@ -436,7 +444,7 @@ admin.post("/publish/:projectId/send", async (c) => {
     </AdminPage>, 409);
   }
   await recordPublishedItems(c.env.DB, ward.wardId, projectId, versionId, account.accountId);
-  for (const taskKey of draftTaskKeys(project.kind, row.kind)) {
+  for (const taskKey of distributedTaskKeys(tasks, row.kind)) {
     await markDistributedTask(c.env.DB, ward.wardId, projectId, account.accountId, taskKey, versionId);
   }
   const publicUrl = `${(c.env.PUBLIC_BASE_URL || new URL(c.req.url).origin).replace(/\/+$/, "")}/${ward.slug}/p/${encodeURIComponent(projectId)}`;

@@ -1,3 +1,4 @@
+import { projectTasks, taskFeatures, taskDocumentKind } from "../project/task-features";
 import { adminResult } from "../core/admin-ui";
 import { formatDateText, formatJstDate } from "../core/time";
 import { Hono, type MiddlewareHandler } from "hono";
@@ -153,8 +154,10 @@ admin.get("/close/:projectId", async (c) => {
   const { ward } = c.var; const id = c.req.param("projectId");
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
   if (!project) return c.notFound();
-  const minutes = project.kind === "board_meeting" || project.kind === "general_meeting";
-  const pack = getDraftPack("report", project.kind);
+  const featureTasks = await projectTasks(c.env.DB, ward.wardId, id);
+  const features = taskFeatures(featureTasks);
+  const minutes = features.meeting;
+  const pack = getDraftPack("report", taskDocumentKind(featureTasks, "report"));
   const internalReport = pack.scope === "staff";
   if (!project.closedAt && !(await prepareDrafts(c.env.DB, ward.wardId, id, c.var.account.accountId))) return c.notFound();
   // 当日が済む前に開いた時は、まだ終わっていないことと戻る道を一番上に書く。中止で終わりにする時のために、欄は出したままにする。
@@ -198,9 +201,9 @@ admin.get("/close/:projectId", async (c) => {
   // 前の年に実際に掲載した文だけを引き継ぐ。無いときは作らない。
   const previous = activityView && !savedActivity ? await c.env.DB.prepare(`SELECT a.published_body FROM project_activity_pages a
     JOIN projects p ON p.ward_id = a.ward_id AND p.project_id = a.project_id
-    WHERE a.ward_id = ? AND p.year < ? AND p.kind = ? AND a.published_body IS NOT NULL
+    WHERE a.ward_id = ? AND p.year < ? AND p.title = ? AND a.published_body IS NOT NULL
     ORDER BY CASE WHEN p.project_id = (SELECT seed_project_id FROM projects WHERE ward_id = ? AND project_id = ?) THEN 0 ELSE 1 END, p.year DESC, a.published_at DESC LIMIT 1`)
-    .bind(ward.wardId, project.year, project.kind, ward.wardId, id).first<{ published_body: string }>() : null;
+    .bind(ward.wardId, project.year, project.title, ward.wardId, id).first<{ published_body: string }>() : null;
   const previousActivity = parseActivityBody(previous?.published_body);
   const activity = savedActivity ?? { introduction: report("public"), membershipBurden: previousActivity?.membershipBurden ?? "", membershipBenefit: previousActivity?.membershipBenefit ?? "", tasks: tasks.results.filter((task) => task.progress === "done").map((task) => ({ taskId: task.task_id, name: task.name, period: task.period })) };
   const recordedActivity = activityView ? await activityFacts(c.env.DB, ward.wardId, id, activity.tasks) : null;
@@ -319,12 +322,14 @@ admin.post("/close/:projectId/prepare", async (c) => {
   const contact = await getPublicContact(c.env.DB, ward.wardId);
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
   if (!project) return c.notFound();
-  const meetingSummary = project?.kind === "general_meeting"
+  const featureTasks = await projectTasks(c.env.DB, ward.wardId, id);
+  const features = taskFeatures(featureTasks);
+  const meetingSummary = features.delegation
     ? meetingTotalsText(countMeetingAnswers(await listAnswers(c.env.DB, ward.wardId, id))) : undefined;
   try {
     await Promise.all([
       startTask(c.env, waitableContext(c), { wardId: ward.wardId, projectId: id, task: "report", accountId: account.accountId,
-        instruction: reportInstruction(project.kind, contact, meetingSummary) }),
+        instruction: reportInstruction(taskDocumentKind(featureTasks, "report"), contact, meetingSummary) }),
       startTask(c.env, waitableContext(c), { wardId: ward.wardId, projectId: id, task: "map_draft", accountId: account.accountId,
         instruction: "閉じるときの段取りの下書きを状態から作る。元の資料は読まない。状態にある仕事を一つずつ保ち、task_id、period、name、progress（open/started/done）、requested_by、difficulty、next_yearを記録する。時期、進み具合、頼んだ相手、困ったこと、来年変えることは状態にある内容だけを書き、分からない欄は空にして役員への質問にする。仕事を省いたり、過去の参考情報を今年の実績にしたり、内容を補って作らない。write_changeでkind=map_draft、target=map、data={tasks:[...] }を一度書く。" }),
     ]);
@@ -340,12 +345,14 @@ admin.post("/close/:projectId/report/:scope", async (c) => {
   if (scope === "public") {
     const project = await getProjectSummary(c.env.DB, ward.wardId, id);
     if (!project || project.closedAt) return c.notFound();
-    if (getDraftPack("report", project.kind).scope !== "public") return c.notFound();
+    const featureTasks = await projectTasks(c.env.DB, ward.wardId, id);
+    const features = taskFeatures(featureTasks);
+    if (getDraftPack("report", taskDocumentKind(featureTasks, "report")).scope !== "public") return c.notFound();
     const previous = await latestReport(c.env.DB, ward.wardId, id, "public");
     const nextBody = reportBody(previous?.body, body);
     if (previous?.body !== nextBody) {
       const saved = await saveDocument(c.env.DB, ward.wardId, id, account.accountId, {
-        kind: "report", title: previous?.title ?? (project.kind === "event" ? "実施報告" : getDraftPack("report", project.kind).title), scope: "public", body: nextBody, basedOn: project.stateVersion,
+        kind: "report", title: previous?.title ?? (!features.meeting && !features.submit ? "実施報告" : getDraftPack("report", taskDocumentKind(featureTasks, "report")).title), scope: "public", body: nextBody, basedOn: project.stateVersion,
       });
       if (!saved) return c.redirect(adminPath(ward, `/close/${id}`), 303);
       const written = await latestReport(c.env.DB, ward.wardId, id, "public");
@@ -385,12 +392,14 @@ admin.post("/close/:projectId/finalize", async (c) => {
   const { ward, account } = c.var; const id = c.req.param("projectId"); const now = nowIso();
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
   if (!project) return c.notFound();
+  const featureTasks = await projectTasks(c.env.DB, ward.wardId, id);
+  const features = taskFeatures(featureTasks);
   if (project.closedAt) return c.redirect(adminPath(ward, `/close/${id}`), 303);
   await prepareDrafts(c.env.DB, ward.wardId, id, account.accountId);
   // 公開の報告を保存していなければ、閉じる画面の欄に出ていた中身（AI の下書き）を記録に残す。閉じる操作のほかに記録のための操作を求めない。
   const form = await c.req.formData();
-  const minutes = project.kind === "board_meeting" || project.kind === "general_meeting";
-  const pack = getDraftPack("report", project.kind);
+  const minutes = features.meeting;
+  const pack = getDraftPack("report", taskDocumentKind(featureTasks, "report"));
   const internalReport = pack.scope === "staff";
   const decisionText = form.get("decisions");
   if (minutes && typeof decisionText === "string" && (decisionText.length > 12000 || decisionText.split(/\r?\n/).some((line) => line.length > 2000))) {
@@ -434,7 +443,7 @@ admin.post("/close/:projectId/finalize", async (c) => {
     // 配った報告は、本文が同じなら作り直さない。
     if (report?.body !== publicationBody) {
       const written = await saveDocument(c.env.DB, ward.wardId, id, account.accountId, {
-        kind: "report", title: report?.title ?? (project.kind === "event" ? "実施報告" : pack.title), scope: "public", body: publicationBody, basedOn: project.stateVersion,
+        kind: "report", title: report?.title ?? (!features.meeting && !features.submit ? "実施報告" : pack.title), scope: "public", body: publicationBody, basedOn: project.stateVersion,
       });
       if (!written) return adminResult(c, "報告を保存できませんでした。もう一度お願いします。", 409, { href: adminPath(c.var.ward, `/close/${encodeURIComponent(c.req.param("projectId"))}`), label: "報告と終わりにする画面に戻る" }, "報告と内容を確かめて、もう一度操作してください。");
       report = await latestReport(c.env.DB, ward.wardId, id, "public");

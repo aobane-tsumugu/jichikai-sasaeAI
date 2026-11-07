@@ -1,3 +1,4 @@
+import { projectFeatures } from "../project/task-features";
 import { Hono, type Context } from "hono";
 import { adminPath } from "../core/auth";
 import { ErrorNotice, Layout, Notice } from "../core/ui";
@@ -51,7 +52,7 @@ admin.post("/rota/:projectId/weekly", async (c) => {
   const { ward, account } = c.var;
   const id = c.req.param("projectId");
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
-  if (!project || project.kind !== "duty" || project.closedAt) return c.notFound();
+  if (!project || project.closedAt || !(await projectFeatures(c.env.DB, ward.wardId, id)).has("assign")) return c.notFound();
   const value = String((await c.req.formData()).get("weekday") ?? "");
   const weekday = /^[0-6]$/.test(value) ? Number(value) : -1;
   const previous = await lastPreparation(c.env.DB, ward.wardId, id);
@@ -74,7 +75,7 @@ admin.use("/projects/:projectId/draft/duty_roster/start", async (c, next) => {
   const { ward } = c.var;
   const id = c.req.param("projectId");
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
-  if (!project || project.kind !== "duty" || project.closedAt) return next();
+  if (!project || project.closedAt || !(await projectFeatures(c.env.DB, ward.wardId, id)).has("assign")) return next();
   const previous = await lastPreparation(c.env.DB, ward.wardId, id);
   await next();
   const location = c.res.headers.get("location");
@@ -87,7 +88,7 @@ admin.get("/rota/:projectId/result", async (c) => {
   const { ward } = c.var;
   const id = c.req.param("projectId");
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
-  if (!project || project.kind !== "duty") return c.notFound();
+  if (!project || !(await projectFeatures(c.env.DB, ward.wardId, id)).has("assign")) return c.notFound();
   const draft = adminPath(ward, `/projects/${id}/draft/duty_roster`);
   const title = c.req.query("done") === "updated" ? "今の名簿と免除を下書きに反映しました" : "当番の下書きを作りました";
   return c.html(<AdminPage ward={ward} account={c.var.account} title={title}
