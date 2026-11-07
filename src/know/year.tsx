@@ -25,7 +25,19 @@ export const YEAR_BASE: readonly YearBase[] = [
 
 export type YearState = "example" | "fact" | "checking";
 
-export interface YearRow { key: string; title: string; note: string; state: YearState; from: number; to: number; href: string; order: number }
+export interface YearRow { key: string; title: string; note: string; state: YearState; from: number; to: number; href: string; order: number; level?: Level }
+
+/**
+ * 活動の量の段。割合は出せないので、その行に入っている資料と答えの数を足した数で分ける。
+ * 済んだ仕事は数えない。仕事の数は種類の型で違い、済みは押したかどうかで変わるので、動いた量を表さない。
+ * 境目は使いながら直す。
+ */
+export const ACTIVITY_STEPS = [1, 5, 15, 40] as const;
+type Level = 1 | 2 | 3 | 4 | 5;
+const levelOf = (count: number): Level => (ACTIVITY_STEPS.filter((step) => count >= step).length + 1) as Level;
+const activityNote = (materials: number, answers: number) => [materials ? `資料${materials}件` : "", answers ? `答え${answers}件` : ""].filter(Boolean).join("　");
+/** 凡例の段の言葉。境目から作るので、境目を直せば凡例も変わる。 */
+const levelLabels = (): string[] => ACTIVITY_STEPS.map((step, index) => index === 0 ? `${step - 1}件` : step - 1 === ACTIVITY_STEPS[index - 1] ? `${step - 1}件` : `${ACTIVITY_STEPS[index - 1]}〜${step - 1}件`).concat(`${ACTIVITY_STEPS[ACTIVITY_STEPS.length - 1]}件から`);
 
 /** 4月を左端にした、一年の中の位置（%）。 */
 const position = (month: number, day = 1) => (((month + 8) % 12) + (Math.min(day, 30) - 1) / 30) / 12 * 100;
@@ -39,6 +51,13 @@ const inRange = (month: number, base: YearBase) => {
 interface RecordRow { project_id: string; title: string; kind: string; year: number; event_day: string | null }
 
 export async function wardYear(db: D1Database, ward: WardInfo, projects: readonly ProjectSummary[], states: readonly (ProjectState | null)[], today: string) {
+  const [materialCounts, answerCounts] = await Promise.all([
+    db.prepare(`SELECT j.project_id, COUNT(*) AS n FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
+      WHERE o.ward_id = ? AND j.project_id IS NOT NULL AND o.withdrawn_at IS NULL AND j.withdrawn_at IS NULL GROUP BY j.project_id`).bind(ward.wardId).all<{ project_id: string; n: number }>(),
+    db.prepare("SELECT project_id, COUNT(*) AS n FROM project_answers WHERE ward_id = ? GROUP BY project_id").bind(ward.wardId).all<{ project_id: string; n: number }>(),
+  ]);
+  const materialsOf = (id: string) => materialCounts.results.find((row) => row.project_id === id)?.n ?? 0;
+  const answersOf = (id: string) => answerCounts.results.find((row) => row.project_id === id)?.n ?? 0;
   const [overrides, records] = await Promise.all([
     db.prepare("SELECT item_id, title, month, date_text, added, removed_at, source_original_id FROM ward_year_items WHERE ward_id = ?").bind(ward.wardId)
       .all<{ item_id: string; title: string; month: number | null; date_text: string; added: number; removed_at: string | null; source_original_id: string | null }>(),
@@ -64,26 +83,26 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
       if (base) used.add(base.key);
       const from = base ? position(base.from) : position(monthOf(today), dayOf(today));
       const taskless = state && !state.mapTasks.length;
-      rows.push({ key: project.projectId, title: project.title, note: taskless ? "仕事はまだありません。段取りから足せます" : "日はまだ決まっていません", state: "fact", from, to: base ? position(base.to, 30) + 1 : from + 4, href: adminPath(ward, `/projects/${project.projectId}/map`), order: from });
+      rows.push({ key: project.projectId, title: project.title, note: taskless ? "仕事はまだありません。段取りから足せます" : "日はまだ決まっていません", state: "fact", level: levelOf(materialsOf(project.projectId) + answersOf(project.projectId)), from, to: base ? position(base.to, 30) + 1 : from + 4, href: adminPath(ward, `/projects/${project.projectId}/map`), order: from });
       return;
     }
     const month = monthOf(day);
     const firstTask = state?.mapTasks.map((task) => task.periodStart).filter((value): value is string => Boolean(value)).sort()[0];
     claim(project.kind, month, project.title);
     const start = firstTask && Number(firstTask.slice(0, 4)) === Number(day.slice(0, 4)) ? position(monthOf(firstTask), dayOf(firstTask)) : position(month, dayOf(day));
-    rows.push({ key: project.projectId, title: project.title, note: formatJstDate(day), state: "fact", from: start, to: Math.max(position(month, dayOf(day)) + 2, start + 2), href: adminPath(ward, `/projects/${project.projectId}/map`), order: position(month, dayOf(day)) });
+    rows.push({ key: project.projectId, title: project.title, note: [formatJstDate(day), activityNote(materialsOf(project.projectId), answersOf(project.projectId))].filter(Boolean).join("　"), state: "fact", level: levelOf(materialsOf(project.projectId) + answersOf(project.projectId)), from: start, to: Math.max(position(month, dayOf(day)) + 2, start + 2), href: adminPath(ward, `/projects/${project.projectId}/map`), order: position(month, dayOf(day)) });
   });
   for (const record of records.results) {
     if (!record.event_day || rows.some((row) => row.title === record.title)) continue;
     const month = monthOf(record.event_day);
     claim(record.kind, month, record.title);
     const at = position(month, dayOf(record.event_day));
-    rows.push({ key: record.project_id, title: record.title, note: `${record.year}年の記録`, state: "fact", from: at, to: at + 2, href: adminPath(ward, `/archive/${record.project_id}`), order: at });
+    rows.push({ key: record.project_id, title: record.title, note: [`${record.year}年の記録`, activityNote(materialsOf(record.project_id), answersOf(record.project_id))].filter(Boolean).join("　"), state: "fact", level: levelOf(materialsOf(record.project_id) + answersOf(record.project_id)), from: at, to: at + 2, href: adminPath(ward, `/archive/${record.project_id}`), order: at });
   }
   for (const row of overrides.results.filter((entry) => entry.added && !entry.removed_at && entry.month)) {
     const at = position(row.month!);
     if (row.source_original_id) claim("", row.month!, row.title);
-    rows.push({ key: row.item_id, title: row.title, note: row.date_text || (row.source_original_id ? "紙から読み取りました" : ""), state: "fact", from: at, to: at + 4, href: adminPath(ward, `/year/${row.item_id}`), order: at });
+    rows.push({ key: row.item_id, title: row.title, note: row.date_text || (row.source_original_id ? "紙から読み取りました" : ""), state: "fact", level: levelOf(row.source_original_id ? 1 : 0), from: at, to: at + 4, href: adminPath(ward, `/year/${row.item_id}`), order: at });
   }
   for (const base of YEAR_BASE) {
     if (used.has(base.key) || removed.has(base.key)) continue;
@@ -103,13 +122,15 @@ export function nearToday(rows: YearRow[], today: number, limit = 14): YearRow[]
 }
 
 export function YearLegend() {
-  return <div class="state-legend"><span class="state example">仮の内容</span><span class="state checking">質問があります</span><span class="state fact">この区の内容</span><span class="state old">見直す時期です</span></div>;
+  return <><div class="state-legend"><span class="state example">仮の内容</span><span class="state checking">質問があります</span><span class="state fact">この区の内容</span><span class="state old">見直す時期です</span></div>
+    <div class="shade-legend"><p>この区の内容の帯の濃さは、その行に入っている資料と答えの数です。</p>
+      <ol>{levelLabels().map((label, index) => <li><i class={`l${index + 1}`} />{label}</li>)}</ol></div></>;
 }
 
 export function YearMap({ rows, today }: { rows: YearRow[]; today: number }) {
   return <div class="map year-map" style={`--today: ${today}`}>
-    <div class="map-months"><span><i>4月</i><i>7月</i><i>10月</i><i>1月</i></span></div>
-    <ol class="map-list">{rows.map((row) => <li><a class={`map-row ${row.state}`} href={row.href}>
+    <div class="map-months"><span>{[4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3].map((month) => (month - 1) % 3 === 0 ? <i class="q">{month === 4 || month === 1 ? `${month}月` : month}</i> : <i>{month}</i>)}</span></div>
+    <ol class="map-list">{rows.map((row) => <li><a class={`map-row ${row.state}${row.level ? ` l${row.level}` : ""}`} href={row.href}>
       <span class="map-name"><b>{row.title}</b>{row.note ? <small>{row.note}</small> : null}</span>
       <span class="map-track"><i style={`--from:${row.from}%;--to:${Math.min(row.to, 100)}%`} /></span>
     </a></li>)}</ol>

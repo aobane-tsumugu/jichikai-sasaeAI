@@ -211,7 +211,6 @@ details.none-of-these > div { padding: var(--space-3) 0 0; }
 .start-bar { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 3px; margin: var(--space-2) 0 var(--space-3); }
 .start-bar i { display: block; height: .75rem; border: 1px solid var(--accent); border-radius: 2px; background: var(--panel); }
 .start-bar i.in { background: var(--accent); }
-.year-map .map-months span { grid-template-columns: repeat(4, 1fr); }
 .year-map .map-row { min-height: var(--tap); }
 .year-map .map-name { padding-top: var(--space-1); padding-bottom: var(--space-1); }
 .year-map .map-name b { color: var(--fg); text-decoration: none; }
@@ -222,6 +221,26 @@ details.none-of-these > div { padding: var(--space-3) 0 0; }
 .year-map .map-row.checking .map-track i { background: var(--warn); }
 .year-map .map-row.fact { background: var(--panel); }
 .year-map .map-row.fact .map-track i { background: var(--accent); }
+.year-map .map-row.fact .map-track i { border: 1px solid var(--accent-strong); }
+.year-map .map-row.fact.l1 .map-track i, .shade-legend i.l1 { background: #ffffff; }
+.year-map .map-row.fact.l2 .map-track i, .shade-legend i.l2 { background: #c9dbea; }
+.year-map .map-row.fact.l3 .map-track i, .shade-legend i.l3 { background: #8db2d2; }
+.year-map .map-row.fact.l4 .map-track i, .shade-legend i.l4 { background: #4a80ad; }
+.year-map .map-row.fact.l5 .map-track i, .shade-legend i.l5 { background: var(--accent-strong); }
+.shade-legend { margin: 0 0 var(--space-3); }
+.shade-legend p { margin: 0 0 var(--space-1); color: var(--muted); font-size: var(--text-note); }
+.shade-legend ol { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); margin: 0; padding: 0; list-style: none; font-size: var(--text-note); }
+.shade-legend li { display: flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
+.shade-legend i { display: inline-block; width: 1.6rem; height: .8rem; border: 1px solid var(--accent-strong); }
+/* 毎月の補助線。三か月ごとの線は少し濃く。狭い画面では月の数字を三か月ごとだけ出す */
+.year-map .map-months span { grid-template-columns: repeat(12, 1fr); }
+.year-map .map-months i { border-left-color: var(--line); }
+.year-map .map-months i.q { border-left-color: var(--line-strong); }
+.year-map .map-months i.q { position: relative; z-index: 1; }
+.year-map .map-months i:not(.q) { color: transparent; font-weight: 500; }
+.year-map .map-months i:not(.q)::first-line { background: none; }
+@container app (min-width: 36rem) { .year-map .map-months i:not(.q) { color: var(--muted); } }
+.year-map .map-track { background-image: linear-gradient(to right, var(--line-strong) 1px, transparent 1px), linear-gradient(to right, var(--line) 1px, transparent 1px); background-size: 25% 100%, calc(100% / 12) 100%; }
 .year-map .map-row.old { background: var(--stale-bg); }
 .year-map .map-row.old .map-track i { background: var(--stale); }
 .links { margin: var(--space-3) 0; padding: 0; list-style: none; }
