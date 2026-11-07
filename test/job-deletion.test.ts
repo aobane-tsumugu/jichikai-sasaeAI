@@ -8,7 +8,7 @@ import { receive } from "../src/intake/receive";
 import { requestJobDeletion, runDeletionCron } from "../src/ops/lifecycle";
 import { addQuestion, applyChange, createProject, getProjectState } from "../src/project/api";
 
-it("資料を消すと段取りの進み具合と質問も元の資料由来の分だけ消え、毎日の写しにも残らない", async () => {
+it("資料を消すとやることの進み具合と質問も元の資料由来の分だけ消え、毎日の写しにも残らない", async () => {
   const { ward, account } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,

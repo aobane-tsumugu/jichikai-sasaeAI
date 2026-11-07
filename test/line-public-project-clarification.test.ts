@@ -10,7 +10,7 @@ import { saveDocument } from "../src/project/actions";
 import { createProject } from "../src/project/api";
 import { postForm, realApp, withEnv } from "./helpers";
 
-it("行事を聞く候補は区のページに配ったものに限り、候補なしでも同じ質問を送る", async () => {
+it("行事を聞く候補は住民向けのページに知らせたものに限り、候補なしでも同じ質問を送る", async () => {
   const owner = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
   const { ward, account } = owner;
@@ -89,7 +89,7 @@ it("行事を聞く候補は区のページに配ったものに限り、候補�
     const message = sent[index - 1];
     expect(message?.to).toBe(sender);
     expect(message?.messages).toHaveLength(1);
-    expect(message?.messages[0]?.text).toBe("この写真は、どの行事のものですか。");
+    expect(message?.messages[0]?.text).toBe("この写真は、どれの資料ですか？");
     expect(message?.messages[0]?.quoteToken).toBe(`fictional-project-quote-${index}`);
     const questions = await listClarifications(env.DB, ward.wardId, batchId);
     expect(questions).toHaveLength(1);

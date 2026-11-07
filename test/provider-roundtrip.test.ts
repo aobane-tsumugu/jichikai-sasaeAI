@@ -19,7 +19,7 @@ type RecordsFile = {
   objects?: { key: string; base64: string }[];
 };
 
-it("提供側が区を開いて入口を渡し、停止・再開・書き出しを経て、他の区を残して消せる", async () => {
+it("提供側が自治会を開いて入口を渡し、停止・再開・書き出しを経て、他の区を残して消せる", async () => {
   // VitestのD1/R2だけを使う。LINEの鍵も架空で、外部への通信は通さない。
   const external = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("提供側の一周の試験では外部へ通信しません"));
   try {
@@ -29,7 +29,7 @@ it("提供側が区を開いて入口を渡し、停止・再開・書き出し�
     expect(ops).toBeTruthy();
     const opening = await get(realApp, "/ops/", ops, opsEnv);
     expect(opening.status).toBe(200);
-    expect(await opening.text()).toContain("新しい区を開く");
+    expect(await opening.text()).toContain("新しい自治会を開く");
 
     const slug = uniqueSlug("provider");
     const destination = `fictional-${crypto.randomUUID()}`;
@@ -41,7 +41,7 @@ it("提供側が区を開いて入口を渡し、停止・再開・書き出し�
     expect(opened.status).toBe(201);
     expect(opened.headers.get("cache-control")).toBe("no-store");
     const openedHtml = await opened.text();
-    expect(openedHtml).toContain("区を開きました");
+    expect(openedHtml).toContain("自治会を開きました");
     const invitationUrl = /class="secret invite-link">([^<]+)</.exec(openedHtml)?.[1];
     expect(Boolean(invitationUrl)).toBe(true);
     const ward = await env.DB.prepare("SELECT ward_id FROM wards WHERE slug = ?").bind(slug).first<{ ward_id: string }>();
@@ -118,15 +118,15 @@ it("提供側が区を開いて入口を渡し、停止・再開・書き出し�
     const stopped = await postForm(realApp, `${opsRoot}/state`, { active: "0" }, ops, bindings);
     expect(stopped.status).toBe(303);
     expect(stopped.headers.get("location")).toBe(`${lifecycle}?state=stopped`);
-    expect(await (await get(realApp, stopped.headers.get("location")!, ops, bindings)).text()).toContain("区を止めました");
+    expect(await (await get(realApp, stopped.headers.get("location")!, ops, bindings)).text()).toContain("自治会を止めました");
     expect((await get(realApp, `${admin}/`, officer, bindings)).status).toBe(503);
     expect((await get(realApp, `/${slug}/`, undefined, bindings)).status).toBe(200);
     const resumed = await postForm(realApp, `${opsRoot}/state`, { active: "1" }, ops, bindings);
     expect(resumed.status).toBe(303);
     expect(resumed.headers.get("location")).toBe(`${lifecycle}?state=active`);
     const resumedPage = await (await get(realApp, resumed.headers.get("location")!, ops, bindings)).text();
-    expect(resumedPage).toContain("区を再開しました");
-    expect(resumedPage).toContain("区の記録を書き出す");
+    expect(resumedPage).toContain("自治会を再開しました");
+    expect(resumedPage).toContain("自治会の記録を書き出す");
     expect((await get(realApp, `${admin}/`, officer, bindings)).status).toBe(200);
 
     const exported = await get(realApp, `${opsRoot}/export`, ops, bindings);

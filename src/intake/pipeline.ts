@@ -131,7 +131,7 @@ async function performRead(
       if (!direct) throw new ReadError("読む元の資料がありません", "unsupported", false);
       const placed = await finishRead(env.DB, { wardId, jobId, attempt, source: "direct", packVersion: direct.pack_version,
         model: direct.model, body: direct.body });
-      if (placed) await applyWardReading(env.DB, wardId, direct.body).catch((error) => console.error("区の情報を入れられませんでした", describe(error)));
+      if (placed) await applyWardReading(env.DB, wardId, direct.body).catch((error) => console.error("自治会の情報を入れられませんでした", describe(error)));
       await endRun(env.DB, run, wardId, { ok: true, usage: directUsage });
       const latest = placed ? await getJob(env.DB, wardId, jobId) : null;
       if (latest?.project_id) await dispatchProject(env, wardId, latest.project_id).catch((error) => console.error("繋げるの起動に失敗しました", describe(error)));
@@ -172,8 +172,8 @@ async function performRead(
       body: fixOriginalIds(result.body, readable.map((original) => original.originalId)),
     });
     if (placed) {
-      await applyWardReading(env.DB, wardId, fixOriginalIds(result.body, readable.map((original) => original.originalId))).catch((error) => console.error("区の情報を入れられませんでした", describe(error)));
-      if (direct) await applyWardReading(env.DB, wardId, direct.body).catch((error) => console.error("区の情報を入れられませんでした", describe(error)));
+      await applyWardReading(env.DB, wardId, fixOriginalIds(result.body, readable.map((original) => original.originalId))).catch((error) => console.error("自治会の情報を入れられませんでした", describe(error)));
+      if (direct) await applyWardReading(env.DB, wardId, direct.body).catch((error) => console.error("自治会の情報を入れられませんでした", describe(error)));
     }
     await endRun(env.DB, run, wardId, { ok: true, usage: { input_tokens: result.usage.input_tokens + directUsage.input_tokens, output_tokens: result.usage.output_tokens + directUsage.output_tokens, cache_read_input_tokens: result.usage.cache_read_input_tokens + directUsage.cache_read_input_tokens }, error: placed ? "" : "置く前に取り下げられました" });
     // 読み終わった。プロジェクトが決まっていれば、繋げる順番に入る（同じプロジェクトでは一つずつ）
@@ -302,7 +302,7 @@ async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, 
     // 印字符号がある紙は AI の候補選びに回さない。欄ごとの読みをプロジェクト別に渡す。
     if (routes.every(Boolean) && routedProjects.length === 1) {
       const selectedId = routedProjects[0] as string;
-      await assignReadJob(env, wardId, jobId, selectedId, "書かれていた行事に入れました。");
+      await assignReadJob(env, wardId, jobId, selectedId, "資料に書かれていた名前から決めました。");
     } else if (routes.every(Boolean) && routedProjects.length > 1 && readings.length === 1 && "fields" in readings[0]!.body) {
       await createPaperRouteJobs(env, current, readings[0]!.body, paperCodes, routes.map((route) => route?.projectId ?? ""));
     } else if (routes.some(Boolean)) {
@@ -482,7 +482,7 @@ async function routeByPaperCode(db: D1Database, wardId: string, jobId: string) {
   if (!(await setJobProject(db, wardId, jobId, projectId))) return null;
   await db.prepare(`UPDATE line_inbox_items SET disposition = 'matched', matched_project_id = ?,
     matched_project_name = (SELECT title FROM projects WHERE ward_id = ? AND project_id = ?),
-    match_reason = '書かれていた行事に入れました。' WHERE ward_id = ? AND job_id = ?`)
+    match_reason = '資料に書かれていた名前から決めました。' WHERE ward_id = ? AND job_id = ?`)
     .bind(projectId, wardId, projectId, wardId, jobId).run();
   return getJob(db, wardId, jobId);
 }

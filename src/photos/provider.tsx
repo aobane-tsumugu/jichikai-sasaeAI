@@ -23,7 +23,7 @@ photoProvider.get("/photo-settings/:wardId", async (c) => {
   const policy = await c.env.DB.prepare("SELECT enabled, quality_report_sha256 FROM ward_photo_policy WHERE ward_id = ?")
     .bind(wardId).first<{ enabled: number; quality_report_sha256: string }>();
   return c.html(<Layout title="報告の写真の設定" noindex>
-    <h1>{ward.name}の報告の写真</h1><p>提供側が処理と測定の結果を確かめてから、写真を使えるようにします。</p>
+    <h1>{ward.name}の報告の写真</h1><p>SasaeAIの運営者が処理と測定の結果を確かめてから、写真を使えるようにします。</p>
     {c.req.query("saved") ? <Notice>写真の設定を保存しました。</Notice> : null}
     {!photoBindings(c.env).FACE_MASK ? <Notice>写真を処理する準備がまだ済んでいません。有効にはできません。</Notice> : null}
     <form method="post"><label><input type="checkbox" name="enabled" value="yes" checked={policy?.enabled === 1} />報告に写真を使えるようにする</label>

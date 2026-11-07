@@ -10,7 +10,7 @@ import { createInvite } from "../src/space/api";
 import { activityFacts } from "../src/ward/activity";
 import { cookieFrom, get, postForm, realApp } from "./helpers";
 
-it("架空の初年度の名簿から始め、翌年は残る担当を保ち、同じ答えの数と配った名簿を画面と紙で読む", async () => {
+it("架空の初年度の名簿から始め、翌年は残る担当を保ち、同じ返事の数と配った名簿を画面と紙で読む", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   const roster = [fixture.first, fixture.exempt, fixture.removed, fixture.fourth]
@@ -125,7 +125,7 @@ it("架空の初年度の名簿から始め、翌年は残る担当を保ち、�
   const memberHtml = await (await get(realApp, space, memberCookie)).text();
   const officerHtml = await (await get(realApp, `${root}/answers/${id}`, cookie)).text();
   for (const html of [memberHtml, officerHtml]) expect(html).toContain("<b>3<small>世帯</small></b>");
-  expect(memberHtml).toContain("答えた世帯の一覧（3世帯）");
+  expect(memberHtml).toContain("返事のあった世帯の一覧（3世帯）");
   expect(memberHtml).toContain("<b>4<small>人</small></b>");
   expect(memberHtml).toContain(fixture.exempt);
   expect(memberHtml).not.toContain(fixture.fourth);

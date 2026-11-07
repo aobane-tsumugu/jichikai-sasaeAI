@@ -39,7 +39,7 @@ export const RECEIVED_MESSAGE = "受け取りました。画面を閉じても�
 
 export const STATUS_LABEL: Record<JobStatus, string> = {
   received: "読んでいます", reading: "読んでいます", read: "読み終わりました",
-  connecting: "行事に入れています", done: "行事に入れました",
+  connecting: "どれの資料か分けています", done: "どれの資料か分けました",
   attention: "読み取りが遅れています。送り直す必要はありません。",
   failed: "読めませんでした。もう一度読むか、このまま進められます。",
   withdrawn: "資料を消しました",
@@ -54,12 +54,12 @@ const ERROR_MESSAGE: Record<ReceiveError["code"], (filename: string) => string> 
   needs_expansion: (f) =>
     `${f ? `「${f}」` : "WordやExcel"}は、この画面をもう一度開いてから、ブラウザで送ってください（ブラウザが中身を開いて送ります）。`,
   bad_text: () => "書いたことが長すぎます。2万文字までです。",
-  no_project: () => "その行事には送れません。行事を選び直してください。",
+  no_project: () => "そこには送れません。送り先を選び直してください。",
 };
 
 const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   ...Object.fromEntries(Object.entries(ERROR_MESSAGE).map(([code, message]) => [code, message("")])),
-  withdraw_failed: "取り下げられませんでした。資料は残っています。消すときは区の設定の「消す希望」から対象を選んでください。",
+  withdraw_failed: "取り下げられませんでした。資料は残っています。消すときは自治会の設定の「消す希望」から対象を選んでください。",
   retry_failed: "今は読み直せません。送ったものを見て、このまま進めることもできます。",
 };
 
@@ -101,7 +101,7 @@ intakeAdmin.get("/intake", async (c) => {
   const back = returnPath(c, c.req.query("back") ?? c.req.header("referer"), adminPath(ward, project ? `/projects/${project.projectId}/map` : "/"));
   const query = new URLSearchParams({ back, ...(project ? { project: project.projectId } : {}) }).toString();
   return c.html(<Layout title={title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={back}>← {project && back === adminPath(ward, `/projects/${project.projectId}/map`) ? `${project.title}の段取りへ` : back === adminPath(ward, "/") ? "最初の画面へ" : "前の画面へ"}</a>
+    <a class="back" href={back}>← {project && back === adminPath(ward, `/projects/${project.projectId}/map`) ? `${project.title}のやることへ` : back === adminPath(ward, "/") ? "最初の画面へ" : "前の画面へ"}</a>
     <h1>{title}</h1>
     <p class="lead">{project ? "" : "去年の資料も、今年のものも送れます。"}いくつでも一度に送れます。分類も名前付けもいりません。</p>
     {c.req.query("n") === "withdrawn" ? <Notice>資料を消しました。</Notice> : null}
@@ -130,10 +130,10 @@ intakeAdmin.get("/intake/received", async (c) => {
   const jobs = (await listJobs(c.env.DB, ward.wardId, { projectId, limit: 100 })).filter((job) => !job.withdrawn_at && (projectId || Date.parse(job.created_at) > sentSince));
   const slow = jobs.find((job) => job.status === "attention" || ((job.status === "received" || job.status === "reading") && Date.now() - Date.parse(job.created_at) > 90_000));
   const readHref = adminPath(ward, "/intake/read");
-  const backLabel = project && back === adminPath(ward, `/projects/${project.projectId}/map`) ? `← ${project.title}の段取りへ` : back === adminPath(ward, "/") ? "← 最初の画面へ" : "← 前の画面へ";
+  const backLabel = project && back === adminPath(ward, `/projects/${project.projectId}/map`) ? `← ${project.title}のやることへ` : back === adminPath(ward, "/") ? "← 最初の画面へ" : "← 前の画面へ";
   if (c.req.query("n") === "withdrawn") return c.html(<Layout title="資料を消しました" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={back}>{backLabel}</a><h1>資料を消しました</h1>
-    <div class="notice done" role="status"><strong>資料は入っていません</strong><p>段取りと下書きは変わりません。</p></div>
+    <div class="notice done" role="status"><strong>資料は入っていません</strong><p>やることと下書きは変わりません。</p></div>
     <section class="next"><strong>次は</strong><p>送り直すときは、もう一度送ってください。</p><a class="button" href={sendHref}>資料を送る</a></section>
   </Layout>);
   if (c.req.query("n") === "same") return c.html(<Layout title="同じ資料でした" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
@@ -144,20 +144,20 @@ intakeAdmin.get("/intake/received", async (c) => {
   </Layout>);
   return c.html(<Layout title="受け取りました" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>受け取りました</h1>
-    {c.req.query("n") === "retry" ? <div class="notice done" role="status"><strong>もう一度読みます</strong><p>読み終わると、段取りと下書きに入ります。</p></div> : null}
-    {project ? <><div class="notice done"><strong>{project.title}に資料を預かりました</strong><p>画面を閉じてもかまいません。AIが読み続けます。読み終わると、段取りと下書きに入ります。</p></div>{slow ? <div class="notice warn"><strong>読み取りが遅れています</strong><p>送った資料は預かっています。こちらで対応しているので、送り直す必要はありません。下書きを自分で書いて配ることもできます。</p><a class="quiet" href={adminPath(ward, `/projects/${project.projectId}/draft/announcement`)}>案内の下書きを書く</a></div> : null}<section class="next"><strong>次は</strong><p>読み終わるのを待たずに、段取りを見られます。</p><a class="button" href={adminPath(ward, `/projects/${project.projectId}/map`)}>段取りへ</a></section></> : slow ? <>
-      <div class="notice warn"><strong>読み取りが遅れています</strong><p>送った資料は預かっています。こちらで対応しているので、送り直す必要はありません。下書きを自分で書いて配ることもできます。</p></div>
+    {c.req.query("n") === "retry" ? <div class="notice done" role="status"><strong>もう一度読みます</strong><p>読み終わると、やることと下書きに入ります。</p></div> : null}
+    {project ? <><div class="notice done"><strong>{project.title}に資料を預かりました</strong><p>画面を閉じてもかまいません。AIが読み続けます。読み終わると、やることと下書きに入ります。</p></div>{slow ? <div class="notice warn"><strong>読み取りが遅れています</strong><p>送った資料は預かっています。こちらで対応しているので、送り直す必要はありません。下書きを自分で書いて住民に知らせることもできます。</p><a class="quiet" href={adminPath(ward, `/projects/${project.projectId}/draft/announcement`)}>案内の下書きを書く</a></div> : null}<section class="next"><strong>次は</strong><p>読み終わるのを待たずに、やることを見られます。</p><a class="button" href={adminPath(ward, `/projects/${project.projectId}/map`)}>やることへ</a></section></> : slow ? <>
+      <div class="notice warn"><strong>読み取りが遅れています</strong><p>送った資料は預かっています。こちらで対応しているので、送り直す必要はありません。下書きを自分で書いて住民に知らせることもできます。</p></div>
       <section class="next"><strong>次は</strong><p>読み終わるのを待たずに、案内の下書きを書けます。</p>
         {slow.project_id ? <a class="button" href={adminPath(ward, `/projects/${slow.project_id}/draft/announcement`)}>案内の下書きを書く</a>
           : <form method="post" action={adminPath(ward, `/intake/${slow.job_id}/continue`)}><button>案内の下書きを書く</button></form>}
       </section>
     </> : <><p class="lead">画面を閉じてもかまいません。AIが読み続けます。</p>
-      <section class="next"><strong>次は</strong><p>読み終わった分から、段取りを作れます。</p><a class="button" href={readHref}>読み終わったものを見る</a></section></>}
+      <section class="next"><strong>次は</strong><p>読み終わった分から、やることを作れます。</p><a class="button" href={readHref}>読み終わったものを見る</a></section></>}
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     <h2>送ったもの</h2><ul class="rows">{await Promise.all(jobs.map(async (job) => <li class="panel">
       <b>{await jobTitle(c.env.DB, ward.wardId, job)}</b><p class="muted">{STATUS_LABEL[job.status]}</p>
       <PhotoCheckNotice checks={await photoChecks(c.env.DB, ward.wardId, job.job_id)} retakeHref={sendHref} continueHref={readHref} />
-      {job.project_id ? <a href={adminPath(ward, `/projects/${job.project_id}/map`)}>段取りを見る</a> : null}
+      {job.project_id ? <a href={adminPath(ward, `/projects/${job.project_id}/map`)}>やることを見る</a> : null}
       {job.status === "failed" ? <><form method="post" action={adminPath(ward, `/intake/${job.job_id}/retry`)}><button class="quiet">もう一度読む</button></form>
         <form method="post" action={adminPath(ward, `/intake/${job.job_id}/continue`)}><button class="quiet">このまま進める</button></form></> : null}
       {["received", "reading", "read", "failed"].includes(job.status) ? <form method="post" action={adminPath(ward, `/intake/${job.job_id}/withdraw`)}><p>送った資料と読み取った内容を消します。元に戻せないので、送り直すには手元の写真やファイルが必要です。</p><button class="quiet">この資料を消す</button></form> : null}
@@ -175,10 +175,10 @@ intakeAdmin.get("/intake/read", async (c) => {
   const open = projects.map((project) => ({ project_id: project.projectId, name: project.title }));
   return c.html(<Layout title="読み終わったもの" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/intake/received")}>← 送ったものへ</a>
-    <h1>{groups.length ? "読み終わりました" : "読み終わったものはまだありません"}</h1><p class="lead">{groups.length > 1 ? "行事ごとに分けました。違っていても、あとで直せます。" : groups.length ? "資料をまとめました。違っていても、あとで直せます。" : "読み終わると、ここに出ます。画面を閉じてもかまいません。"}</p>
+    <h1>{groups.length ? "読み終わりました" : "読み終わったものはまだありません"}</h1><p class="lead">{groups.length > 1 ? "どれの資料か分けました。違っていても、あとで直せます。" : groups.length ? "資料をまとめました。違っていても、あとで直せます。" : "読み終わると、ここに出ます。画面を閉じてもかまいません。"}</p>
     <ErrorNotice code={c.req.query("error")} messages={{ day: "今年の行事の日を入れ直してください。分からないときは空欄で進められます。" }} />
     {groups.map((group, index) => {
-      if (!group.title) return <ul class="rows"><li><a class="row-link" href={adminPath(ward, "/files")}><b>どこにもつながっていない資料</b><span>{group.materials.length}件。区の資料に入っています</span></a></li></ul>;
+      if (!group.title) return <ul class="rows"><li><a class="row-link" href={adminPath(ward, "/files")}><b>まだどれの資料にもしていないもの</b><span>{group.materials.length}件。自治会の資料に入っています</span></a></li></ul>;
       const ids = new Set(group.materials.map((m) => m.original.original_id));
       const fields = group.materials.flatMap((m) => m.readings.flatMap((r) => "fields" in r.body ? r.body.fields.filter((f) => ids.has(f.original_id)) : []));
       const suggestions = group.materials.flatMap((m) => m.readings.flatMap((r) => "fields" in r.body ? (r.body.project_suggestions ?? []).filter((s) => ids.has(s.original_id)) : []));
@@ -192,7 +192,7 @@ intakeAdmin.get("/intake/read", async (c) => {
       </section>;
     })}
     {groups.length === 0 ? <><p>まだ読み終わっていない資料は、送ったものから見られます。</p>
-      {projects.map((p) => <p class="link-line"><a href={adminPath(ward, `/projects/${p.projectId}/map`)}>{p.title}の段取りを見る</a></p>)}
+      {projects.map((p) => <p class="link-line"><a href={adminPath(ward, `/projects/${p.projectId}/map`)}>{p.title}のやることを見る</a></p>)}
       <a class="button secondary" href={adminPath(ward, "/projects")}>資料がないので、種類を選んで始める</a></> : null}
     {groups.length ? <p class="muted">読めなかったところは、あとで質問します。年が書かれていない資料は、参考として残します。</p> : null}
     <a class="quiet" href={adminPath(ward, "/")}>最初の画面へ</a>
@@ -228,11 +228,11 @@ intakeAdmin.get("/intake/started/:projectId", async (c) => {
   const draftTitle = documentTitle(state.project.kind, draftKind);
   const people = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM accounts WHERE ward_id = ? AND removed_at IS NULL").bind(ward.wardId).first<{ n: number }>();
   return c.html(<Layout title={state.project.title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>{state.project.title}</h1><p class="lead">{count?.n ? `${count.n}件の資料を読んで、${tasks}${tasks > 0 && tasks < 10 ? "つ" : "件"}の仕事の段取りを用意しました` : `ふつうの${tasks}${tasks > 0 && tasks < 10 ? "つ" : "件"}の仕事の段取りを用意しました`}</p>
+    <h1>{state.project.title}</h1><p class="lead">{count?.n ? `${count.n}件の資料を読んで、${tasks}${tasks > 0 && tasks < 10 ? "つ" : "件"}のやることを用意しました` : `ふつうの${tasks}${tasks > 0 && tasks < 10 ? "つ" : "件"}のやることを用意しました`}</p>
     <section class="next"><strong>次は</strong><p>{questions ? "分かるものから答えてください。あとでもかまいません。" : `${draftTitle}の下書きを見て、直せます。`}</p>
       <a class="button" href={adminPath(ward, questions ? `/projects/${id}/questions` : `/projects/${id}/draft/${draftKind}`)}>{questions ? "質問に答える" : `${draftTitle}の下書きを見る`}</a></section>
-    <p>仕事を押して直せます。</p><a class="button secondary" href={adminPath(ward, `/projects/${id}/map`)}>段取りを見る</a>
-    {(people?.n ?? 0) < 2 ? <p class="link-line"><a href={adminPath(ward, "/settings/people#add")}>ほかの役員にも入ってもらい、手元の資料を送ってもらう</a></p> : null}<p class="link-line"><a href={adminPath(ward, "/inbox")}>届いたものを見る</a></p><a class="quiet" href={adminPath(ward, "/")}>最初の画面へ</a>
+    <p>仕事を押して直せます。</p><a class="button secondary" href={adminPath(ward, `/projects/${id}/map`)}>やることを見る</a>
+    {(people?.n ?? 0) < 2 ? <p class="link-line"><a href={adminPath(ward, "/settings/people#add")}>ほかの役員にもこの画面を使ってもらい、手元の資料を送ってもらう</a></p> : null}<p class="link-line"><a href={adminPath(ward, "/inbox")}>届いたものを見る</a></p><a class="quiet" href={adminPath(ward, "/")}>最初の画面へ</a>
   </Layout>);
 });
 
@@ -370,8 +370,8 @@ intakeAdmin.get("/intake/originals/:originalId", async (c) => {
   const sender = line?.sender_display_name || job?.sender_label;
   return c.html(<Layout title={title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={back}>← 前の画面へ</a><h1>{summary?.split("\n")[0]?.slice(0, 36) || title}</h1>
-    <p class="lead">{original.media_type.startsWith("image/") ? object.customMetadata?.photoResizeFailed === "1" ? "写真の大きさを整えられなかったため、届いたまま保管しています。" : "紙の文字や行事の様子が分かる大きさで保管した写真です。" : original.media_type === "text/plain" && job?.via.startsWith("line") ? "公式LINEに届いたときのままの文です。" : "送ったときのままの資料です。"}この画面では直せません。</p>
-    <dl class="facts">{summary ? null : <><dt>名前</dt><dd>{original.filename || (original.kind === "text" ? "届いた文" : "撮った写真")}</dd></>}<dt>届いた日</dt><dd>{formatDateText(original.received_at.slice(0, 10))}</dd>{job?.via.startsWith("line") ? <><dt>届き方</dt><dd>公式LINE（{job.via === "line_direct" ? "一対一" : "グループ"}）</dd><dt>送った人</dt><dd>{sender || "名前は分かりません"}</dd></> : null}{project ? <><dt>{project.kind === "city_request" ? "依頼" : "行事"}</dt><dd>{project.title}</dd></> : null}</dl>
+    <p class="lead">{original.media_type.startsWith("image/") ? object.customMetadata?.photoResizeFailed === "1" ? "写真の大きさを整えられなかったため、届いたまま保管しています。" : "紙の文字や行事の様子が分かる大きさで保管した写真です。" : original.media_type === "text/plain" && job?.via.startsWith("line") ? "自治会のLINEに届いたときのままの文です。" : "送ったときのままの資料です。"}この画面では直せません。</p>
+    <dl class="facts">{summary ? null : <><dt>名前</dt><dd>{original.filename || (original.kind === "text" ? "届いた文" : "撮った写真")}</dd></>}<dt>届いた日</dt><dd>{formatDateText(original.received_at.slice(0, 10))}</dd>{job?.via.startsWith("line") ? <><dt>届き方</dt><dd>自治会のLINE（{job.via === "line_direct" ? "一対一" : "グループ"}）</dd><dt>送った人</dt><dd>{sender || "名前は分かりません"}</dd></> : null}{project ? <><dt>{project.kind === "city_request" ? "依頼" : "どれの資料か"}</dt><dd>{project.title}</dd></> : null}</dl>
     {original.media_type === "text/plain" ? <div class="panel preserve-lines">{await object.text()}</div>
       : ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(original.media_type) ? <div class="sheet-preview"><img class="original-image" src={raw} alt={original.filename || "届いた資料の写真"} /></div>
       : original.media_type === "application/pdf" ? <iframe class="original-document" src={raw} title="元の資料のPDF" /> : <p>このファイルは、下のボタンから開いて読めます。</p>}

@@ -12,10 +12,10 @@ import { cookieFrom, get, postForm, realApp, withEnv } from "./helpers";
 async function openTestWard() {
   const destination = `U-fictional-${crypto.randomUUID()}`;
   const result = await openWard(env.DB, {
-    slug: uniqueSlug("line-ward"), name: "区ごとのLINEの確認（架空）", firstAccountName: "役員（架空）",
+    slug: uniqueSlug("line-ward"), name: "自治会ごとのLINEの確認（架空）", firstAccountName: "役員（架空）",
     lineDestination: destination, officialLineUrl: "https://example.invalid/line",
   });
-  if (!result.ok) throw new Error("架空の区を開けません");
+  if (!result.ok) throw new Error("架空の自治会を開けません");
   return { ...result, destination };
 }
 
@@ -74,7 +74,7 @@ it("開設した二つの区はそれぞれの鍵で配り、まだ決めてい�
       } else {
         expect(calls).toHaveLength(start);
         expect(record?.line_error).toBe(LINE_NOT_CONFIGURED);
-        expect(html).toContain("送れませんでした。区のページには載っています。紙も配れます。");
+        expect(html).toContain("送れませんでした。住民向けのページには載っています。紙も配れます。");
       }
       for (const value of Object.values(secrets)) expect(html).not.toContain(value);
     }
@@ -93,7 +93,7 @@ async function sign(body: string, secret: string) {
   return btoa(Array.from(signature, (value) => String.fromCharCode(value)).join(""));
 }
 
-it("webhookの署名・返信・投稿者と写真の取得にも、その区の鍵だけを使う", async () => {
+it("webhookの署名・返信・投稿者と写真の取得にも、その自治会の鍵だけを使う", async () => {
   const first = await openTestWard();
   const second = await openTestWard();
   if (!first.line || !second.line) throw new Error("架空のLINEの参照先がありません");

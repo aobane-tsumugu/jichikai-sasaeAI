@@ -36,7 +36,7 @@ it("架空の行事を閉じ、紹介の下書きと公開に同じ事実を出�
   const task = state.mapTasks.find((entry) => entry.taskKey === "announcement");
   const untimed = state.mapTasks.find((entry) => entry.taskKey === "venue");
   const privateTask = state.mapTasks.find((entry) => entry.taskKey === "sponsors");
-  if (!task || !untimed || !privateTask) throw new Error("架空の段取りがありません。");
+  if (!task || !untimed || !privateTask) throw new Error("架空のやることがありません。");
   for (const entry of [task, untimed, privateTask]) {
     expect(await setMapTask(env.DB, ward.wardId, id, entry.taskId, {
       name: entry === privateTask ? `${FIRST_SLICE.phoneHelper}に頼む` : entry.name,
@@ -58,7 +58,7 @@ it("架空の行事を閉じ、紹介の下書きと公開に同じ事実を出�
   expect((await postForm(realApp, `${close}/finalize`, { body: FIRST_SLICE.reportText }, cookie)).status).toBe(303);
   const expected = [
     "受付は午前の2人（当番表の担当）", "受付は13:00〜14:00の1人（当番表の担当）",
-    "手伝った人は2人（当番表で出席が記録された人）", "紙は12部（配るときの部数）", "段取りでは行事の45日前〜30日前",
+    "手伝った人は2人（当番表で出席が記録された人）", "紙は12部（配るときの部数）", "予定では当日の45日前〜30日前",
   ];
   const preview = await (await get(realApp, `${close}?view=activity`, cookie)).text();
   for (const fact of expected) expect(preview).toContain(fact);
@@ -73,7 +73,7 @@ it("架空の行事を閉じ、紹介の下書きと公開に同じ事実を出�
   const publicHtml = await (await get(realApp, `${root}/work/${id}`)).text();
   for (const fact of expected) expect(publicHtml).toContain(fact);
   expect(publicHtml).toContain(untimed.name);
-  expect(publicHtml).toContain(`案内を配った日: ${formatJstDate(new Date().toISOString())}`);
+  expect(publicHtml).toContain(`案内を知らせた日: ${formatJstDate(new Date().toISOString())}`);
   for (const name of [FIRST_SLICE.phoneHelper, FIRST_SLICE.sheetHelper, FIRST_SLICE.requestedBy, FIRST_SLICE.sponsorName, FIRST_SLICE.firstHousehold]) expect(publicHtml).not.toContain(name);
   expect(publicHtml).not.toContain("清掃は夜");
   expect(publicHtml).not.toContain("時期の記録なし");

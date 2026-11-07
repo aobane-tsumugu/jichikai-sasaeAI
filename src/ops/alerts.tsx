@@ -8,10 +8,10 @@ import { AI_CREDENTIAL_ALERT, AI_CREDENTIAL_MESSAGE } from "./ai-alert";
 import { wardLimitWaiting } from "./metrics";
 
 const ALERT_LABEL: Record<string, string> = {
-  "line.setup": "公式LINEの開設を続けてください",
+  "line.setup": "自治会のLINEの開設を続けてください",
   "line.delivery_alert.reply": "問い合わせへの返事を送れませんでした",
-  "line.delivery_alert.publish": "配ったもののLINEを送れませんでした",
-  "line.delivery_alert.digest": "問い合わせの知らせを止めています",
+  "line.delivery_alert.publish": "知らせたもののLINEを送れませんでした",
+  "line.delivery_alert.digest": "問い合わせの通知を止めています",
   [AI_CREDENTIAL_ALERT]: "AIにつなぐ鍵の更新に失敗しました",
 };
 export const alertsRoutes = new Hono<AppEnv>();
@@ -22,25 +22,25 @@ alertsRoutes.get("/", async (c) => {
       WHERE ward_id = ? AND key IN ('line.delivery_alert.reply', 'line.delivery_alert.publish', 'line.delivery_alert.digest', 'ai.vault_credential.refresh_failed') ORDER BY updated_at DESC`)
       .bind(ward.wardId).all<{ key: string; value: string; updated_at: string }>();
     const rows = result.results.map((r) => ({ ...r, ward }));
-    if (!await lineAccessToken(c.env, ward.wardId)) rows.push({ key: "line.setup", value: "公式LINEの接続が済んでいません。提供側で鍵とwebhookの設定を確かめてください。", updated_at: ward.createdAt, ward });
+    if (!await lineAccessToken(c.env, ward.wardId)) rows.push({ key: "line.setup", value: "自治会のLINEの接続が済んでいません。鍵とwebhookの設定を確かめてください。", updated_at: ward.createdAt, ward });
     return rows;
   }))).flat();
   const waiting = (await Promise.all(wards.map(async (ward) => ({ ward, ...await wardLimitWaiting(c.env.DB, ward.wardId) }))))
     .filter((row) => row.monthly || row.sender);
-  return c.html(<Layout title="提供側で見る知らせ" siteName="SasaeAI 運用の画面" noindex>
-    <h1>提供側で見る知らせ</h1><p class="lead">LINEの送信やAIにつなぐ鍵、上限で待っている資料を提供側がここで確かめます。</p>
+  return c.html(<Layout title="運用の知らせ" siteName="SasaeAI 運用の画面" noindex>
+    <h1>運用の知らせ</h1><p class="lead">LINEの送信やAIにつなぐ鍵、上限で待っている資料を、SasaeAIの運営者がここで確かめます。</p>
     {waiting.map((row) => <section class="panel"><h2>{row.ward.name}のAIを待たせています</h2>
       <p>月の上限で待っている資料{row.monthly}件、LINEの一日上限を超えて元の資料だけ残したもの{row.sender}件。</p>
       <p>月の上限を上げるか0にすると、5分ごとの処理で続けます。一日の上限を超えたものは自動ではAIへ回しません。</p>
       <a class="button" href={`/ops/wards/${row.ward.slug}/budget`}>上限を直す</a></section>)}
     {alerts.length ? alerts.map((a) => <section class="panel"><h2>{a.ward.name} {ALERT_LABEL[a.key]}</h2><p>{a.key === AI_CREDENTIAL_ALERT ? AI_CREDENTIAL_MESSAGE : a.value}</p><p class="muted">{formatJst(a.updated_at)}</p>
-      <section class="next"><strong>次は</strong><p>{a.key === AI_CREDENTIAL_ALERT ? "手順書に従い、AIの鍵の設定を直してください。読み取りの状況で止まった資料をもう一度動かし、終わったことを確かめます。役員に鍵の設定を頼む必要はありません。" : a.key === "line.setup" ? "公式LINEの接続を済ませ、区の画面で役員グループを指定してください。" : "公式LINEの送れる通数を確かめてください。配ったものと返事は、それぞれの画面で送り直せます。朝の知らせは、送れるようになってから次の処理で動きます。"}</p>
-        <a class="button secondary" href={`/ops/wards/${a.ward.slug}${a.key === AI_CREDENTIAL_ALERT ? "/queue" : ""}`}>{a.key === AI_CREDENTIAL_ALERT ? "読み取りの状況へ" : "区の画面へ"}</a></section>
+      <section class="next"><strong>次は</strong><p>{a.key === AI_CREDENTIAL_ALERT ? "手順書に従い、AIの鍵の設定を直してください。読み取りの状況で止まった資料をもう一度動かし、終わったことを確かめます。役員に鍵の設定を頼む必要はありません。" : a.key === "line.setup" ? "自治会のLINEの接続を済ませ、自治会の画面で役員グループを指定してください。" : "自治会のLINEの送れる通数を確かめてください。知らせたものと返事は、それぞれの画面で送り直せます。朝の知らせは、送れるようになってから次の処理で動きます。"}</p>
+        <a class="button secondary" href={`/ops/wards/${a.ward.slug}${a.key === AI_CREDENTIAL_ALERT ? "/queue" : ""}`}>{a.key === AI_CREDENTIAL_ALERT ? "読み取りの状況へ" : "自治会の画面へ"}</a></section>
       {a.key === AI_CREDENTIAL_ALERT ? <form method="post" action={`/ops/alerts/wards/${encodeURIComponent(a.ward.wardId)}/ai-resolved`}>
         <input type="hidden" name="updatedAt" value={a.updated_at} /><p>資料の処理が終わり、同じ問題が起きないことを確かめてから押してください。</p><button class="secondary">対応が終わったので知らせを消す</button>
       </form> : null}</section>)
       : <p>今は知らせがありません。送れないものが出たときに、ここへ届きます。</p>}
-    <a class="quiet" href="/ops/">区の一覧へ戻る</a>
+    <a class="quiet" href="/ops/">自治会の一覧へ戻る</a>
   </Layout>);
 });
 alertsRoutes.post("/wards/:wardId/ai-resolved", async (c) => {
@@ -51,5 +51,5 @@ alertsRoutes.post("/wards/:wardId/ai-resolved", async (c) => {
   const title = result.meta.changes ? "AIの鍵の知らせを消しました" : "知らせを確かめてください";
   return c.html(<Layout title={title} siteName="SasaeAI 運用の画面" noindex><h1>{title}</h1>
     <Notice>{result.meta.changes ? "同じ問題が起きれば、またここに届きます。" : "新しい知らせが届いたか、すでに消したようです。一覧を開き直してください。"}</Notice>
-    <a class="button" href="/ops/alerts">提供側で見る知らせへ戻る</a></Layout>);
+    <a class="button" href="/ops/alerts">運用の知らせへ戻る</a></Layout>);
 });

@@ -26,13 +26,13 @@ export async function issueContactInvitation(env: Env, id: string, input: {
   wardId: string; accountId: string; newName: string; how: string; origin: string;
 }) {
   const contact = await contactById(env.DB, id);
-  if (!contact || contact.closed_at || contact.kind !== "access") return { ok: false as const, message: "入れない方の、開いている受付で行ってください。" };
+  if (!contact || contact.closed_at || contact.kind !== "access") return { ok: false as const, message: "ログインできない方の、開いている受付で行ってください。" };
   if (!input.how.trim() || input.how.length > 1000) return { ok: false as const, message: "どう確かめたかを一行で入れてください。" };
-  if (!env.OPS_PASSWORD) return { ok: false as const, message: "提供側の設定を確かめてください。" };
+  if (!env.OPS_PASSWORD) return { ok: false as const, message: "運用の画面の鍵の設定を確かめてください。" };
   const ward = await env.DB.prepare("SELECT slug, is_active FROM wards WHERE ward_id = ?").bind(input.wardId).first<{ slug: string; is_active: number }>();
-  if (!ward || !ward.is_active) return { ok: false as const, message: "使っている区を選んでください。" };
+  if (!ward || !ward.is_active) return { ok: false as const, message: "使っている自治会を選んでください。" };
   if (input.accountId !== "new" && !await env.DB.prepare("SELECT 1 FROM accounts WHERE ward_id = ? AND account_id = ? AND removed_at IS NULL")
-    .bind(input.wardId, input.accountId).first()) return { ok: false as const, message: "選んだ区の役員を選んでください。" };
+    .bind(input.wardId, input.accountId).first()) return { ok: false as const, message: "選んだ自治会の役員を選んでください。" };
   const claim = newId();
   const held = await env.DB.prepare(`UPDATE provider_contacts SET grant_id = ?, grant_secret = NULL WHERE ward_id = ? AND contact_id = ? AND closed_at IS NULL AND grant_id IS NULL`)
     .bind(claim, CONTACT_WARD, id).run();

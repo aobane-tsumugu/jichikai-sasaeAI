@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { WardBucket } from "../src/core/storage";
 
-describe("WardBucket（R2を区ごとに分ける）", () => {
+describe("WardBucket（R2を自治会ごとに分ける）", () => {
   it("キーを区のIDで始める", async () => {
     const a = new WardBucket(env.ORIGINALS, "ward-a");
     await a.put("originals/1.txt", "あ");

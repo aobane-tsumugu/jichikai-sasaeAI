@@ -97,7 +97,7 @@ export async function checkWorkersRoute(slug: string, projectId: string, fixture
       const after = await ports.query(flagSql);
       restored = previous ? after.length === 1 && after[0]?.use_workers_route === previous.use_workers_route && after[0]?.updated_at === previous.updated_at : after.length === 0;
     } catch { restored = false; }
-    if (!restored) throw new Error("予備経路の設定を元に戻せたことを確認できません。提供側でこの区の設定を確認してください");
+    if (!restored) throw new Error("予備経路の設定を元に戻せたことを確認できません。提供側でこの自治会の設定を確認してください");
   }
 }
 
@@ -127,7 +127,7 @@ const credsArg = arg("--creds");
 const opsCredsArg = arg("--ops-creds");
 const workersWard = arg("--workers-route-ward");
 if (args.includes("--help") || !ward || !baseArg || !credsArg) {
-  console.error("使い方: npm run walkthrough-rest -- --base <URL> --ward <区> --creds <役員の資格情報> [--ops-creds <運用の資格情報>] [--workers-route-ward <区のURL名>]\n予備経路は--wardと同じ専用の架空区を指定します。kakuuとdemokuは指定しないでください。D1はローカルのHTTPなら--local、指定のstagingなら--remoteで確認します。LINE由来の問い合わせの返事はLINE_SIM専用の区でだけ試します。LINE_SIMの送信の鍵はfictional-で始まる無効な値にしてください。");
+  console.error("使い方: npm run walkthrough-rest -- --base <URL> --ward <区> --creds <役員の資格情報> [--ops-creds <運用の資格情報>] [--workers-route-ward <自治会のURL名>]\n予備経路は--wardと同じ専用の架空区を指定します。kakuuとdemokuは指定しないでください。D1はローカルのHTTPなら--local、指定のstagingなら--remoteで確認します。LINE由来の問い合わせの返事はLINE_SIM専用の区でだけ試します。LINE_SIMの送信の鍵はfictional-で始まる無効な値にしてください。");
   if (args.includes("--help")) return;
   process.exit(2);
 }
@@ -293,18 +293,18 @@ if (adminLoggedIn) {
     confirm.fields.lineDelivery = "skip";
     const check = await post(confirm.action, confirm.fields);
     const checkHtml = await check.text();
-    if (!check.ok || !checkHtml.includes("今回は公式LINEに送りません")) throw new Error("送らない選択の確認へ進めません");
+    if (!check.ok || !checkHtml.includes("今回は自治会のLINEに送りません")) throw new Error("送らない選択の確認へ進めません");
     const final = readForm(checkHtml, "/publish/" + projectId + "/send");
     if (final.fields.lineDelivery !== "skip") throw new Error("一斉送信を止める選択がありません");
     const distributed = await post(final.action, final.fields);
     if (distributed.status !== 303) throw new Error("案内を配れません");
     const publicPage = await get(wardPath + "/p/" + projectId);
-    if (!publicPage.response.ok) throw new Error("配った案内を開けません");
+    if (!publicPage.response.ok) throw new Error("知らせた案内を開けません");
     publicLive = true;
-    record(1, "新しい行事と案内", "通過", "手書きの案内を保存し、公式LINEを送らない選択で配布", distributed.status, start);
+    record(1, "新しい行事と案内", "通過", "手書きの案内を保存し、自治会のLINEを送らない選択で配布", distributed.status, start);
   } catch (error) { fail(1, "新しい行事と案内", error, start); }
 } else {
-  for (const [number, title] of [[2,"回答票"],[3,"今やることと区の段取り"],[5,"実態の一枚"],[6,"言葉で下書きを直す"],[7,"当番表の編集"],[8,"対象者への配布"],[11,"行政の依頼と運営メモ"],[12,"元の資料を消す"],[13,"引渡し"]] as const) skip(number, title, "役員画面に入れず、前提の行事がありません");
+  for (const [number, title] of [[2,"回答票"],[3,"今やることと区のやること"],[5,"実態の一枚"],[6,"言葉で下書きを直す"],[7,"当番表の編集"],[8,"対象者への配布"],[11,"行政の依頼と運営メモ"],[12,"元の資料を消す"],[13,"引渡し"]] as const) skip(number, title, "役員画面に入れず、前提の行事がありません");
 }
 
 // 2. 架空の回答票を読み取り、役員が確認して確定する。
@@ -330,7 +330,7 @@ if (projectId && publicLive) {
     if (confirmed.status !== 303) throw new Error("答え行を確定できません");
     const totals = await get(answerPath);
     const answerList = await get(answerPath + "?view=list");
-    if (!totals.html.includes("参加する") || !answerList.html.includes("直して入れ直す")) throw new Error("入れた答えが一覧と集計に出ません");
+    if (!totals.html.includes("参加する") || !answerList.html.includes("直して入れ直す")) throw new Error("入れた返事が一覧と集計に出ません");
     record(2, "回答票", "通過", "fixturesの回答票を読み取り、確認画面から一行を確定して一覧・集計を確認", confirmed.status, start);
   } catch (error) { fail(2, "回答票", error, start); }
 } else skip(2, "回答票", "配布済みの案内がなく、回答票の対象がありません");
@@ -341,10 +341,10 @@ if (projectId) {
   try {
     // 今やることは締切のある物だけを並べる。日付の無い行事は入口と区の段取りで見る。
     const [today, home, map] = await Promise.all([get(admin + "/projects/today"), get(admin + "/"), get(admin + "/archive/map")]);
-    if (!today.response.ok || !home.response.ok || !map.response.ok || !home.html.includes(projectTitle) || !map.html.includes(projectTitle)) throw new Error("入口と区の段取りの両方に行事が見えません");
-    record(3, "今やることと区の段取り", "通過", "役員画面の入口と区の段取りで新しい行事を確認", map.response.status, start);
-  } catch (error) { fail(3, "今やることと区の段取り", error, start); }
-} else skip(3, "今やることと区の段取り", "行事を開けませんでした");
+    if (!today.response.ok || !home.response.ok || !map.response.ok || !home.html.includes(projectTitle) || !map.html.includes(projectTitle)) throw new Error("入口と区のやることの両方に行事が見えません");
+    record(3, "今やることと区のやること", "通過", "役員画面の入口と区のやることで新しい行事を確認", map.response.status, start);
+  } catch (error) { fail(3, "今やることと区のやること", error, start); }
+} else skip(3, "今やることと区のやること", "行事を開けませんでした");
 
 // 4. 閉じた既存プロジェクトの検索と記録への質問。候補が無い時は記録を汚さず飛ばす。
 if (!adminLoggedIn) skip(4, "全文索引と記録に聞く", "役員画面に入れず、閉じた記録を検索できません");
@@ -352,8 +352,8 @@ else {
   const start = Date.now();
   try {
     const archive = await get(admin + "/archive");
-    if (!archive.response.ok || archive.html.includes("閉じた行事はまだありません")) {
-      skip(4, "全文索引と記録に聞く", "区の記録に閉じた行事がありません");
+    if (!archive.response.ok || archive.html.includes("終わったものはまだありません")) {
+      skip(4, "全文索引と記録に聞く", "自治会の記録に終わったものがありません");
     } else {
       const links = [...archive.html.matchAll(/href="([^"]*\/archive\/[^"/?#]+)"/g)]
         .map(match => match[1] ?? "")
@@ -363,7 +363,7 @@ else {
       let term = "";
       for (const link of links.slice(0, 40)) {
         const recordPage = await get(unescapeHtml(link));
-        const mapHtml = /<div\b[^>]*class="record-split"[^>]*>\s*<section>\s*<h2\b[^>]*>段取り<\/h2>([\s\S]*?)(?=<h2\b)/.exec(recordPage.html)?.[1] ?? "";
+        const mapHtml = /<div\b[^>]*class="record-split"[^>]*>\s*<section>\s*<h2\b[^>]*>やること<\/h2>([\s\S]*?)(?=<h2\b)/.exec(recordPage.html)?.[1] ?? "";
         const taskNames = [...mapHtml.matchAll(/<section\b[^>]*class="panel"[^>]*>\s*<h3\b[^>]*>([\s\S]*?)<\/h3>/g)]
           .map((match) => unescapeHtml((match[1] ?? "").replace(/<[^>]*>/g, "")).trim());
         term = taskNames.find((name) => name.length >= 2) ?? "";
@@ -371,12 +371,12 @@ else {
       }
       if (!term) throw new Error("検索語を記録から選べません");
       const search = await get(admin + "/archive/search?q=" + encodeURIComponent(term));
-      if (!search.response.ok || !search.html.includes("見つかった記録") || search.html.includes("見つかりませんでした")) throw new Error("全文検索で記録が見つかりません");
+      if (!search.response.ok || !search.html.includes("見つかったもの") || search.html.includes("見つかりませんでした")) throw new Error("全文検索で記録が見つかりません");
       const ask = readForm(search.html, "/archive/ask");
       ask.fields.question = term + "について教えてください";
       const answer = await post(ask.action, ask.fields, 360_000);
       const answerHtml = await answer.text();
-      if (!answer.ok || !answerHtml.includes("記録に聞く") || !answerHtml.includes("元の箇所")) throw new Error("答えと元の箇所を確認できません");
+      if (!answer.ok || !answerHtml.includes("終わったものについてAIに聞く") || !answerHtml.includes("元の箇所")) throw new Error("答えと元の箇所を確認できません");
       record(4, "全文索引と記録に聞く", "通過", "閉じた記録の検索結果から元の資料へ戻り、質問の答えと根拠欄を確認", answer.status, start);
     }
   } catch (error) { fail(4, "全文索引と記録に聞く", error, start); }
@@ -409,16 +409,16 @@ else {
       publish.fields.action = "publish";
       if (taskId) publish.fields.taskId = unescapeHtml(taskId);
       const published = await post(publish.action, publish.fields);
-      if (published.status !== 303 || published.headers.get("location") !== path + "?view=activity&activity=published") throw new Error("活動紹介を区のページに載せられません");
+      if (published.status !== 303 || published.headers.get("location") !== path + "?view=activity&activity=published") throw new Error("活動紹介を住民向けのページに載せられません");
       const publicPage = await get(wardPath + "/work/" + projectId);
-      if (!publicPage.response.ok || !publicPage.html.includes(form.fields.introduction) || !publicPage.html.includes(form.fields.membershipBurden) || !publicPage.html.includes(form.fields.membershipBenefit)) throw new Error("載せた活動紹介を区のページで確認できません");
+      if (!publicPage.response.ok || !publicPage.html.includes(form.fields.introduction) || !publicPage.html.includes(form.fields.membershipBurden) || !publicPage.html.includes(form.fields.membershipBenefit)) throw new Error("載せた活動紹介を住民向けのページで確認できません");
     } finally {
       const closedPage = await get(path);
       const reopen = readForm(closedPage.html, path + "/reopen");
       const reopened = await post(reopen.action, reopen.fields);
       if (reopened.status !== 303) throw new Error("後続の確認用に行事を開き直せません");
     }
-    record(5, "実態の一枚", "通過", "架空の活動紹介を保存し、閉じたあとに区のページで載せる内容を確認。後続の確認用に開き直した", saved.status, start);
+    record(5, "実態の一枚", "通過", "架空の活動紹介を保存し、閉じたあとに住民向けのページで載せる内容を確認。後続の確認用に開き直した", saved.status, start);
   } catch (error) { fail(5, "実態の一枚", error, start); }
 }
 
@@ -454,7 +454,7 @@ if (projectId) {
     if (receipt.jobId) {
       const state = (html: string) => { const pos = html.indexOf(filename); return pos < 0 ? "" : html.slice(pos, pos + 900); };
       await waitPage(admin + "/intake/received?project=" + encodeURIComponent(projectId),
-        html => state(html).includes("行事に入れました"),
+        html => state(html).includes("どれの資料か分けました"),
         html => /読めませんでした|読み取りが遅れています/.test(state(html)));
     }
     const path = admin + "/projects/" + projectId + "/draft/duty_roster";
@@ -483,7 +483,7 @@ else {
     entry.fields.lineDelivery = "skip";
     entry.fields.recipientScope = "member_households";
     let preview = await post(entry.action, entry.fields);
-    if (!preview.ok) throw new Error("配る内容を開けません");
+    if (!preview.ok) throw new Error("知らせる内容を開けません");
     let previewHtml = await preview.text();
     const firstHousehold = (html: string) => /<input\b[^>]*name="household"[^>]*value="([^"]*)"/i.exec(html)?.[1];
     if (!firstHousehold(previewHtml)) {
@@ -492,7 +492,7 @@ else {
       const result = await imported.json().catch(() => null) as { ok?: boolean } | null;
       if (!imported.ok || !result?.ok) throw new Error("架空の名簿を用意できません");
       preview = await post(entry.action, entry.fields);
-      if (!preview.ok) throw new Error("名簿を入れたあとに配る内容を開けません");
+      if (!preview.ok) throw new Error("名簿を入れたあとに知らせる内容を開けません");
       previewHtml = await preview.text();
     }
     const household = firstHousehold(previewHtml);
@@ -505,8 +505,8 @@ else {
     const confirm = await post(form.action, form.fields);
     const html = await confirm.text();
     const target = JSON.parse(form.fields.household) as [string, string];
-    if (!confirm.ok || !unescapeHtml(html).includes(target.join(" / ")) || !html.includes("今回は公式LINEに送りません")) throw new Error("選んだ世帯への紙の配布先を確認できません");
-    record(8, "対象者への配布", "通過", "名簿を用意して一世帯を選び、紙の配布先と公式LINEに送らない選択を確認。配る操作は実行していない", confirm.status, start);
+    if (!confirm.ok || !unescapeHtml(html).includes(target.join(" / ")) || !html.includes("今回は自治会のLINEに送りません")) throw new Error("選んだ世帯への紙の配布先を確認できません");
+    record(8, "対象者への配布", "通過", "名簿を用意して一世帯を選び、紙の配布先と自治会のLINEに送らない選択を確認。配る操作は実行していない", confirm.status, start);
   } catch (error) { fail(8, "対象者への配布", error, start); }
 }
 
@@ -586,7 +586,7 @@ else {
       if (queued.status !== 303 || location !== admin + "/settings/deletion?queued=1") throw new Error("元の資料の消去を受け付けられません");
       const accepted = await get(location);
       if (!accepted.response.ok || !accepted.html.includes("消去を受け付けました。処理は続きから進みます。")) throw new Error("元の資料の消去の受付を確認できません");
-      record(12, "元の資料を消す", "通過", "今回の回答票の記録を区の設定の消す求めから受け付けた。消去完了は未確認", accepted.response.status, start);
+      record(12, "元の資料を消す", "通過", "今回の回答票の記録を自治会の設定の消す求めから受け付けた。消去完了は未確認", accepted.response.status, start);
     }
   } catch (error) { fail(12, "元の資料を消す", error, start); }
 }
@@ -602,7 +602,7 @@ else {
     const created = await post(admin + "/settings/people/accounts", { name: testName, seatId: "" });
     const invitationHtml = await created.text();
     const invitation = unescapeHtml(/class="secret invite-link">([^<]+)<\/p>/.exec(invitationHtml)?.[1] ?? "");
-    if (created.status !== 201 || !invitation) throw new Error("入るためのリンクを作れません");
+    if (created.status !== 201 || !invitation) throw new Error("ログインするためのリンクを作れません");
     sensitiveValues.add(invitation);
     const invitationUrl = new URL(invitation);
     sensitiveValues.add(invitationUrl.pathname.split("/").pop()!);

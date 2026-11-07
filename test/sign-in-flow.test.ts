@@ -13,7 +13,7 @@ const invitePath = (html: string) => {
   return new URL(link!).pathname;
 };
 
-it("役員にリンクを渡し、本人が入り方を作り、足す・リンクを出す・入り直す", async () => {
+it("役員にリンクを渡し、本人がログインの方法を作り、足す・リンクを出す・入り直す", async () => {
   const owner = await seedAdmin(env.DB);
   const anotherWard = await seedAdmin(env.DB);
   const base = `/${owner.ward.slug}/admin`;
@@ -72,7 +72,7 @@ it("役員にリンクを渡し、本人が入り方を作り、足す・リン�
 
   const remade = await postForm(realApp, `${people}/accounts/${target}/reset`, {}, owner.cookie);
   const remadeHtml = await remade.text();
-  expect(remadeHtml).toContain("入るためのリンクを出しました");
+  expect(remadeHtml).toContain("ログインするためのリンクを出しました");
   const current = invitePath(remadeHtml);
   expect(current).not.toBe(first);
   expect((await get(realApp, first)).status).toBe(400);
@@ -135,7 +135,7 @@ it("役員にリンクを渡し、本人が入り方を作り、足す・リン�
   try { reset = await postForm(realApp, `${people}/accounts/${target}/reset`, {}, owner.cookie, noticeBindings); }
   finally { fakeLine.mockRestore(); }
   const resetHtml = await reset.text();
-  expect(resetHtml).toContain("入るためのリンクを出しました");
+  expect(resetHtml).toContain("ログインするためのリンクを出しました");
   expect(resetHtml).not.toContain("役員グループへ知らせました");
   expect(notices).toHaveLength(0);
   expect((await get(realApp, `${base}/sign-in`, cookie!)).status).toBe(200);

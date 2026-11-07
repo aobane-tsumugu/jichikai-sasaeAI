@@ -39,7 +39,7 @@ async function sign(body: string, secret: string): Promise<string> {
   return btoa(Array.from(signature, (value) => String.fromCharCode(value)).join(""));
 }
 
-describe("公式LINEと届いたもの", () => {
+describe("自治会のLINEと届いたもの", () => {
   it("生の本文の正しい署名を受け、異なる署名を拒む", async () => {
     const secret = "fictional-line-secret";
     const body = fixtureBody("U-fixture-signature");
@@ -95,7 +95,7 @@ describe("公式LINEと届いたもの", () => {
     await Promise.all(pending);
   });
 
-  it("公式LINEのグループの文も束2の届いたものにする", async () => {
+  it("自治会のLINEのグループの文も束2の届いたものにする", async () => {
     const ward = await seedWard(env.DB, uniqueSlug("line-group-test"));
     const destination = `U-fixture-group-${crypto.randomUUID()}`;
     await env.DB.prepare("INSERT INTO line_channels (ward_id, destination, channel_secret_binding, access_token_binding) VALUES (?, ?, 'LINE_CHANNEL_SECRET', 'LINE_CHANNEL_ACCESS_TOKEN')").bind(ward.wardId, destination).run();

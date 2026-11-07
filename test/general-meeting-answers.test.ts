@@ -97,7 +97,7 @@ it("架空の総会の案内からWebで答え、読めた紙・手入力・読�
   expect(await (await get(realApp, `${admin}?view=hand`, cookie)).text()).toContain("委任する");
   expect((await postForm(realApp, `${admin}/phone`, hand, cookie)).status).toBe(303);
   const summary = await (await get(realApp, admin, cookie)).text();
-  for (const label of ["世帯のうち", "出席", "委任", "欠席", "まだ答えていない世帯 1世帯", "出席と委任を合わせて2世帯です"]) expect(summary).toContain(label);
+  for (const label of ["世帯のうち", "出席", "委任", "欠席", "まだ返事のない世帯 1世帯", "出席と委任を合わせて2世帯です"]) expect(summary).toContain(label);
   expect(summary).toMatch(/<b>3<small>世帯<\/small><\/b><span>\d+世帯のうち/);
   for (const label of ["出席", "委任", "欠席"]) expect(summary).toMatch(new RegExp(`<b>1<small>世帯</small></b><span>${label}`));
   expect(summary).not.toContain("成立");
@@ -118,5 +118,5 @@ it("架空の総会の案内からWebで答え、読めた紙・手入力・読�
   expect((await postForm(realApp, editPath, { ...web, meeting_status: "attend" }, cookie)).status).toBe(303);
   expect((await postForm(realApp, pub, web)).status).toBe(200);
   expect((await listAnswers(env.DB, ward.wardId, project.projectId)).find((answer) => answer.answerId === fromWeb.answerId)).toMatchObject({ meetingStatus: "attend", proxyName: "" });
-  expect(await (await get(realApp, `${admin}?view=unanswered`, cookie)).text()).toContain("まだ答えていない世帯はありません。");
+  expect(await (await get(realApp, `${admin}?view=unanswered`, cookie)).text()).toContain("まだ返事のない世帯はありません。");
 });

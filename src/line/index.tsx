@@ -25,6 +25,7 @@ import { adminPath } from "../core/auth";
 import { formatJst, formatJstDate } from "../core/time";
 import { rememberPhotoSource, purgePhotoTexts, lineBundleContents } from "./photo-context";
 import { STATUS_LABEL } from "../intake/pages";
+import { senderText } from "./sender";
 
 interface InboxRow {
   bundle_id: string | null;
@@ -85,6 +86,7 @@ function InboxPick({ ward, title, noun, facts, photos, files, words, summary, re
   projects: { project_id: string; name: string }[]; current: string | null; suggested: string | null; suggestedName: string; suggestedKind: string; removable: boolean; answered: boolean; originalId: string; know: { id: string; title: string }[];
 }) {
   const others = projects.filter((project) => project.project_id !== current);
+  const currentName = projects.find((project) => project.project_id === current)?.name;
   return <Layout title={title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/inbox")}>← 届いたものへ</a>
     {answered ? <Notice>答えを残しました。</Notice> : null}
@@ -96,21 +98,21 @@ function InboxPick({ ward, title, noun, facts, photos, files, words, summary, re
     {files.map((file) => <p class="link-line"><a href={file.href}>{file.label}</a></p>)}
     <dl class="facts">{facts.map(([name, value]) => <><dt>{name}</dt><dd>{value}</dd></>)}</dl>
     {summary ? <><h2>AIが読んだこと</h2><p class="preserve-lines">{summary}</p></> : null}
-    {reason ? <p class="muted">行事に入れた理由: {reason}</p> : null}
+    {reason ? <p class="muted">AIがそう決めた理由: {reason}</p> : null}
     {questions.length ? <><h2>読めなかったところ</h2><p class="lead">分かるものだけ答えてください。答えなくてもかまいません。</p>
       {questions.map((question) => <section class="panel"><p>{question.text}</p><ClarificationForm ward={ward} question={question} back={back} /></section>)}</> : null}
-    {current ? null : <p class="muted">これは「区の資料」に入っています。行事につなげるときは選んでください。</p>}
-    <h2>{current ? "別の行事に入れ直す" : "どの行事に入れますか"}</h2>
-    <WhichProject id="pick" question={current ? `この${noun}は、次の行事のものですか？` : `この${noun}は、次の行事のものですか？`} projects={others} suggested={current ? null : suggested} suggestedName={current ? "" : suggestedName} suggestedKind={suggestedKind} action={action} />
-    {current ? <details class="fold"><summary>この行事から外す</summary><div><p>外しても、「区の資料」に残ります。行事に入った内容は消えないので、違うところは下書きで直してください。</p>
-      <form method="post" action={action}><button class="secondary" name="operation" value="detach">この行事から外す</button></form></div></details> : null}
-    {originalId ? <details class="fold"><summary>役員が知っておくことにつなげる</summary><div><p>規約や役員の一覧のように、行事に入らないものに使います。</p>
+    {current ? null : <p class="muted">これは「自治会の資料」に入っています。どれかの資料にするときは選んでください。</p>}
+    <h2>{current ? "ほかの資料にする" : "どれの資料にしますか"}</h2>
+    <WhichProject id="pick" question={`この${noun}は、どれの資料ですか？`} projects={others} suggested={current ? null : suggested} suggestedName={current ? "" : suggestedName} suggestedKind={suggestedKind} action={action} />
+    {current ? <details class="fold"><summary>{currentName ? `「${currentName}」の資料から外す` : "資料から外す"}</summary><div><p>外しても、「自治会の資料」に残ります。もう下書きに入った内容は消えないので、違うところは下書きで直してください。</p>
+      <form method="post" action={action}><button class="secondary" name="operation" value="detach">{currentName ? `「${currentName}」の資料から外す` : "資料から外す"}</button></form></div></details> : null}
+    {originalId ? <details class="fold"><summary>自治会の基本情報につなげる</summary><div><p>規約や役員の一覧のように、どれの資料にもならないものに使います。</p>
       <div class="action-links">{know.map((item) => <form method="post" action={adminPath(ward, `/know/${encodeURIComponent(item.id)}/links`)}><input type="hidden" name="originalId" value={originalId} /><button class="secondary">{item.title}</button></form>)}</div>
     </div></details> : null}
-    {removable ? <details class="fold"><summary>関係のないものとして外す</summary><div>
-      <p>雑談など、行事に関係のないものです。外すと、数だけが残ります。元に戻せません。</p>
-      <form method="post" action={action}><button class="danger" name="operation" value="unrelated">関係のないものとして外す</button></form>
-      <p class="muted">AIが読み始めたものは外せません。その場合は、区の設定の「消す希望」から消せます。</p>
+    {removable ? <details class="fold"><summary>関係のないものとして捨てる</summary><div>
+      <p>雑談など、どれにも関係のないものです。捨てると、数だけが残ります。元に戻せません。</p>
+      <form method="post" action={action}><button class="danger" name="operation" value="unrelated">捨てる（元に戻せません）</button></form>
+      <p class="muted">AIが読み始めたものは捨てられません。その場合は、自治会の設定の「消す希望」から消せます。</p>
     </div></details> : null}
   </Layout>;
 }
@@ -138,20 +140,19 @@ admin.get("/inbox", async (c) => {
   const lineRows = await Promise.all([...byBundle.values()].map(async (item) => ({ item, job: item.job_id ? await getJob(db, ward.wardId, item.job_id) : null,
     contents: item.bundle_id ? await lineBundleContents(db, ward.wardId, item.bundle_id) : null })));
   const fromLine = ({ item, job, contents }: (typeof lineRows)[number]): Received => {
-    const sender = item.sender_display_name || item.sender_label;
     const reading = job && !job.project_id && ["received", "reading", "attention", "failed"].includes(job.status);
     return { key: item.item_id, job: item.job_id ?? "", href: adminPath(ward, `/inbox/${item.item_id}/pick`), action: adminPath(ward, `/inbox/${item.item_id}`),
       photo: item.original_kind === "image" && item.job_id ? adminPath(ward, `/inbox/${item.item_id}/original`) : null, isText: item.original_kind === "text",
       photos: contents?.photos.map((p) => adminPath(ward, `/inbox/${p.item_id}/original`)), words: contents?.text,
       title: item.original_text ? `「${shortLine(item.original_text, 30)}」` : shortLine(summaries.get(item.job_id ?? "") ?? "") || "届いた写真",
-      note: sender ? `${sender}さん` : "公式LINE", project: item.matched_project_name ?? names.get(job?.project_id ?? "") ?? null, at: item.received_at, state: reading ? STATUS_LABEL[job.status] : "" };
+      note: `送った人: ${senderText(item.sender_display_name, item.sender_label)}`, project: item.matched_project_name ?? names.get(job?.project_id ?? "") ?? null, at: item.received_at, state: reading ? STATUS_LABEL[job.status] : "" };
   };
   const fromJob = async (j: (typeof adminJobs)[number]): Promise<Received> => {
     const originals = (await listOriginals(db, ward.wardId, j.job_id)).filter((o) => !o.withdrawn_at);
     const image = originals.find((o) => o.media_type.startsWith("image/"));
     return { key: j.job_id, job: j.job_id, href: adminPath(ward, `/inbox/city/${j.job_id}/pick`), action: adminPath(ward, `/inbox/city/${j.job_id}`),
       photo: image ? `${adminPath(ward, `/intake/originals/${image.original_id}`)}?raw=1` : null, isText: false,
-      title: shortLine(summaries.get(j.job_id) ?? "") || j.first_filename || "届いた資料", note: "この画面から", project: names.get(j.project_id ?? "") ?? null, at: j.created_at, state: "" };
+      title: shortLine(summaries.get(j.job_id) ?? "") || j.first_filename || "届いた資料", note: "この画面から送りました", project: names.get(j.project_id ?? "") ?? null, at: j.created_at, state: "" };
   };
   const inGroups = new Set(groups.filter((g) => g.title).flatMap((g) => g.materials.map((m) => m.jobId)));
   const readingJobs = adminJobs.filter((j) => !j.project_id && j.status !== "read");
@@ -171,21 +172,21 @@ admin.get("/inbox", async (c) => {
   const toDecide = titled.length + rosterAsk.length;
   const assignedTo = names.get(c.req.query("project") ?? "");
   const movedFrom = names.get(c.req.query("from") ?? "");
-  const sentBy = (jobId: string) => { const item = items.find((i) => i.job_id === jobId); return item ? `${formatJst(item.received_at)}　${item.sender_display_name || item.sender_label || "公式LINE"}` : ""; };
+  const sentBy = (jobId: string) => { const item = items.find((i) => i.job_id === jobId); return item ? `${formatJst(item.received_at)}　${item.sender_display_name || item.sender_label || "自治会のLINE"}` : ""; };
   const detail = (jobId: string) => { const item = items.find((i) => i.job_id === jobId); return adminPath(ward, item ? `/inbox/${item.item_id}/pick` : `/inbox/city/${jobId}/pick`); };
   return c.html(<Layout title="届いたもの" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a>
-    {c.req.query("error") === "input" ? <Notice error>入れる行事を選び直してください。</Notice> : null}
+    {c.req.query("error") === "input" ? <Notice error>どれの資料にするか選び直してください。</Notice> : null}
     <h1>届いたもの</h1>
-    {c.req.query("n") === "assigned" ? <Notice>{assignedTo ?? "行事"}に入れました。違うときは、下の写真を押すと入れ直せます。{movedFrom ? `${movedFrom}の下書きに、ここから入った内容が残っていることがあります。配る前に見て直してください。` : ""}</Notice> : null}
-    {c.req.query("n") === "detached" ? <Notice>{movedFrom ? `${movedFrom}から外しました。` : "行事から外しました。"}「区の資料」に残っています。{movedFrom ? `${movedFrom}の下書きに、ここから入った内容が残っていることがあります。配る前に見て直してください。` : ""}</Notice> : null}
-    {c.req.query("n") === "assigned" && assignedTo && !toDecide ? <section class="next"><strong>次は</strong><p>{assignedTo}の段取りから続きを進められます。</p><a class="button" href={adminPath(ward, `/projects/${c.req.query("project")}/map`)}>{assignedTo}の段取りを見る</a></section> : null}
-    {c.req.query("n") === "removed" ? <Notice>関係のないものとして外しました。数だけが残ります。</Notice> : null}
-    {c.req.query("n") === "roster" ? <Notice>名簿には入れませんでした。「区の資料」に残っています。</Notice> : null}
-    {c.req.query("error") === "busy" ? <Notice error>資料を行事に入れているところです。少ししてから、もう一度開いてください。</Notice> : null}
-    {nothing ? <><div class="notice" role="status"><strong>届いたものはありません</strong><p>公式LINEに届いたものや、行事を選ばずに送った写真やファイルが、ここに入ります。</p></div><section class="next"><strong>次は</strong><p>手元の資料を送れます。</p><a class="button" href={adminPath(ward, "/intake")}>資料を送る</a></section></> : <>
-    {toDecide ? null : <p class="lead">公式LINEに届いた写真や文と、この画面から送った資料です。AIが読んで、行事に入れます。</p>}
-    {toDecide ? <><h2 class="tight">質問があります（{toDecide}件）</h2><p class="muted">答えなくても、「区の資料」に残ります。</p>
+    {c.req.query("n") === "assigned" ? <Notice>{assignedTo ? `${assignedTo}の資料にしました。` : "資料にしました。"}違うときは、下の写真を押すと入れ直せます。{movedFrom ? `${movedFrom}の下書きに、ここから入った内容が残っていることがあります。知らせる前に見て直してください。` : ""}</Notice> : null}
+    {c.req.query("n") === "detached" ? <Notice>{movedFrom ? `「${movedFrom}」の資料から外しました。` : "資料から外しました。"}「自治会の資料」に残っています。{movedFrom ? `${movedFrom}の下書きに、ここから入った内容が残っていることがあります。知らせる前に見て直してください。` : ""}</Notice> : null}
+    {c.req.query("n") === "assigned" && assignedTo && !toDecide ? <section class="next"><strong>次は</strong><p>{assignedTo}のやることから続きを進められます。</p><a class="button" href={adminPath(ward, `/projects/${c.req.query("project")}/map`)}>{assignedTo}のやることを見る</a></section> : null}
+    {c.req.query("n") === "removed" ? <Notice>関係のないものとして捨てました。数だけが残ります。</Notice> : null}
+    {c.req.query("n") === "roster" ? <Notice>名簿には入れませんでした。「自治会の資料」に残っています。</Notice> : null}
+    {c.req.query("error") === "busy" ? <Notice error>資料を分けているところです。少ししてから、もう一度開いてください。</Notice> : null}
+    {nothing ? <><div class="notice" role="status"><strong>届いたものはありません</strong><p>自治会のLINEに届いたものや、どれの資料か選ばずに送った写真やファイルが、ここに入ります。</p></div><section class="next"><strong>次は</strong><p>手元の資料を送れます。</p><a class="button" href={adminPath(ward, "/intake")}>資料を送る</a></section></> : <>
+    {toDecide ? null : <p class="lead">自治会のLINEに届いた写真や文と、この画面から送った資料です。AIが読んで、どれの資料かを分けます。</p>}
+    {toDecide ? <><h2 class="tight">AIからの質問があります（{toDecide}件）</h2><p class="muted">答えなくても、「自治会の資料」に残ります。</p>
       <ul class="rows">
         {titled.map((group, index) => { const images = group.materials.filter((m) => m.original.media_type.startsWith("image/")).slice(0, 3); const count = group.materials.length; return <li class="panel">
           <div class="received-head">{images.length ? <a href={detail(images[0]!.jobId)}><img class="photo" src={`${adminPath(ward, `/intake/originals/${images[0]!.original.original_id}`)}?raw=1`} alt={`${group.title}の写真`} loading="lazy" /></a> : null}
@@ -206,19 +207,19 @@ admin.get("/inbox", async (c) => {
       <p class="muted">{asked.some(({ group }) => group.some((row) => row.line_replied_at)) ? "AIは答えていません。送った人には「役員に伝えて、内容を確認します」と返しました。" : "AIは答えていません。"}</p>
       <ul class="rows">{asked.slice(0, 2).map(({ group, project }) => { const record = group[0]!; const words = dateWords(record.subject); return <li><a class="row-link" href={adminPath(ward, `/inquiries/${encodeURIComponent(record.inquiry_id)}`)}><b>「{inquirySubject(record.subject)}」</b>
         {record.photos?.map((id) => <img class="photo" src={adminPath(ward, `/inbox/${id}/original`)} alt="一緒に届いた写真" loading="lazy" />)}
-        {record.line_source_type ? <span>送った人: {record.line_sender_label || "名前は分かりません"}（{record.line_source_type === "user" ? "公式への一対一" : "LINEグループ"}）</span> : null}
-        <span>{words.map((word) => `「${word}」と書かれています。`).join("")}{group.length > 1 ? `同じ内容が${group.length}件あります` : `${formatJstDate(record.received_at)}に届きました`}</span>
+        {record.line_source_type ? <span>送った人: {record.line_sender_label || "名前は分かりません"}（{record.line_source_type === "user" ? "自治会のLINEに個別に送った人" : "LINEグループ"}）</span> : null}
+        <span>{words.length ? `急ぎかもしれません（${words.map((word) => `「${word}」`).join("")}とあります）。` : ""}{group.length > 1 ? `同じ内容が${group.length}件あります` : `${formatJstDate(record.received_at)}に届きました`}</span>
         {project ? <span>{project.title}の話のようです</span> : null}
       </a></li>; })}
       {asked.length > 2 ? <li><a class="row-link" href={adminPath(ward, "/inquiries")}><b>ほかの問い合わせ {asked.length - 2}件</b><span>問い合わせと要望の画面で見られます</span></a></li> : null}</ul></> : null}
-    {decided.length ? <><h2>届いたもの（{decided.length}件）</h2><p class="muted">どれも区の資料に入っています。押すと大きく見られ、行事や役員が知っておくことにつなげられます。</p>
+    {decided.length ? <><h2>届いたもの（{decided.length}件）</h2><p class="muted">どれも自治会の資料に入っています。押すと大きく見られ、どれかの資料にしたり、自治会の基本情報につなげたりできます。</p>
       <ul class="photo-grid">{decided.map((row) => <li><a href={row.href}>
         {row.photos?.length ? row.photos.map((src) => <img class="photo" src={src} alt="一緒に届いた写真" loading="lazy" />) : row.photo ? <img class="photo" src={row.photo} alt={`${row.title}の写真`} loading="lazy" /> : <span class="photo-none">{row.title}</span>}
         {row.words ? <><b>一緒に送られた言葉</b><span class="preserve-lines">{row.words}</span></> : null}
-        {row.photo ? <b>{row.title}</b> : null}<span>{row.project ?? "どこにもつながっていません"}</span><span>{formatJst(row.at)}</span><span>{row.note}</span>
+        {row.photo ? <b>{row.title}</b> : null}<span>{row.project ? `${row.project}の資料にしています` : "まだどれの資料にもしていません"}</span><span>{`${formatJst(row.at)}に届きました`}</span><span>{row.note}</span>
       </a></li>)}</ul></> : null}
     {clarifications.length ? <p class="link-line"><a href={adminPath(ward, "/inbox/questions")}>{open.length ? `読めなかったところの質問（${open.length}件）を見る` : "読めなかったところの質問を見る"}</a></p> : null}
-    <p class="muted">関係のない雑談は、AIが外しています。</p></>}
+    <p class="muted">関係のない雑談は、AIが除いています。</p></>}
   </Layout>);
 });
 
@@ -299,7 +300,7 @@ admin.post("/inbox/city/:jobId", async (c) => {
     projectId = created.projectId;
   }
   if (!projectId || !(await c.env.DB.prepare("SELECT 1 AS ok FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL")
-    .bind(ward.wardId, projectId).first())) return adminResult(c, "開いている行事を選んでください。", 400, { href: adminPath(c.var.ward, "/inbox"), label: "届いたものに戻る" }, "開いている行事を選び直してください。");
+    .bind(ward.wardId, projectId).first())) return adminResult(c, "準備中のものを選んでください。", 400, { href: adminPath(c.var.ward, "/inbox"), label: "届いたものに戻る" }, "準備中のものを選び直してください。");
   if (!(await assignProject(c.env, safeContext(c), ward.wardId, jobId, projectId))) return c.redirect(`/${ward.slug}/admin/inbox?error=busy`, 303);
   return c.redirect(`/${ward.slug}/admin/inbox?n=assigned&project=${projectId}${job.project_id && job.project_id !== projectId ? from : ""}`, 303);
 });
@@ -315,7 +316,7 @@ admin.get("/inbox/city/:jobId/pick", async (c) => {
   const name = projects.find((project) => project.project_id === job.project_id)?.name;
   const group = groups.find((g) => g.title && g.materials.some((m) => m.jobId === jobId));
   return c.html(<InboxPick ward={ward} originalId={shown[0]?.original_id ?? ""} know={know.items} answered={c.req.query("n") === "answered"} noun={shown.some((o) => o.media_type.startsWith("image/")) ? "写真" : "資料"} suggested={group?.joins?.projectId ?? null} suggestedName={group && !group.joins ? group.title : ""} suggestedKind={group?.kind ?? "event"} title={shortLine(summary) || originals[0]?.filename || "届いた資料"}
-    facts={[["届いた日", formatJst(job.created_at)], ["送った所", "この画面から"], ["入れた行事", name ?? "まだ入っていません"]]}
+    facts={[["届いた日", formatJst(job.created_at)], ["送った所", "この画面から"], ["どれの資料か", name ? `${name}の資料にしています` : "まだどれの資料にもしていません（自治会の資料には残っています）"]]}
     photos={shown.filter((o) => o.media_type.startsWith("image/")).map((o) => ({ src: `${original(o.original_id)}?raw=1`, alt: o.filename || "届いた資料の写真" }))}
     files={shown.filter((o) => !o.media_type.startsWith("image/")).map((o) => ({ href: original(o.original_id), label: `${o.filename || "届いた資料"}を開く` }))}
     summary={summary} reason={null} questions={questions.filter((q) => q.job_id === jobId && !q.answer)} back={adminPath(ward, `/inbox/city/${jobId}/pick`)}
@@ -337,14 +338,13 @@ admin.get("/inbox/:itemId/pick", async (c) => {
     .bind(ward.wardId, item.bundle_id).first<{ inquiry_id: string }>() : null;
   if (inquiry) return c.redirect(adminPath(ward, `/inquiries/${inquiry.inquiry_id}`), 303);
   const [originals, know] = await Promise.all([item.job_id ? listOriginals(c.env.DB, ward.wardId, item.job_id) : [], listKnowItems(c.env.DB, ward.wardId)]);
-  const sender = item.sender_display_name || item.sender_label;
   const summary = summaries.get(item.job_id ?? "") ?? "";
   const current = item.matched_project_id ?? item.job_project_id;
   const name = item.matched_project_name ?? projects.find((project) => project.project_id === current)?.name;
   const image = item.original_kind === "image" && item.job_id;
   const group = groups.find((g) => g.title && g.materials.some((m) => m.jobId === item.job_id));
   return c.html(<InboxPick ward={ward} originalId={originals.find((o) => !o.withdrawn_at)?.original_id ?? ""} know={know.items} answered={c.req.query("n") === "answered"} noun={item.original_kind === "text" ? "文" : "写真"} suggested={group?.joins?.projectId ?? null} suggestedName={group && !group.joins ? group.title : ""} suggestedKind={group?.kind ?? "event"} title={item.original_text ? `「${shortLine(item.original_text, 30)}」` : shortLine(summary) || "届いた写真"}
-    facts={[["送った人", sender ? `${sender}さん（公式LINE）` : "公式LINE"], ["届いた日", formatJst(item.received_at)], ["入れた行事", name ?? "まだ入っていません"]]}
+    facts={[["送った人", item.sender_display_name ? `${senderText(item.sender_display_name)}（自治会のLINE）` : senderText(null, item.sender_label)], ["届いた日", formatJst(item.received_at)], ["どれの資料か", name ? `${name}の資料にしています` : "まだどれの資料にもしていません（自治会の資料には残っています）"]]}
     photos={contents?.photos.length ? contents.photos.map((p) => ({ src: adminPath(ward, `/inbox/${p.item_id}/original`), alt: "一緒に届いた写真" })) : image ? [{ src: adminPath(ward, `/inbox/${itemId}/original`), alt: shortLine(summary) || "届いた写真" }] : []} files={[]}
     words={contents?.text}
     summary={item.original_text ? "" : summary} reason={current ? item.match_reason : null} questions={questions.filter((q) => q.job_id === item.job_id && !q.answer)} back={adminPath(ward, `/inbox/${itemId}/pick`)}
@@ -443,7 +443,7 @@ export const line: Bundle = {
       try {
         await sendOfficerDigest(env, ward.ward_id, ward.slug, now);
       }
-      catch { console.error("役員への知らせを送れませんでした", ward.ward_id); }
+      catch { console.error("役員への通知を送れませんでした", ward.ward_id); }
       await processPhotoBatches(env, ward.ward_id);
     }
   },

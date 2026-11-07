@@ -21,7 +21,8 @@ function documentKind(target: string, data: Record<string, unknown>): DocumentKi
   const candidate = typeof data.document_kind === "string" ? data.document_kind : target;
   if ((DOCUMENT_KINDS as readonly string[]).includes(candidate)) return candidate as DocumentKind;
   const label = DOCUMENT_KINDS.find((kind) => DOCUMENT_KIND_LABEL[kind] === candidate);
-  return label ?? null;
+  // 2026-11-07 に画面の「知らせ」を「連絡」にした。前の呼び名で来ても同じ種類として受ける。
+  return label ?? (candidate === "知らせ" ? "notice" : null);
 }
 
 const agentApi: ProjectApi = {
@@ -72,21 +73,21 @@ const agentApi: ProjectApi = {
     }
     if (change.kind === "map_draft") {
       const rawTasks = data.tasks;
-      if (!Array.isArray(rawTasks) || rawTasks.length === 0 || rawTasks.length > 100) return { status: "rejected", note: "段取りの仕事がありません" };
+      if (!Array.isArray(rawTasks) || rawTasks.length === 0 || rawTasks.length > 100) return { status: "rejected", note: "やることがありません" };
       const job = await env.DB.prepare("SELECT account_id FROM jobs WHERE ward_id = ? AND job_id = ? AND project_id = ?")
         .bind(ctx.wardId, ctx.jobId, ctx.projectId).first<{ account_id: string | null }>();
-      if (!job?.account_id) return { status: "rejected", note: "段取りの下書きを保存できませんでした" };
+      if (!job?.account_id) return { status: "rejected", note: "やることの下書きを保存できませんでした" };
       const current = await env.DB.prepare("SELECT task_id, task_key FROM project_map_tasks WHERE ward_id = ? AND project_id = ? AND removed_at IS NULL")
         .bind(ctx.wardId, ctx.projectId).all<{ task_id: string; task_key: string | null }>();
       const byKey = new Map(current.results.flatMap((task) => task.task_key ? [[task.task_key, task.task_id] as const] : []));
       const statements: D1PreparedStatement[] = [];
       for (const value of rawTasks) {
-        if (typeof value !== "object" || value === null || Array.isArray(value)) return { status: "rejected", note: "段取りの仕事の形が合いません" };
+        if (typeof value !== "object" || value === null || Array.isArray(value)) return { status: "rejected", note: "やることの形が合いません" };
         const task = value as Record<string, unknown>;
         const key = typeof task.task_id === "string" ? task.task_id : typeof task.task_key === "string" ? byKey.get(task.task_key) : undefined;
         const taskId = current.results.some((row) => row.task_id === key) ? key : undefined;
         const name = typeof task.name === "string" ? task.name.trim().slice(0, 120) : "";
-        if (!taskId || !name) return { status: "rejected", note: "段取りの仕事を特定できませんでした" };
+        if (!taskId || !name) return { status: "rejected", note: "やることを特定できませんでした" };
         const progress = task.progress === "done" || task.progress === "started" ? task.progress : "open";
         statements.push(env.DB.prepare(`UPDATE project_close_map SET period = ?, name = ?, progress = ?, requested_by = ?, difficulty = ?, next_year = ?, updated_at = ?, updated_by_account_id = ?
           WHERE ward_id = ? AND project_id = ? AND task_id = ?
@@ -100,7 +101,7 @@ const agentApi: ProjectApi = {
       const saved = await env.DB.batch(statements);
       return saved.every((result) => (result.meta.changes ?? 0) === 1)
         ? { status: "applied" }
-        : { status: "rejected", note: "段取りの下書きを保存できませんでした" };
+        : { status: "rejected", note: "やることの下書きを保存できませんでした" };
     }
     if (!source) return { status: "rejected", note: "出どころがありません" };
     if (change.originalId && !(await originalInProject(env.DB, ctx.wardId, ctx.projectId, change.originalId))) {
@@ -128,7 +129,7 @@ const agentApi: ProjectApi = {
       if (progress !== "done" && progress !== "started") return { status: "rejected", note: "仕事の進み具合が合いません" };
       const task = await env.DB.prepare("SELECT task_key FROM project_map_tasks WHERE ward_id = ? AND project_id = ? AND removed_at IS NULL AND (task_key = ? OR name = ?) LIMIT 1")
         .bind(ctx.wardId, ctx.projectId, change.target, change.target).first<{ task_key: string | null }>();
-      if (!task?.task_key) return { status: "rejected", note: "段取りに当てはまる仕事がありません" };
+      if (!task?.task_key) return { status: "rejected", note: "やることに当てはまる仕事がありません" };
       const result = await applyChange(env.DB, ctx.wardId, ctx.projectId, { kind: "map_task", taskKey: task.task_key, progress, source, confidence: change.confidence, packVersion: ctx.packVersion, ticketId: ctx.jobId });
       return { status: result.status, ...(result.status !== "rejected" ? { duplicate: result.duplicate } : {}) };
     }

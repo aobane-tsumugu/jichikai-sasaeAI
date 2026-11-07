@@ -74,13 +74,13 @@ export const publicMetadata: MiddlewareHandler<WardEnv> = async (c, next) => {
       visible &&= documents.length > 0;
       const labels = [...new Set(documents.filter((document) => ["announcement", "recruitment", "notice", "report"].includes(document.kind))
         .map((document) => documentTitle(document.project_kind, document.kind)))];
-      title = `${ward.name}｜${documents[0]?.project_title ?? "お知らせ"}の${kind === "help" ? "手伝いの募集" : kind === "answer" ? "出欠の答え" : labels.join("・") || "お知らせ"}`;
+      title = `${ward.name}｜${documents[0]?.project_title ?? "お知らせ"}の${kind === "help" ? "手伝いの募集" : kind === "answer" ? "出欠の返事" : labels.join("・") || "お知らせ"}`;
       description = `${title}をご覧ください。${eventDescription(documents)}`;
       if (kind === "help") visible &&= (await listHelpOpportunities(c.env.DB, ward.wardId, projectId)).length > 0;
     }
   } else if (path === `${root}/help`) {
     title = `${ward.name}｜一回だけ手伝う`;
-    description = `${ward.name}の手伝いの募集をご覧ください。自治会に入っていなくても申し込めます。`;
+    description = `${ward.name}の手伝いの募集をご覧ください。自治会に加入していなくても申し込めます。`;
   }
   if (!visible) {
     c.header("X-Robots-Tag", "noindex");

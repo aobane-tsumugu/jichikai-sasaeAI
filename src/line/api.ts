@@ -201,7 +201,7 @@ export async function broadcastLineText(token: string, text: string, request: ty
   if (!response.ok) throw new Error(`LINE API request failed (${response.status})`);
 }
 
-export const LINE_NOT_CONFIGURED = "この区の公式LINEは接続設定がないため送信しません。";
+export const LINE_NOT_CONFIGURED = "この自治会のLINEは接続設定がないため送信しません。";
 
 /** 開設時に参照先の名前だけを決め、鍵の値は Workers secrets に置く。 */
 export function lineSecretNames(wardId: string) {

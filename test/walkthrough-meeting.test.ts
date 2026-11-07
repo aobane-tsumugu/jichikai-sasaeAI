@@ -10,7 +10,7 @@ import { setPipelineDeps } from "../src/intake/pipeline";
 import { realApp } from "./helpers";
 import { prepareMeetingRuntime } from "./meeting-fixture-runtime";
 
-it("U42: 架空の総会を受付・AIの偽応答・公開・4通りのWebの答え・紙・電話・議事録・閉じた記録まで通す", async () => {
+it("U42: 架空の総会を受付・AIの偽応答・公開・4通りのWebの返事・紙・電話・議事録・閉じた記録まで通す", async () => {
   const setup = await prepareMeetingRuntime(env);
   const options = { base: "http://localhost", ward: setup.ward.slug, name: setup.account.name, password: setup.account.password };
   const reports: string[] = [];

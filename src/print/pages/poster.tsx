@@ -20,10 +20,10 @@ export function PosterPage({ wardName, title, body, wardUrl, withAnswer, due, co
         {place ? <><dt>{ITEM_SCREEN_LABEL.place}</dt><dd>{place}</dd></> : null}
         {rainPlan ? <><dt>{ITEM_SCREEN_LABEL.rain_plan}</dt><dd>{rainPlan}</dd></> : null}
       </dl> : null}
-      {withAnswer && due ? <><p>答えの締切：{due}</p><p>{generalMeeting ? "出席、委任、欠席のどれかを答えてください。" : "参加しないときも、答えてください。答えがないときは、欠席として数えます。"}</p></> : null}
+      {withAnswer && due ? <><p>返事の締切：{due}</p><p>{generalMeeting ? "出席、委任、欠席のどれかを答えてください。" : "参加しないときも、答えてください。返事がないときは、欠席として数えます。"}</p></> : null}
       {contact ? <p>連絡先：{contact}</p> : null}
       <div class="poster-link">
-        <div class="poster-qr" role="img" aria-label="区のページを開くQR" dangerouslySetInnerHTML={{ __html: qrSvg(wardUrl) }} />
+        <div class="poster-qr" role="img" aria-label="住民向けのページを開くQR" dangerouslySetInnerHTML={{ __html: qrSvg(wardUrl) }} />
         <a class="poster-url" href={wardUrl}>{wardUrl}</a>
         <p>スマホのカメラを向けて、出てきた文字を押してください。</p>
       </div>

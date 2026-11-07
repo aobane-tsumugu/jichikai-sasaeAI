@@ -38,7 +38,7 @@ describe("秋の収穫祭の最初の一片", () => {
     const loggedIn = await postForm(realApp, `${new URL(openedBody.account.invitationUrl).pathname}/password`, {});
     expect(loggedIn.status).toBe(200);
     const cookie = cookieFrom(loggedIn, "device");
-    if (!cookie) throw new Error("役員画面に入る札がありません");
+    if (!cookie) throw new Error("役員の画面にログインする札がありません");
     const accountRow = await env.DB.prepare("SELECT account_id FROM accounts WHERE ward_id = ? AND name = ?")
       .bind(ward.wardId, FIRST_SLICE.firstOfficer).first<{ account_id: string }>();
     if (!accountRow) throw new Error("最初の役員が見つかりません");
@@ -155,7 +155,7 @@ describe("秋の収穫祭の最初の一片", () => {
       recipientScope: "all_households", distribution: "",
     }, cookie);
     expect(confirm.status).toBe(200);
-    expect(await confirm.text()).toContain("次の内容で配ります");
+    expect(await confirm.text()).toContain("次の内容で住民に知らせます");
     const published = await postForm(realApp, `/${ward.slug}/admin/publish/${projectId}/send`, {
       documentId: document!.document_id, versionId: document!.version_id, versionNo: String(document!.version_no),
       stateVersion: String(document!.state_version), recipientScope: "all_households", distribution: "",
@@ -245,7 +245,7 @@ describe("秋の収穫祭の最初の一片", () => {
     const spacePage = await get(realApp, `/${ward.slug}/space/${projectId}`, spaceCookie ?? undefined);
     const spaceBody = await spacePage.text();
     expect(spacePage.status).toBe(200);
-    expect(spaceBody).toContain("まだ配っていません。");
+    expect(spaceBody).toContain("まだ載っていません。");
     expect(spaceBody).not.toContain(FIRST_SLICE.dutyText);
     expect(spaceBody).not.toContain(FIRST_SLICE.layoutSpot);
     expect(spaceBody).not.toContain(FIRST_SLICE.layoutPosition);
@@ -268,7 +268,7 @@ describe("秋の収穫祭の最初の一片", () => {
     expect(distributedSpaceBody).toContain(FIRST_SLICE.dutyText);
     expect(distributedSpaceBody).toContain(FIRST_SLICE.layoutSpot);
     expect(distributedSpaceBody).toContain(FIRST_SLICE.layoutPosition);
-    expect(distributedSpaceBody).not.toContain("まだ配っていません。");
+    expect(distributedSpaceBody).not.toContain("まだ載っていません。");
     const lockedAfterDistribution = await get(realApp, `/${ward.slug}/space/${projectId}`);
     const lockedAfterDistributionBody = await lockedAfterDistribution.text();
     expect(lockedAfterDistribution.status).toBe(200);

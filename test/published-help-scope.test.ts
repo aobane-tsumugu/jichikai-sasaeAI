@@ -6,7 +6,7 @@ import { saveDocument } from "../src/project/actions";
 import { createProject, getProjectState } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("次の下書きを役員向けにしても配った募集で申し込め、区のページから下げると受付を終える", async () => {
+it("次の下書きを役員向けにしても配った募集で申し込め、住民向けのページから取り下げると受付を終える", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,

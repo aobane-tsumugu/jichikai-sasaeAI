@@ -7,7 +7,7 @@ import { createProject } from "../src/project/api";
 import { saveTemplates } from "../src/settings/store";
 import { get, postForm, realApp } from "./helpers";
 
-it.each(["項目つき", "古い文だけ"])("%sの総会の追記は設定を変えても配り直すまで変わらず、空欄も保持する", async (format) => {
+it.each(["項目つき", "古い文だけ"])("%sの総会の追記は設定を変えても知らせ直すまで変わらず、空欄も保持する", async (format) => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "general_meeting", title: "架空の追記確認総会", year: 2099, accountId: account.accountId,

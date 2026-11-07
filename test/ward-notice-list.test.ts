@@ -5,7 +5,7 @@ import { saveDocument } from "../src/project/actions";
 import { createProject, type DocumentKind } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("区の一覧は知らせのある行事の古い日時と場所を足さず、別の行事と取り下げ後の案内を保つ", async () => {
+it("自治会の一覧は知らせのある行事の古い日時と場所を足さず、別の行事と取り下げ後の案内を保つ", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}`;
   const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の会場変更のある会", year: 2099, accountId: account.accountId });

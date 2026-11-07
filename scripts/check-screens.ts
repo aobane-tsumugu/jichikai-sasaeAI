@@ -51,7 +51,7 @@ function scope(options: Options) {
     throw new Error("--baseは資格情報やパスを含まないhttpまたはhttpsのURLを指定してください。");
   }
   if (!options.ward || /[/\\?#\s]/.test(options.ward) || [".", ".."].includes(options.ward)) {
-    throw new Error("--wardに区のURLの名前を指定してください。");
+    throw new Error("--wardに自治会のURLの名前を指定してください。");
   }
   const wardPath = `/${encodeURIComponent(options.ward)}`;
   const loginPath = `${wardPath}/admin/login`;
@@ -261,7 +261,7 @@ async function check(options: Options): Promise<{ results: Result[]; project: st
     if (credentials.loginId && await page.locator('input[name="loginId"]').count()) {
       await page.locator('input[name="loginId"]').fill(credentials.loginId);
       await page.locator('input[name="password"]').fill(credentials.password);
-      await page.getByRole("button", { name: "入る", exact: true }).click();
+      await page.getByRole("button", { name: "ログインする", exact: true }).click();
       await page.waitForURL((url) => url.pathname !== site.loginPath, { timeout: 15000 });
     } else {
       // walkthrough.tsと同じ、名前で入る区の入口。APIRequestは同じCookieを使う。
@@ -465,11 +465,11 @@ async function selfTest() {
             response.writeHead(valid ? 303 : 403, valid ? { Location: "/fixture/admin/", "Set-Cookie": "device=fictional; Path=/fixture/admin; HttpOnly" } : {});
             response.end();
           });
-        } else response.end(html('<form method="post"><input name="loginId"><input name="password" type="password"><button>入る</button></form>'));
+        } else response.end(html('<form method="post"><input name="loginId"><input name="password" type="password"><button>ログインする</button></form>'));
       } else if (path.startsWith("/fixture/admin") && !request.headers.cookie?.includes("device=fictional")) {
         response.writeHead(403); response.end(html("役員用です"));
       } else if (path === "/fixture/admin/") {
-        response.end(html('<a href="/fixture/admin/projects/first/map">架空の行事の段取り</a><a href="/fixture/admin/archive/old">去年の記録</a>'));
+        response.end(html('<a href="/fixture/admin/projects/first/map">架空の行事のやること</a><a href="/fixture/admin/archive/old">去年の終わったもの</a>'));
       } else if (path === "/fixture/answer/first") {
         response.end(html('<main><h1>架空の行事の出欠を教えてください</h1><form method="post"><label>代表者のお名前<input name="household"></label><button>この内容で送る</button></form></main>'));
       } else if (path === "/fixture/help/first") {
@@ -479,26 +479,26 @@ async function selfTest() {
           ? '<main><h1>実行委員と班長のページ</h1><a href="/fixture/space/first">入口のアドレス</a></main>'
           : '<main><h1>実行委員と班長のページ</h1><p>まだ開いていません。</p><form method="post" action="/fixture/admin/space/first/open"><label>合言葉<input name="passphrase"></label><button>開く</button></form></main>'));
       } else if (path === "/fixture/space/first") {
-        if (spaceOpen) response.end(html('<main><h1>合言葉を入れてください</h1><form method="post" action="/fixture/space/first/enter"><label>合言葉<input name="passphrase" type="password"></label><button>入る</button></form><a href="/fixture/space/first/join/secret">招待の入口</a><a href="/fixture/space/first/person/secret">班長の入口</a></main>'));
+        if (spaceOpen) response.end(html('<main><h1>合言葉を入れてください</h1><form method="post" action="/fixture/space/first/enter"><label>合言葉<input name="passphrase" type="password"></label><button>ログインする</button></form><a href="/fixture/space/first/join/secret">招待の入口</a><a href="/fixture/space/first/person/secret">班長の入口</a></main>'));
         else { response.writeHead(403); response.end(html('<main><h1>まだ開いていません</h1><p>役員がまだ開いていません。</p></main>')); }
       } else if (path === "/fixture/admin/projects") {
-        response.end(html('<h1>新しく始める</h1><form method="post"><label>名前<input name="title"></label><button>始める</button></form>'));
+        response.end(html('<h1>新しく準備を始める</h1><form method="post"><label>名前<input name="title"></label><button>始める</button></form>'));
       } else if (path === "/fixture/admin/projects/first") {
-        response.end(html('<a href="/fixture/admin/projects/first/map">段取り</a><a href="/fixture/admin/answers/first">答えを見る</a><a href="/fixture/admin/projects/first/committee">実行委員名簿</a><a href="/fixture/admin/inbox/item-one/pick">LINEから届いたものを行事に入れる</a><a href="/fixture/admin/inbox/city/job-one/pick">送ったものを行事に入れる</a><a href="/fixture/admin/projects/first/draft/notice">雨の変更</a><a href="/fixture/admin/projects/second/map">別の段取り</a><a href="/fixture/admin/inbox">届いたもの</a><a href="/fixture/admin/archive">記録</a><a href="/fixture/admin/logout">出る</a><a href="/fixture/admin/projects/first/delete">消す</a><a href="/other/admin/">別の区</a><a href="/fixture/space/first/join/secret">一人用の入口</a>'));
+        response.end(html('<a href="/fixture/admin/projects/first/map">やること</a><a href="/fixture/admin/answers/first">出欠の返事を見る</a><a href="/fixture/admin/projects/first/committee">実行委員名簿</a><a href="/fixture/admin/inbox/item-one/pick">LINEから届いたものを資料にする</a><a href="/fixture/admin/inbox/city/job-one/pick">送ったものを資料にれる</a><a href="/fixture/admin/projects/first/draft/notice">雨の変更</a><a href="/fixture/admin/projects/second/map">別のやること</a><a href="/fixture/admin/inbox">届いたもの</a><a href="/fixture/admin/archive">記録</a><a href="/fixture/admin/logout">出る</a><a href="/fixture/admin/projects/first/delete">消す</a><a href="/other/admin/">別の区</a><a href="/fixture/space/first/join/secret">一人用の入口</a>'));
       } else if (path === "/fixture/admin/answers/meeting") {
-        response.end(html(`<main><p${url.searchParams.get("view") === "read" ? ' class="small"' : ""}>架空の総会の答え</p><div style="height:1000px"></div><button>この答えを入れる</button><button>もう一件の答えを入れる</button><a href="?view=unanswered&amp;print=1">未回答の紙</a><a href="/fixture/admin/answers/meeting/answer-one/edit">答えを直す</a></main>`));
+        response.end(html(`<main><p${url.searchParams.get("view") === "read" ? ' class="small"' : ""}>架空の総会の返事</p><div style="height:1000px"></div><button>この返事を入れる</button><button>もう一件の答えを入れる</button><a href="?view=unanswered&amp;print=1">未回答の紙</a><a href="/fixture/admin/answers/meeting/answer-one/edit">返事を直す</a></main>`));
       } else if (/\/committee$|\/rota\//.test(path) || path.endsWith("/pick") || path === "/fixture/admin/projects/duty/draft/duty_roster") {
         response.end(html('<main><p>架空の追加画面</p><div style="height:1000px"></div><button>一つ目の操作</button><button>二つ目の操作</button><a href="/fixture/admin/rota/exemptions/record-one/withdraw">免除を取り消す</a></main>'));
       } else if (path === "/fixture/admin/answers/first") {
-        response.end(html(`<main>${url.searchParams.get("view") === "hand" ? '<div style="height:1000px"></div><form method="post"><button>この答えを入れる</button></form>' : '<p>架空の答えの画面</p>'}<a href="?view=summary">集計</a><a href="?view=hand">手で入れる</a><a href="?view=list&amp;q=fixture-query-text">一覧</a><a href="?view=list&amp;q=another-query-text">同じ一覧</a><a href="?view=unanswered">まだ答えていない世帯</a></main>`));
+        response.end(html(`<main>${url.searchParams.get("view") === "hand" ? '<div style="height:1000px"></div><form method="post"><button>この返事を入れる</button></form>' : '<p>架空の返事の画面</p>'}<a href="?view=summary">集計</a><a href="?view=hand">手で入れる</a><a href="?view=list&amp;q=fixture-query-text">一覧</a><a href="?view=list&amp;q=another-query-text">同じ一覧</a><a href="?view=unanswered">まだ返事のない世帯</a></main>`));
       } else if (path === "/fixture/admin/projects/first/draft/notice") {
         response.end(html(`<main><p${url.searchParams.get("edit") === "1" ? ' class="small"' : ""}>架空の知らせ</p><a href="?edit=1">下書きを書く</a></main>`));
       } else if (path === "/fixture/admin/projects/first/map") {
-        response.end(html('<main class="wide"><p class="small">undefined null [object NaN</p><button style="min-height:20px;height:20px;font-size:12px">小さい操作</button><button>主な操作</button><div style="height:900px"></div><a href="/fixture/admin/settings">区の設定</a></main><script nonce="fixture">console.error("secret must not appear");console.error("Failed to load resource: net::ERR_FAILED https://invalid.example/fictional-only");fetch("/fixture/admin/projects/first/title",{method:"POST"}).catch(()=>{});fetch("/fixture/admin/logout").catch(()=>{})</script>'));
+        response.end(html('<main class="wide"><p class="small">undefined null [object NaN</p><button style="min-height:20px;height:20px;font-size:12px">小さい操作</button><button>主な操作</button><div style="height:900px"></div><a href="/fixture/admin/settings">自治会の設定</a></main><script nonce="fixture">console.error("secret must not appear");console.error("Failed to load resource: net::ERR_FAILED https://invalid.example/fictional-only");fetch("/fixture/admin/projects/first/title",{method:"POST"}).catch(()=>{});fetch("/fixture/admin/logout").catch(()=>{})</script>'));
       } else if (path === "/fixture/admin/inbox") {
         response.writeHead(500); response.end(html("読めませんでした"));
       } else if (path === "/fixture/admin/archive") {
-        response.end(html('<main><div style="height:1000px"></div><button>記録を読む</button></main>'));
+        response.end(html('<main><div style="height:1000px"></div><button>終わったものを見る</button></main>'));
       } else response.end(html('<main><p>架空の画面</p><div class="sheet"><small style="font-size:10px">紙の文字</small></div><svg><text font-size="10">図の文字</text></svg><details><summary>説明を読む</summary><small style="font-size:10px">閉じた説明</small><button>閉じた操作</button></details></main>'));
     });
     try {

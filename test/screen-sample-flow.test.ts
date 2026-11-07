@@ -20,13 +20,13 @@ it("読めなかった人数を参加しないと分け、人数は短い名前�
   expect(countText({ peopleCount: 3, childrenCount: 1, adultsCount: 2, seniorsCount: 0 }, LABELS)).toBe("子ども1人、大人2人");
 });
 
-it("回答票で人数が読めなかった世帯を参加しないに数えず、答えの画面の上に出す", async () => {
+it("回答票で人数が読めなかった世帯を参加しないに数えず、返事の画面の上に出す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の読み取り確認", year: 2026, accountId: account.accountId });
   await addAnswer(env.DB, ward.wardId, { projectId: project.projectId, household: "架空 読めない世帯", district: "", peopleCount: 0, childrenCount: null, adultsCount: null, seniorsCount: null, helperName: "", helperTimes: "", source: "sheet" });
   const page = await (await get(realApp, `/${ward.slug}/admin/answers/${project.projectId}`, cookie)).text();
-  expect(page).toContain("人数が読めなかった答えが1件あります");
-  expect(page).toContain("答えた1世帯のうち、参加する世帯は0、参加しない世帯は0です。人数が読めなかった世帯は1です。");
+  expect(page).toContain("人数が読めなかった返事が1件あります");
+  expect(page).toContain("返事のあった1世帯のうち、参加する世帯は0、参加しない世帯は0です。人数が読めなかった世帯は1です。");
 });
 
 it("手伝いの同じ申し込みは一件だけ残し、間違えた時は入れた内容を残す", async () => {
@@ -64,7 +64,7 @@ it("読み終わった物が無い時は読み終わりましたと言わず、�
   expect(read).not.toContain("<h1>読み終わりました</h1>");
   await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の始める確認", year: 2026, accountId: account.accountId });
   const start = await (await get(realApp, `/${ward.slug}/admin/projects`, cookie)).text();
-  expect(start).toContain("<h1>新しく始める</h1>");
+  expect(start).toContain("<h1>新しく準備を始める</h1>");
   expect(start).not.toContain("架空の始める確認");
   const home = await (await get(realApp, `/${ward.slug}/admin/`, cookie)).text();
   expect(home).toContain(`href="/${ward.slug}/admin/projects/today"`);
@@ -104,7 +104,7 @@ it("届いた資料で入ったことを一行で書き、多い時は短くす�
   expect(materialChangeText(state, "none")).toBe("");
 });
 
-it("段取りの最近届いた資料に、その資料から入った項目を出す", async () => {
+it("やることの最近届いた資料に、その資料から入った項目を出す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の資料確認", year: 2026, accountId: account.accountId });
   const now = new Date().toISOString();
@@ -119,7 +119,7 @@ it("段取りの最近届いた資料に、その資料から入った項目を�
   expect(page).not.toContain("読み終わりました。届いた資料で内容を見られます");
 });
 
-it("実行委員向けの下書きも、配る前に本文と表を確かめる", async () => {
+it("実行委員向けの下書きも、知らせる前に本文と表を確かめる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の当番確認", year: 2026, accountId: account.accountId });
   const id = project.projectId;
@@ -139,10 +139,10 @@ it("実行委員向けの下書きも、配る前に本文と表を確かめる"
   }, cookie);
   expect(saved.status).toBe(200);
   const confirm = await saved.text();
-  expect(confirm).toContain("次の内容で配ります");
+  expect(confirm).toContain("次の内容で実行委員と班長のページに載せます");
   expect(confirm).toContain("架空の当番の説明を直した文");
   expect(confirm).toContain("架空の受付係");
-  expect(confirm).toContain("実行委員と班長に配ります。区のページには載りません。");
+  expect(confirm).toContain("実行委員と班長のページに載せます。住民向けのページには載りません。");
   expect(confirm).toContain(`action="${root}/publish/${id}/space"`);
   expect(confirm).not.toContain("LINEで送った知らせ");
   expect(confirm).not.toContain("部を印刷できます");
@@ -161,8 +161,8 @@ it("実行委員向けの下書きも、配る前に本文と表を確かめる"
 
   await addDuty("架空の片付け係");
   const again = await (await postForm(realApp, `${root}/publish/${id}/confirm`, fields(draft), cookie)).text();
-  expect(again).toContain("次の内容で配り直します");
-  expect(again).toContain("配ったときから表が変わっています");
+  expect(again).toContain("次の内容で載せ直します");
+  expect(again).toContain("載せたときから表が変わっています");
   expect(again).toContain("架空の片付け係");
 });
 

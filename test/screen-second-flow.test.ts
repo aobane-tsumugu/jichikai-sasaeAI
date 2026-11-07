@@ -24,16 +24,16 @@ it("空の画面は知らせと次にすることだけを出す", async () => {
   expect(inquiries).toContain("受けたことを書く");
   expect(inquiries).not.toContain("届いた問い合わせ（0件）");
   const record = await read(`${root}/archive`);
-  expect(record).toContain("<h1>記録</h1>");
-  expect(record).toContain("閉じた行事はまだありません");
-  expect(record).not.toContain("記録を探す");
+  expect(record).toContain("<h1>終わったもの</h1>");
+  expect(record).toContain("終わったものはまだありません");
+  expect(record).not.toContain("終わったものを探す");
   const ward_ = await (await get(realApp, `/${ward.slug}/`)).text();
   expect(ward_).toContain("今、出ているお知らせはありません");
   expect(ward_).not.toContain("これまでのお知らせと報告");
   expect(ward_).not.toContain("自治会の仕事を知る");
 });
 
-it("見出しに名前と行き止まりの行事一覧を出さず、区の設定から入り方と問い合わせへ行ける", async () => {
+it("見出しに名前と行き止まりの行事一覧を出さず、自治会の設定からログインの方法と問い合わせへ行ける", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   const home = await (await get(realApp, `${root}/`, cookie)).text();
@@ -41,11 +41,11 @@ it("見出しに名前と行き止まりの行事一覧を出さず、区の設�
   expect(home).not.toContain('<a href="/' + ward.slug + '/admin/">最初の画面</a>');
   expect(await (await get(realApp, `${root}/projects/today`, cookie)).text()).not.toContain("行事一覧");
   const settings = await (await get(realApp, `${root}/settings`, cookie)).text();
-  for (const word of ["役員の一覧", "自分の入り方", "区の情報", "決まった知らせの文", "消す希望", "SasaeAIに問い合わせる", "このスマホやパソコンから出る"]) expect(settings).toContain(word);
+  for (const word of ["この画面を使える人", "ログインの方法", "自治会の情報", "決まった連絡の文", "消す希望", "SasaeAIに問い合わせる", "ログアウトする"]) expect(settings).toContain(word);
   expect(settings).toContain("← 最初の画面へ");
 });
 
-it("配っていない行事の答えの画面は、開けない案内へ戻さない", async () => {
+it("配っていない行事の返事の画面は、開けない案内へ戻さない", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の配る前の行事", year: 2026, accountId: account.accountId });
   const form = await (await get(realApp, `/${ward.slug}/answer/${project.projectId}`)).text();
@@ -54,7 +54,7 @@ it("配っていない行事の答えの画面は、開けない案内へ戻さ�
   expect(form).not.toMatch(/<input[^>]*name="district"[^>]*checked/);
   const list = await (await get(realApp, `/${ward.slug}/admin/answers`, cookie)).text();
   expect(list).toContain("架空の配る前の行事（2026年）");
-  expect(list).toContain("0世帯が答えています");
+  expect(list).toContain("0世帯が返事をしています");
 });
 
 it("質問の一行は短くし、年を聞く質問は見本の見出しにする", async () => {

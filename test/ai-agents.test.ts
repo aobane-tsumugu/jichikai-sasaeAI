@@ -104,7 +104,7 @@ afterEach(() => {
 });
 
 describe("agentの用意", () => {
-  it("区ごとにenvironment、vault、MCPの鍵、agentを一度だけ作り、手はMCPの五つだけにする", async () => {
+  it("自治会ごとにenvironment、vault、MCPの鍵、agentを一度だけ作り、手はMCPの五つだけにする", async () => {
     const ward = await seedWard(env.DB);
     const ai = await ensureWardAi(env, ward);
     expect(ai).toMatchObject({ environment_id: "env_1", vault_id: "vlt_1", agent_id: "agent_1", agent_version: 1, pack_version: PACK_VERSION });

@@ -8,7 +8,7 @@ import { get, postForm, realApp } from "./helpers";
 const input = { attend: "yes", household: "架空 送信確認世帯", district: "", children_count: "", adults_count: "2", seniors_count: "" };
 function number(html: string): string {
   const value = /name="submission_id" value="([^"]+)"/.exec(html)?.[1];
-  if (!value) throw new Error("答えの画面に送信番号がありません。");
+  if (!value) throw new Error("返事の画面に送信番号がありません。");
   return value;
 }
 async function fixture() {
@@ -26,7 +26,7 @@ it("同時送信と再読み込みを一件にし、別の画面からの同名�
   for (const response of await Promise.all([postForm(realApp, path, form), postForm(realApp, path, form)])) {
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toContain("no-store");
-    expect(await response.text()).toContain("答えを受け付けました");
+    expect(await response.text()).toContain("返事を受け付けました");
   }
   expect((await postForm(realApp, path, form)).status).toBe(200);
   expect(await listAnswers(env.DB, ward.wardId, project.projectId)).toHaveLength(1);

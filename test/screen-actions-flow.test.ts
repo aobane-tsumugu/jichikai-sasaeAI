@@ -35,7 +35,7 @@ it("行事を開き、当番の行を保存しても、主な操作と記録を�
   }
   const path = `/projects/${id}/draft/duty_roster`;
   const draft = await page(path);
-  expect(primaryLabels(draft)).toEqual(["保存して配る内容を見る"]);
+  expect(primaryLabels(draft)).toEqual(["保存して知らせる内容を見る"]);
   expect(draft).toContain('<button type="submit" class="secondary">この行を保存する</button>');
   expect(draft).toContain('form="draft-form" name="after" value="confirm"');
   const state = await getProjectState(env.DB, ward.wardId, id);
@@ -46,7 +46,7 @@ it("行事を開き、当番の行を保存しても、主な操作と記録を�
   }, cookie);
   expect(saved.status).toBe(303);
   const after = await page(path + "?notice=saved");
-  expect(primaryLabels(after)).toEqual(["保存して配る内容を見る"]);
+  expect(primaryLabels(after)).toEqual(["保存して知らせる内容を見る"]);
   expect(after).toContain(`value="${FIRST_SLICE.phoneHelper}"`);
 
   const search = await page("/archive/search");

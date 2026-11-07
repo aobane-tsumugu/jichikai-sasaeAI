@@ -5,7 +5,7 @@ import { saveDocument } from "../src/project/actions";
 import { createProject, getProjectSummary, type DocumentKind } from "../src/project/api";
 import { postForm, realApp } from "./helpers";
 
-it.each(["event", "general_meeting"] as const)("%sの受付結果は知らせに残った古い会場を足さず、下げた後は配った案内へ戻る", async (kind) => {
+it.each(["event", "general_meeting"] as const)("%sの受付結果は知らせに残った古い会場を足さず、下げた後は知らせた案内へ戻る", async (kind) => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, { kind, title: "架空の会場変更確認会", year: 2099, accountId: account.accountId });
   const root = `/${ward.slug}`;

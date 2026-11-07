@@ -15,5 +15,5 @@ it("消す求めの画面で用途と行事を消す操作の説明を開ける"
   expect(html).toContain('<summary>説明を読む</summary>');
   expect(html).toContain('<details class="hint">');
   expect(html).toContain("住民から消してほしいと頼まれたものを、ここで選んで消します。消すと元に戻せません。");
-  expect(html).toContain("元の資料、答え、配った案内などを行事ごと消し、元には戻せません。");
+  expect(html).toContain("元の資料、出欠の返事、知らせた案内などをまとめて消し、元には戻せません。");
 });

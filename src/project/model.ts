@@ -18,8 +18,8 @@ export const DEADLINE_KINDS = ["event_day", "answer_due", "submit_due", "board_m
 export type DeadlineKind = (typeof DEADLINE_KINDS)[number];
 
 export const DEADLINE_LABEL: Record<DeadlineKind, string> = {
-  event_day: "行事の日",
-  answer_due: "答えの締切",
+  event_day: "当日",
+  answer_due: "返事の締切",
   submit_due: "提出期限",
   board_meeting_day: "役員会の日",
 };
@@ -36,7 +36,7 @@ export type SourceKind = (typeof SOURCE_KINDS)[number];
 export const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
   original: "届いたもの",
   person: "役員が入力",
-  web_answer: "Webの答え",
+  web_answer: "Webの返事",
   ai_proposal: "AIの下書き",
 };
 
@@ -85,7 +85,7 @@ export const ITEM_LABEL: Record<ItemKey, string> = {
 
 /** 画面と紙に出す項目の名前。ITEM_LABEL は AI と本文の見出しの突き合わせに使うので変えない。 */
 export const ITEM_SCREEN_LABEL: Record<ItemKey, string> = {
-  ...ITEM_LABEL, date_time: "いつ", place: "どこで", content: "内容", due: "答えの締切", public_contact: "連絡先",
+  ...ITEM_LABEL, date_time: "いつ", place: "どこで", content: "内容", due: "返事の締切", public_contact: "連絡先",
 };
 
 /** 画面で数を読む言葉。10 以上は「件」にする。 */
@@ -304,7 +304,7 @@ export const DOCUMENT_KIND_LABEL: Record<DocumentKind, string> = {
   recruitment: "手伝いの募集",
   duty_roster: "当番表",
   procedure: "進め方",
-  notice: "知らせ",
+  notice: "連絡",
   report: "報告",
 };
 
@@ -348,7 +348,7 @@ export type QuestionKind = (typeof QUESTION_KINDS)[number];
 export const QUESTION_KIND_LABEL: Record<QuestionKind, string> = {
   unreadable: "読めなかったところ",
   decide: "今年決めること",
-  map_gap: "段取りの空き",
+  map_gap: "やることの空き",
   conflict: "食い違い",
   discarded: "取り込めなかった変更",
 };

@@ -5,7 +5,7 @@ import { seedAdmin } from "../src/core/testing";
 import { createProject } from "../src/project/api";
 import { cookieFrom, get, postForm, realApp } from "./helpers";
 
-it("役員が実行委員と班長のページを開き、実行委員が合言葉で答えを見て、閉じたあとは案内を読む", async () => {
+it("役員が実行委員と班長のページを開き、実行委員が合言葉で返事を見て、閉じたあとは案内を読む", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId,
@@ -16,9 +16,9 @@ it("役員が実行委員と班長のページを開き、実行委員が合言�
   const admin = `/${ward.slug}/admin`;
   const space = `/${ward.slug}/space/${project.projectId}`;
   const answerList = await get(realApp, `${admin}/answers`, cookie);
-  expect(await answerList.text()).toContain("<h1>答えを見る</h1>");
+  expect(await answerList.text()).toContain("<h1>出欠の返事を見る</h1>");
   const answer = await get(realApp, `${admin}/answers/${project.projectId}`, cookie);
-  expect(await answer.text()).toContain("答えの一覧");
+  expect(await answer.text()).toContain("返事の一覧");
 
   const opened = await postForm(realApp, `${admin}/space/${project.projectId}/open`, { passphrase: "確認用の合言葉（架空）" }, cookie);
   expect(opened.status).toBe(200);
@@ -39,7 +39,7 @@ it("役員が実行委員と班長のページを開き、実行委員が合言�
   const after = await get(realApp, space, memberCookie!);
   expect(after.status).toBe(403);
   const closedHtml = await after.text();
-  expect(closedHtml).toContain("閉じました。役員に聞いてください");
+  expect(closedHtml).toContain("役員が見せるのをやめました。役員に聞いてください");
   expect(closedHtml).not.toContain("確認用の世帯（架空）");
   expect((await get(realApp, `${admin}/space/${project.projectId}`, cookie)).status).toBe(200);
 });

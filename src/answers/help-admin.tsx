@@ -137,7 +137,7 @@ export function installHelpAdminRoutes(admin: Hono<AdminEnv>) {
     const restored = await restoreHelpOffer(c.env.DB, c.var.ward.wardId, c.req.param("projectId"), {
       offerId: c.req.param("offerId"), name, times, createdAt, submissionId: str(form.submission_id) || null,
     });
-    if (!restored) return adminResult(c, "申し込みを元に戻せませんでした。", 409, { href: `${root}?view=helpers`, label: "手伝いの一覧へ" }, "一覧で申し込みを確かめてください。閉じた行事は、先にもう一度開いてください。");
+    if (!restored) return adminResult(c, "申し込みを元に戻せませんでした。", 409, { href: `${root}?view=helpers`, label: "手伝いの一覧へ" }, "一覧で申し込みを確かめてください。終わったものは、先に終わりを取り消してください。");
     return c.redirect(`${root}?view=helpers`, 303);
   });
 }

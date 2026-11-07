@@ -485,7 +485,7 @@ describe("画面", () => {
     expect(await getJob(env.DB, ward.wardId, out.jobId as string)).toMatchObject({ status: "withdrawn" });
   });
 
-  it("元の資料の実体は、その区の入った人だけが開ける", async () => {
+  it("元の資料の実体は、その自治会の入った人だけが開ける", async () => {
     const mine = await seedAdmin(env.DB);
     const other = await seedAdmin(env.DB);
     const { ctx } = ctxOf();
@@ -522,7 +522,7 @@ describe("画面", () => {
 });
 
 describe("送る先の行事の検査", () => {
-  it("実在しない、「undefined」のような、閉じた行事には送れない（束3の実物で確かめる）", async () => {
+  it("実在しない、「undefined」のような、終わったものには送れない（束3の実物で確かめる）", async () => {
     setProjectDirectory(null);
     const { createProject } = await import("../src/project/api");
     const ward = await seedWard(env.DB);
@@ -548,7 +548,7 @@ describe("送る先の行事の検査", () => {
     form.append("text", "あ");
     const res = await app.request(`/${ward.slug}/admin/intake`, { method: "POST", headers: { cookie, origin: "http://localhost", accept: "application/json" }, body: form }, env, ctx);
     expect(res.status).toBe(400);
-    expect(((await res.json()) as { message: string }).message).toContain("行事");
+    expect(((await res.json()) as { message: string }).message).toContain("送り先を選び直してください");
   });
 });
 

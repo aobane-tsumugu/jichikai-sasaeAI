@@ -23,7 +23,7 @@ it("資料も質問も仕事もない一年目に、案内を確認して配り�
   expect(state?.mapTasks).toHaveLength(0);
   expect(state?.questions).toHaveLength(0);
   const empty = await (await get(realApp, path, cookie)).text();
-  expect(empty).toContain("配れる下書きはまだありません。");
+  expect(empty).toContain("知らせられる下書きはまだありません。");
   expect(empty).toContain(`/projects/${id}/draft/announcement`);
   expect(await saveDocument(env.DB, ward.wardId, id, account.accountId, {
     kind: "announcement", title: "案内", scope: "public", basedOn: project.stateVersion,
@@ -37,7 +37,7 @@ it("資料も質問も仕事もない一年目に、案内を確認して配り�
   expect(first.status).toBe(200);
   const firstHtml = await first.text();
   expect(firstHtml).toContain("印刷して配れます");
-  expect(firstHtml).toContain("次の内容で配ります");
+  expect(firstHtml).toContain("次の内容で住民に知らせます");
   expect(firstHtml).toContain("LINEで送った知らせは取り消せません。");
   expect(firstHtml).toContain('class="compare-paper"');
   expect(firstHtml).toContain("切り取って班長か役員に渡します。");
@@ -59,18 +59,18 @@ it("資料も質問も仕事もない一年目に、案内を確認して配り�
   const location = sent.headers.get("location");
   if (!location) throw new Error("配った結果への行き先がありません");
   const published = await (await get(realApp, location, cookie)).text();
-  expect(published).toContain("案内を配りました");
-  expect(published).toContain("公式LINEには送れませんでした");
-  expect(published).toContain("区のページには載っています。紙も配れます。");
+  expect(published).toContain("案内を知らせました");
+  expect(published).toContain("自治会のLINEには送れませんでした");
+  expect(published).toContain("住民向けのページには載っています。紙も配れます。");
   expect(published).toContain("案内と回答票を印刷する");
   expect(published).toContain("班長への一枚を印刷する");
-  expect(published).toContain("直して配り直す");
+  expect(published).toContain("直して知らせ直す");
   expect(published).not.toContain("いま済みにしました");
-  expect(published).not.toContain("段取りの「");
+  expect(published).not.toContain("やることの「");
   const spaceAdmin = await postForm(realApp, `${root}/space/${id}/open`, { passphrase: FIRST_SLICE.passphrase }, cookie);
   expect(spaceAdmin.status).toBe(200);
   const opened = await spaceAdmin.text();
-  expect(opened).toContain("開いています");
+  expect(opened).toContain("見せています");
   expect(opened).toContain(FIRST_SLICE.passphrase);
   expect(opened).toContain(`/print/${id}/${draft.document_id}/${draft.version_no}/leader`);
   const leaderToken = await createInvite(env.DB, ward.wardId, id, "leader", FIRST_SLICE.district, account.accountId, true);
@@ -80,7 +80,7 @@ it("資料も質問も仕事もない一年目に、案内を確認して配り�
   const spacePath = `/${ward.slug}/space/${id}`;
   const leader = await (await get(realApp, spacePath, leaderCookie)).text();
   expect(leader).toContain(`${FIRST_SLICE.district}の班長さんへ`);
-  expect(leader).toContain("答えはまだありません。");
+  expect(leader).toContain("返事はまだありません。");
   expect(leader).toContain("回答票を撮って送る");
   expect(leader).not.toContain("協賛先");
   expect(leader).not.toContain("書き込んだ紙を撮って送る");
@@ -107,18 +107,18 @@ it("資料も質問も仕事もない一年目に、案内を確認して配り�
   const rainLocation = rain.headers.get("location");
   if (!rainLocation) throw new Error("雨の変更を配った結果への行き先がありません");
   const rainSent = await (await get(realApp, rainLocation, cookie)).text();
-  expect(rainSent).toContain("雨の変更を配りました");
+  expect(rainSent).toContain("雨の変更を知らせました");
   expect(rainSent).toContain("班長に電話して伝えてください。掲示も張り替えてください。");
   const publicPage = await (await get(realApp, `/${ward.slug}/p/${id}`)).text();
   expect(publicPage).toContain(FIRST_SLICE.publicAnnouncement);
   expect(publicPage).toContain(FIRST_SLICE.rainAnnouncement);
   const publication = new URL(location, "http://localhost").searchParams.get("done");
-  if (!publication) throw new Error("配った記録がありません");
+  if (!publication) throw new Error("知らせた記録がありません");
   const lower = await postForm(realApp, `${path}/lower/${publication}`, {}, cookie);
   expect(lower.status).toBe(303);
   const lowerLocation = lower.headers.get("location");
   if (!lowerLocation) throw new Error("下げた結果への行き先がありません");
   const lowered = await (await get(realApp, lowerLocation, cookie)).text();
-  expect(lowered).toContain("下げました。配った記録は残ります。");
-  expect(lowered).toContain("直して配り直す");
+  expect(lowered).toContain("取り下げました。知らせた記録は残ります。");
+  expect(lowered).toContain("直して知らせ直す");
 });

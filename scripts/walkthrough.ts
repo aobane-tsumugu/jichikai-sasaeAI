@@ -11,7 +11,7 @@ const onlyPublic = args.includes("--only-public");
 const ward = arg("--ward");
 const baseArg = arg("--base");
 if (!ward || !baseArg || (!onlyPublic && !arg("--creds"))) {
-  console.error("使い方: npm run walkthrough -- --base <URL> --ward <区のURL名> --creds <資格情報ファイル> [--only-public]");
+  console.error("使い方: npm run walkthrough -- --base <URL> --ward <自治会のURL名> --creds <資格情報ファイル> [--only-public]");
   process.exit(2);
 }
 if (ward === "demoku") {
@@ -124,7 +124,7 @@ function checkNoticeOrder(html: string, notice: string, announcement: string) {
   const articles = [...html.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article>/gi)].map(article => visibleText(article[1] ?? ""));
   const noticeIndex = articles.findIndex(text => text.includes(notice.replace(/\s+/g, "")));
   const announcementIndex = articles.findIndex(text => text.includes(announcement.replace(/\s+/g, "")));
-  if (noticeIndex < 0 || announcementIndex < 0 || noticeIndex >= announcementIndex) throw new Error("区のページで知らせが配った案内より上にありません");
+  if (noticeIndex < 0 || announcementIndex < 0 || noticeIndex >= announcementIndex) throw new Error("住民向けのページで知らせが知らせた案内より上にありません");
 }
 function readForm(html: string, path: string, sectionTitle?: string) {
   for (const form of html.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/gi)) {
@@ -166,7 +166,7 @@ async function waitFor(name: string, project: string): Promise<boolean> {
     const { html } = await get(admin + "/intake/received?project=" + encodeURIComponent(project));
     const pos = html.indexOf(name);
     const state = pos < 0 ? html : html.slice(pos, pos + 900);
-    if (state.includes("行事に入れました")) return true;
+    if (state.includes("どれの資料か分けました")) return true;
     if (state.includes("読めませんでした") || state.includes("読み取りが遅れています")) throw new Error(name + " の読み取り・反映が止まりました");
     await new Promise(r => setTimeout(r, 3000));
   }
@@ -188,7 +188,7 @@ async function waitForDraft(path: string, timeoutMs = DRAFT_WAIT_LIMIT_MS): Prom
 }
 async function publish(project: string, html: string, scope: "public" | "space", sectionTitle?: string) {
   const first = readForm(html, "/publish/" + project + "/confirm", sectionTitle);
-  if (!first.fields.documentId || !first.fields.versionNo) throw new Error("配る文書と紙を結び付けられません");
+  if (!first.fields.documentId || !first.fields.versionNo) throw new Error("知らせる文書と紙を結び付けられません");
   const printPath = admin + "/print/" + project + "/" + encodeURIComponent(first.fields.documentId) + "/" + encodeURIComponent(first.fields.versionNo);
   if (scope === "public") first.fields.lineDelivery = "skip";
   const confirm = await post(first.action, first.fields);
@@ -201,7 +201,7 @@ async function publish(project: string, html: string, scope: "public" | "space",
   }
   if (!confirm.ok) throw new Error("配布内容の確認で停止 (" + confirm.status + ")");
   const page = await confirm.text();
-  if (!page.includes("今回は公式LINEに送りません")) throw new Error("LINEを送らない選択を確認できません");
+  if (!page.includes("今回は自治会のLINEに送りません")) throw new Error("LINEを送らない選択を確認できません");
   const final = readForm(page, "/publish/" + project + "/send");
   if (final.fields.lineDelivery !== "skip") throw new Error("LINE送信を止められません");
   return { response: await post(final.action, final.fields), printPath };
@@ -320,7 +320,7 @@ async function runFull() {
   publicPublished = true;
   intakeOk = unfinished.length === 0;
   if (!intakeOk) process.exitCode = 1;
-  record("2", intakeOk ? "通過" : "未完了", "架空の実ファイル4件を送信。同じものはそのまま利用。案内の紙に行事名・日時・場所、回答票に締切と班長か役員への渡し先を確認。公式LINEは送信なし。" + (unfinished.length ? " 未完了: " + unfinished.join("、") : " AIの読み取り・反映と案内作成を確認。"), start);
+  record("2", intakeOk ? "通過" : "未完了", "架空の実ファイル4件を送信。同じものはそのまま利用。案内の紙に行事名・日時・場所、回答票に締切と班長か役員への渡し先を確認。自治会のLINEは送信なし。" + (unfinished.length ? " 未完了: " + unfinished.join("、") : " AIの読み取り・反映と案内作成を確認。"), start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";
     record("2", "停止", message, start);
@@ -337,7 +337,7 @@ async function runFull() {
   const answer = await post(wardPath + "/answer/" + project, {
     attend: "yes", household: "架空 小林", district, children_count: "0", adults_count: "2", seniors_count: "0", helper_name: "架空 小林さと", helper_times: "受付10:30-12:00"
   });
-  if (answer.status !== 200 || !(await answer.text()).includes("答えを受け付けました")) throw new Error("架空の答えを送れません");
+  if (answer.status !== 200 || !(await answer.text()).includes("返事を受け付けました")) throw new Error("架空の答えを送れません");
   record("3", "通過", "公開された案内から架空の答えを送信。", start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";
@@ -387,7 +387,7 @@ async function runFull() {
   const rainy = await get(publicPath);
   if (!rainy.response.ok || !rainy.html.includes("雨のため")) throw new Error("雨の変更が公開されていません");
   checkNoticeOrder(rainy.html, rain.fields.text, announcementText);
-  record("5", "通過", "同じ公開ページで雨の知らせが配った案内より上にあることを確認。公式LINEは送信なし。", start);
+  record("5", "通過", "同じ公開ページで雨の知らせが知らせた案内より上にあることを確認。自治会のLINEは送信なし。", start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";
     record("5", "停止", message, start);
@@ -406,7 +406,7 @@ async function runFull() {
     await new Promise(r => setTimeout(r, 3000));
     closePage = await get(closePath);
   }
-  if (!closePage.html.includes("報告: できました") || !closePage.html.includes("段取り: できました")) throw new Error("未完了: 実施報告または段取りのAI下書きが待ちの上限までにできませんでした");
+  if (!closePage.html.includes("報告: できました") || !closePage.html.includes("やること: できました")) throw new Error("未完了: 実施報告またはやることのAI下書きが待ちの上限までにできませんでした");
   const close = readForm(closePage.html, "/close/" + project + "/finalize");
   const staffReport = close.values.getAll("body")[1] ?? "";
   close.values.delete("body");
@@ -424,7 +424,7 @@ async function runFull() {
   const next = await post(seed.action, seed.fields);
   const location = next.headers.get("location") ?? "";
   const nextId = new URL(location, base).searchParams.get("started");
-  if (next.status !== 303 || !nextId || !(await get(location)).html.includes("去年の段取りを新しい日に置き直しました") || !(await get(admin + "/projects/" + nextId + "/map")).response.ok) throw new Error("記録から新しく始められません");
+  if (next.status !== 303 || !nextId || !(await get(location)).html.includes("去年のやることを新しい日に置き直しました") || !(await get(admin + "/projects/" + nextId + "/map")).response.ok) throw new Error("記録から新しく始められません");
   record("6", "通過", "報告と来年への一言を一緒に保存して閉じ、記録から新しく始めた。", start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";

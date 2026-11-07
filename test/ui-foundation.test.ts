@@ -16,7 +16,7 @@ it("入力の誤りから戻って行事を開き、住民も書き直して答�
   expect(guidance).toContain(`${ward.name} 役員の画面`);
   expect(guidance).toContain('>最初の画面</a>');
   expect(guidance).toContain('<body ontouchstart="">');
-  expect(guidance).toContain('<p class="lead">去年の同じものの記録があれば');
+  expect(guidance).toContain('<p class="lead">去年の同じものが「終わったもの」にあれば');
   const unknown = "URLに書いた文を表示しない";
   const ignored = await (await get(realApp, `${root}/projects?error=${encodeURIComponent(unknown)}`, cookie)).text();
   expect(ignored).not.toContain(unknown);
@@ -46,7 +46,7 @@ it("入力の誤りから戻って行事を開き、住民も書き直して答�
     household: FIRST_SLICE.firstHousehold, district: FIRST_SLICE.district, people_count: "2",
   });
   expect(sent.status).toBe(200);
-  expect(await sent.text()).toContain("答えを受け付けました");
+  expect(await sent.text()).toContain("返事を受け付けました");
   expect(await listAnswers(env.DB, ward.wardId, projectId)).toMatchObject([
     { household: FIRST_SLICE.firstHousehold, district: FIRST_SLICE.district, peopleCount: 2, source: "web" },
   ]);

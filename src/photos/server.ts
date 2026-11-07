@@ -96,7 +96,7 @@ export async function preparePublicationPhotos(env: Env, wardId: string, project
         png: String(value.png_base64), width: Number(value.width), height: Number(value.height), faces: value.faces, policy, mode: edit.mode, masks });
     } catch (error) {
       if (error instanceof PhotoPreparationError) throw error;
-      throw new PhotoPreparationError("写真を処理できませんでした。まだ配っていません。");
+      throw new PhotoPreparationError("写真を処理できませんでした。まだ知らせていません。");
     } finally { if (timer !== undefined) clearTimeout(timer); }
   }
   return prepared;

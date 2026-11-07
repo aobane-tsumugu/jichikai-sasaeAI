@@ -6,7 +6,7 @@ import { seedAdmin } from "../src/core/testing";
 import { createProject } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("閉じた答えの画面では受付をせず、開き直してから電話の答えを入れられる", async () => {
+it("閉じた返事の画面では受付をせず、開き直してから電話の返事を入れられる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "架空の答えの確認", year: 2026, accountId: account.accountId,
@@ -37,7 +37,7 @@ it("閉じた答えの画面では受付をせず、開き直してから電話�
   const html = await (await get(realApp, `${path}?view=list`, cookie)).text();
   expect(html).toContain("架空の世帯");
   expect(html).toContain("2人");
-  expect(html).toContain("閉じた画面から、もう一度開いてください");
+  expect(html).toContain("終わりにした画面で、終わりを取り消してください");
   expect(html).not.toContain('name="children_count"');
   expect(html).not.toContain('name="part"');
   expect(html).not.toContain('name="due_on"');
@@ -48,7 +48,7 @@ it("閉じた答えの画面では受付をせず、開き直してから電話�
   expect(await listAnswers(env.DB, ward.wardId, project.projectId)).toHaveLength(2);
 });
 
-it("答えの画面で、閉じた行事の開き直しと訂正をやめるリンクに押せる高さのclassを使う", async () => {
+it("返事の画面で、終わったものの開き直しと訂正をやめるリンクに押せる高さのclassを使う", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: FIRST_SLICE.nextYearTitle, year: FIRST_SLICE.nextYear, accountId: account.accountId,
@@ -64,7 +64,7 @@ it("答えの画面で、閉じた行事の開き直しと訂正をやめるリ�
   const editPath = `${path}/${answer.answerId}/edit`;
   const openPage = await get(realApp, path, cookie);
   expect(openPage.status).toBe(200);
-  expect(await openPage.text()).not.toContain("閉じた画面から、もう一度開いてください");
+  expect(await openPage.text()).not.toContain("終わりにした画面で、終わりを取り消してください");
   const editPage = await get(realApp, editPath, cookie);
   expect(editPage.status).toBe(200);
   expect(await editPage.text()).toContain(`<p class="link-line"><a href="${path}?view=list">保存せずに戻る</a></p>`);
@@ -73,11 +73,11 @@ it("答えの画面で、閉じた行事の開き直しと訂正をやめるリ�
   for (const query of ["", "?view=unanswered", "?view=list", "?view=read"]) {
     const response = await get(realApp, `${path}${query}`, cookie);
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain(`<a class="quiet" href="${closePath}">閉じた画面から、もう一度開いてください</a>`);
+    expect(await response.text()).toContain(`<a class="quiet" href="${closePath}">終わりにした画面で、終わりを取り消してください</a>`);
   }
   const closedEdit = await get(realApp, editPath, cookie);
   expect(closedEdit.status).toBe(200);
   const closedHtml = await closedEdit.text();
-  expect(closedHtml).toContain(`<a class="button" href="${closePath}">行事をもう一度開く画面へ</a>`);
+  expect(closedHtml).toContain(`<a class="button" href="${closePath}">終わりを取り消す画面へ</a>`);
   expect(closedHtml).not.toContain("保存せずに戻る");
 });

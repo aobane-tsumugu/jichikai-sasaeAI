@@ -34,10 +34,10 @@ interface ActivityBody { introduction: string; membershipBurden: string; members
 const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   "activity_input": "紹介、加入すると担うこと、得られることのどれかを書いてください。全部を書く必要はありません。",
   "activity_private": "公開に出せない情報が含まれる可能性があります。文章と仕事の一覧を見直してください",
-  "answers_closed": "この行事は閉じました。答えを直すときは「もう一度開く」を押してください。",
-  "map_closed": "この行事は閉じました。段取りを直すときは「もう一度開く」を押してください。",
-  "minutes_save": "議事録を保存できませんでした。内容を確かめて、もう一度閉じてください。",
-  "report_save": "文書を保存できませんでした。内容を確かめて、もう一度閉じてください。",
+  "answers_closed": "もう終わりにしています。返事を直すときは「終わりを取り消す」を押してください。",
+  "map_closed": "もう終わりにしています。やることを直すときは「終わりを取り消す」を押してください。",
+  "minutes_save": "議事録を保存できませんでした。内容を確かめて、もう一度「終わりにする」を押してください。",
+  "report_save": "文書を保存できませんでした。内容を確かめて、もう一度「終わりにする」を押してください。",
   "decisions_long": "決めたことは全体で12000文字まで、1行2000文字までで書いてください。"
 };
 
@@ -134,9 +134,9 @@ ${contact && pack.scope === "public" ? `区の公開用の連絡先（問い合�
 admin.get("/close/activity", async (c) => {
   const { ward, account } = c.var;
   const projects = await listProjects(c.env.DB, ward.wardId, { includeClosed: true });
-  return c.html(<AdminPage ward={ward} account={account} title="区の説明" back={{ href: adminPath(ward, "/settings"), label: "区の設定へ" }}>
-    <h1>区の説明</h1><p class="lead">説明を載せたい行事などを選んでください。終わる前でも、書けるところから載せられます。</p>
-    {projects.length ? <ul class="rows">{projects.map((project) => <li><a class="row-link" href={`${adminPath(ward, `/close/${project.projectId}`)}?view=activity`}><b>{project.title}</b><span>{project.year}年の説明を書く・直す</span></a></li>)}</ul> : <p>行事などの準備を始めると、ここから説明を書けます。説明は書かなくてもかまいません。</p>}
+  return c.html(<AdminPage ward={ward} account={account} title="自治会の説明" back={{ href: adminPath(ward, "/settings"), label: "自治会の設定へ" }}>
+    <h1>自治会の説明</h1><p class="lead">説明を載せたいものを選んでください。終わる前でも、書けるところから載せられます。</p>
+    {projects.length ? <ul class="rows">{projects.map((project) => <li><a class="row-link" href={`${adminPath(ward, `/close/${project.projectId}`)}?view=activity`}><b>{project.title}</b><span>{project.year}年の説明を書く・直す</span></a></li>)}</ul> : <p>準備を始めると、ここから説明を書けます。説明は書かなくてもかまいません。</p>}
   </AdminPage>);
 });
 
@@ -148,10 +148,10 @@ admin.get("/close/:projectId", async (c) => {
   const pack = getDraftPack("report", project.kind);
   const internalReport = pack.scope === "staff";
   if (!project.closedAt && !(await prepareDrafts(c.env.DB, ward.wardId, id, c.var.account.accountId))) return c.notFound();
-  if (!project.closedAt && c.req.query("reopened")) return c.html(<AdminPage ward={ward} account={c.var.account} title="もう一度開きました">
-    <h1>もう一度開きました</h1><p class="lead">{internalReport ? pack.title : "報告"}と段取りを直せます。</p>
-    <section class="next"><strong>次は</strong><p>{internalReport ? `残した${pack.title}を書き直せます。` : "段取りから仕事を続けられます。"}</p><a class="button" href={adminPath(ward, internalReport ? `/close/${id}#report-staff` : `/projects/${id}/map`)}>{internalReport ? `${pack.title}を直す` : "段取りへ"}</a></section>
-    <p>開き間違えたときは、閉じる画面で、もう一度「閉じて記録に残す」を押せます。</p><a class="quiet" href={adminPath(ward, `/close/${id}`)}>閉じる画面に戻る</a>
+  if (!project.closedAt && c.req.query("reopened")) return c.html(<AdminPage ward={ward} account={c.var.account} title="終わりを取り消しました">
+    <h1>終わりを取り消しました</h1><p class="lead">{internalReport ? pack.title : "報告"}とやることを直せます。</p>
+    <section class="next"><strong>次は</strong><p>{internalReport ? `残した${pack.title}を書き直せます。` : "やることから仕事を続けられます。"}</p><a class="button" href={adminPath(ward, internalReport ? `/close/${id}#report-staff` : `/projects/${id}/map`)}>{internalReport ? `${pack.title}を直す` : "やることへ"}</a></section>
+    <p>間違えたときは、終わりにする画面で、もう一度「終わりにする」を押せます。</p><a class="quiet" href={adminPath(ward, `/close/${id}`)}>終わりにする画面に戻る</a>
   </AdminPage>);
   const [tasks, reports, status, generatedReport, activityPage] = await Promise.all([
     c.env.DB.prepare(`SELECT m.task_id, m.name, m.period, m.progress, m.requested_by, m.difficulty, m.next_year FROM project_close_map m
@@ -177,9 +177,9 @@ admin.get("/close/:projectId", async (c) => {
   if (activityView && ["saved", "published", "unpublished"].includes(c.req.query("activity") ?? "")) {
     const published = c.req.query("activity") === "published";
     const lowered = c.req.query("activity") === "unpublished";
-    const message = published ? "区のページに載せました" : lowered ? "区のページから下げました" : "説明の下書きを保存しました";
-    return c.html(<AdminPage ward={ward} account={c.var.account} title={message} back={{ href: adminPath(ward, "/close/activity"), label: "区の説明へ" }}>
-      <h1>{message}</h1><p class="lead">{published ? "書いた項目を区のページで読めます。" : lowered ? "下書きは残っています。間違えて下げたときは、もう一度載せられます。" : "直した内容は、まだ区のページに載せていません。"}</p><section class="next"><strong>次は</strong><p>{published ? "載せた説明を読めます。" : "下書きを直して、区のページに載せられます。"}</p><a class="button" href={published ? `/${ward.slug}/work/${encodeURIComponent(id)}` : `${root}?view=activity`}>{published ? "区のページで見る" : "説明の下書きを直す"}</a></section>{published ? <a class="quiet" href={`${root}?view=activity`}>説明を直す・下げる</a> : null}
+    const message = published ? "住民向けのページに載せました" : lowered ? "住民向けのページから取り下げました" : "説明の下書きを保存しました";
+    return c.html(<AdminPage ward={ward} account={c.var.account} title={message} back={{ href: adminPath(ward, "/close/activity"), label: "自治会の説明へ" }}>
+      <h1>{message}</h1><p class="lead">{published ? "書いた項目を住民向けのページで読めます。" : lowered ? "下書きは残っています。間違えて下げたときは、もう一度載せられます。" : "直した内容は、まだ住民向けのページに載せていません。"}</p><section class="next"><strong>次は</strong><p>{published ? "載せた説明を読めます。" : "下書きを直して、住民向けのページに載せられます。"}</p><a class="button" href={published ? `/${ward.slug}/work/${encodeURIComponent(id)}` : `${root}?view=activity`}>{published ? "住民向けのページで見る" : "説明の下書きを直す"}</a></section>{published ? <a class="quiet" href={`${root}?view=activity`}>説明を直す・下げる</a> : null}
     </AdminPage>);
   }
   const savedActivity = parseActivityBody(activityPage?.draft_body);
@@ -193,18 +193,18 @@ admin.get("/close/:projectId", async (c) => {
   const activity = savedActivity ?? { introduction: report("public"), membershipBurden: previousActivity?.membershipBurden ?? "", membershipBenefit: previousActivity?.membershipBenefit ?? "", tasks: tasks.results.filter((task) => task.progress === "done").map((task) => ({ taskId: task.task_id, name: task.name, period: task.period })) };
   const recordedActivity = activityView ? await activityFacts(c.env.DB, ward.wardId, id, activity.tasks) : null;
   const warnings = !project.closedAt && !activityView && !internalReport ? await checkPublicDraft(c.env.DB, ward.wardId, id, "report", { text: report("public"), items: [] }) : [];
-  const title = activityView ? `${project.title}と自治会の説明` : `${project.title}を${project.closedAt ? "閉じました" : "閉じる"}`;
+  const title = activityView ? `${project.title}と自治会の説明` : `${project.title}を${project.closedAt ? "終わりにしました" : "終わりにする"}`;
   return c.html(<AdminPage ward={ward} account={c.var.account} title={title}
-    back={activityView ? { href: adminPath(ward, "/close/activity"), label: "区の説明へ" } : !project.closedAt ? { href: adminPath(ward, `/projects/${id}/map`), label: `← ${project.title}の段取りへ` } : undefined}>
+    back={activityView ? { href: adminPath(ward, "/close/activity"), label: "自治会の説明へ" } : !project.closedAt ? { href: adminPath(ward, `/projects/${id}/map`), label: `← ${project.title}のやることへ` } : undefined}>
     <h1>{title}</h1><ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     {activityView ? <>
-      <p class="lead">書けるところだけ書いて、区のページに載せられます。説明を書かなくても、案内や募集を配れます。</p>
+      <p class="lead">書けるところだけ書いて、住民向けのページに載せられます。説明を書かなくても、案内や募集を住民に知らせられます。</p>
       <form id="activity-form" method="post" action={`${root}/activity`}>
-        <div class="field"><label for="activity-intro">この行事で役員がしたこと</label><textarea id="activity-intro" name="introduction" rows={6} maxlength={5000}>{activity.introduction}</textarea></div>
+        <div class="field"><label for="activity-intro">{project.title}で役員がしたこと</label><textarea id="activity-intro" name="introduction" rows={6} maxlength={5000}>{activity.introduction}</textarea></div>
         <div class="field"><label for="activity-burden">加入すると担うこと</label><textarea id="activity-burden" name="membershipBurden" rows={4} maxlength={3000}>{activity.membershipBurden}</textarea><p class="help-text">書かなくてもかまいません。書いていない項目は出ません。</p></div>
-        <div class="field"><label for="activity-benefit">加入すると得られること</label><textarea id="activity-benefit" name="membershipBenefit" rows={4} maxlength={3000}>{activity.membershipBenefit}</textarea><p class="help-text">区で決まっていることを書いてください。測っていない効果は書きません。分からなければ空のままでかまいません。</p></div>
+        <div class="field"><label for="activity-benefit">加入すると得られること</label><textarea id="activity-benefit" name="membershipBenefit" rows={4} maxlength={3000}>{activity.membershipBenefit}</textarea><p class="help-text">自治会で決まっていることを書いてください。測っていない効果は書きません。分からなければ空のままでかまいません。</p></div>
         {recordedActivity && (recordedActivity.tasks.length || recordedActivity.facts.length) ? <section>
-          <h2>どんな仕事があったか</h2><p>記録から作りました。紹介を書いたときに、いっしょに区のページに載ります。</p>
+          <h2>どんな仕事があったか</h2><p>記録から作りました。紹介を書いたときに、いっしょに住民向けのページに載ります。</p>
           <ul>{recordedActivity.tasks.map((task) => <li>{task.name}{task.period ? `（${task.period}）` : ""}</li>)}
             {recordedActivity.facts.map((fact) => <li>{fact}</li>)}</ul>
         </section> : null}
@@ -213,32 +213,32 @@ admin.get("/close/:projectId", async (c) => {
           return <label><input type="checkbox" name="taskId" value={task.task_id} checked={!!saved} /> {saved?.name ?? task.name}（{formatDateText(saved?.period ?? task.period) || "時期未定"}）
             <input type="hidden" name={`activityName_${task.task_id}`} value={saved?.name ?? task.name} /><input type="hidden" name={`activityPeriod_${task.task_id}`} value={saved?.period ?? task.period} /></label>;
         })}</div> : <p>残っている仕事はありません。</p>}</div></details>
-        <div class="action-bar"><button name="action" value="publish">区のページに載せる</button><button class="secondary" name="action" value="save">保存だけする</button></div>
+        <div class="action-bar"><button name="action" value="publish">住民向けのページに載せる</button><button class="secondary" name="action" value="save">保存だけする</button></div>
       </form>
-      {activityPage?.published_at ? <form method="post" action={`${root}/activity`}><p>下げても下書きは残り、もう一度載せられます。</p><button class="secondary" name="action" value="unpublish">区のページから下げる</button></form> : null}
+      {activityPage?.published_at ? <form method="post" action={`${root}/activity`}><p>下げても下書きは残り、もう一度載せられます。</p><button class="secondary" name="action" value="unpublish">住民向けのページから取り下げる</button></form> : null}
     </> : project.closedAt ? <>
-      <div class="notice done"><strong>{minutes ? "会議を閉じて、議事録を役員の記録に残しました" : internalReport ? `${pack.title}を役員の記録に残しました` : "記録に残しました"}</strong><p>{!internalReport ? report("public").trim() ? "報告を区のページに載せました。" : "住民への報告は書かれていません。" : ""}実行委員と班長のページと、答えの受付は終わりました。</p></div>
-      <section class="next"><strong>次は</strong><p>{internalReport ? `残した${pack.title}を読めます。` : "自治会に入っていない人や、これから役員になるかもしれない人に、どんな仕事だったかを伝えられます。急ぎません。"}</p><a class="button" href={internalReport ? `${adminPath(ward, `/archive/${id}`)}#report` : `${root}?view=activity`}>{internalReport ? `${pack.title}を読む` : "紹介の下書きを直す"}</a></section>
-      {!internalReport ? <div class="action-links"><a class="button secondary" href={adminPath(ward, `/archive/${id}`)}>記録を読む</a></div> : null}
-      <h2>間違えたときは</h2><p>もう一度開くと、{internalReport ? pack.title : "報告"}と段取りを直せます。答えの受付と、実行委員と班長のページも元に戻ります。</p>
-      <form method="post" action={`${root}/reopen`}><div class="action-links"><button class="secondary">もう一度開く</button></div></form>
+      <div class="notice done"><strong>{minutes ? "会議を終わりにして、議事録を役員の記録に残しました" : internalReport ? `${pack.title}を役員の記録に残しました` : `${project.title}を終わりにしました`}</strong><p>{!internalReport ? report("public").trim() ? "報告を住民向けのページに載せました。" : "住民への報告は書かれていません。" : ""}実行委員と班長のページと、返事の受付は終わりました。</p></div>
+      <section class="next"><strong>次は</strong><p>{internalReport ? `残した${pack.title}を読めます。` : "自治会に加入していない人や、これから役員になるかもしれない人に、どんな仕事だったかを伝えられます。急ぎません。"}</p><a class="button" href={internalReport ? `${adminPath(ward, `/archive/${id}`)}#report` : `${root}?view=activity`}>{internalReport ? `${pack.title}を読む` : "紹介の下書きを直す"}</a></section>
+      {!internalReport ? <div class="action-links"><a class="button secondary" href={adminPath(ward, `/archive/${id}`)}>終わったものを見る</a></div> : null}
+      <h2>間違えたときは</h2><p>終わりを取り消すと、{internalReport ? pack.title : "報告"}とやることを直せます。返事の受付と、実行委員と班長のページも元に戻ります。</p>
+      <form method="post" action={`${root}/reopen`}><div class="action-links"><button class="secondary">終わりを取り消す</button></div></form>
     </> : <>
-      <p class="lead">{internalReport ? pack.title : "報告"}と、来年への一言を残します。閉じたあとももう一度開けます。</p>
-      {internalReport ? <p><a class="button secondary" href={adminPath(ward, `/projects/${id}/draft/notice`)}>住民への知らせを作る</a></p> : null}
-      <div class="notice warn"><strong>閉じると消えるものがあります</strong><p>手伝いだけの申し込みの名前と時間帯は消えます。もう一度開いても戻りません。</p></div>
-      {status.results.map((job) => <p>{job.task === "report" ? pack.title : "段取り"}: {job.status === "done" ? (job.task === "report" && !report(internalReport ? "staff" : "public") ? "下書きを書けませんでした。下の欄に直接書けます" : "できました") : job.status === "failed" ? "止まりました。下の欄に直接書けます" : "準備中"}</p>)}
+      <p class="lead">{internalReport ? pack.title : "報告"}と、来年への一言を残します。終わりにしたあとも取り消せます。</p>
+      {internalReport ? <p><a class="button secondary" href={adminPath(ward, `/projects/${id}/draft/notice`)}>住民への連絡を作る</a></p> : null}
+      <div class="notice warn"><strong>終わりにすると消えるものがあります</strong><p>手伝いだけの申し込みの名前と時間帯は消えます。終わりを取り消しても戻りません。</p></div>
+      {status.results.map((job) => <p>{job.task === "report" ? pack.title : "やること"}: {job.status === "done" ? (job.task === "report" && !report(internalReport ? "staff" : "public") ? "下書きを書けませんでした。下の欄に直接書けます" : "できました") : job.status === "failed" ? "止まりました。下の欄に直接書けます" : "準備中"}</p>)}
       {status.results.some((job) => job.status !== "done" && job.status !== "failed") ? <p class="muted">作っています。画面を閉じても続きます。少しあとに、もう一度開いてください。</p> : null}
-      {!report(internalReport ? "staff" : "public") && !status.results.some((job) => job.task === "report" && job.status !== "failed") ? <form method="post" action={`${root}/prepare`}><button class="secondary">{internalReport ? pack.title : "報告"}と段取りの下書きを作る</button><p class="muted">AIが止まっていても、下の欄に直接書けます。</p></form> : null}
+      {!report(internalReport ? "staff" : "public") && !status.results.some((job) => job.task === "report" && job.status !== "failed") ? <form method="post" action={`${root}/prepare`}><button class="secondary">{internalReport ? pack.title : "報告"}とやることの下書きを作る</button><p class="muted">AIが止まっていても、下の欄に直接書けます。</p></form> : null}
       <form method="post" action={`${root}/finalize`}>
-        {internalReport ? <input type="hidden" name="body" value="" /> : <div class="field"><label for="report-public">住民への報告</label><p class="help-text">{report("public") ? "保存した報告です。直してかまいません。" : "ここに直接書けます。"}閉じると区のページに載ります。</p><textarea id="report-public" name="body" rows={7} maxlength={12000}>{report("public")}</textarea>
+        {internalReport ? <input type="hidden" name="body" value="" /> : <div class="field"><label for="report-public">住民への報告</label><p class="help-text">{report("public") ? "保存した報告です。直してかまいません。" : "ここに直接書けます。"}終わりにすると住民向けのページに載ります。</p><textarea id="report-public" name="body" rows={7} maxlength={12000}>{report("public")}</textarea>
           {reportPhotos.map((photo) => <img style="max-width:100%;max-height:240px" src={`/${ward.slug}/photos/${id}/${photo.photo_id}`} alt="報告の写真" />)}
-          {reportPhotos.length ? <p>配った報告の写真も残ります。</p> : null}</div>}
-        {warnings.length ? <div class="notice warn"><strong>報告の中に見つかったもの</strong><ul>{warnings.map((warning) => <li>{warning}</li>)}</ul><p>書き直せます。このまま閉じることもできます。</p></div> : null}
-        <div class="field"><label for="report-staff">{internalReport ? `${pack.title}（役員だけ）` : "役員だけの記録（書かなくてかまいません）"}</label><p class="help-text">区のページには載りません。{minutes ? "下書きを直して閉じると、次の会議で読めます。" : internalReport ? "閉じても、提出したことにはなりません。" : ""}</p><textarea id="report-staff" name="body" rows={internalReport ? 8 : 4} maxlength={12000}>{report("staff")}</textarea></div>
-        {decisions ? <div class="field"><label for="meeting-decisions">決めたこと</label><p class="help-text">{decisions.proposal ? "AIが資料から拾った下書きを含みます。" : ""}1行に一つずつ書けます。違うところは直すか消してください。閉じると、ここに書いたことが次の役員会と総会の資料に残ります。</p>
+          {reportPhotos.length ? <p>知らせた報告の写真も残ります。</p> : null}</div>}
+        {warnings.length ? <div class="notice warn"><strong>報告の中に見つかったもの</strong><ul>{warnings.map((warning) => <li>{warning}</li>)}</ul><p>書き直せます。このまま終わりにすることもできます。</p></div> : null}
+        <div class="field"><label for="report-staff">{internalReport ? `${pack.title}（役員だけ）` : "役員だけの記録（書かなくてかまいません）"}</label><p class="help-text">住民向けのページには載りません。{minutes ? "下書きを直して終わりにすると、次の会議で読めます。" : internalReport ? "終わりにしても、提出したことにはなりません。" : ""}</p><textarea id="report-staff" name="body" rows={internalReport ? 8 : 4} maxlength={12000}>{report("staff")}</textarea></div>
+        {decisions ? <div class="field"><label for="meeting-decisions">決めたこと</label><p class="help-text">{decisions.proposal ? "AIが資料から拾った下書きを含みます。" : ""}1行に一つずつ書けます。違うところは直すか消してください。終わりにすると、ここに書いたことが次の役員会と総会の資料に残ります。</p>
           <textarea id="meeting-decisions" name="decisions" rows={5} maxlength={12000}>{decisions.text}</textarea>
         </div> : null}
-        <h2>来年への一言（書かなくてかまいません）</h2><p class="muted">仕事ごとに、頼んだ人、困ったこと、来年変えることを残せます。来年の段取りに出ます。運営メモに書いたことも、そのまま残ります。ここで書き直さなくてかまいません。</p>
+        <h2>来年への一言（書かなくてかまいません）</h2><p class="muted">仕事ごとに、頼んだ人、困ったこと、来年変えることを残せます。来年のやることに出ます。運営メモに書いたことも、そのまま残ります。ここで書き直さなくてかまいません。</p>
         <a class="quiet" href={adminPath(ward, `/projects/${id}/ledger`)}>運営メモを見る</a>
         {tasks.results.length ? tasks.results.map((task) => <details class="fold" id={`task-${task.task_id}`}><summary>{task.name}</summary><div>
           <input type="hidden" name="taskId" value={task.task_id} />
@@ -246,9 +246,9 @@ admin.get("/close/:projectId", async (c) => {
           <label for={`requested-${task.task_id}`}>頼んだ人</label><input id={`requested-${task.task_id}`} name="requestedBy" value={task.requested_by} maxlength={160} />
           <label for={`difficulty-${task.task_id}`}>困ったこと</label><textarea id={`difficulty-${task.task_id}`} name="difficulty" rows={2} maxlength={1200}>{task.difficulty}</textarea>
           <label for={`next-${task.task_id}`}>来年変えること</label><textarea id={`next-${task.task_id}`} name="nextYear" rows={2} maxlength={1200}>{task.next_year}</textarea>
-        </div></details>) : <p>残っている仕事はありません。報告だけでも閉じられます。</p>}
-        <h2>閉じると、こうなります</h2><ul><li>{internalReport ? `${pack.title}が役員の記録に残ります` : "報告が区のページに載ります"}</li><li>実行委員と班長のページが開けなくなります</li><li>答えの受付が終わります</li></ul>
-        <div class="action-bar"><button>閉じて記録に残す</button></div>
+        </div></details>) : <p>残っている仕事はありません。報告だけでも終わりにできます。</p>}
+        <h2>終わりにすると、こうなります</h2><ul><li>{internalReport ? `${pack.title}が役員の記録に残ります` : "報告が住民向けのページに載ります"}</li><li>実行委員と班長のページを見せるのをやめます</li><li>返事の受付が終わります</li></ul>
+        <div class="action-bar"><button>終わりにする</button></div>
       </form>
     </>}
   </AdminPage>);
@@ -437,10 +437,10 @@ admin.post("/close/:projectId/finalize", async (c) => {
       const written = await saveDocument(c.env.DB, ward.wardId, id, account.accountId, {
         kind: "report", title: report?.title ?? (project.kind === "event" ? "実施報告" : pack.title), scope: "public", body: publicationBody, basedOn: project.stateVersion,
       });
-      if (!written) return adminResult(c, "報告を保存できませんでした。もう一度お願いします。", 409, { href: adminPath(c.var.ward, `/close/${encodeURIComponent(c.req.param("projectId"))}`), label: "報告と閉じる画面に戻る" }, "報告と行事の内容を確かめて、もう一度操作してください。");
+      if (!written) return adminResult(c, "報告を保存できませんでした。もう一度お願いします。", 409, { href: adminPath(c.var.ward, `/close/${encodeURIComponent(c.req.param("projectId"))}`), label: "報告と終わりにする画面に戻る" }, "報告と内容を確かめて、もう一度操作してください。");
       report = await latestReport(c.env.DB, ward.wardId, id, "public");
     }
-    if (!report) return adminResult(c, "報告を保存できませんでした。もう一度お願いします。", 409, { href: adminPath(c.var.ward, `/close/${encodeURIComponent(c.req.param("projectId"))}`), label: "報告と閉じる画面に戻る" }, "報告と行事の内容を確かめて、もう一度操作してください。");
+    if (!report) return adminResult(c, "報告を保存できませんでした。もう一度お願いします。", 409, { href: adminPath(c.var.ward, `/close/${encodeURIComponent(c.req.param("projectId"))}`), label: "報告と終わりにする画面に戻る" }, "報告と内容を確かめて、もう一度操作してください。");
     const alreadyPublished = await c.env.DB.prepare(`SELECT 1 AS found FROM publication_records WHERE ward_id = ? AND project_id = ? AND version_id = ?`)
       .bind(ward.wardId, id, report.version_id).first();
     const publicationId = newId();

@@ -5,7 +5,7 @@ import { applyChange, createProject } from "../src/project/api";
 import { saveAIDraft, saveDocument } from "../src/project/actions";
 import { get, postForm, realApp } from "./helpers";
 
-it("印刷の一覧から貼れる一枚を開き、未配布の変更を混ぜず配り直した日時・場所を使う", async () => {
+it("印刷の一覧から貼れる一枚を開き、未配布の変更を混ぜず知らせ直した日時・場所を使う", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId,
@@ -45,7 +45,7 @@ it("印刷の一覧から貼れる一枚を開き、未配布の変更を混ぜ�
   expect(original).toContain("2026年11月14日10時〜12時");
   expect(original).toContain("架空の広場");
   expect(original).toContain(`href="${env.PUBLIC_BASE_URL}/${ward.slug}/"`);
-  expect(original).toContain("区のページを開くQR");
+  expect(original).toContain("住民向けのページを開くQR");
   expect(original).toContain("<svg");
   expect(original).not.toContain("案内の長い本文は一枚に出さない");
   expect(original).not.toContain("持ち物も一枚には出さない");

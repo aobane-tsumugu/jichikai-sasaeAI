@@ -75,12 +75,12 @@ contactRoutes.use("*", bodyLimit({ maxSize: 8 * 1024 * 1024, onError: (c) => c.h
 function ContactForm(props: { values: Record<string, string>; errors?: string[]; sitekey?: string }) {
   const values = props.values;
   return <ContactPage title="SasaeAIへの問い合わせ">
-  <h1>SasaeAIへの問い合わせ</h1><p class="lead">役員の方が使ってください。住民の方は、区の役員へ聞いてください。</p>
+  <h1>SasaeAIへの問い合わせ</h1><p class="lead">役員の方が使ってください。住民の方は、自治会の役員へ聞いてください。</p>
   {props.errors?.length ? <Notice error><strong>まだ送っていません。下の内容を直して、もう一度送ってください。</strong>{props.errors.map((error) => <p>{error}</p>)}</Notice> : null}
   <form method="post" action="/contact"><input type="hidden" name="submission_id" value={values.submission_id} /><fieldset><legend>何にお困りですか</legend><div class="choice">
     {Object.entries(KINDS).map(([kind, label]) => <label><input type="radio" name="kind" value={kind} required checked={kind === values.kind} />{label}</label>)}
   </div></fieldset>
-    <label for="contact-ward">区の名前</label><input id="contact-ward" name="wardName" maxlength={60} value={values.wardName} />
+    <label for="contact-ward">自治会の名前</label><input id="contact-ward" name="wardName" maxlength={60} value={values.wardName} />
     <label for="contact-name">お名前</label><input id="contact-name" name="name" required maxlength={60} autocomplete="name" value={values.name} />
     <label for="contact-reach">メールアドレス</label><input id="contact-reach" name="reach" type="email" required maxlength={200} autocomplete="email" value={values.reach} />
     <p>受付番号と、やりとりの画面のリンクを送ります。今使えるメールアドレスを書いてください。登録したものと違っても、家族のメールでもかまいません。</p>
@@ -118,7 +118,7 @@ contactRoutes.post("/", async (c) => {
   if (!validSubmission) errors.push("送る準備ができませんでした。入力は残しています。そのままもう一度送ってください。");
   if (!Object.hasOwn(KINDS, kind)) errors.push("「何にお困りですか」から、一つ選んでください。");
   if (!name || name.length > 60) errors.push("「お名前」に60文字まででお名前を入れてください。");
-  if (wardName.length > 60) errors.push("「区の名前」を60文字までにしてください。");
+  if (wardName.length > 60) errors.push("「自治会の名前」を60文字までにしてください。");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(reach) || reach.length > 200) errors.push("「メールアドレス」に今使えるメールアドレスを200文字までで入れてください。");
   if (!body || body.length > 5000) errors.push("「くわしく」に5000文字までで内容を入れてください。");
   if (errors.length) return showForm(errors, 400);
@@ -152,7 +152,7 @@ async function threadPage(c: Context<AppEnv>, contact: Contact, retry?: ThreadRe
     {!retry && c.req.query("sent") === "1" ? <Notice>書き足した内容を送りました。下のボタンで返事を確かめられます。</Notice> : null}
     {!contactBindings(c.env).CONTACT_MAIL ? <Notice>このページをお気に入りに保存してください。画面を閉じても、そこから返事を読めます。「返事を確かめる」で新しい返事を読めます。</Notice> : null}
     <Conversation contact={contact} entries={await messages(c.env.DB, contact.contact_id)} photoBase={`${href}/photos`} />
-    {invitation ? <section class="next"><strong>本人と確かめました</strong><p>入り方を選んでください。一度だけ、24時間使えます。</p><a class="button" href={invitation}>入り方を選ぶ</a></section> : null}
+    {invitation ? <section class="next"><strong>本人と確かめました</strong><p>ログインの方法を選んでください。一度だけ、24時間使えます。</p><a class="button" href={invitation}>ログインの方法を選ぶ</a></section> : null}
     <a class="button secondary" href={href}>返事を確かめる</a>
     {!contact.closed_at ? <form method="post" action={href} enctype="multipart/form-data">
       <label for="more">書き足す</label><textarea id="more" name="body" maxlength={5000} rows={5}>{retry?.body}</textarea>

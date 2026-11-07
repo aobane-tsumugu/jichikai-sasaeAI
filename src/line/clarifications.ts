@@ -172,7 +172,7 @@ async function prepareQuestions(env: Env, wardId: string, batch: Batch, now: Dat
             AND newer.document_id = r.document_id AND newer.version_no > r.version_no))
         ORDER BY p.created_at DESC LIMIT 6`)
         .bind(wardId).all<{ title: string }>();
-      pending.push({ originalId: originals.results[0].original_id, topic: "project", text: "この写真は、どの行事のものですか。", options: candidates.results.map((candidate) => candidate.title).filter((title) => title.length <= 20) });
+      pending.push({ originalId: originals.results[0].original_id, topic: "project", text: "この写真は、どれの資料ですか？", options: candidates.results.map((candidate) => candidate.title).filter((title) => title.length <= 20) });
     }
     for (const question of pending) {
       if (question.topic === "year" && item.project_id) {

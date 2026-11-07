@@ -65,7 +65,7 @@ questionPages.get("/projects/:projectId/questions/:questionId/compare", async (c
   const currentValue = question.target && isItemKey(question.target) ? body?.items.find((item) => item.key === question.target)?.content ?? state.items.find((item) => item.key === question.target)?.current?.content : "";
   return c.html(<Layout title="二つを見比べる" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={back}>← {fromDraft ? "下書きへ" : "質問へ"}</a><h1>{questionTitle(question).heading}</h1><p class="lead">使う方を選んでください。選ばないときは、{currentValue ? `今の下書きの${currentValue}` : "今の内容"}のままです。</p>
-    {state.project.closedAt ? <Notice>この行事は閉じました。もう一度開くと答えを入れられます。</Notice> : <form method="post" action={adminPath(ward, `/projects/${id}/questions/${question.questionId}`)}>
+    {state.project.closedAt ? <Notice>{state.project.title}は終わりにしました。終わりを取り消すと答えを入れられます。</Notice> : <form method="post" action={adminPath(ward, `/projects/${id}/questions/${question.questionId}`)}>
       {fromDraft && draftKind === "announcement" ? <input type="hidden" name="from" value="draft" /> : null}
       <fieldset><legend>使う内容</legend>{question.options?.length ? question.options.map((option) => <label><input type="radio" name="answer" value={option} required />{questionOptionLabel(option)}</label>) : <><p class="preserve-lines">{question.answer}</p><label for="answer">確かめた内容</label><input id="answer" name="answer" required maxlength={2000} /></>}</fieldset>
       {question.source?.kind === "original" && question.source.ref ? <p><a class="quiet" href={adminPath(ward, `/intake/originals/${encodeURIComponent(question.source.ref)}`)}>元の資料を見る</a></p> : null}
@@ -91,17 +91,17 @@ questionPages.get("/projects/:projectId/questions", async (c) => {
   const draftLabel = duty ? "当番表の下書きを見る" : "案内の下書きを見る";
   const answered = c.req.query("notice") === "answered";
   const next = <section class="next"><strong>{answered ? "答えを残しました" : "次は"}</strong>
-    <p>{questions.length ? "残りの質問に答えられます。答えなくても配れます。" : "質問はありません。あとから下書きで直せます。"}</p>
+    <p>{questions.length ? "残りの質問に答えられます。答えなくても知らせられます。" : "質問はありません。あとから下書きで直せます。"}</p>
     <a class="button" href={questions[0] ? `#question-${questions[0].questionId}` : draftHref}>{questions.length ? "残りの質問に答える" : draftLabel}</a>
   </section>;
   return c.html(<Layout title="質問に答える" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {state.project.title}の段取りへ</a>
-    <h1>分かるものだけ答えてください</h1><p class="lead">答えなくても配れます。</p>
+    <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {state.project.title}のやることへ</a>
+    <h1>分かるものだけ答えてください</h1><p class="lead">答えなくても知らせられます。</p>
     <ErrorNotice code={c.req.query("error")} messages={{ answer_failed: "答えを入れられませんでした。もう一度お試しください。", exemption_answer_failed: "免除の答えを入れられませんでした。理由は200文字までです。すでに答えていないか、下の質問を確かめてください。", exemption_draft_failed: "免除は記録しました。当番表の下書きを開き、「今の名簿と免除を下書きに反映する」を押してください。" }} />
-    {c.req.query("notice") === "exempted" ? <Notice>今年の当番の免除を記録しました。役員が直した担当と配った内容はそのままです。下書きで担当を確かめられます。<p><a class="button secondary" href={adminPath(ward, "/rota/exemptions")}>免除の記録を見る・取り消す</a></p></Notice> : c.req.query("notice") === "kept" ? <Notice>当番から外さず、答えを残しました。</Notice> : null}
+    {c.req.query("notice") === "exempted" ? <Notice>今年の当番の免除を記録しました。役員が直した担当と知らせた内容はそのままです。下書きで担当を確かめられます。<p><a class="button secondary" href={adminPath(ward, "/rota/exemptions")}>免除の記録を見る・取り消す</a></p></Notice> : c.req.query("notice") === "kept" ? <Notice>当番から外さず、答えを残しました。</Notice> : null}
     {c.req.query("notice") === "unknown" ? <Notice>分からないとして残しました。あとから下書きで直せます。</Notice> : c.req.query("notice") === "later" ? <Notice>あとで答えられるように残しました。</Notice> : null}
     {!questions.length ? next : null}
-    {state.project.closedAt ? <Notice>この行事は閉じました。もう一度開くと答えを入れられます。</Notice> : null}
+    {state.project.closedAt ? <Notice>{state.project.title}は終わりにしました。終わりを取り消すと答えを入れられます。</Notice> : null}
     {questions.map((question) => {
       const exemption = exemptions.get(question.questionId);
       const photo = question.source?.kind === "original" && question.source.ref && photos.has(question.source.ref) ? question.source.ref : "";

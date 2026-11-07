@@ -127,7 +127,7 @@ export async function listDeletionMarks(db: D1Database, wardId: string) {
 export async function exportWard(env: Env, wardId: string): Promise<{ body: string; filename: string }> {
   const ward = await env.DB.prepare("SELECT ward_id, slug, name, created_at, is_active FROM wards WHERE ward_id = ?")
     .bind(wardId).first<{ ward_id: string; slug: string; name: string; created_at: string; is_active: number }>();
-  if (!ward) throw new Error("区が見つかりません");
+  if (!ward) throw new Error("自治会が見つかりません");
   const tables: Record<string, unknown[]> = {};
   for (const { table, omitExportColumns } of EXPORT_TABLES) {
     const rows = await env.DB.prepare(`SELECT * FROM ${table} WHERE ward_id = ?`).bind(wardId).all<Record<string, unknown>>();
@@ -180,13 +180,13 @@ export async function inspectSnapshots(env: Env, wardId: string): Promise<Snapsh
         const value: unknown = await object.json();
         if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("形が違います");
         const data = value as { format?: unknown; wardId?: unknown; capturedAt?: unknown; tables?: unknown };
-        if (data.format !== 1 || data.wardId !== wardId || typeof data.capturedAt !== "string" || typeof data.tables !== "object" || data.tables === null || Array.isArray(data.tables)) throw new Error("区または項目を確認できません");
+        if (data.format !== 1 || data.wardId !== wardId || typeof data.capturedAt !== "string" || typeof data.tables !== "object" || data.tables === null || Array.isArray(data.tables)) throw new Error("自治会または項目を確認できません");
         const tables = data.tables as Record<string, unknown>;
         const rows = Object.values(tables);
         if (rows.some((tableRows) => !Array.isArray(tableRows))) throw new Error("記録の表を読み取れません");
         if (rows.some((tableRows) => (tableRows as unknown[]).some((row) =>
           typeof row !== "object" || row === null || (row as { ward_id?: unknown }).ward_id !== wardId))) {
-          throw new Error("別の区の行、または区を確認できない行があります");
+          throw new Error("別の自治会の行、または自治会を確認できない行があります");
         }
         status.capturedAt = data.capturedAt;
         status.tableCount = rows.length;

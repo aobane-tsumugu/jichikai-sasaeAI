@@ -19,11 +19,11 @@ export const KNOW_BASE: readonly KnowBase[] = [
   { key: "officers", title: "役員と仕事の割り振り", hint: "役員の一覧、任期、決め方、ほかの団体の委員", months: 12, afterMeeting: true },
   { key: "board", title: "役員会と班長会", hint: "開く時期、回数、場所", months: 12 },
   { key: "meeting", title: "総会", hint: "開く時期、成立の決まり、委任の決まり、規約", months: 12, afterMeeting: true },
-  { key: "roster", title: "名簿", hint: "世帯の名簿、班と班長、加入と転入の手続き", months: 12 },
+  { key: "roster", title: "世帯の名簿", hint: "世帯の代表者、班と班長、加入と転入の手続き", months: 12 },
   { key: "notices", title: "案内と回覧", hint: "案内の作り方、回覧の決まり", months: 24 },
   { key: "delivery", title: "配り方", hint: "回覧板か全戸配布か、部数、印刷する場所", months: 24 },
   { key: "inquiries", title: "問い合わせと要望", hint: "住民の連絡先、行政への要望の出し方", months: 12 },
-  { key: "answers", title: "出欠と手伝いの集め方", hint: "答えの集め方、締切の決め方", months: 24 },
+  { key: "answers", title: "出欠と手伝いの集め方", hint: "返事の集め方、締切の決め方", months: 24 },
   { key: "dues", title: "会費と募金", hint: "会費の額、集め方、募金の取りまとめ", months: 12, afterMeeting: true },
   { key: "accounts", title: "会計と補助金", hint: "予算と決算、監査、補助金の申請", months: 12, afterMeeting: true, keepOut: "通帳、印鑑、暗証番号" },
   { key: "city", title: "行政や他の団体の依頼", hint: "市の担当の窓口、毎年来る依頼", months: 12 },
@@ -63,7 +63,7 @@ const monthsBetween = (from: string, to: Date) => {
 const ago = (months: number) => months >= 12 ? `${Math.floor(months / 12)}年${months % 12 ? `${months % 12}か月` : ""}前` : `${months}か月前`;
 
 function stateOf(base: KnowBase | undefined, value: string, seen: string | null, meetingClosedAt: string | null, now: Date): { state: KnowState; note: string } {
-  if (!value) return { state: "empty", note: `入っていません。${base?.hint ?? ""}` };
+  if (!value) return { state: "empty", note: `まだ書かれていません。${base?.hint ?? ""}` };
   if (!seen) return { state: "fact", note: "届いた資料から読み取りました" };
   if (base?.afterMeeting && meetingClosedAt && seen < meetingClosedAt) return { state: "old", note: "総会のあと直されていません" };
   const months = monthsBetween(seen, now);

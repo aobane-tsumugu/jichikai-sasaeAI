@@ -29,7 +29,7 @@ export async function rotaPanel(db: D1Database, ward: WardInfo, projectId: strin
       </dl>
       </> : <p>順番のルールは作っていません。免除の期間に当たる人は担当から外します。</p>}
       <form method="post" action={`${root}/start`}><div class="action-links"><button class="secondary">{preparation ? "今の名簿と免除を下書きに反映する" : comparison.hasPreviousTable === false ? "名簿から下書きを作る" : "去年の表と名簿から下書きを作る"}</button></div></form>
-      <p class="muted">役員が直した行はそのまま残します。保存しただけでは配られません。</p>
+      <p class="muted">役員が直した行はそのまま残します。保存しただけでは、実行委員と班長のページに載りません。</p>
     </> : <section class="next"><strong>次は</strong><p>去年の表も今の名簿もまだありません。手元の当番表を写真やファイルで送れます。</p>
       <a class="button secondary" href={adminPath(ward, `/intake?project=${encodeURIComponent(projectId)}#send-form`)}>当番表を送る</a></section>}
     <ul class="links"><li><a href={adminPath(ward, "/rota/exemptions")}>免除を記録する</a></li>
@@ -66,7 +66,7 @@ admin.get("/rota/:projectId/result", async (c) => {
   const title = c.req.query("done") === "updated" ? "今の名簿と免除を下書きに反映しました" : "当番の下書きを作りました";
   return c.html(<AdminPage ward={ward} account={c.var.account} title={title}
     back={{ href: draft, label: "当番の下書きへ戻る" }}>
-    <h1>{title}</h1><p class="lead">役員が直した行と去年の表は残しています。まだ配っていません。</p>
+    <h1>{title}</h1><p class="lead">役員が直した行と去年の表は残しています。まだ実行委員と班長のページに載せていません。</p>
     <section class="next"><strong>次は</strong><p>時間帯や担当を、下書きで直せます。</p><a class="button" href={draft}>当番の下書きを直す</a></section>
     <p>担当を戻したいときも、下書きで書き直せます。免除を間違えたときは、免除の画面で取り消せます。</p>
     <a class="quiet" href={adminPath(ward, "/rota/exemptions")}>免除の画面へ戻る</a>
@@ -93,7 +93,7 @@ async function exemptionPage(c: Context<AdminEnv>, values?: ExemptionFields) {
     </> : null}
     <ErrorNotice code={values ? "input" : c.req.query("error")} messages={{ input: "代表者のお名前、理由、始めと終わりの日を確かめて、もう一度保存してください。" }} />
     {entries.length ? <form class="panel" method="post" action={root}>
-      <div class="field"><label for="household">代表者のお名前と班</label><select id="household" name="household" required>{entries.map((entry) => <option value={JSON.stringify(entry)} selected={values?.household === JSON.stringify(entry)}>{householdLabel(entry)}</option>)}</select></div>
+      <div class="field"><label for="household">世帯の代表者（ふつうは世帯主）のお名前と班</label><select id="household" name="household" required>{entries.map((entry) => <option value={JSON.stringify(entry)} selected={values?.household === JSON.stringify(entry)}>{householdLabel(entry)}</option>)}</select></div>
       <div class="field"><label for="reason">免除の理由</label><input id="reason" name="reason" value={values?.reason} maxlength={200} required /></div>
       <div class="field"><label for="starts">始めの日</label><input id="starts" type="date" name="starts_on" value={values?.starts_on} required /></div>
       <div class="field"><label for="ends">終わりの日</label><input id="ends" type="date" name="ends_on" value={values?.ends_on} required /></div>
@@ -138,7 +138,7 @@ admin.get("/rota/history", async (c) => {
   const households = await householdHistory(c.env.DB, ward.wardId);
   return c.html(<Layout title="世帯ごとの当番と役" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a><h1>世帯ごとの当番と役</h1>
-    <p class="lead">閉じた当番や行事の担当、役員の交代と免除を、今ある記録から読みます。</p>
+    <p class="lead">終わった当番や行事の担当、役員の交代と免除を、今ある記録から読みます。</p>
     <p class="muted">名前だけでは世帯を特定できない記録は分けて表示します。書かれていない出席や過去の交代は推測しません。</p>
     <div class="action-links"><a class="button secondary" href={adminPath(ward, "/rota/exemptions")}>免除を記録する</a></div>
     {!households.length ? <section class="next"><strong>次は</strong><p>当番と役の記録はまだありません。名簿を入れると、世帯ごとに読めます。</p>

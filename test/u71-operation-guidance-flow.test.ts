@@ -6,7 +6,7 @@ import { getEditableDocument } from "../src/project/actions";
 import { createProject, getProjectState } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("長い下書きを残して保存し直し、配ったあとの班長への一枚を開き、短い質問の理由と入力を読める", async () => {
+it("長い下書きを残して保存し直し、知らせたあとの班長への一枚を開き、短い質問の理由と入力を読める", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: FIRST_SLICE.nextYearTitle, year: FIRST_SLICE.eventYear, accountId: account.accountId,
@@ -60,7 +60,7 @@ it("長い下書きを残して保存し直し、配ったあとの班長への�
   if (!leaderPath) throw new Error("班長への一枚への入口がありません");
   const leader = await get(realApp, leaderPath, cookie);
   expect(leader.status).toBe(200);
-  expect(await leader.text()).toContain("実行委員と班長のページを開いてから印刷する");
+  expect(await leader.text()).toContain("実行委員と班長のページを見せ始めてから印刷する");
   expect((await postForm(realApp, `${root}/space/${project.projectId}/open`, { passphrase: FIRST_SLICE.passphrase }, cookie)).status).toBe(200);
   const ready = await (await get(realApp, leaderPath, cookie)).text();
   expect(ready).toContain("班長の専用QRを作って印刷する");

@@ -6,7 +6,7 @@ import { receive } from "../src/intake/receive";
 import { createProject } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("閉じたあとは取り込み済みの回答票も変わらず、開き直すと同じ答えを直せる", async () => {
+it("閉じたあとは取り込み済みの回答票も変わらず、開き直すと同じ返事を直せる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,
@@ -23,7 +23,7 @@ it("閉じたあとは取り込み済みの回答票も変わらず、開き直�
   const closePath = `/${ward.slug}/admin/close/${project.projectId}`;
   expect((await postForm(realApp, `${closePath}/finalize`, {}, cookie)).status).toBe(303);
   await expect(addAnswer(env.DB, ward.wardId, { ...input, peopleCount: 9 }))
-    .rejects.toThrow("この行事は答えを受け付けていません。");
+    .rejects.toThrow("今は返事を受け付けていません。");
   expect(await listAnswers(env.DB, ward.wardId, project.projectId))
     .toMatchObject([{ answerId, peopleCount: 2 }]);
 
@@ -32,7 +32,7 @@ it("閉じたあとは取り込み済みの回答票も変わらず、開き直�
   expect(response.status).toBe(303);
   const location = response.headers.get("location")!;
   expect(new URL(location, "http://localhost").pathname).toBe(closePath);
-  expect(await (await get(realApp, location, cookie)).text()).toContain("答えを直すときは「もう一度開く」を押してください。");
+  expect(await (await get(realApp, location, cookie)).text()).toContain("返事を直すときは「終わりを取り消す」を押してください。");
   expect(await listAnswers(env.DB, ward.wardId, project.projectId))
     .toMatchObject([{ answerId, peopleCount: 2 }]);
 

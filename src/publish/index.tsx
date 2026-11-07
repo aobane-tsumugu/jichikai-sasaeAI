@@ -164,19 +164,19 @@ admin.get("/publish/:projectId", async (c) => {
     const withAnswer = collectsAttendance(project.kind, kind);
     const paperLabel = withAnswer ? "案内と回答票" : DOCUMENT_KIND_LABEL[kind];
     const failed = record.line_status === "failed" || record.line_status === "not_configured";
-    return c.html(<AdminPage ward={ward} account={account} title={lowered ? "区のページから下げました" : rain ? "雨の変更を配りました" : "配りました"} back={{ href: mapHref, label: `${project.title}の段取りへ` }}>
-      <h1>{lowered ? "区のページから下げました" : rain ? "雨の変更を配りました" : `${DOCUMENT_KIND_LABEL[kind as DocumentKind]}を配りました`}</h1>
-      {lowered ? <Notice>下げました。配った記録は残ります。LINEの知らせは取り消せません。</Notice> :
-        <div class={failed ? "notice warn" : "notice done"} role="status"><strong>{failed ? "公式LINEには送れませんでした" : "区のページに載せました"}</strong>
-          <p>{failed ? "区のページには載っています。紙も配れます。LINEは送らないままでもかまいません。" : record.line_status === "sent" ? `公式LINE${record.line_recipients === null ? "に" : `の友だち${record.line_recipients}人に`}送りました。` : record.line_status === "pending" ? "公式LINEの送信結果はまだ分かりません。" : "今回は公式LINEに送りませんでした。"}{task ? `段取りの「${task.name}」を済みにしました。` : ""}</p>
+    return c.html(<AdminPage ward={ward} account={account} title={lowered ? "住民向けのページから取り下げました" : rain ? "雨の変更を知らせました" : "知らせました"} back={{ href: mapHref, label: `${project.title}のやることへ` }}>
+      <h1>{lowered ? "住民向けのページから取り下げました" : rain ? "雨の変更を知らせました" : `${DOCUMENT_KIND_LABEL[kind as DocumentKind]}を知らせました`}</h1>
+      {lowered ? <Notice>取り下げました。知らせた記録は残ります。LINEで送った知らせは取り消せません。</Notice> :
+        <div class={failed ? "notice warn" : "notice done"} role="status"><strong>{failed ? "自治会のLINEには送れませんでした" : "住民向けのページに載せました"}</strong>
+          <p>{failed ? "住民向けのページには載っています。紙も配れます。LINEは送らないままでもかまいません。" : record.line_status === "sent" ? `自治会のLINE${record.line_recipients === null ? "に" : `の友だち${record.line_recipients}人に`}送りました。` : record.line_status === "pending" ? "自治会のLINEの送信結果はまだ分かりません。" : "今回は自治会のLINEに送りませんでした。"}{task ? `やることの「${task.name}」を済みにしました。` : ""}</p>
         </div>}
-      <section class="next"><strong>次は</strong>{lowered ? <><p>内容を直して、配り直せます。</p><a class="button" href={editHref}>直して配り直す</a></> : rain ? <p>班長に電話して伝えてください。掲示も張り替えてください。ここは画面では済みません。</p> : <><p>{paperLabel}{withAnswer ? "、班長への一枚" : ""}を印刷して、{withAnswer ? "班長に渡してください。" : "配ってください。"}</p><a class="button" href={printHref}>{paperLabel}を印刷する</a>{withAnswer ? <a class="quiet" href={`${printBase}/leader`}>班長への一枚を印刷する</a> : null}</>}</section>
+      <section class="next"><strong>次は</strong>{lowered ? <><p>内容を直して、知らせ直せます。</p><a class="button" href={editHref}>直して知らせ直す</a></> : rain ? <p>班長に電話して伝えてください。掲示も張り替えてください。ここは画面では済みません。</p> : <><p>{paperLabel}{withAnswer ? "、班長への一枚" : ""}を印刷して、{withAnswer ? "班長に渡してください。" : "配ってください。"}</p><a class="button" href={printHref}>{paperLabel}を印刷する</a>{withAnswer ? <a class="quiet" href={`${printBase}/leader`}>班長への一枚を印刷する</a> : null}</>}</section>
       {!rain && !lowered ? <DistributionFacts raw={record.distribution} /> : null}
-      {!lowered ? <div class="action-links"><a class="button secondary" href={`/${ward.slug}/p/${encodeURIComponent(projectId)}`}>区のページで見る</a></div> : null}
-      <h2>間違えたときは</h2><p>{rain ? "直して配り直すと、区のページは新しい知らせに変わります。LINEで送った知らせは取り消せません。" : `直して配り直すと、区のページは新しい${DOCUMENT_KIND_LABEL[kind]}に変わります。`}</p>
-      <div class="action-links"><a class="button secondary" href={editHref}>直して配り直す</a>{!rain && !record.unpublished_at ? <form method="post" action={adminPath(ward, `/publish/${projectId}/lower/${record.publication_id}`)}><button class="secondary" type="submit">区のページから下げる</button></form> : null}</div>
-      {!rain ? <p class="muted">下げても、配った記録は残ります。LINEで送った知らせは取り消せません。</p> : null}
-      <a class="quiet" href={adminPath(ward, `/publish/${projectId}`)}>配る画面へ</a>
+      {!lowered ? <div class="action-links"><a class="button secondary" href={`/${ward.slug}/p/${encodeURIComponent(projectId)}`}>住民向けのページで見る</a></div> : null}
+      <h2>間違えたときは</h2><p>{rain ? "直して知らせ直すと、住民向けのページは新しい内容に変わります。LINEで送った知らせは取り消せません。" : `直して知らせ直すと、住民向けのページは新しい${DOCUMENT_KIND_LABEL[kind]}に変わります。`}</p>
+      <div class="action-links"><a class="button secondary" href={editHref}>直して知らせ直す</a>{!rain && !record.unpublished_at ? <form method="post" action={adminPath(ward, `/publish/${projectId}/lower/${record.publication_id}`)}><button class="secondary" type="submit">住民向けのページから取り下げる</button></form> : null}</div>
+      {!rain ? <p class="muted">取り下げても、知らせた記録は残ります。LINEで送った知らせは取り消せません。</p> : null}
+      <a class="quiet" href={adminPath(ward, `/publish/${projectId}`)}>知らせる画面へ</a>
     </AdminPage>);
   }
   const currentTables = await currentPublicationTables(c.env.DB, ward.wardId, projectId);
@@ -184,37 +184,37 @@ admin.get("/publish/:projectId", async (c) => {
   const primary = orderedDrafts.find((draft) => draft.scope === "public" && !draft.published_at);
   const copies = (await getRoster(c.env.DB, ward.wardId)).length;
 
-  return c.html(<AdminPage ward={ward} account={account} title="配る" back={{ href: adminPath(ward, `/projects/${projectId}/map`), label: `${project.title}の段取りへ` }}>
-    <h1>{primary ? paperHeading(project.title, primary.title) : project.title}を配る</h1>{primary ? <p class="lead">配ると、同じ内容が区のページと紙に出ます。</p> : null}
-    {project.closed_at ? <Notice>この行事は閉じています。</Notice> : null}
+  return c.html(<AdminPage ward={ward} account={account} title="住民に知らせる" back={{ href: adminPath(ward, `/projects/${projectId}/map`), label: `${project.title}のやることへ` }}>
+    <h1>{primary ? paperHeading(project.title, primary.title) : project.title}を住民に知らせる</h1>{primary ? <p class="lead">住民向けのページに載せ、LINEで送り、紙を印刷できるようにします。</p> : null}
+    {project.closed_at ? <Notice>{project.title}は終わりにしました。</Notice> : null}
     {documentBodyCheckMessage(c.req.query("check_body")) ? <Notice>{documentBodyCheckMessage(c.req.query("check_body"))}</Notice> : null}
-    {c.req.query("space") === "sent" ? <><Notice>実行委員と班長のページに配りました。{spaceDone && task ? `段取りの「${task.name}」を済みにしました。` : ""}</Notice><section class="next"><strong>次は</strong><p>配られたものを実行委員と班長に伝えてください。</p><a class="button" href={adminPath(ward, `/space/${projectId}`)}>実行委員と班長のページへ</a></section>{spaceDone && task ? <a class="quiet" href={mapHref}>段取りを見る</a> : null}<p>間違えたときは、下書きを直して配り直せます。</p></> : null}
-    {!drafts.length ? <><p>配れる下書きはまだありません。</p><a class="button" href={adminPath(ward, `/projects/${projectId}/draft/announcement`)}>案内の下書きを書く</a></> : null}
+    {c.req.query("space") === "sent" ? <><Notice>実行委員と班長のページに載せました。{spaceDone && task ? `やることの「${task.name}」を済みにしました。` : ""}</Notice><section class="next"><strong>次は</strong><p>載せたことを実行委員と班長に伝えてください。</p><a class="button" href={adminPath(ward, `/space/${projectId}`)}>実行委員と班長のページへ</a></section>{spaceDone && task ? <a class="quiet" href={mapHref}>やることを見る</a> : null}<p>間違えたときは、下書きを直して知らせ直せます。</p></> : null}
+    {!drafts.length ? <><p>知らせられる下書きはまだありません。</p><a class="button" href={adminPath(ward, `/projects/${projectId}/draft/announcement`)}>案内の下書きを書く</a></> : null}
     {orderedDrafts.map((draft, index) => {
       const previous = allRecords.find((record) => record.document_id === draft.document_id && !record.unpublished_at);
       const tablesChanged = draft.scope === "space" && (draft.kind === "duty_roster" || draft.kind === "procedure") &&
         (!!previous || !!draft.published_at) && publicationTablesDiffer(previous?.tables_snapshot ?? null, currentTables);
-      return <>{index === 1 ? <h2>{project.closed_at || orderedDrafts.slice(1).every((row) => row.published_at) ? "ほかの文書" : "ほかに配れるもの"}</h2> : null}<section class="panel" key={draft.document_id}>
+      return <>{index === 1 ? <h2>{project.closed_at || orderedDrafts.slice(1).every((row) => row.published_at) ? "ほかの文書" : "ほかに知らせられるもの"}</h2> : null}<section class="panel" key={draft.document_id}>
         <h2>{paperHeading(project.title, draft.title)}</h2>
-        <p>{draft.published_at ? "すでに配っています。" : "下書きがあります"}</p>
-        {draft === primary ? <dl class="facts"><dt>区のページ</dt><dd>載せます</dd><dt>公式LINE</dt><dd>{canSendLine(draft.kind) ? "友だちに知らせます" : "今回は送りません"}</dd><dt>紙</dt><dd>{copies ? `加入世帯に${copies}部` : "印刷して配れます"}</dd></dl> : null}
-        {draft.stale_since_version !== null ? <Notice>新しいものが入っています。下書きを直すか、このまま配れます。</Notice> : null}
-        {tablesChanged ? <Notice>{previous?.tables_snapshot === null ? "配ったときの表の記録がありません。今の表を配り直せます。" : "配ったときから表が変わっています。今の表を配り直せます。"}</Notice> : null}
-        {draft.scope === "space" ? <><p>{draft.published_at ? "実行委員と班長に配りました。" : "実行委員と班長に配ります。"}区のページには載りません</p>{!project.closed_at && (!draft.published_at || tablesChanged) ? <form method="post" action={adminPath(ward, `/publish/${projectId}/confirm`)}>
+        <p>{draft.published_at ? "すでに知らせています。" : "下書きがあります"}</p>
+        {draft === primary ? <dl class="facts"><dt>住民向けのページ</dt><dd>載せます</dd><dt>自治会のLINE</dt><dd>{canSendLine(draft.kind) ? "友だちに知らせます" : "今回は送りません"}</dd><dt>紙</dt><dd>{copies ? `加入世帯に${copies}部` : "印刷して配れます"}</dd></dl> : null}
+        {draft.stale_since_version !== null ? <Notice>新しいものが入っています。下書きを直すか、このまま知らせられます。</Notice> : null}
+        {tablesChanged ? <Notice>{previous?.tables_snapshot === null ? "載せたときの表の記録がありません。今の表を載せ直せます。" : "載せたときから表が変わっています。今の表を載せ直せます。"}</Notice> : null}
+        {draft.scope === "space" ? <><p>{draft.published_at ? "実行委員と班長のページに載せました。" : "実行委員と班長のページに載せます。"}住民向けのページには載りません</p>{!project.closed_at && (!draft.published_at || tablesChanged) ? <form method="post" action={adminPath(ward, `/publish/${projectId}/confirm`)}>
           <input type="hidden" name="documentId" value={draft.document_id} /><input type="hidden" name="versionId" value={draft.version_id} /><input type="hidden" name="versionNo" value={draft.version_no} />
-          <button class={index === 0 ? "" : "secondary"} type="submit">配る内容を見る</button><p class="muted">押しても、まだ配られません。</p></form> : null}</> : null}
+          <button class={index === 0 ? "" : "secondary"} type="submit">知らせる内容を見る</button><p class="muted">押しても、まだ知らせません。</p></form> : null}</> : null}
         {draft.scope === "public" && !project.closed_at && !draft.published_at ? <form method="post" action={adminPath(ward, `/publish/${projectId}/confirm`)}>
           <input type="hidden" name="documentId" value={draft.document_id} /><input type="hidden" name="versionId" value={draft.version_id} /><input type="hidden" name="versionNo" value={draft.version_no} />
-          <button class={index === 0 ? "" : "secondary"} type="submit">配る内容を見る</button><p class="muted">押しても、まだ配られません。</p>{!canSendLine(draft.kind) ? <p>公式LINEには送らず、区のページに載せます。</p> : null}
+          <button class={index === 0 ? "" : "secondary"} type="submit">知らせる内容を見る</button><p class="muted">押しても、まだ知らせません。</p>{!canSendLine(draft.kind) ? <p>自治会のLINEには送らず、住民向けのページに載せます。</p> : null}
         </form> : null}
         <a class="quiet" href={adminPath(ward, `/projects/${projectId}/draft/${draft.kind}`)}>下書きを直す</a>
       </section></>;
     })}
-    <h2>これまでに配ったもの</h2>{!allRecords.length ? <p>まだありません。</p> : allRecords.map((record) => <section class="panel">
+    <h2>これまでに知らせたもの</h2>{!allRecords.length ? <p>まだありません。</p> : allRecords.map((record) => <section class="panel">
       {drafts.some((row) => row.document_id === record.document_id) ? <b>{paperHeading(project.title, drafts.find((row) => row.document_id === record.document_id)!.title)}</b> : null}
-      <p>{formatJst(record.published_at)}に配りました。</p>{record.scope === "space" ? <p>実行委員と班長に配りました。</p> : <>
-        <p>紙の配布先: {paperTargetLabel(record.distribution)}</p><p>公式LINE: {record.line_status === "sent" ? `${record.line_recipients ?? ""}人に送りました` : record.line_status === "failed" || record.line_status === "not_configured" ? "送れませんでした。区のページには載っています。紙も配れます。" : record.line_status === "pending" ? "送信結果はまだ分かりません" : "今回は送っていません"}</p>
-        {record.unpublished_at ? <p>区のページから下げています。</p> : <form method="post" action={adminPath(ward, `/publish/${projectId}/lower/${record.publication_id}`)}><button class="secondary" type="submit">区のページから下げる</button></form>}
+      <p>{formatJst(record.published_at)}に知らせました。</p>{record.scope === "space" ? <p>実行委員と班長のページに載せました。</p> : <>
+        <p>紙の配布先: {paperTargetLabel(record.distribution)}</p><p>自治会のLINE: {record.line_status === "sent" ? `${record.line_recipients ?? ""}人に送りました` : record.line_status === "failed" || record.line_status === "not_configured" ? "送れませんでした。住民向けのページには載っています。紙も配れます。" : record.line_status === "pending" ? "送信結果はまだ分かりません" : "今回は送っていません"}</p>
+        {record.unpublished_at ? <p>住民向けのページから取り下げています。</p> : <form method="post" action={adminPath(ward, `/publish/${projectId}/lower/${record.publication_id}`)}><button class="secondary" type="submit">住民向けのページから取り下げる</button></form>}
       </>}<a class="quiet" href={adminPath(ward, `/print/${projectId}/${record.document_id}/${record.version_no}`)}>印刷用ページを開く</a>
     </section>)}
   </AdminPage>);
@@ -261,7 +261,7 @@ admin.post("/publish/:projectId/space", async (c) => {
     .bind(now, account.accountId, project.title, ward.wardId, projectId, ward.wardId, projectId, documentId, versionId, versionNo,
       ward.wardId, documentId, ward.wardId, documentId, ward.wardId, projectId);
   const result = await publish.run();
-  if (result.meta.changes !== 1) return adminResult(c, "下書きの内容が変わったか、すでに配っています。配る画面で内容を確かめてください。", 409, { href: adminPath(c.var.ward, `/publish/${encodeURIComponent(c.req.param("projectId"))}`), label: "配る画面に戻る" }, "配る内容と配る相手を確かめて、もう一度操作してください。");
+  if (result.meta.changes !== 1) return adminResult(c, "下書きの内容が変わったか、すでに知らせています。知らせる画面で内容を確かめてください。", 409, { href: adminPath(c.var.ward, `/publish/${encodeURIComponent(c.req.param("projectId"))}`), label: "知らせる画面に戻る" }, "知らせる内容と相手を確かめて、もう一度操作してください。");
   await recordPublishedItems(c.env.DB, ward.wardId, projectId, publishedVersionId, account.accountId);
   for (const taskKey of draftTaskKeys(project.kind, row.kind)) {
     await markDistributedTask(c.env.DB, ward.wardId, projectId, account.accountId, taskKey, publishedVersionId);
@@ -293,7 +293,7 @@ async function confirmPublication(c: Context<AdminEnv>) {
   const roster = await getRoster(c.env.DB, ward.wardId);
   const recipientScope = form.get("recipientScope") === "all_households" ? "all_households" : "member_households";
   const distribution = distributionFromForm(form, roster, recipientScope === "all_households");
-  if (!distribution) return c.html(<AdminPage ward={ward} account={account} title="部数を確かめてください"><h1>部数を確かめてください</h1><p>加入世帯に配る部数は名簿の世帯数までです。全戸に配るときは「全戸」を選んでください。</p><a class="button" href={adminPath(ward, `/publish/${projectId}/confirm?documentId=${draft.document_id}`)}>配る内容に戻る</a></AdminPage>, 400);
+  if (!distribution) return c.html(<AdminPage ward={ward} account={account} title="部数を確かめてください"><h1>部数を確かめてください</h1><p>加入世帯に配る部数は名簿の世帯数までです。全戸に配るときは「全戸」を選んでください。</p><a class="button" href={adminPath(ward, `/publish/${projectId}/confirm?documentId=${draft.document_id}`)}>知らせる内容に戻る</a></AdminPage>, 400);
   const rain = draft.kind === "notice" && draft.title.includes("雨");
   const withAnswer = publicScope && collectsAttendance(project.kind, draft.kind);
   const draftDue = withAnswer ? answerDeadlineFromDraft(draft.body, project.year) : null;
@@ -313,19 +313,19 @@ async function confirmPublication(c: Context<AdminEnv>) {
       friends = allowance.friends;
       remaining = allowance.remaining;
     }
-    else lineNotice = "公式LINEの準備ができていません。区のページに載せて、紙を配れます。";
-  } catch { lineNotice = "公式LINEの人数を読み取れませんでした。配ったあとに結果を知らせます。"; }
+    else lineNotice = "自治会のLINEの準備ができていません。住民向けのページに載せて、紙を配れます。";
+  } catch { lineNotice = "自治会のLINEの人数を読み取れませんでした。知らせたあとに、結果をこの画面に出します。"; }
   const copies = publicScope ? distribution.targets.reduce((sum, target) => sum + target.copies, 0) : 0;
-  const sendLabel = draft.published_at ? "配り直す" : "配る";
+  const sendLabel = publicScope ? draft.published_at ? "知らせ直す" : "住民に知らせる" : draft.published_at ? "載せ直す" : "実行委員と班長のページに載せる";
   const tablesPreview = spaceTables ? <><h3>当番</h3><MaterialsTable table="duties" items={spaceTables} /><h3>配置図</h3><MaterialsTable table="layout" items={spaceTables} /><h3>実行委員名簿</h3><MaterialsTable table="committee" items={spaceTables} /></> : null;
   const printHref = adminPath(ward, `/print/${projectId}/${draft.document_id}/${draft.version_no}/preview`);
   const editHref = adminPath(ward, `/projects/${projectId}/draft/${draft.kind}`);
   c.header("Cache-Control", "no-store");
-  return c.html(<AdminPage ward={ward} account={account} title="配る内容を見る" back={{ href: editHref, label: "下書きへ" }}>
-    <div class="publish-confirm"><h1>{draft.published_at ? "次の内容で配り直します" : "次の内容で配ります"}</h1><p class="lead">まだ配っていません。読んで、よければ「{sendLabel}」を押してください。{publicScope ? "LINEで送った知らせは取り消せません。" : ""}</p>
-    {pastDue ? <Notice>本文の締切は過ぎているため、このまま配ると答えの受付が続きますが、締切は配ったあとに変えられます。</Notice> : null}
+  return c.html(<AdminPage ward={ward} account={account} title="知らせる内容を見る" back={{ href: editHref, label: "下書きへ" }}>
+    <div class="publish-confirm"><h1>{publicScope ? draft.published_at ? "次の内容で知らせ直します" : "次の内容で住民に知らせます" : draft.published_at ? "次の内容で載せ直します" : "次の内容で実行委員と班長のページに載せます"}</h1><p class="lead">{publicScope ? "まだ知らせていません。" : "まだ載せていません。"}読んで、よければ「{sendLabel}」を押してください。{publicScope ? "LINEで送った知らせは取り消せません。" : ""}</p>
+    {pastDue ? <Notice>本文の締切は過ぎているため、このまま知らせると返事の受付が続きますが、締切は知らせたあとに変えられます。</Notice> : null}
     {documentBodyCheckMessage(c.req.query("check_body")) ? <Notice>{documentBodyCheckMessage(c.req.query("check_body"))}</Notice> : null}
-    <dl class="facts"><dt>{publicScope ? "区のページ" : "実行委員と班長のページ"}</dt><dd>載ります</dd>{publicScope ? <><dt>公式LINE</dt><dd>{lineDelivery === "skip" ? "今回は公式LINEに送りません。" : lineNotice || (friends === null ? "友だちに知らせます" : `友だち${friends}人に届きます`)}</dd></> : null}{!rain ? <><dt>紙</dt><dd>{copies ? `${copies}部を印刷できます` : "印刷して配れます"}</dd></> : null}</dl>
+    <dl class="facts"><dt>{publicScope ? "住民向けのページ" : "実行委員と班長のページ"}</dt><dd>載ります</dd>{publicScope ? <><dt>自治会のLINE</dt><dd>{lineDelivery === "skip" ? "今回は自治会のLINEに送りません。" : lineNotice || (friends === null ? "友だちに知らせます" : `友だち${friends}人に届きます`)}</dd></> : null}{!rain ? <><dt>紙</dt><dd>{copies ? `${copies}部を印刷できます` : "印刷して配れます"}</dd></> : null}</dl>
     <form method="post" action={adminPath(ward, `/publish/${projectId}/${publicScope ? "send" : "space"}`)}>
       <input type="hidden" name="documentId" value={draft.document_id} /><input type="hidden" name="versionId" value={draft.version_id} /><input type="hidden" name="versionNo" value={draft.version_no} />
       {reportPhotos.filter((p) => p.state === "ready").map((p) => <input type="hidden" name="photoRevision" value={p.revision} />)}
@@ -338,16 +338,16 @@ async function confirmPublication(c: Context<AdminEnv>) {
           return <label><input type="checkbox" name="district" value={district} checked={Boolean(target)} />{district}<input type="number" name={`copies_${index}`} min="1" value={target?.copies ?? roster.filter((row) => row.district === district).length} /><span>部</span></label>;
         })}</div>{!roster.length ? <label>全戸に配るときの部数<input type="number" name="allCopies" min="1" value={distribution.targets[0]?.copies} /></label> : null}</fieldset>
         {roster.length ? <details class="fold"><summary>世帯を選ぶ</summary><p>加入世帯の一部に配るときは、世帯に印を付けてください。</p>{householdChoices(roster).map(({ district, household, count }) => <label><input type="checkbox" name="household" value={JSON.stringify([district, household])} checked={distribution.mode === "household" && distribution.targets.some((target) => target.district === district && target.household === household)} />{district} / {household}{count > 1 ? `（${count}部）` : ""}</label>)}</details> : null}
-        {canSendLine(draft.kind) ? <fieldset><legend>公式LINE</legend><div class="choice"><label><input type="radio" name="lineDelivery" value="send" checked={lineDelivery === "send"} /> LINEで友だちに知らせる</label><label><input type="radio" name="lineDelivery" value="skip" checked={lineDelivery === "skip"} /> 今回は知らせない</label></div>{remaining !== null ? <p class="muted">送ったあと、今月はあと{Math.max(remaining - (friends ?? 0), 0)}通です。</p> : null}</fieldset> : <input type="hidden" name="lineDelivery" value="skip" />}
+        {canSendLine(draft.kind) ? <fieldset><legend>自治会のLINE</legend><div class="choice"><label><input type="radio" name="lineDelivery" value="send" checked={lineDelivery === "send"} /> LINEで友だちに知らせる</label><label><input type="radio" name="lineDelivery" value="skip" checked={lineDelivery === "skip"} /> 今回は知らせない</label></div>{remaining !== null ? <p class="muted">送ったあと、今月はあと{Math.max(remaining - (friends ?? 0), 0)}通です。</p> : null}</fieldset> : <input type="hidden" name="lineDelivery" value="skip" />}
       </div></details> : <><input type="hidden" name="distribution" value={JSON.stringify({ mode: "district", targets: [] })} /><input type="hidden" name="lineDelivery" value={lineDelivery} /></>}
-      {lineDelivery === "send" && remaining !== null && friends !== null && remaining < friends ? <Notice>今月、公式LINEで送れる通数が足りません。区のページに載せて、紙を配れます。</Notice> : null}
-      {draft.published_at ? <Notice>配ったときから表が変わっています。ここに出ている今の表で配り直します。</Notice> : null}
-      {draft.stale_since_version !== null ? <Notice>新しいものが入っています。ここに表示した内容で配れます。直すときは下書きに戻ってください。</Notice> : null}
+      {lineDelivery === "send" && remaining !== null && friends !== null && remaining < friends ? <Notice>今月、自治会のLINEで送れる通数が足りません。住民向けのページに載せて、紙を配れます。</Notice> : null}
+      {draft.published_at ? <Notice>載せたときから表が変わっています。ここに出ている今の表で載せ直します。</Notice> : null}
+      {draft.stale_since_version !== null ? <Notice>新しいものが入っています。ここに表示した内容で知らせられます。直すときは下書きに戻ってください。</Notice> : null}
       {warnings.filter((warning) => !warning.startsWith("まだ決まっていないところ")).map((warning) => <PublicWarning finding={warning} />)}
-      {draft.body.includes(PENDING) ? <div class="notice warn"><strong>まだ決めていないところがあります</strong><p>「（確認中）」のところは、紙とページから外して配ります。入れるときは下書きを直してください。</p><a class="quiet" href={adminPath(ward, `/projects/${projectId}/draft/${draft.kind}`)}>下書きを直す</a></div> : null}
-      <div class="compare"><section class="compare-paper"><b>紙{copies ? `（${recipientScope === "all_households" ? "全戸" : "加入世帯"}に${copies}部）` : ""}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} kind={draft.kind} />{photoPreview}{tablesPreview}{withAnswer ? <p class="answer-slip-preview"><b>回答票</b>　切り取って班長か役員に渡します。{project.kind === "general_meeting" ? "出席、委任、欠席の欄があります。" : "代表者のお名前、人数、手伝いの欄があります。"}</p> : null}</div></section>
-        <section><b>{publicScope ? "区のページ" : "実行委員と班長のページ"}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} kind={draft.kind} />{photoPreview}{tablesPreview}{withAnswer ? <p class="muted">この下に「出欠を答える」のボタンが出ます。</p> : null}</div></section></div>
-      <p class="compare-link"><a class="quiet" href={printHref}>紙の見え方を見る</a></p><p class="muted">{publicScope ? "配ったあとも、区のページからは下げられます。" : "実行委員と班長に配ります。区のページには載りません。"}</p>
+      {draft.body.includes(PENDING) ? <div class="notice warn"><strong>まだ決めていないところがあります</strong><p>「（確認中）」のところは、紙とページから外して知らせます。入れるときは下書きを直してください。</p><a class="quiet" href={adminPath(ward, `/projects/${projectId}/draft/${draft.kind}`)}>下書きを直す</a></div> : null}
+      <div class="compare"><section class="compare-paper"><b>紙{copies ? `（${recipientScope === "all_households" ? "全戸" : "加入世帯"}に${copies}部）` : ""}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} kind={draft.kind} />{photoPreview}{tablesPreview}{withAnswer ? <p class="answer-slip-preview"><b>回答票</b>　切り取って班長か役員に渡します。{project.kind === "general_meeting" ? "出席、委任、欠席の欄があります。" : "世帯の代表者（ふつうは世帯主）のお名前、人数、手伝いの欄があります。"}</p> : null}</div></section>
+        <section><b>{publicScope ? "住民向けのページ" : "実行委員と班長のページ"}</b><div class="sheet-preview"><h2>{paperHeading(project.title, draft.title)}</h2><ArticleBody body={draft.body} title={{ project: project.title, document: draft.title }} kind={draft.kind} />{photoPreview}{tablesPreview}{withAnswer ? <p class="muted">この下に「出欠を答える」のボタンが出ます。</p> : null}</div></section></div>
+      <p class="compare-link"><a class="quiet" href={printHref}>紙の見え方を見る</a></p><p class="muted">{publicScope ? "知らせたあとも、住民向けのページからは取り下げられます。" : "実行委員と班長のページに載せます。住民向けのページには載りません。"}</p>
       <div class="action-bar"><button type="submit">{sendLabel}</button><a class="button secondary" href={editHref}>下書きに戻る</a></div>
     </form></div>
   </AdminPage>);
@@ -371,8 +371,8 @@ admin.post("/publish/:projectId/send", async (c) => {
       WHERE d.ward_id = ? AND d.project_id = ? AND d.document_id = ? AND v.version_id = ? AND v.version_no = ?`)
     .bind(ward.wardId, projectId, documentId, versionId, versionNo).first<DraftRow>();
   if (!row || row.scope !== "public" || row.published_at) return c.notFound();
-  if (row.kind === "duty_roster") return adminResult(c, "当番表は公開せず、実行委員と班長のページに配ってください。", 400, { href: adminPath(c.var.ward, `/publish/${encodeURIComponent(c.req.param("projectId"))}`), label: "配る画面に戻る" }, "配る内容と配る相手を確かめて、もう一度操作してください。");
-  if (!(DOCUMENT_KINDS as readonly string[]).includes(row.kind)) return adminResult(c, "文書の種類を確認できません。", 400, { href: adminPath(c.var.ward, `/publish/${encodeURIComponent(c.req.param("projectId"))}`), label: "配る画面に戻る" }, "配る内容と配る相手を確かめて、もう一度操作してください。");
+  if (row.kind === "duty_roster") return adminResult(c, "当番表は公開せず、実行委員と班長のページに載せてください。", 400, { href: adminPath(c.var.ward, `/publish/${encodeURIComponent(c.req.param("projectId"))}`), label: "知らせる画面に戻る" }, "知らせる内容と相手を確かめて、もう一度操作してください。");
+  if (!(DOCUMENT_KINDS as readonly string[]).includes(row.kind)) return adminResult(c, "文書の種類を確認できません。", 400, { href: adminPath(c.var.ward, `/publish/${encodeURIComponent(c.req.param("projectId"))}`), label: "知らせる画面に戻る" }, "知らせる内容と相手を確かめて、もう一度操作してください。");
   const now = nowIso();
   const publicationId = newId();
   const roster = await getRoster(c.env.DB, ward.wardId);
@@ -385,7 +385,7 @@ admin.post("/publish/:projectId/send", async (c) => {
     distribution = { mode: "district", targets: Object.entries(legacy).map(([district, copies]) => ({ district, copies })) };
   }
   if (form.has("targetMode")) distribution = distributionFromForm(form, roster, recipientScope === "all_households");
-  if (!distribution) return adminResult(c, "紙の配布先が名簿と合いません。配布内容を選び直してください。", 400, { href: adminPath(c.var.ward, `/publish/${encodeURIComponent(c.req.param("projectId"))}`), label: "配る画面に戻る" }, "配る内容と配る相手を確かめて、もう一度操作してください。");
+  if (!distribution) return adminResult(c, "紙の配布先が名簿と合いません。配布内容を選び直してください。", 400, { href: adminPath(c.var.ward, `/publish/${encodeURIComponent(c.req.param("projectId"))}`), label: "知らせる画面に戻る" }, "知らせる内容と相手を確かめて、もう一度操作してください。");
   const draftDue = collectsAttendance(project.kind, row.kind) ? answerDeadlineFromDraft(row.body, project.year) : null;
   // 過ぎた日を受付の締切に入れると、配った途端に回答が閉じる。去年の中身の案でも起きるので入れない
   const answerDue = draftDue && draftDue >= new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date()) ? draftDue : null;
@@ -432,8 +432,8 @@ admin.post("/publish/:projectId/send", async (c) => {
       .bind(answerDue, now, ward.wardId, projectId, publicationId)] : []),
   ]);
   if (publication[0]?.meta.changes !== 1 || publication[1]?.meta.changes !== 1) {
-    return c.html(<AdminPage ward={ward} account={account} title="配る内容を確かめてください" back={{ href: adminPath(ward, `/publish/${projectId}`), label: "下書きに戻る" }}>
-      <h1>配る内容を確かめてください</h1><p>下書きの内容が変わったか、すでに配っています。配る画面で内容を確かめてください。</p>
+    return c.html(<AdminPage ward={ward} account={account} title="知らせる内容を確かめてください" back={{ href: adminPath(ward, `/publish/${projectId}`), label: "下書きに戻る" }}>
+      <h1>知らせる内容を確かめてください</h1><p>下書きの内容が変わったか、すでに知らせています。知らせる画面で内容を確かめてください。</p>
     </AdminPage>, 409);
   }
   await recordPublishedItems(c.env.DB, ward.wardId, projectId, versionId, account.accountId);
@@ -455,7 +455,7 @@ admin.post("/publish/:projectId/send", async (c) => {
         lineRecipients = allowance.friends;
         if (allowance.friends === null || (allowance.remaining !== null && allowance.remaining < allowance.friends)) {
           lineStatus = "failed";
-          lineError = allowance.friends === null ? "集計の済んだ友だちの人数を取得できないため、公式LINEには送っていません。区のページと紙は使えます。" : "今月、公式LINEで送れる通数が足りないため、送っていません。";
+          lineError = allowance.friends === null ? "集計の済んだ友だちの人数を取得できないため、自治会のLINEには送っていません。住民向けのページと紙は使えます。" : "今月、自治会のLINEで送れる通数が足りないため、送っていません。";
         } else {
           await sendLineTitleAndUrl(token, paperHeading(project.title, row.title), publicUrl);
           lineStatus = "sent";
@@ -464,7 +464,7 @@ admin.post("/publish/:projectId/send", async (c) => {
       }
     } catch {
       lineStatus = "failed";
-      lineError = "公式LINEに送信できませんでした。接続設定を提供側に確認してください。";
+      lineError = "自治会のLINEに送信できませんでした。接続の設定を、SasaeAIの運営者に確かめてもらってください。";
     }
   }
   await c.env.DB.prepare(`UPDATE publication_records SET line_status = ?, line_recipients = ?, line_sent_at = ?, line_error = ?
@@ -539,12 +539,12 @@ function PublicWarning({ finding }: { finding: string }) {
   const kind = separator < 0 ? finding : finding.slice(0, separator);
   const value = separator < 0 ? "" : finding.slice(separator + 2);
   const messages: Record<string, { title: string; text: string }> = {
-    "名簿の名前": { title: "名簿の名前と同じ文字があります", text: `「${value}」が本文にあります。だれでも読める案内に出てよければ、このまま配れます。` },
-    "協賛の額": { title: "協賛の金額と同じ数字があります", text: `「${value}」が本文にあります。だれでも読める案内に出てよければ、このまま配れます。` },
-    "個人の連絡先": { title: "個人の連絡先と思われる文字があります", text: `「${value}」が本文にあります。だれでも読める案内に出てよければ、このまま配れます。` },
-    "まだ決まっていないところ": { title: "まだ決めていないところがあります", text: `「${value}」が本文にあります。このまま配れます。直すときは下書きに戻ってください。` },
+    "名簿の名前": { title: "名簿の名前と同じ文字があります", text: `「${value}」が本文にあります。だれでも読める案内に出てよければ、このまま知らせられます。` },
+    "協賛の額": { title: "協賛の金額と同じ数字があります", text: `「${value}」が本文にあります。だれでも読める案内に出てよければ、このまま知らせられます。` },
+    "個人の連絡先": { title: "個人の連絡先と思われる文字があります", text: `「${value}」が本文にあります。だれでも読める案内に出てよければ、このまま知らせられます。` },
+    "まだ決まっていないところ": { title: "まだ決めていないところがあります", text: `「${value}」が本文にあります。このまま知らせられます。直すときは下書きに戻ってください。` },
   };
-  const message = messages[kind] ?? { title: "本文を読み取れないところがあります", text: "下に出ている内容を読んで、このまま配れます。直すときは下書きに戻ってください。" };
+  const message = messages[kind] ?? { title: "本文を読み取れないところがあります", text: "下に出ている内容を読んで、このまま知らせられます。直すときは下書きに戻ってください。" };
   return <div class="notice warn"><strong>{message.title}</strong><p>{message.text}</p></div>;
 }
 

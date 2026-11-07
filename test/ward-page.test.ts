@@ -28,8 +28,8 @@ async function publishTwice() {
   return { ward, project };
 }
 
-describe("区のページ", () => {
-  it("配り直したときは今の案内を先に出し、変更前の案内は畳んで後ろに置く", async () => {
+describe("住民向けのページ", () => {
+  it("知らせ直したときは今の案内を先に出し、変更前の案内は畳んで後ろに置く", async () => {
     const { ward, project } = await publishTwice();
     const html = await (await get(realApp, `/${ward.slug}/p/${project.projectId}`)).text();
     const current = html.indexOf("変更後の架空の案内");
@@ -46,7 +46,7 @@ describe("区のページ", () => {
     const response = await get(realApp, `/${ward.slug}/p/${project.projectId}`);
     expect(response.status).toBe(200);
     const html = await response.text();
-    expect(html).toContain("区のページから下げました");
+    expect(html).toContain("住民向けのページから取り下げました");
     expect(html).not.toContain("変更後の架空の案内");
     expect(html).not.toContain("変更前の架空の案内");
   });
@@ -81,7 +81,7 @@ describe("報告と閉じる", () => {
 });
 
 describe("役員の仕事と活動の紹介", () => {
-  it("閉じたあとに、選んだ仕事と役員が直した文だけを区のページに載せる", async () => {
+  it("閉じたあとに、選んだ仕事と役員が直した文だけを住民向けのページに載せる", async () => {
     const { ward, account, cookie } = await seedAdmin(env.DB);
     const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
     const closePage = `/${ward.slug}/admin/close/${project.projectId}`;

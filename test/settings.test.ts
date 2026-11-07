@@ -9,8 +9,8 @@ const secretOf = (html: string) => /class="secret">([a-z0-9-]+)</.exec(html)?.[1
 const people = (slug: string, rest = "") => `/${slug}/admin/settings/people${rest}`;
 const invitationOf = (html: string) => /class="secret invite-link">([^<]+)</.exec(html)?.[1];
 
-describe("区の設定: 役員の席とアカウント", () => {
-  it("区の設定の入口とそれぞれの画面が開く", async () => {
+describe("自治会の設定: 役員の席とアカウント", () => {
+  it("自治会の設定の入口とそれぞれの画面が開く", async () => {
     const { ward, cookie } = await seedAdmin(env.DB);
     for (const path of ["/admin/", "/admin/settings", "/admin/settings/people", "/admin/settings/info", "/admin/settings/templates"]) {
       const res = await get(realApp, `/${ward.slug}${path}`, cookie);
@@ -159,7 +159,7 @@ describe("区の設定: 役員の席とアカウント", () => {
     expect((await get(realApp, `/${ward.slug}/admin/`, cookie)).status).toBe(200); // いまの端末は残る
   });
 
-  it("他の区の席、アカウント、端末は、自分の区のURLからは触れない", async () => {
+  it("他の区の席、アカウント、端末は、自分の自治会のURLからは触れない", async () => {
     const a = await seedAdmin(env.DB);
     const b = await seedAdmin(env.DB);
     await seedAccount(env.DB, b.ward.wardId, "Bの二人目");
@@ -207,7 +207,7 @@ describe("区の設定: 役員の席とアカウント", () => {
   });
 });
 
-describe("区の設定: 区の情報と決まった知らせの文", () => {
+describe("自治会の設定: 自治会の情報と決まった知らせの文", () => {
   it("公開用の連絡先と班の名前を保存し、空にすると消える", async () => {
     const { ward, cookie } = await seedAdmin(env.DB);
     const res = await postForm(realApp, `/${ward.slug}/admin/settings/info`, { contact: "自治会の窓口\n電話000-0000-0000（架空）", squads: " 1班\n2班\n\n2班\n 3班 " }, cookie);
@@ -241,7 +241,7 @@ describe("区の設定: 区の情報と決まった知らせの文", () => {
 
     expect((await postForm(realApp, url, { name: "中止の知らせ", body: "{行事名}は中止します。" }, cookie)).status).toBe(303);
     let list = await getTemplates(env.DB, ward.wardId);
-    expect(list.map((t) => t.name)).toEqual(["雨の変更の知らせ", "中止の知らせ"]);
+    expect(list.map((t) => t.name)).toEqual(["雨の変更の連絡", "中止の知らせ"]);
 
     const added = list[1]!;
     expect((await postForm(realApp, `${url}/${added.id}`, { name: "中止のお知らせ", body: "{行事名}は中止です。" }, cookie)).status).toBe(303);
@@ -254,10 +254,10 @@ describe("区の設定: 区の情報と決まった知らせの文", () => {
     expect((await postForm(realApp, url, { name: "", body: "x" }, cookie)).status).toBe(400);
 
     expect((await postForm(realApp, `${url}/reset`, {}, cookie)).status).toBe(303);
-    expect((await getTemplates(env.DB, ward.wardId)).map((t) => t.name)).toEqual(["雨の変更の知らせ"]);
+    expect((await getTemplates(env.DB, ward.wardId)).map((t) => t.name)).toEqual(["雨の変更の連絡"]);
   });
 
-  it("設定は区ごとに分かれる", async () => {
+  it("設定は自治会ごとに分かれる", async () => {
     const a = await seedAdmin(env.DB);
     const b = await seedAdmin(env.DB);
     await postForm(realApp, `/${a.ward.slug}/admin/settings/info`, { contact: "Aの窓口", squads: "A1班" }, a.cookie);

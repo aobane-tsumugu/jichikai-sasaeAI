@@ -56,7 +56,7 @@ async function insertDocument(wardId: string, projectId: string, kind: string) {
 }
 
 describe("行事を開く", () => {
-  it("種類ごとの段取りの型と行事の日を置き、開いている一覧に出る", async () => {
+  it("種類ごとのやることの型と行事の日を置き、開いている一覧に出る", async () => {
     const { ward, project } = await setup();
     expect(project.deadlines.event_day).toBe("2026-10-24");
     const state = await getProjectState(db, ward.wardId, project.projectId);
@@ -70,7 +70,7 @@ describe("行事を開く", () => {
     expect(open.map((p) => p.projectId)).toContain(project.projectId);
   });
 
-  it("閉じた行事は開いている一覧に出ない", async () => {
+  it("終わったものは開いている一覧に出ない", async () => {
     const { ward, project } = await setup();
     await db.prepare("UPDATE projects SET closed_at = ? WHERE ward_id = ? AND project_id = ?").bind("2026-11-01T00:00:00.000Z", ward.wardId, project.projectId).run();
     expect((await listOpenProjects(db, ward.wardId)).map((p) => p.projectId)).not.toContain(project.projectId);
@@ -193,7 +193,7 @@ describe("重複を弾く印", () => {
     expectStatus(result, "same");
   });
 
-  it("閉じた行事には入れない", async () => {
+  it("終わったものには入れない", async () => {
     const { ward, account, project } = await setup();
     await db.prepare("UPDATE projects SET closed_at = ? WHERE ward_id = ? AND project_id = ?").bind("2026-11-01T00:00:00.000Z", ward.wardId, project.projectId).run();
     expect(await applyChange(db, ward.wardId, project.projectId, item(person(account.accountId), "10月24日"))).toEqual({
@@ -383,7 +383,7 @@ describe("表の行", () => {
 });
 
 describe("古くなる文書", () => {
-  it("頼っている項目が変わった文書だけに古い印が付く。配ったものはそのまま残る", async () => {
+  it("頼っている項目が変わった文書だけに古い印が付く。知らせたものはそのまま残る", async () => {
     const { ward, account, project } = await setup();
     const announcement = await insertDocument(ward.wardId, project.projectId, "announcement");
     await insertDocument(ward.wardId, project.projectId, "duty_roster");
@@ -426,7 +426,7 @@ describe("古くなる文書", () => {
   });
 });
 
-describe("段取りの仕事", () => {
+describe("やること", () => {
   it("済み・進んだの印は出どころ付きで、前に進める向きだけ付く", async () => {
     const { ward, project } = await setup();
     const mark = (progress: "started" | "done", ref: string): ChangeInput => ({
@@ -438,7 +438,7 @@ describe("段取りの仕事", () => {
     expect(venue).toMatchObject({ progress: "done", progressSource: { kind: "original", ref: "o-permit" } });
   });
 
-  it("段取りにない仕事への当ては捨てる", async () => {
+  it("やることにない仕事への当ては捨てる", async () => {
     const { ward, project } = await setup();
     const result = await applyChange(db, ward.wardId, project.projectId, {
       kind: "map_task", taskKey: "no-such-task", progress: "done", source: paper("o-1"), confidence: "high", packVersion: "p",

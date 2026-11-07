@@ -12,7 +12,7 @@ import { createInvite } from "../src/space/api";
 import { OPS_COOKIE } from "../src/ops/session";
 import { cookieFrom, get, opsEnv, OPS_ID, OPS_PASSWORD, postForm, realApp } from "./helpers";
 
-it("名簿のない一年目に一つの入口から紙を送り、公開の案内を残したまま区を止めて再開する", async () => {
+it("名簿のない一年目に一つの入口から紙を送り、公開の案内を残したまま自治会を止めて再開する", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: FIRST_SLICE.nextYearTitle, year: FIRST_SLICE.eventYear, accountId: account.accountId,
@@ -34,7 +34,7 @@ it("名簿のない一年目に一つの入口から紙を送り、公開の案�
   expect(await (await get(realApp, joinedAt, member)).text()).toContain("いま使った入口は、もう使えません");
   const empty = await (await get(realApp, space, member)).text();
   expect(empty).toContain("手元の紙を撮って送る");
-  expect(empty).toContain("答えはまだありません");
+  expect(empty).toContain("返事はまだありません");
   expect(empty).not.toContain("0世帯のうち");
   expect(empty).not.toContain(`${space}?send=answer`);
 

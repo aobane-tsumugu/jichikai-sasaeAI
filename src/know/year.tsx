@@ -35,7 +35,7 @@ export interface YearRow { key: string; title: string; note: string; state: Year
 export const ACTIVITY_STEPS = [1, 5, 15, 40] as const;
 type Level = 1 | 2 | 3 | 4 | 5;
 const levelOf = (count: number): Level => (ACTIVITY_STEPS.filter((step) => count >= step).length + 1) as Level;
-const activityNote = (materials: number, answers: number) => [materials ? `資料${materials}件` : "", answers ? `答え${answers}件` : ""].filter(Boolean).join("　");
+const activityNote = (materials: number, answers: number) => [materials ? `資料${materials}件` : "", answers ? `出欠の返事${answers}件` : ""].filter(Boolean).join("　");
 /** 凡例の段の言葉。境目から作るので、境目を直せば凡例も変わる。 */
 const levelLabels = (): string[] => ACTIVITY_STEPS.map((step, index) => index === 0 ? `${step - 1}件` : step - 1 === ACTIVITY_STEPS[index - 1] ? `${step - 1}件` : `${ACTIVITY_STEPS[index - 1]}〜${step - 1}件`).concat(`${ACTIVITY_STEPS[ACTIVITY_STEPS.length - 1]}件から`);
 
@@ -83,7 +83,7 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
       if (base) used.add(base.key);
       const from = base ? position(base.from) : position(monthOf(today), dayOf(today));
       const taskless = state && !state.mapTasks.length;
-      rows.push({ key: project.projectId, title: project.title, note: taskless ? "仕事はまだありません。段取りから足せます" : "日はまだ決まっていません", state: "fact", level: levelOf(materialsOf(project.projectId) + answersOf(project.projectId)), from, to: base ? position(base.to, 30) + 1 : from + 4, href: adminPath(ward, `/projects/${project.projectId}/map`), order: from });
+      rows.push({ key: project.projectId, title: project.title, note: taskless ? "仕事はまだありません。やることから足せます" : "日はまだ決まっていません", state: "fact", level: levelOf(materialsOf(project.projectId) + answersOf(project.projectId)), from, to: base ? position(base.to, 30) + 1 : from + 4, href: adminPath(ward, `/projects/${project.projectId}/map`), order: from });
       return;
     }
     const month = monthOf(day);
@@ -97,7 +97,7 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
     const month = monthOf(record.event_day);
     claim(record.kind, month, record.title);
     const at = position(month, dayOf(record.event_day));
-    rows.push({ key: record.project_id, title: record.title, note: [`${record.year}年の記録`, activityNote(materialsOf(record.project_id), answersOf(record.project_id))].filter(Boolean).join("　"), state: "fact", level: levelOf(materialsOf(record.project_id) + answersOf(record.project_id)), from: at, to: at + 2, href: adminPath(ward, `/archive/${record.project_id}`), order: at });
+    rows.push({ key: record.project_id, title: record.title, note: [`${record.year}年に終わったもの`, activityNote(materialsOf(record.project_id), answersOf(record.project_id))].filter(Boolean).join("　"), state: "fact", level: levelOf(materialsOf(record.project_id) + answersOf(record.project_id)), from: at, to: at + 2, href: adminPath(ward, `/archive/${record.project_id}`), order: at });
   }
   for (const row of overrides.results.filter((entry) => entry.added && !entry.removed_at && entry.month)) {
     const at = position(row.month!);
@@ -122,8 +122,13 @@ export function nearToday(rows: YearRow[], today: number, limit = 14): YearRow[]
 }
 
 export function YearLegend() {
-  return <><div class="state-legend"><span class="state example">仮の内容</span><span class="state checking">質問があります</span><span class="state fact">この区の内容</span><span class="state old">見直す時期です</span></div>
-    <div class="shade-legend"><p>この区の内容の帯の濃さは、その行に入っている資料と答えの数です。</p>
+  return <><div class="state-legend"><strong class="legend-title">色の見方</strong><ul>
+      <li><span class="state example">仮の内容</span>よくある例。まだこの自治会の内容ではありません</li>
+      <li><span class="state checking">AIからの質問があります</span>押すと、質問を読んで答えられます</li>
+      <li><span class="state fact">この自治会の内容</span>届いた資料や準備中のものから分かった予定です</li>
+      <li><span class="state old">見直す時期です</span>入ってから時間がたちました</li>
+    </ul></div>
+    <div class="shade-legend"><p>紺が濃い予定ほど、送った資料や出欠の返事がたくさん入っています。</p>
       <ol>{levelLabels().map((label, index) => <li><i class={`l${index + 1}`} />{label}</li>)}</ol></div></>;
 }
 

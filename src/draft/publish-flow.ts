@@ -4,7 +4,7 @@ import { publish } from "../publish";
 
 /** ログイン済みの文脈で、既存の配布処理を使う。保存と配布の処理を二重に持たない。 */
 export async function openPublish(c: Context<AdminEnv>, path: string, fields: URLSearchParams): Promise<Response> {
-  if (!publish.admin) throw new Error("配る処理が見つかりません");
+  if (!publish.admin) throw new Error("知らせる処理が見つかりません");
   const app = new Hono<AdminEnv>();
   app.use("*", async (inner, next) => {
     inner.set("ward", c.var.ward);

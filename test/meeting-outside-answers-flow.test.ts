@@ -11,7 +11,7 @@ import { createProject } from "../src/project/api";
 import { createInvite } from "../src/space/api";
 import { cookieFrom, get, postForm, realApp } from "./helpers";
 
-it("架空の総会の答えをLINEからも世帯で数え、実行委員・班長と記録に同じ意味で出し、行事の人数を保つ", async () => {
+it("架空の総会の返事をLINEからも世帯で数え、実行委員・班長と記録に同じ意味で出し、行事の人数を保つ", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "general_meeting", title: "総会（架空）", year: fixture.eventYear, accountId: account.accountId,
@@ -66,11 +66,11 @@ it("架空の総会の答えをLINEからも世帯で数え、実行委員・班
   expect(await (await new WardBucket(env.ORIGINALS, ward.wardId).get(original.r2_path))?.text()).toBe(unreadableText);
 
   const checkCounts = (html: string, answered: number, attend: number, proxy: number, absent: number) => {
-    for (const [count, label] of [[answered, "(?:答えた世帯|\\d+世帯のうち)"], [attend, "出席"], [proxy, "委任"], [absent, "欠席"]] as const) {
+    for (const [count, label] of [[answered, "(?:返事のあった世帯|\\d+世帯のうち)"], [attend, "出席"], [proxy, "委任"], [absent, "欠席"]] as const) {
       expect(html).toMatch(new RegExp(`<b>${count}<small>世帯</small></b><span>${label}`));
     }
     expect(html).not.toContain("人数が読めません");
-    expect(html).not.toContain("参加すると答えた人数");
+    expect(html).not.toContain("参加すると返事をした人数");
     expect(html).not.toContain("0<small>人");
   };
   checkCounts(await (await get(realApp, answersPath, cookie)).text(), 5, 1, 2, 2);
@@ -82,7 +82,7 @@ it("架空の総会の答えをLINEからも世帯で数え、実行委員・班
   checkCounts(memberPage, 5, 1, 2, 2);
   expect(memberPage).toContain(`委任（委任する相手：${fixture.firstOfficer}）`);
   expect(memberPage).toContain("委任（委任する相手：空欄）");
-  expect(memberPage).toContain(`${fixture.district}: 答えた世帯3世帯 / 出席1世帯 / 委任2世帯 / 欠席0世帯`);
+  expect(memberPage).toContain(`${fixture.district}: 返事のあった世帯3世帯 / 出席1世帯 / 委任2世帯 / 欠席0世帯`);
   const token = await createInvite(env.DB, ward.wardId, id, "leader", fixture.district, account.accountId, true);
   const leaderEntry = await get(realApp, `${space}/person/${token}`);
   const leaderCookie = cookieFrom(leaderEntry, `space_${id}`);
@@ -100,7 +100,7 @@ it("架空の総会の答えをLINEからも世帯で数え、実行委員・班
   } finally { dispatch.mockRestore(); }
   const instruction = await env.DB.prepare("SELECT instruction FROM jobs WHERE ward_id = ? AND project_id = ? AND task = 'report'")
     .bind(ward.wardId, id).first<string>("instruction");
-  expect(instruction).toContain("答えた世帯5世帯 / 出席1世帯 / 委任2世帯 / 欠席2世帯");
+  expect(instruction).toContain("返事のあった世帯5世帯 / 出席1世帯 / 委任2世帯 / 欠席2世帯");
   expect(instruction).toContain("当日の出席人数に置き換えず");
   expect(instruction).not.toContain(fixture.firstOfficer);
   const closing = await (await get(realApp, close, cookie)).text();
@@ -149,5 +149,5 @@ it("架空の総会の答えをLINEからも世帯で数え、実行委員・班
     { peopleCount: 3, adultsCount: 2, childrenCount: 1, meetingStatus: null },
   ]);
   expect((await postForm(realApp, `${root}/close/${event.projectId}/finalize`, { body: fixture.reportText }, cookie)).status).toBe(303);
-  expect(await (await get(realApp, `${root}/archive/${event.projectId}`, cookie)).text()).toContain("参加すると答えた人数3人");
+  expect(await (await get(realApp, `${root}/archive/${event.projectId}`, cookie)).text()).toContain("参加すると返事をした人数3人");
 });

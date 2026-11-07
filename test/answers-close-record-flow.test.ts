@@ -24,8 +24,8 @@ it("資料なしで答えを入れ、一度で閉じ、紹介と記録から翌�
     return response.text();
   };
   expect((await getProjectState(env.DB, ward.wardId, project.projectId))?.questions).toHaveLength(0);
-  expect(await read(answers)).toContain("まだ答えはありません");
-  expect(await read(`${answers}?view=list`)).toContain("答えはまだありません");
+  expect(await read(answers)).toContain("まだ返事はありません");
+  expect(await read(`${answers}?view=list`)).toContain("返事はまだありません");
   expect(await read(`${answers}?view=helpers`)).toContain("まだ申し込みはありません");
   const send = await read(`${answers}?view=send`);
   expect(send).toContain(`action="${answers}/sheet"`);
@@ -40,7 +40,7 @@ it("資料なしで答えを入れ、一度で閉じ、紹介と記録から翌�
   const enteredPage = await read(entered.headers.get("location")!);
   expect(enteredPage).toContain("入れました。数に入りました");
   expect(enteredPage).toContain("続けて入れる");
-  expect(enteredPage).toContain("答えの一覧で直す");
+  expect(enteredPage).toContain("返事の一覧で直す");
   expect(await listAnswers(env.DB, ward.wardId, project.projectId)).toMatchObject([{ peopleCount: 3 }]);
   // 文書の題に行事名が入っていなくても、行事の記録としてたどれる。
   expect(await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
@@ -69,8 +69,8 @@ it("資料なしで答えを入れ、一度で閉じ、紹介と記録から翌�
   const closing = await read(close);
   expect(closing).toContain("報告の中に見つかったもの");
   expect(closing).toContain(`名簿の名前: ${fixture.firstHousehold}`);
-  expect(closing).toContain("このまま閉じることもできます");
-  expect(closing).toContain("もう一度開いても戻りません");
+  expect(closing).toContain("このまま終わりにすることもできます");
+  expect(closing).toContain("終わりを取り消しても戻りません");
   expect(closing).not.toContain("<svg");
   const task = (await getProjectState(env.DB, ward.wardId, project.projectId))?.mapTasks.find((entry) => entry.taskKey === "venue");
   if (!task) throw new Error("記録を残す仕事がありません。");
@@ -85,31 +85,31 @@ it("資料なしで答えを入れ、一度で閉じ、紹介と記録から翌�
     method: "POST", headers: { cookie, origin: "http://localhost" }, body: form,
   }, env);
   expect(closed.status).toBe(303);
-  expect(await read(closed.headers.get("location")!)).toContain("記録に残しました");
+  expect(await read(closed.headers.get("location")!)).toContain("を終わりにしました");
   const publicPage = await read(`/${ward.slug}/p/${project.projectId}`);
   expect(publicPage).toContain(fixture.firstHousehold);
   expect(publicPage).not.toContain(fixture.nextYearChange);
   const savedRecord = await read(record);
   for (const value of [fixture.firstHousehold, fixture.requestedBy, fixture.nextYearDifficulty, fixture.nextYearChange]) expect(savedRecord).toContain(value);
   expect(savedRecord).toContain("<summary>案内</summary>");
-  expect(savedRecord.indexOf("これをもとに新しく始める")).toBeLessThan(savedRecord.indexOf("<h2>段取り"));
+  expect(savedRecord.indexOf("これをもとに新しく始める")).toBeLessThan(savedRecord.indexOf("<h2>やること"));
   const published = await postForm(realApp, `${close}/activity`, {
     action: "publish", introduction: fixture.reportText, membershipBurden: fixture.requestedBy, membershipBenefit: fixture.nextYearChange,
   }, cookie);
   expect(published.status).toBe(303);
-  expect(await read(published.headers.get("location")!)).toContain("区のページで見る");
+  expect(await read(published.headers.get("location")!)).toContain("住民向けのページで見る");
   expect(await read(`${record}?view=seed`)).toContain('name="eventDay" type="date" required');
   const started = await postForm(realApp, `${record}/seed`, {
     title: fixture.nextYearTitle, year: String(fixture.nextYear), eventDay: fixture.eventDay,
   }, cookie);
   expect(started.status).toBe(303);
-  expect(await read(started.headers.get("location")!)).toContain("去年の段取りを新しい日に置き直しました");
+  expect(await read(started.headers.get("location")!)).toContain("去年のやることを新しい日に置き直しました");
   const nextId = new URL(started.headers.get("location")!, "http://localhost").searchParams.get("started");
   if (!nextId) throw new Error("新しく始めた行事がありません。");
   await env.DB.prepare("UPDATE project_map_tasks SET removed_at = ? WHERE ward_id = ? AND project_id = ?")
     .bind(new Date().toISOString(), ward.wardId, nextId).run();
   const nextClose = `${root}/close/${nextId}`;
-  expect(await read(nextClose)).toContain("報告だけでも閉じられます");
+  expect(await read(nextClose)).toContain("報告だけでも終わりにできます");
   const introduction = await read(`${nextClose}?view=activity`);
   expect(introduction).toContain(fixture.requestedBy);
   expect(introduction).toContain(fixture.nextYearChange);
@@ -117,5 +117,5 @@ it("資料なしで答えを入れ、一度で閉じ、紹介と記録から翌�
   expect((await postForm(realApp, `${nextClose}/finalize`, { body: fixture.reportText }, cookie)).status).toBe(303);
   expect(await read(`${root}/archive/${nextId}`)).toContain("残っている仕事はありません");
   const reopened = await postForm(realApp, `${nextClose}/reopen`, {}, cookie);
-  expect(await read(reopened.headers.get("location")!)).toContain("もう一度開きました");
+  expect(await read(reopened.headers.get("location")!)).toContain("終わりを取り消しました");
 });

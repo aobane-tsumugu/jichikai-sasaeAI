@@ -182,7 +182,7 @@ export async function acceptLineWebhook(
           VALUES (?, ?, ?)`).bind(wardId, event.source.groupId, now.toISOString()).run();
         if ((inserted.meta.changes ?? 0) === 0 || !event.replyToken) continue;
         try {
-          await replyLineText(accessToken, event.replyToken, "自治会の公式LINEです。このグループに貼られた写真と文は、全部、自治会の記録に残ります。公式あての問い合わせには一言返し、写真に確かめが要るときは聞きます。それ以外は何も書きません。残したくないときは、公式をグループから外せます。", fetcher);
+          await replyLineText(accessToken, event.replyToken, "自治会のLINEです。このグループに貼られた写真と文は、全部、自治会の記録に残ります。役員に問い合わせるときは、「自治会へ」と書き出すか、自治会のLINEを＠で指定してください。一言返します。写真に確かめが要るときは聞きます。それ以外は何も書きません。残したくないときは、自治会のLINEをグループから外せます。", fetcher);
           await db.prepare("UPDATE line_group_notices SET notice_sent_at = ? WHERE ward_id = ? AND group_id = ? AND notice_sent_at IS NULL")
             .bind(now.toISOString(), wardId, event.source.groupId).run();
         } catch (error) {
@@ -211,7 +211,7 @@ export async function acceptLineWebhook(
         // 一対一は /v2/bot/profile、グループと複数人トークはメンバーのプロフィールで名前を取る。取れない時は名前なし。
         senderDisplayName: await getLineMemberDisplayName(accessToken, event.source, fetcher),
         ...(event.message.type === "text" ? { text: event.message.text ?? "" } : {}),
-        officialAddressed: event.source.type === "user" || event.message.mention?.mentionees?.some((mention) => mention.isSelf === true) || /^公式へ/.test(event.message.text ?? ""),
+        officialAddressed: event.source.type === "user" || event.message.mention?.mentionees?.some((mention) => mention.isSelf === true) || /^(公式へ|自治会へ)/.test(event.message.text ?? ""),
       };
       const bundleId = await joinLineBundle(db, wardId, payload.destination!, eventId, source, original.receivedAt);
       original.bundleId = bundleId;

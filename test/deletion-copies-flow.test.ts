@@ -65,7 +65,7 @@ it("取消と原本の消去を写しにも反映して戻し、古いAI処理�
       if (!queue.results.length) return;
       await tick();
     }
-    throw new Error("架空の区の消去が終わりませんでした");
+    throw new Error("架空の自治会の消去が終わりませんでした");
   };
   try {
     await env.DB.prepare("UPDATE jobs SET status = 'done', session_id = ? WHERE ward_id = ? AND job_id = ?")
@@ -195,7 +195,7 @@ it("取消と原本の消去を写しにも反映して戻し、古いAI処理�
   }
 });
 
-it("資料を取り下げて消しても配った案内と日次の本文を保ち、出どころが分かる表の行だけを外す", async () => {
+it("資料を取り下げて消しても知らせた案内と日次の本文を保ち、出どころが分かる表の行だけを外す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const w = ward.wardId;
   const project = await createProject(env.DB, w, { kind: "event", title: fixture.nextYearTitle, year: fixture.eventYear, accountId: account.accountId });
@@ -230,7 +230,7 @@ it("資料を取り下げて消しても配った案内と日次の本文を保�
     versionId: version.version_id, versionNo: String(version.version_no), lineDelivery: "skip" }, cookie)).status).toBe(303);
   const body = await env.DB.prepare("SELECT body FROM document_versions WHERE ward_id = ? AND version_id = ?")
     .bind(w, version.version_id).first<string>("body");
-  if (body === null) throw new Error("架空の配った案内の本文がありません");
+  if (body === null) throw new Error("架空の知らせた案内の本文がありません");
   expect(body).toContain(fixture.publicAnnouncement);
   const tables = await currentPublicationTables(env.DB, w, project.projectId);
   expect(tables).toHaveLength(3);

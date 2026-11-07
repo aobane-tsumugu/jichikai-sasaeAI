@@ -27,7 +27,7 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
 
   expect(await read(`${root}/inquiries`)).toContain("届いている問い合わせはありません");
   expect(await read(`${root}/requests/city`)).toContain("まだ出していない依頼はありません");
-  expect(await read(`${root}/ledger`)).toContain("行事はまだありません");
+  expect(await read(`${root}/ledger`)).toContain("準備中のものはまだありません");
   expect(await read(`${root}/archive/map`)).toContain("予定はまだありません");
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: fixture.nextYearTitle, year: fixture.nextYear,
@@ -61,8 +61,8 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
   }
   const inquiries = await read(`${root}/inquiries`);
   expect(inquiries).toContain("同じ内容が2件あります");
-  expect(inquiries).toContain(`「${fixture.publicDayText}」と書かれています`);
-  expect(inquiries).toContain("知らせを待たずに、ときどき見てください");
+  expect(inquiries).toContain(`急ぎかもしれません（「${fixture.publicDayText}」とあります）`);
+  expect(inquiries).toContain("通知を待たずに、ときどき見てください");
   const inquiry = await env.DB.prepare("SELECT inquiry_id FROM inquiry_records WHERE ward_id = ? ORDER BY received_at LIMIT 1")
     .bind(ward.wardId).first<{ inquiry_id: string }>();
   if (!inquiry) throw new Error("架空の問い合わせがありません");
@@ -70,10 +70,10 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
   const inquiryPage = await read(inquiryPath);
   expect(inquiryPage).toContain("返事を書いて送ると、来たところへ届き");
   expect(inquiryPage).toContain('<button name="operation" value="send">返事を1か所に送る</button>');
-  expect(inquiryPage).toContain('<button class="secondary" name="operation" value="record">答えた内容を残す</button>');
-  expect(inquiryPage).toContain("公式LINEで返事を送れない人がいます");
+  expect(inquiryPage).toContain('<button class="secondary" name="operation" value="record">返事した内容を残す</button>');
+  expect(inquiryPage).toContain("自治会のLINEで返事を送れない人がいます");
   expect(inquiryPage).toContain("送り先が分からないため、LINEでは送れません");
-  expect(inquiryPage).toContain("電話や会って答えたら、答えた内容を残してください");
+  expect(inquiryPage).toContain("電話や会って返事をしたら、返事した内容を残してください");
   const saved = await follow(await postForm(realApp, inquiryPath, {
     answer: fixture.reportText, submittedToCity: "yes", kind: "request", operation: "record",
   }, cookie));
@@ -84,10 +84,13 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
   expect(notes).toContain(fixture.reportText);
   expect(notes).toContain(fixture.nextYearChange);
   expect(await read(`${inquiryPath}/original`)).toContain(fixture.publicAnnouncement);
-  const rawInquiries = await env.DB.prepare("SELECT subject, answer, answer_history, line_answer_sent_at FROM inquiry_records WHERE ward_id = ?")
-    .bind(ward.wardId).all<{ subject: string; answer: string; answer_history: string; line_answer_sent_at: string | null }>();
+  const rawInquiries = await env.DB.prepare("SELECT subject, answer, answer_history, line_answer_sent_at, submitted_to_city FROM inquiry_records WHERE ward_id = ?")
+    .bind(ward.wardId).all<{ subject: string; answer: string; answer_history: string; line_answer_sent_at: string | null; submitted_to_city: number }>();
   expect(rawInquiries.results).toHaveLength(2);
+  expect(notes).not.toContain("もう市に伝えた");
   for (const row of rawInquiries.results) {
+    // 「もう市に伝えた」を送っても、この画面では市に伝えたかどうかを書き換えない。
+    expect(row.submitted_to_city).toBe(0);
     expect(row.subject).toBe(fixture.publicAnnouncement);
     expect(row.answer).toBe(fixture.nextYearChange);
     expect(JSON.parse(row.answer_history)).toHaveLength(2);
@@ -103,7 +106,7 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
   const sponsor = state?.tables.sponsors.find((r) => r.scope === "current");
   if (!sponsor) throw new Error("架空の協賛の行がありません");
   const ledgerPath = `${root}/projects/${id}/ledger`;
-  expect(await read(ledgerPath)).toContain("額の情報なし");
+  expect(await read(ledgerPath)).toContain("額はまだ書いていません");
   const edited = await follow(await postForm(realApp, `${ledgerPath}/${sponsor.rowId}`, {
     counterpart: fixture.sponsorName, amount: String(fixture.sponsorAmount), direction: "income", note: fixture.reportText,
   }, cookie));
@@ -152,7 +155,7 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
     title: "知らせ", scope: "public", based_on: String(beforeNotice.project.stateVersion),
     text: fixture.rainAnnouncement, item_place: fixture.layoutSpot,
   }, cookie));
-  expect(noticeSaved).toContain("保存しました。まだ配っていません");
+  expect(noticeSaved).toContain("保存しました。まだ知らせていません");
   expect(noticeSaved).toContain(fixture.rainAnnouncement);
   const noticeRestored = await follow(await postForm(realApp, `${noticePath}/restore/1`, {}, cookie));
   expect(noticeRestored).toContain("前の下書きに戻しました");
@@ -164,17 +167,17 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
   expect(await read(cityPath)).toContain(fixture.reportText);
   const today = await read(`${root}/projects/today`);
   expect(today).toContain("これからの仕事");
-  expect(today).not.toContain("まだ答えていない世帯");
+  expect(today).not.toContain("まだ返事のない世帯");
   expect(await read(`${root}/archive/map`)).toContain('class="row-link"');
 
   for (const path of [`/inquiries/${inquiry.inquiry_id}`, `/projects/${id}/ledger/${sponsor.rowId}`, `/intake/originals/${original.originalId}?raw=1`]) {
     expect((await get(realApp, `/${other.ward.slug}/admin${path}`, other.cookie)).status).toBe(404);
   }
   const infoSaved = await follow(await postForm(realApp, `${root}/settings/info`, { contact: fixture.requestedBy, squads: "" }, cookie));
-  expect(infoSaved).toContain("すでに配った案内は変わりません");
+  expect(infoSaved).toContain("すでに知らせた案内は変わりません");
   const templateSaved = await follow(await postForm(realApp, `${root}/settings/templates`, { name: fixture.draftTitle, body: fixture.draftText }, cookie));
-  expect(templateSaved).toContain("次に知らせを作るときから");
-  expect(await read(`${root}/settings/people`)).toContain("役員の一覧");
+  expect(templateSaved).toContain("次に連絡を作るときから");
+  expect(await read(`${root}/settings/people`)).toContain("この画面を使える人");
   const removed = await postForm(realApp, `${inquiryPath}/remove`, {}, cookie);
   expect(removed.status).toBe(200);
   expect(await removed.text()).toContain("問い合わせの記録を消しました");

@@ -60,7 +60,7 @@ it("リンクを出し直してもLINE・メール・端末を保ち、メール
     const first = await postForm(realApp, `${people}/accounts/${account.accountId}/reset`, {}, cookie, runtime);
     expect(first.status).toBe(200);
     const oldToken = /\/invite\/([A-Za-z0-9_-]{43})/.exec(await first.text())?.[1];
-    if (!oldToken) throw new Error("入るためのリンクがありません");
+    if (!oldToken) throw new Error("ログインするためのリンクがありません");
     const second = await postForm(realApp, `${people}/accounts/${account.accountId}/reset`, {}, cookie, runtime);
     expect(second.status).toBe(200);
     expect((await get(realApp, `${root}/invite/${oldToken}`)).status).toBe(400);

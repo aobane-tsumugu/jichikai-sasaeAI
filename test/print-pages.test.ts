@@ -58,8 +58,8 @@ describe("印刷用ページ", () => {
       if (!entry.answer) expect(paper.match(/class="sheet"/g)).toHaveLength(1);
       if (entry.answer) expect(paper).toContain(entry.kind === "general_meeting" ? "委任する相手" : "参加する人数");
       const poster = await read(`${path}/poster`);
-      expect(poster).toContain("区のページを開くQR");
-      expect(poster.includes("答えの締切：")).toBe(entry.answer);
+      expect(poster).toContain("住民向けのページを開くQR");
+      expect(poster.includes("返事の締切：")).toBe(entry.answer);
       expect(poster.includes("答えてください")).toBe(entry.answer);
       for (const kind of ["answer", "leader"]) {
         expect((await get(realApp, `${path}/${kind}`, cookie)).status).toBe(entry.answer ? 200 : 404);

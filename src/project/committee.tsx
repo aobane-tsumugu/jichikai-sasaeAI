@@ -29,19 +29,19 @@ async function show(c: Context<AdminEnv>, failed?: { rowId: string; data: RowDat
   return c.html(<AdminPage ward={ward} account={account} title="実行委員名簿" back={{ href: adminPath(ward, `/projects/${id}`), label: "届いた資料へ" }}>
     <h1>実行委員名簿</h1>
     {failed ? <Notice error>保存できませんでした。名前を入れ、同じ名前と役の人がいないか確かめてください。書いた内容は下に残っています。</Notice> : null}
-    {removeFailed ? <Notice error>名簿から外せませんでした。行事が閉じていないか確かめてください。</Notice> : null}
-    {saved || removed ? <><Notice>{saved ? "保存しました。" : "名簿から外しました。間違えたときは、下の「人を足す」からもう一度足せます。"}配り直すまで、配った名簿は変わりません。</Notice><section class="next"><strong>次は</strong><p>届けるときは、実行委員と班長に配ってください。</p><a class="button" href={adminPath(ward, `/publish/${id}`)}>配る画面へ</a></section></> : null}
+    {removeFailed ? <Notice error>名簿から外せませんでした。終わりにしていないか確かめてください。</Notice> : null}
+    {saved || removed ? <><Notice>{saved ? "保存しました。" : "名簿から外しました。間違えたときは、下の「人を足す」からもう一度足せます。"}載せ直すまで、実行委員と班長のページの名簿は変わりません。</Notice><section class="next"><strong>次は</strong><p>届けるときは、実行委員と班長のページに載せてください。</p><a class="button" href={adminPath(ward, `/publish/${id}`)}>知らせる画面へ</a></section></> : null}
     {!rows.length ? <><div class="notice" role="status"><strong>今年の実行委員名簿はまだありません</strong><p>去年の名簿は、そのままでは今年の名簿にしません。</p></div>
       {!closed ? <section class="next"><strong>次は</strong><p>名簿の資料を送ると、ここに入ります。下の「人を足す」から一人ずつ足すこともできます。</p><a class="button" href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}`)}>名簿の資料を送る</a></section> : null}</> : <>
-    <p class="lead">実行委員の名前、役、連絡先です。押すと直せます。当番表や進め方と一緒に、実行委員と班長に配ります。</p>
+    <p class="lead">実行委員の名前、役、連絡先です。押すと直せます。当番表や進め方と一緒に、実行委員と班長のページに載せます。</p>
     {closed ? <MaterialsTable table="committee" items={rows.map((row) => ({ kind: "committee", data: row.data }))} /> : rows.map((row) => <details class="fold" open={failed?.rowId === row.rowId}><summary>{row.data.name}{row.data.role ? `　${row.data.role}` : ""}</summary><div>
       <form method="post" action={`${base}/${row.rowId}`}><Fields id={row.rowId} data={failed?.rowId === row.rowId ? failed.data : row.data} /><button class="secondary">この人の名簿を保存する</button></form>
       <form method="post" action={`${base}/${row.rowId}/remove`}><button class="danger">この人を名簿から外す</button></form>
     </div></details>)}
     </>}
     {!closed ? <details class="fold" open={failed?.rowId === NEW_ROW}><summary>人を足す</summary><div><form method="post" action={base}><Fields id={NEW_ROW} data={failed?.rowId === NEW_ROW ? failed.data : {}} /><button class="secondary">名簿に足す</button></form></div></details> : null}
-    {rows.length && !saved && !removed ? <><p class="muted">区のページには出しません。配り直すまで、配った名簿は変わりません。</p>
-    {!closed ? <a class="quiet" href={adminPath(ward, `/publish/${id}`)}>配る画面へ</a> : null}</> : null}
+    {rows.length && !saved && !removed ? <><p class="muted">住民向けのページには出しません。載せ直すまで、実行委員と班長のページの名簿は変わりません。</p>
+    {!closed ? <a class="quiet" href={adminPath(ward, `/publish/${id}`)}>知らせる画面へ</a> : null}</> : null}
   </AdminPage>, failed ? 400 : removeFailed ? 409 : 200);
 }
 

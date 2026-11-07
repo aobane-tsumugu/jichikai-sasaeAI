@@ -4,7 +4,7 @@ import { seedAdmin } from "../src/core/testing";
 import { createProject, getProjectState } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("人が段取りに足した仕事にも、これをもとに新しく始めるで去年の三つの記録を出す", async () => {
+it("人がやることに足した仕事にも、これをもとに新しく始めるで去年の三つの記録を出す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const source = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "架空の行事", year: 2026, eventDay: "2026-10-24", accountId: account.accountId,
@@ -27,7 +27,7 @@ it("人が段取りに足した仕事にも、これをもとに新しく始め�
   const location = seeded.headers.get("location");
   expect(location).toMatch(/\?started=.+$/);
   const projectId = new URL(location!, "http://localhost").searchParams.get("started");
-  if (!projectId) throw new Error("新しい段取りがありません");
+  if (!projectId) throw new Error("新しいやることがありません");
   const seededTask = (await getProjectState(env.DB, ward.wardId, projectId))?.mapTasks.find((row) => row.name === task.name);
   if (!seededTask) throw new Error("引き継いだ仕事がありません");
   const page = await get(realApp, `${root}/projects/${projectId}/map/${seededTask.taskId}`, cookie);

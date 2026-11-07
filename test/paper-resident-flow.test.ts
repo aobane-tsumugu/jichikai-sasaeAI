@@ -69,7 +69,7 @@ it("資料も班もない一年目に案内を配り、紙だけで返す相手�
     expect(leaderResponse.status).toBe(200);
     const leader = await leaderResponse.text();
     expect(leader).toContain("<h1>班長さんへ</h1>");
-    expect(leader).toContain("「答えた世帯」に名前が出た回答票");
+    expect(leader).toContain("「返事のあった世帯」に名前が出た回答票");
     expect(leader).toContain("名前が読めないようにして捨ててかまいません");
     expect(leader).toContain("ついでのときに役員に渡してください");
     expect(leader).not.toContain("なくしたとき、分からないときは");
@@ -92,7 +92,7 @@ it("資料も班もない一年目に案内を配り、紙だけで返す相手�
       expect(html.match(/class="sheet"/g)).toHaveLength(path === "announcement" ? 2 : 1);
     }
     const poster = await read(`${long}/poster`);
-    expect(poster).toContain("答えの締切：10月24日（日）");
+    expect(poster).toContain("返事の締切：10月24日（日）");
     expect(poster).toContain(FIRST_SLICE.firstOfficer);
     expect(poster).toContain("2026年9月10日に配りました");
     const pack = getDraftPack("announcement");

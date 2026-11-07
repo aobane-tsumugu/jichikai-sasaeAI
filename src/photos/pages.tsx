@@ -40,7 +40,7 @@ reportPhotoAdmin.get("/photos/:projectId", async (c) => {
       const prepared = draft?.state === "ready" && draft.prepared ? JSON.parse(draft.prepared) as PreparedPhoto : null;
       return <section class="panel"><h2>写真{index + 1}</h2>
         {prepared ? <form method="post" action={`${base}/${photo.original_id}/edit`}>
-          <p>写真を押すと隠す範囲を足せます。枠を押すと外せます。指でなぞると広く隠せます。直したところは下のボタンで反映します。直さなくても配れます。</p>
+          <p>写真を押すと隠す範囲を足せます。枠を押すと外せます。指でなぞると広く隠せます。直したところは下のボタンで反映します。直さなくても知らせられます。</p>
           <div data-photo-editor style="position:relative;max-width:640px;touch-action:none">
             <img style="display:block;width:100%;height:auto" draggable="false" src={`${base}/${photo.original_id}/preview?revision=${draft?.revision}`} alt={`報告に使う写真${index + 1}`} />
             <input type="hidden" name="masks" value={JSON.stringify(prepared.masks)} />
@@ -61,13 +61,13 @@ reportPhotoAdmin.get("/photos/:projectId", async (c) => {
           <button class="secondary">この写真を直す</button>
         </form> : <>
           <img style="display:block;max-width:100%;max-height:320px" loading="lazy" src={`${base}/${photo.original_id}/source`} alt={`届いた写真${index + 1}`} />
-          {draft ? <p>{draft.state === "processing" ? "顔を隠しています。今配ると、この写真は載りません。" : "この写真は載りません。"}</p> : null}
+          {draft ? <p>{draft.state === "processing" ? "顔を隠しています。今知らせると、この写真は載りません。" : "この写真は載りません。"}</p> : null}
           {!project.closed_at && !draft ? <form method="post" action={`${base}/${photo.original_id}/select`}><button class="secondary">報告に使う</button></form> : null}
         </>}
         {draft && !project.closed_at ? <form method="post" action={`${base}/${photo.original_id}/remove`}><button class="secondary">報告から外す</button></form> : null}
       </section>;
     })}
-    {!photos.results.length ? <p>この行事には写真がまだ届いていません。</p> : null}
+    {!photos.results.length ? <p>写真はまだ届いていません。</p> : null}
     <a class="button" href={adminPath(ward, `/projects/${projectId}/draft/report`)}>報告の下書きへ戻る</a>
     <script dangerouslySetInnerHTML={{ __html: EDITOR_SCRIPT }} />
   </AdminPage>);
@@ -120,7 +120,7 @@ reportPhotoAdmin.post("/photos/:projectId/:originalId/:action", async (c) => {
     await queueReportPhoto(c.env, ward.wardId, projectId, originalId, { mode, masks }, c.executionCtx);
     return c.redirect(`${back.href}?saved=1`, 303);
   } catch {
-    return adminResult(c, "写真を準備できませんでした。報告は写真なしでも配れます。", 400, back, "もう一度写真を選べます。");
+    return adminResult(c, "写真を準備できませんでした。報告は写真なしでも知らせられます。", 400, back, "もう一度写真を選べます。");
   }
 });
 

@@ -3,7 +3,7 @@ import { nowIso } from "../core/ids";
 import { listWards } from "./wards";
 
 export const AI_CREDENTIAL_ALERT = "ai.vault_credential.refresh_failed";
-export const AI_CREDENTIAL_MESSAGE = "AIにつなぐ鍵の更新に失敗しました。提供側で鍵の設定を確かめてください。";
+export const AI_CREDENTIAL_MESSAGE = "AIにつなぐ鍵の更新に失敗しました。鍵の設定を確かめてください。";
 
 /** 署名済みの知らせのIDを区の接続と照合する。鍵や受け取った本文は保存しない。 */
 export async function recordCredentialFailure(env: Env, credentialId: string, vaultId?: string): Promise<boolean> {

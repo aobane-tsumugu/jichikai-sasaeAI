@@ -4,10 +4,10 @@ import { seedAdmin } from "../src/core/testing";
 import { createProject } from "../src/project/api";
 import { get, realApp } from "./helpers";
 
-it("閉じた段取りがある時だけ、新しい年の順にこれをもとに新しく始めるへの入口を出す", async () => {
+it("閉じたやることがある時だけ、新しい年の順にこれをもとに新しく始めるへの入口を出す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
-  expect(await (await get(realApp, `${root}/projects`, cookie)).text()).not.toContain("去年の記録から始める");
+  expect(await (await get(realApp, `${root}/projects`, cookie)).text()).not.toContain("去年の終わったものから始める");
   const open = await createProject(env.DB, ward.wardId, { kind: "event", title: "開いている行事（架空）", year: 2026, accountId: account.accountId });
   const closed = [];
   for (const year of [2024, 2025]) {
@@ -18,7 +18,7 @@ it("閉じた段取りがある時だけ、新しい年の順にこれをもと�
   }
   const page = await get(realApp, `${root}/projects`, cookie);
   const html = await page.text();
-  expect(html).toContain("去年の記録から始める");
+  expect(html).toContain("去年の終わったものから始める");
   expect(html.indexOf("2025年 2025年の行事")).toBeLessThan(html.indexOf("2024年 2024年の行事"));
   for (const project of closed) expect(html).toContain(`href="${root}/archive/${project.projectId}"`);
   expect(html).not.toContain(`${root}/archive/${open.projectId}`);

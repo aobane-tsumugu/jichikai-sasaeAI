@@ -17,15 +17,15 @@ it("十五項目を基本に、書く、外す、戻す、足す、名前を変�
   const list = await read(`${root}/know`, cookie);
   expect(KNOW_BASE).toHaveLength(15);
   for (const base of KNOW_BASE) expect(list).toContain(base.title);
-  expect(list).toContain("15項目のうち0項目が入っています。");
+  expect(list).toContain("15項目のうち0項目が書かれています。");
   await postForm(realApp, `${root}/know/meeting`, { body: "毎年4月。半数以上の出席で成立。" }, cookie);
   const after = await read(`${root}/know`, cookie);
   expect(after).toContain("毎年4月。半数以上の出席で成立。");
-  expect(after).toContain("15項目のうち1項目が入っています。");
+  expect(after).toContain("15項目のうち1項目が書かれています。");
   await postForm(realApp, `${root}/know/duties/remove`, {}, cookie);
   const removed = await read(`${root}/know`, cookie);
   expect(removed).toContain("外した項目（1つ）");
-  expect(removed).toContain("14項目のうち1項目が入っています。");
+  expect(removed).toContain("14項目のうち1項目が書かれています。");
   await postForm(realApp, `${root}/know/duties/restore`, {}, cookie);
   await postForm(realApp, `${root}/know/events/title`, { title: "祭りと行事" }, cookie);
   const added = await postForm(realApp, `${root}/know`, { title: "架空の水路の管理" }, cookie);
@@ -34,7 +34,7 @@ it("十五項目を基本に、書く、外す、戻す、足す、名前を変�
   const final = await read(`${root}/know`, cookie);
   expect(final).toContain("祭りと行事");
   expect(final).toContain("架空の水路の管理");
-  expect(final).toContain("16項目のうち1項目が入っています。");
+  expect(final).toContain("16項目のうち1項目が書かれています。");
   expect((await get(realApp, `${root}/know/none`, cookie)).status).toBe(404);
 });
 
@@ -64,7 +64,7 @@ it("総会を閉じたあと直されていない項目と、時間の経った�
   expect(old.note).toBe("1年2か月前に見直しました");
 });
 
-it("区の資料は行き先の無い紙も出し、項目につなげても一枚のまま残り、他の区からは見えない", async () => {
+it("自治会の資料は行き先の無い紙も出し、項目につなげても一枚のまま残り、他の区からは見えない", async () => {
   const { ward, cookie } = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
@@ -73,17 +73,17 @@ it("区の資料は行き先の無い紙も出し、項目につなげても一�
   const originalId = received.received[0]!.originalId;
   const files = await read(`${root}/files`, cookie);
   expect(files).toContain("架空の規約.jpg");
-  expect(files).toContain("どこにもつながっていません");
+  expect(files).toContain("まだどれの資料にもしていません");
   await postForm(realApp, `${root}/know/meeting/links`, { originalId }, cookie);
   const linked = await read(`${root}/files`, cookie);
   expect(linked).toContain(KNOW_BASE.find((base) => base.key === "meeting")!.title);
-  expect(linked).not.toContain("どこにもつながっていません");
+  expect(linked).not.toContain("まだどれの資料にもしていません");
   expect(await read(`${root}/know/meeting`, cookie)).toContain("つながりを外す");
   expect((await postForm(realApp, `/${other.ward.slug}/admin/know/meeting/links`, { originalId }, other.cookie)).status).toBe(404);
   expect(await read(`/${other.ward.slug}/admin/files`, other.cookie)).not.toContain("架空の規約");
 });
 
-it("行き先のない写真は聞かずに区の資料へ残し、名簿と読めた写真だけを聞き、答えたら二度聞かない", async () => {
+it("行き先のない写真は聞かずに自治会の資料へ残し、名簿と読めた写真だけを聞き、答えたら二度聞かない", async () => {
   const { ward, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   const photo = async (n: number, documentKind: string) => {
@@ -99,18 +99,18 @@ it("行き先のない写真は聞かずに区の資料へ残し、名簿と読�
   await photo(1, "other");
   const rosterJob = await photo(2, "roster");
   const inbox = await read(`${root}/inbox`, cookie);
-  expect(inbox).toContain("質問があります（1件）");
+  expect(inbox).toContain("AIからの質問があります（1件）");
   expect(inbox).toContain("この資料で、世帯の名簿を入れ直しますか？");
-  expect(inbox).toContain("どこにもつながっていません");
+  expect(inbox).toContain("まだどれの資料にもしていません");
   expect(inbox).toContain("架空の紙1");
-  expect(await read(`${root}/`, cookie)).toContain("届いた写真やファイルのうち、1件に質問があります");
+  expect(await read(`${root}/`, cookie)).toContain("届いた写真やファイルのうち、1件にAIからの質問があります");
   expect(await read(`${root}/files`, cookie)).toContain("架空の紙1");
   await postForm(realApp, `${root}/inbox/roster/${rosterJob}/skip`, {}, cookie);
   const after = await read(`${root}/inbox`, cookie);
   expect(after).not.toContain("この資料で、世帯の名簿を入れ直しますか？");
   expect(after).toContain("架空の紙2");
   const pick = await read(`${root}/inbox/item-1/pick`, cookie);
-  expect(pick).toContain("役員が知っておくことにつなげる");
+  expect(pick).toContain("自治会の基本情報につなげる");
   expect(pick).toContain("総会");
 });
 
@@ -123,7 +123,7 @@ it("一年の地図は一般の例から始まり、行事が入ると置き換�
   expect(empty).toContain("仮の内容");
   await postForm(realApp, `${root}/year/drill/remove`, {}, cookie);
   const year = await read(`${root}/year`, cookie);
-  expect(year).toContain("外した行（1つ）");
+  expect(year).toContain("外した予定（1つ）");
   expect(year).not.toContain('<b>防災訓練</b>');
   await postForm(realApp, `${root}/year/drill/restore`, {}, cookie);
   await postForm(realApp, `${root}/year`, { title: "架空の草刈り", month: "6" }, cookie);
@@ -194,10 +194,10 @@ it("作ったばかりの行事は、行事が多い区でもトップから開�
   const home = await read(`${root}/`, cookie);
   expect(home).toContain(`/projects/${fresh.projectId}/map`);
   expect(home).toContain("架空の作ったばかりの要望");
-  expect(home).toContain("ほかの行事（16件）は一年の画面で見る");
+  expect(home).toContain("ほかに準備中のもの（16件）は一年の画面で見る");
 });
 
-it("紙は行事から外して区の資料だけに置け、移しても前の行事の中身は消さずに知らせ、地図のどの行も外して戻せる", async () => {
+it("紙は行事から外して自治会の資料だけに置け、移しても前の行事の中身は消さずに知らせ、地図のどの行も外して戻せる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   const first = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の夏祭り", year: 2026, accountId: account.accountId });
@@ -205,24 +205,24 @@ it("紙は行事から外して区の資料だけに置け、移しても前の�
   const got = await receive(env, { wardId: ward.wardId, projectId: first.projectId, via: "admin", parts: [{ kind: "photo", filename: "架空の紙.jpg", mediaType: "image/jpeg", bytes: new Uint8Array(fictionalPaperPhoto()) }] });
   await env.DB.prepare("UPDATE jobs SET status = 'done' WHERE ward_id = ? AND job_id = ?").bind(ward.wardId, got.jobId).run();
   const pick = await read(`${root}/inbox/city/${got.jobId}/pick`, cookie);
-  expect(pick).toContain("この行事から外す");
+  expect(pick).toContain("の資料から外す");
   const moved = await postForm(realApp, `${root}/inbox/city/${got.jobId}`, { operation: "assign", projectId: second.projectId }, cookie);
   const movedPage = await read(moved.headers.get("location")!, cookie);
-  expect(movedPage).toContain("架空の秋祭りに入れました");
+  expect(movedPage).toContain("架空の秋祭りの資料にしました");
   expect(movedPage).toContain("架空の夏祭りの下書きに、ここから入った内容が残っていることがあります");
   // 繋いでいる間は動かせない。繋ぎ終わった後に外す。
   await env.DB.prepare("UPDATE jobs SET status = 'done' WHERE ward_id = ? AND job_id = ?").bind(ward.wardId, got.jobId).run();
   const detached = await postForm(realApp, `${root}/inbox/city/${got.jobId}`, { operation: "detach" }, cookie);
   const detachedPage = await read(detached.headers.get("location")!, cookie);
-  expect(detachedPage).toContain("架空の秋祭りから外しました。「区の資料」に残っています。");
+  expect(detachedPage).toContain("「架空の秋祭り」の資料から外しました。「自治会の資料」に残っています。");
   expect((await env.DB.prepare("SELECT project_id FROM jobs WHERE ward_id = ? AND job_id = ?").bind(ward.wardId, got.jobId).first<{ project_id: string | null }>())?.project_id).toBeNull();
   expect(await read(`${root}/files`, cookie)).toContain("架空の紙.jpg");
   await applyWardReading(env.DB, ward.wardId, { document_kind: "year_plan", original_years: [], summary: "", text_blocks: [], fields: [], tables: [], decisions: [], unreadable: [], ward_facts: [], year_entries: [{ original_id: got.received[0]!.originalId, title: "架空の読み違えた行事", month: 7, date_text: "" }] } as never);
   const id = (await env.DB.prepare("SELECT item_id FROM ward_year_items WHERE ward_id = ? AND title = '架空の読み違えた行事'").bind(ward.wardId).first<{ item_id: string }>())!.item_id;
-  expect(await read(`${root}/year/${id}`, cookie)).toContain("この行を外す");
+  expect(await read(`${root}/year/${id}`, cookie)).toContain("この予定を外す");
   await postForm(realApp, `${root}/year/${id}/remove`, {}, cookie);
   const year = await read(`${root}/year`, cookie);
-  expect(year).toContain("外した行（1つ）");
+  expect(year).toContain("外した予定（1つ）");
   expect(year).not.toContain("<b>架空の読み違えた行事</b>");
   await postForm(realApp, `${root}/year/${id}/restore`, {}, cookie);
   expect(await read(`${root}/year`, cookie)).toContain("<b>架空の読み違えた行事</b>");
@@ -237,7 +237,7 @@ it('日付のない行事も、名前の似た仮の行に重ねて二重に出�
   expect(home).toContain('<b>夏の行事</b>');
 });
 
-it("進めている行事は作った順に新しい物から出し、来年の行事に押し出されない", async () => {
+it("準備中のものは作った順に新しい物から出し、来年の行事に押し出されない", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   for (let index = 0; index < 6; index += 1) await createProject(env.DB, ward.wardId, { kind: "general_meeting", title: `架空の来年の総会${index}`, year: 2027, accountId: account.accountId });
   const fresh = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の今年作った行事", year: 2026, accountId: account.accountId });
@@ -246,7 +246,7 @@ it("進めている行事は作った順に新しい物から出し、来年の�
   expect(home).toContain(`/projects/${fresh.projectId}/map`);
 });
 
-it("進めている行事の帯は、資料と答えの数で五段の濃さになり、数と凡例も添える", async () => {
+it("準備中のものの帯は、資料と返事の数で五段の濃さになり、数と凡例も添える", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const quiet = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の静かな行事", year: 2026, eventDay: "2026-07-10", accountId: account.accountId });
   const busy = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空のにぎやかな行事", year: 2026, eventDay: "2026-10-10", accountId: account.accountId });
@@ -254,7 +254,7 @@ it("進めている行事の帯は、資料と答えの数で五段の濃さに�
   const home = await read(`/${ward.slug}/admin/`, cookie);
   expect(home).toMatch(new RegExp(`map-row fact l1" href="[^"]*${quiet.projectId}`));
   expect(home).toMatch(new RegExp(`map-row fact l3" href="[^"]*${busy.projectId}`));
-  expect(home).toContain("答え10件");
+  expect(home).toContain("出欠の返事10件");
   expect(home).not.toContain("済んだ仕事");
   expect(home).toContain("40件から");
   expect(home).toContain("5〜14件");
@@ -263,7 +263,7 @@ it("進めている行事の帯は、資料と答えの数で五段の濃さに�
   expect(home).toContain("<i>11</i>");
 });
 
-it("一年の行から始めると何の準備かを聞かず、段取りの先頭に準備の始まり、当日、終わりが出る", async () => {
+it("一年の行から始めると何の準備かを聞かず、やることの先頭に準備の始まり、当日、終わりが出る", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   const row = await read(`${root}/year/general-meeting`, cookie);

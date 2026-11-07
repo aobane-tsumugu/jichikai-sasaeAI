@@ -23,7 +23,7 @@ it("別の班の同名世帯はそれぞれ答えを照合し、全員答え後�
   expect((await postForm(realApp, path, { household: "架空の同名世帯", district: "2班", people_count: "3" })).status).toBe(200);
   const page = await (await get(realApp, `/${ward.slug}/admin/answers/${project.projectId}?view=unanswered`, cookie)).text();
   expect(page).not.toContain("名簿はまだありません。");
-  expect(page.match(/まだ答えていない世帯はありません。/g)).toHaveLength(2);
+  expect(page.match(/まだ返事のない世帯はありません。/g)).toHaveLength(2);
 });
 
 it.each(["event", "general_meeting"] as const)("%s: 同じ班の同名2世帯を答え1件で両方消さず、班が不明な答えで推定しない", async (kind) => {
@@ -45,7 +45,7 @@ it.each(["event", "general_meeting"] as const)("%s: 同じ班の同名2世帯を
     expect(await listUnansweredByDistrict(env.DB, ward.wardId, project.projectId)).toEqual([
       { district: "1班", households: Array.from({ length: count }, () => household) },
     ]);
-    const expected = kind === "general_meeting" && count === 0 ? "まだ答えていない世帯はありません。" : `1班（${count}世帯）`;
+    const expected = kind === "general_meeting" && count === 0 ? "まだ返事のない世帯はありません。" : `1班（${count}世帯）`;
     expect(await (await get(realApp, admin, cookie)).text()).toContain(expected);
     if (count === 1) expect(await (await get(realApp, `${admin}&print=1`, cookie)).text()).toContain(expected);
   };

@@ -24,25 +24,25 @@ export interface TemplateTask {
 /** 種類ごとの型。行事は設計書の「実行委員、会場、協賛、案内、回答、当番表、当日、報告」。 */
 export const MAP_TEMPLATES: Record<string, readonly TemplateTask[]> = {
   event: [
-    { key: "committee", name: "実行委員を決める", start: -75, end: -55, opens: ["committee", "materials"], guide: "実行委員になってくれる人を決めます。決まったら名簿に入れると、案内や当番表で使えます。" },
+    { key: "committee", name: "実行委員を決める", start: -75, end: -55, opens: ["committee", "materials"], guide: "実行委員になってくれる人を決めます。決まったら実行委員名簿に入れると、案内や当番表で使えます。" },
     { key: "venue", name: "会場を押さえる", start: -70, end: -45, opens: ["ledger", "materials", "draft"], guide: "会場を電話などで押さえます。決まったら、借りたところと日を運営メモに残せます。来年の担当の人も読めます。" },
     { key: "sponsors", name: "協賛をお願いする", start: -60, end: -25, opens: ["sponsors", "ledger", "materials"], guide: "協賛をお願いする先を回ります。協賛先の一覧を印刷して持って行けます。" },
-    { key: "announcement", name: "案内を配る", start: -45, end: -30, opens: ["draft", "materials"], draftKind: "announcement", guide: "案内の下書きを直して配ります。配ると、区のページと紙に同じ内容が出ます。" },
-    { key: "answers", name: "参加と手伝いの答えを集める", start: -30, end: -14, opens: ["answers", "materials"], guide: "住民から届く出欠と手伝いを集めます。紙、電話、スマホの答えが一つにまとまります。" },
-    { key: "duty_roster", name: "当番表と配置を決める", start: -21, end: -7, opens: ["draft", "answers"], draftKind: "duty_roster", guide: "手伝いの答えをもとに、当番表と配置を決めて配ります。" },
+    { key: "announcement", name: "案内を住民に知らせる", start: -45, end: -30, opens: ["draft", "materials"], draftKind: "announcement", guide: "案内の下書きを直して住民に知らせます。住民向けのページに載せ、LINEで送り、紙を印刷できるようにします。" },
+    { key: "answers", name: "参加と手伝いの返事を集める", start: -30, end: -14, opens: ["answers", "materials"], guide: "住民から届く出欠と手伝いを集めます。紙、電話、スマホの返事が一つにまとまります。" },
+    { key: "duty_roster", name: "当番表と配置を決める", start: -21, end: -7, opens: ["draft", "answers"], draftKind: "duty_roster", guide: "手伝いの返事をもとに、当番表と配置を決めて、実行委員と班長のページに載せます。" },
     { key: "day", name: "当日", start: 0, end: 0, opens: ["materials", "ledger"], guide: "行事の当日です。撮った写真や受付のメモは、そのまま送れます。" },
-    { key: "report", name: "報告をまとめる", start: 1, end: 14, opens: ["draft", "ledger"], draftKind: "report", guide: "行事の報告をまとめて閉じます。来年の人への一言も残せます。" },
+    { key: "report", name: "報告をまとめる", start: 1, end: 14, opens: ["draft", "ledger"], draftKind: "report", guide: "行事の報告をまとめて、終わりにします。来年の人への一言も残せます。" },
   ],
   general_meeting: [
     { key: "agenda", name: "議案を決める", start: -45, end: -21, opens: ["materials", "draft"], draftKind: "procedure", guide: "総会で話し合うことを決めます。去年の議案や役員会の紙は、そのまま送れます。" },
-    { key: "notice", name: "招集を配る", start: -21, end: -14, opens: ["draft"], draftKind: "announcement", guide: "総会の招集の下書きを直して配ります。配ると、区のページと紙に同じ内容が出ます。" },
-    { key: "answers", name: "出欠を集める", start: -14, end: -3, opens: ["answers"], guide: "出席、委任、欠席の答えを集めます。紙、電話、スマホの答えが一つにまとまります。" },
+    { key: "notice", name: "招集を住民に知らせる", start: -21, end: -14, opens: ["draft"], draftKind: "announcement", guide: "総会の招集の下書きを直して住民に知らせます。住民向けのページに載せ、LINEで送り、紙を印刷できるようにします。" },
+    { key: "answers", name: "出欠を集める", start: -14, end: -3, opens: ["answers"], guide: "出席、委任、欠席の返事を集めます。紙、電話、スマホの返事が一つにまとまります。" },
     { key: "day", name: "当日", start: 0, end: 0, opens: ["materials"], guide: "総会の当日です。決まったことを書いた紙は、撮って送れます。" },
     { key: "minutes", name: "議事録をまとめる", start: 1, end: 14, opens: ["draft", "materials"], draftKind: "report", guide: "決まったことを議事録にまとめます。" },
   ],
   city_request: [
     { key: "read", name: "通知を読む", start: -30, end: -25, opens: ["materials"], guide: "市から届いた通知を読みます。撮って送ると、その写真がここに残ります。" },
-    { key: "reply", name: "答えや配るものを用意する", start: -25, end: -7, opens: ["materials", "draft"], draftKind: "procedure", guide: "市への答えや、住民に配るものを用意します。" },
+    { key: "reply", name: "市への回答や、住民に知らせるものを用意する", start: -25, end: -7, opens: ["materials", "draft"], draftKind: "procedure", guide: "市への回答や、住民に知らせるものを用意します。" },
     { key: "submit", name: "提出する", start: -7, end: 0, opens: ["draft"], draftKind: "report", guide: "市に提出します。出したら、この仕事を済みにしてください。" },
   ],
   board_meeting: [
