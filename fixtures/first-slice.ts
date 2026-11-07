@@ -1,5 +1,5 @@
 import type { AnswerSheetReading } from "../src/ai/schema";
-import { fictionalPaperPhoto } from "./test-photo";
+import { fictionalPaperPhoto } from "./test-photo.ts";
 
 /** 通し試験専用の架空の入力と、実際の読み取りを代わる応答。 */
 const answerSheetReading: AnswerSheetReading = {
