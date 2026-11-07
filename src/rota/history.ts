@@ -2,6 +2,7 @@ import { getRoster, type RosterEntry } from "../answers/api";
 import { latestSpaceTables, readPublicationTables } from "../space/publication-tables";
 import type { RowData } from "../project/model";
 import { exemptions, householdKey, rotaDate, type Exemption } from "./store";
+import { splitAssignees } from "./assignees";
 
 export interface HistoryEntry {
   who: string;
@@ -63,18 +64,18 @@ export async function householdHistory(db: D1Database, wardId: string): Promise<
     const rows = published ? published.map((row) => humanRows.find((human) => human.slot === row.slot && human.task === row.task) ?? row) : humanRows;
     const names = preparation ? JSON.parse(preparation.roster_json) as RosterEntry[] : roster;
     for (const row of rows) {
-      const name = String(row.assignee ?? "").trim();
-      if (!name) continue;
-      group(locate(name, names)).records.push({ who: name, when: project.due_on ? rotaDate(project.due_on) : `${project.year}年`,
-        what: [project.title, row.slot, row.task].filter(Boolean).join(" / "),
-        detail: row.attendance === "present" ? "出席の記録あり" : row.attendance === "absent" ? "欠席の記録あり" : "担当の記録。実施したかの記録はありません。",
-        projectId: project.project_id, closed: project.closed_at !== null });
+      for (const name of splitAssignees(String(row.assignee ?? ""))) {
+        group(locate(name, names)).records.push({ who: name, when: project.due_on ? rotaDate(project.due_on) : `${project.year}年`,
+          what: [project.title, row.slot, row.task].filter(Boolean).join(" / "),
+          detail: row.attendance === "present" ? "出席の記録あり" : row.attendance === "absent" ? "欠席の記録あり" : "担当の記録。実施したかの記録はありません。",
+          projectId: project.project_id, closed: project.closed_at !== null });
+      }
     }
     for (const row of humanRows.filter((row) => published && !published.some((entry) => entry.slot === row.slot && entry.task === row.task))) {
-      const name = String(row.assignee ?? "").trim();
-      if (!name) continue;
-      group(locate(name, names)).records.push({ who: name, when: project.due_on ? rotaDate(project.due_on) : `${project.year}年`, what: [project.title, row.slot, row.task].filter(Boolean).join(" / "),
-        detail: row.attendance === "present" ? "出席の記録あり" : row.attendance === "absent" ? "欠席の記録あり" : "担当の記録。実施したかの記録はありません。", projectId: project.project_id, closed: project.closed_at !== null });
+      for (const name of splitAssignees(String(row.assignee ?? ""))) {
+        group(locate(name, names)).records.push({ who: name, when: project.due_on ? rotaDate(project.due_on) : `${project.year}年`, what: [project.title, row.slot, row.task].filter(Boolean).join(" / "),
+          detail: row.attendance === "present" ? "出席の記録あり" : row.attendance === "absent" ? "欠席の記録あり" : "担当の記録。実施したかの記録はありません。", projectId: project.project_id, closed: project.closed_at !== null });
+      }
     }
   }
   const starts = new Map<string, string>();
