@@ -42,6 +42,7 @@ import { completePhotoMaterial } from "./material";
 import { applyLineWardReading, bundleAction, ensureBundleQuestion, getBundleDecision, jobBundleDecision,
   removeReferenceYearItems, saveAiBundleDecision, type BundleDecision } from "../line/bundle-decisions";
 import { lineBundleContents, lineBundlePhotoSummaries } from "../line/photo-context";
+import { joinOpenProjects } from "./groups";
 
 export interface PipelineDeps {
   /** 試験で差し替える。既定は署名鍵から作る本物のクライアント */
@@ -329,7 +330,8 @@ async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, 
   }
   // 紙の符号で決まらない場合は、読みから候補を選ぶ。
   const suggested = new Set(readings.flatMap((row) => "fields" in row.body ? (row.body.project_suggestions ?? []).map((s) => `${s.kind}:${s.title}`) : []));
-  if (suggested.size > 1) return;
+  // 一度に違う準備の資料を送った時は、名前の合う準備中のものへ、その分だけ入れる。
+  if (suggested.size > 1) { await joinOpenProjects(env, wardId, jobId); return; }
   const summary = readings.map((reading) => "summary" in reading.body ? reading.body.summary : "").filter(Boolean).join("\n").slice(0, 2000);
   if (!summary || candidates.length === 0) return;
   const result = await matchProject(client, { candidates: hasPhoto ? await photoMatchCandidates(env.DB, wardId) : candidates, summary, photo: hasPhoto });
@@ -340,6 +342,8 @@ async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, 
   } else if ([MATCH_NEW, MATCH_MULTIPLE, MATCH_UNRELATED, MATCH_UNCERTAIN].includes(result.choice)) {
     await env.DB.prepare("UPDATE jobs SET ai_match_reason = ? WHERE ward_id = ? AND job_id = ? AND project_id IS NULL")
       .bind(result.reason, wardId, jobId).run();
+    // AI が一つに決めきれない時も、資料に書かれた名前が準備中のものと合う分は入れる。新しい準備は役員が始める。
+    if (current.via === "admin" && (result.choice === MATCH_MULTIPLE || result.choice === MATCH_UNCERTAIN)) await joinOpenProjects(env, wardId, jobId);
   }
   if (current.via === "line_direct" || current.via === "line_group") {
     if (selected) {

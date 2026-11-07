@@ -1,7 +1,9 @@
 // 読み終わった資料を行事ごとに見せ、役員の「始める」で段取りにつなぐ。
 import { newId, nowIso } from "../core/ids";
 import type { Env } from "../env";
-import { createProject, listOpenProjects, normalizeKey } from "../project/api";
+import { createProject, listOpenProjects, listProjects, normalizeKey } from "../project/api";
+import { startTemplate } from "../project/start-template";
+import { copySeed } from "../archive";
 import type { ProjectKind } from "../project/model";
 import type { ProjectSuggestion } from "../ai/schema";
 import { subset } from "./reading-subset";
@@ -111,6 +113,25 @@ async function attachGroup(env: Env, wardId: string, group: MaterialGroup, proje
   }
 }
 
+/**
+ * 読み終わった資料のうち、名前の合う準備中のものがある分は、役員が押さなくても入れる（前提 1。分ける判断は AI がし、役員は見て直すだけ）。
+ * 違う時は、トークの「直す」で直せる。名前の合う準備が無い分は、今までどおり読み終わったものの画面で始めるか入れる。
+ */
+export async function joinOpenProjects(env: Env, wardId: string, jobId: string): Promise<string[]> {
+  const groups = (await pendingMaterialGroups(env.DB, wardId)).filter((group) => group.joins && group.materials.some((material) => material.jobId === jobId));
+  const joined: string[] = [];
+  for (const group of groups) {
+    const target = group.joins!;
+    await attachGroup(env, wardId, { ...group, materials: group.materials.filter((material) => material.jobId === jobId) }, target.projectId, target.title);
+    await env.DB.prepare("UPDATE jobs SET ai_match_reason = COALESCE(ai_match_reason, ?) WHERE ward_id = ? AND job_id = ? AND project_id = ?")
+      .bind(`資料に書かれていた名前から、${target.title}に入れました。`, wardId, jobId, target.projectId).run();
+    await attachClarificationQuestions(env.DB, wardId, jobId);
+    await dispatchProject(env, wardId, target.projectId).catch((e) => console.error("仕事の起動に失敗しました", e instanceof Error ? e.name : ""));
+    joined.push(target.projectId);
+  }
+  return joined;
+}
+
 /** 題が読めない時は、送ったファイルの名前を仮の題にする。あとで直せる。 */
 function groupTitle(group: MaterialGroup): string {
   return group.title || group.materials[0]?.original.filename?.replace(/\.[^.]+$/, "") || "届いた資料";
@@ -132,9 +153,19 @@ export async function startMaterialGroup(env: Env, ctx: Waitable, wardId: string
     ctx.waitUntil(dispatchProject(env, wardId, existing.projectId).catch((e) => console.error("仕事の起動に失敗しました", e instanceof Error ? e.name : "")));
     return { projectId: existing.projectId, joined: true };
   }
+  const title = choice.projectName || groupTitle(group);
+  const past = await listProjects(env.DB, wardId, { includeClosed: true });
+  // 去年の同じ予定か、一年の予定の型が名前で見つかれば、それを置く（L-313）。見つからない時は、資料から読んだ並びを使う。
+  // 資料を「どの予定の資料か」で当てる作り（L-313 の四つ目）ができるまでの、つなぎの形。
+  const byName = startTemplate(title, past);
+  const template = choice.kind ? { kind: choice.kind, from: "year_plan" as const } : byName.from !== "short" ? byName : { kind: group.kind as ProjectKind, from: "short" as const };
   const project = await createProject(env.DB, wardId, {
-    title: choice.projectName || groupTitle(group), kind: choice.kind ?? group.kind, year, accountId, ...(eventDay ? { eventDay } : {}),
+    title, kind: template.kind, year, accountId, ...(eventDay ? { eventDay } : {}),
+    ...("taskKeys" in template && template.taskKeys ? { taskKeys: template.taskKeys } : {}),
+    ...("seedProjectId" in template && template.seedProjectId ? { seedProjectId: template.seedProjectId } : {}),
   });
+  const seed = "seedProjectId" in template && template.seedProjectId ? past.find((entry) => entry.projectId === template.seedProjectId) : undefined;
+  if (seed) await copySeed(env.DB, wardId, seed.projectId, project.projectId, seed.year, eventDay || null);
   await attachGroup(env, wardId, group, project.projectId, choice.projectName || groupTitle(group));
   const pack = getDraftPack(initialDraftKind(project.kind), project.kind);
   const contact = await getPublicContact(env.DB, wardId);
