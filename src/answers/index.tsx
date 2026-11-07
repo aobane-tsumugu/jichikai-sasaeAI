@@ -66,7 +66,7 @@ admin.get("/answers", async (c) => {
   if (selectedProject) return c.redirect(adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(selectedProject)}`), 303);
   const rows = await c.env.DB.prepare(`SELECT p.project_id, p.title, p.year, p.closed_at,
       (SELECT COUNT(*) FROM project_answers a WHERE a.ward_id = p.ward_id AND a.project_id = p.project_id) AS answers
-    FROM projects p WHERE p.ward_id = ? ORDER BY p.year DESC, p.created_at DESC`)
+    FROM projects p WHERE p.ward_id = ? AND p.is_ward_notices = 0 ORDER BY p.year DESC, p.created_at DESC`)
     .bind(c.var.ward.wardId).all<{ project_id: string; title: string; year: number; closed_at: string | null; answers: number }>();
   return c.html(
     <Layout title="出欠の返事を見る" siteName={c.var.ward.name} noindex adminHomeHref={adminPath(c.var.ward.slug, "/")}>

@@ -158,7 +158,7 @@ talkAdmin.get("/inbox/talks/:talkId", async (c) => {
   const page = talkPage(talk, c.req.query("before"));
   if (!page) return c.notFound();
   const [projects, questions, summaries, know, roster, undo] = await Promise.all([
-    c.env.DB.prepare("SELECT project_id, title, closed_at FROM projects WHERE ward_id = ? ORDER BY created_at DESC")
+    c.env.DB.prepare("SELECT project_id, title, closed_at FROM projects WHERE ward_id = ? AND is_ward_notices = 0 ORDER BY created_at DESC")
       .bind(ward.wardId).all<{ project_id: string; title: string; closed_at: string | null }>(),
     listClarifications(c.env.DB, ward.wardId), jobSummaries(c.env.DB, ward.wardId), listKnowItems(c.env.DB, ward.wardId),
     rosterCandidates(c.env.DB, ward.wardId), c.env.DB.prepare("SELECT undo_id FROM line_talk_undo WHERE ward_id = ? AND talk_id = ?")

@@ -90,7 +90,7 @@ admin.get("/print/:projectId/paper/:kind", async (c) => {
   const baseUrl = c.env.PUBLIC_BASE_URL || new URL(c.req.url).origin;
   if (kind === "meeting") {
     const projects = await c.env.DB.prepare(`SELECT project_id, title FROM projects
-      WHERE ward_id = ? AND (closed_at IS NULL OR project_id = ?) ORDER BY project_id = ? DESC, created_at, project_id`)
+      WHERE ward_id = ? AND is_ward_notices = 0 AND (closed_at IS NULL OR project_id = ?) ORDER BY project_id = ? DESC, created_at, project_id`)
       .bind(ward.wardId, id, id).all<{ project_id: string; title: string }>();
     const papers = await Promise.all(projects.results.map(async (project) => ({ ...project,
       code: await makeProjectPaperCode(c.env.DB, ward.wardId, project.project_id),

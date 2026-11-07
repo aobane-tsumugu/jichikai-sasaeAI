@@ -210,7 +210,7 @@ export async function photoContextProject(db: D1Database, wardId: string, batch:
 
 /** 当てる時だけ、開いている行事の仕事と日付を渡す。 */
 export async function photoMatchCandidates(db: D1Database, wardId: string) {
-  const projects = await db.prepare("SELECT project_id, title FROM projects WHERE ward_id = ? AND closed_at IS NULL ORDER BY created_at")
+  const projects = await db.prepare("SELECT project_id, title FROM projects WHERE ward_id = ? AND is_ward_notices = 0 AND closed_at IS NULL ORDER BY created_at")
     .bind(wardId).all<{ project_id: string; title: string }>();
   return Promise.all(projects.results.map(async (project) => {
     const dates = await db.prepare("SELECT kind, due_on FROM project_deadlines WHERE ward_id = ? AND project_id = ? ORDER BY due_on")

@@ -1,6 +1,6 @@
 import { adminResult } from "../core/admin-ui";
 import { formatDateText, formatJstDate } from "../core/time";
-import { Hono } from "hono";
+import { Hono, type MiddlewareHandler } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
 import { ErrorNotice, Notice } from "../core/ui";
@@ -138,6 +138,16 @@ admin.get("/close/activity", async (c) => {
     {projects.length ? <ul class="rows">{projects.map((project) => <li><a class="row-link" href={`${adminPath(ward, `/close/${project.projectId}`)}?view=activity`}><b>{project.title}</b><span>{project.year}年の説明を書く・直す</span></a></li>)}</ul> : <p>準備を始めると、ここから説明を書けます。説明は書かなくてもかまいません。</p>}
   </AdminPage>);
 });
+
+// 一覧から隠すだけでなく、保存したURLや直接のPOSTでも連絡事項の入れ物を閉じさせない。
+const excludeWardNotices: MiddlewareHandler<AdminEnv> = async (c, next) => {
+  const notice = await c.env.DB.prepare("SELECT project_id FROM projects WHERE ward_id = ? AND project_id = ? AND is_ward_notices = 1")
+    .bind(c.var.ward.wardId, c.req.param("projectId")).first();
+  if (notice) return c.redirect(adminPath(c.var.ward, "/messages/new"), 303);
+  await next();
+};
+admin.use("/close/:projectId", excludeWardNotices);
+admin.use("/close/:projectId/*", excludeWardNotices);
 
 admin.get("/close/:projectId", async (c) => {
   const { ward } = c.var; const id = c.req.param("projectId");

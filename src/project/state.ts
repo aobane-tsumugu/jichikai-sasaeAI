@@ -197,14 +197,14 @@ export async function listProjects(
     db
       .prepare(
         `SELECT project_id, kind, title, year, closed_at, state_version FROM projects
-         WHERE ward_id = ? ${where} ORDER BY year DESC, created_at DESC`,
+         WHERE ward_id = ? AND is_ward_notices = 0 ${where} ORDER BY year DESC, created_at DESC`,
       )
       .bind(wardId),
     db
       .prepare(
         `SELECT d.project_id, d.kind, d.due_on FROM project_deadlines d
          JOIN projects p ON p.ward_id = d.ward_id AND p.project_id = d.project_id
-         WHERE d.ward_id = ? ${where.replace("closed_at", "p.closed_at")}`,
+         WHERE d.ward_id = ? AND p.is_ward_notices = 0 ${where.replace("closed_at", "p.closed_at")}`,
       )
       .bind(wardId),
   ]);
@@ -213,6 +213,20 @@ export async function listProjects(
 }
 
 // ---- 状態 ----
+
+/** メッセージの入口だけが使う。通常の準備の仕事や日付は置かず、年が変わっても閉じない。 */
+export async function getOrCreateWardNotices(db: D1Database, wardId: string, year: number, accountId: string): Promise<ProjectSummary> {
+  if (!Number.isInteger(year) || year < 1900 || year > 2200) throw new ProjectInputError("年が合いません");
+  // 同時に作っても自治会・年の一つにそろう。既存の入れ物とその中身は更新しない。
+  await db.prepare(`INSERT INTO projects (project_id, ward_id, kind, title, year, is_ward_notices, created_at, created_by_account_id)
+    VALUES (?, ?, 'event', '自治会からの連絡', ?, 1, ?, ?)
+    ON CONFLICT (ward_id, year) WHERE is_ward_notices = 1 DO NOTHING`)
+    .bind(newId(), wardId, year, nowIso(), accountId).run();
+  const row = await db.prepare(`SELECT project_id, kind, title, year, closed_at, state_version FROM projects
+    WHERE ward_id = ? AND year = ? AND is_ward_notices = 1`).bind(wardId, year).first<ProjectRow>();
+  if (!row) throw new Error("連絡事項を作れませんでした");
+  return toSummary(row, {});
+}
 
 function sourceView(row: {
   source_kind: string | null;

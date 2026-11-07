@@ -41,7 +41,7 @@ admin.get("/", async (c) => {
     c.env.DB.prepare("SELECT subject FROM inquiry_records WHERE ward_id = ? AND kind = 'inquiry' AND line_source_type IS NOT NULL")
       .bind(ward.wardId).all<{ subject: string }>(),
     c.env.DB.prepare(`SELECT p.project_id, p.title, p.year, EXISTS (SELECT 1 FROM projects n WHERE n.ward_id = p.ward_id AND n.seed_project_id = p.project_id) AS continued
-      FROM projects p WHERE p.ward_id = ? AND p.closed_at IS NOT NULL ORDER BY p.closed_at DESC LIMIT 3`)
+      FROM projects p WHERE p.ward_id = ? AND p.is_ward_notices = 0 AND p.closed_at IS NOT NULL ORDER BY p.closed_at DESC LIMIT 3`)
       .bind(ward.wardId).all<{ project_id: string; title: string; year: number; continued: number }>(),
   ]);
   const records = closed.results;
@@ -96,7 +96,7 @@ admin.get("/", async (c) => {
   const sheets = (await c.env.DB.prepare("SELECT COUNT(*) AS n FROM originals WHERE ward_id = ? AND withdrawn_at IS NULL").bind(ward.wardId).first<{ n: number }>())?.n ?? 0;
   const GOAL = 10;
   // 進めている行事は作った順に新しい物から出す。年の順にすると、来年の行事に今年作った行事が押し出される。
-  const order = (await c.env.DB.prepare("SELECT project_id FROM projects WHERE ward_id = ? AND closed_at IS NULL ORDER BY created_at DESC, project_id LIMIT 5").bind(ward.wardId).all<{ project_id: string }>()).results.map((row) => row.project_id);
+  const order = (await c.env.DB.prepare("SELECT project_id FROM projects WHERE ward_id = ? AND is_ward_notices = 0 AND closed_at IS NULL ORDER BY created_at DESC, project_id LIMIT 5").bind(ward.wardId).all<{ project_id: string }>()).results.map((row) => row.project_id);
   const recent = order.flatMap((id) => projects.filter((project) => project.projectId === id));
   // ここから下は、見出しや札や件数に縮めず、その時の中身を名前と日付の入った文で書く（管理の決定ログ L-300）。
   const openInquiries = (await c.env.DB.prepare(`SELECT inquiry_id, subject, line_sender_label, line_source_type, line_source_id, line_user_id, received_at FROM inquiry_records
