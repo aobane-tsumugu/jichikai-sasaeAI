@@ -136,12 +136,15 @@ admin.get("/", async (c) => {
       <details class="hint"><summary>手元に紙がないとき</summary><div><p>前の役員や、公民館の棚にあることが多いです。見つからないときは、何の準備かを選ぶと、ふつうの段取りから始められます。</p><p><a class="quiet" href={adminPath(ward, "/projects")}>紙がないので、何の準備かを選ぶ</a></p></div></details>
       {received}{places}{aboutFold}
     </> : <>
-      {about}{heading(`${ward.name}の一年`)}
-      {yearMap}
+      {about}{questionCard}
       {near.length ? <div class="notice"><strong>{near[0]}</strong><p>{inquiryNotice(digest)}</p><a class="quiet" href={adminPath(ward, "/inquiries")}>問い合わせを見る</a></div> : null}
-      {questionCard}
+      {heading(`${ward.name}の一年`)}
+      {yearMap}
       {nowRows.length ? <><h2>今の時期の仕事</h2><ul class="year-list">{nowRows.map(({ project, task }) => <li><a class="year-row fact" href={adminPath(ward, mapTaskPath(project.projectId, project.kind, task))}><b>{project.title}　{task.name}</b><span class="note">{task.seatId && task.seatId === account.seatId ? "あなたの担当です。" : ""}{task.periodEnd ? `${shortDate(task.periodEnd)}まで。${daysRemaining(task.periodEnd)}` : ""}</span></a></li>)}</ul></> : !undecided ? <section class="next"><strong>{next.title}</strong><p>{next.body}</p><a class="button" href={adminPath(ward, next.href)}>{next.label}</a></section> : null}
       {knowRow}
+      <h2>進めている行事</h2>
+      <ul class="year-list">{projects.slice(0, 5).map((project, index) => { const task = states[index] ? nextMapTask(states[index]!.mapTasks, today) : undefined; return <li><a class="year-row fact" href={adminPath(ward, `/projects/${project.projectId}/map`)}><b>{project.title}</b><span class="note">{task ? `次は ${task.name}` : "段取りを開く"}</span></a></li>; })}</ul>
+      {projects.length > 5 ? <p class="link-line"><a href={adminPath(ward, "/year")}>ほかの行事（{projects.length - 5}件）は一年の画面で見る</a></p> : null}
       {memory}
       {received}
       <div class="action-links"><a class="button secondary" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>新しい行事を始める</a></div>

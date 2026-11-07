@@ -499,6 +499,7 @@ export const POSTER_CSS = `
 .poster-qr { width:62mm; max-width:55%; margin:0 auto; }
 .poster-qr svg { display:block; width:100%; height:auto; }
 .poster-url { display:block; margin-top:3mm; color:#000; font-size:10pt; overflow-wrap:anywhere; }
+@media screen { .poster-url { display:flex; align-items:center; justify-content:center; min-height: var(--tap); } }
 @media screen and (max-width:215mm) {
   .sheet.poster { width:100%; min-height:0; aspect-ratio:210 / 296; margin:0 auto; padding:6%; gap:4vw; }
   .poster h1 { font-size:clamp(24px,7vw,40px); }
