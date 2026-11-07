@@ -1,7 +1,7 @@
 // 区の一年の地図。一般の自治会の一年を仮に置き、行事と届いた資料でこの区の内容に変えていく。
 import { adminPath } from "../core/auth";
 import { newId } from "../core/ids";
-import { formatJstDate } from "../core/time";
+import { eventPeriodText, seasonText } from "../core/time";
 import type { WardInfo } from "../env";
 import type { ProjectState, ProjectSummary } from "../project/types";
 
@@ -25,7 +25,7 @@ export const YEAR_BASE: readonly YearBase[] = [
 
 export type YearState = "example" | "fact" | "checking";
 
-export interface YearRow { key: string; title: string; note: string; state: YearState; from: number; to: number; href: string; order: number; level?: Level }
+export interface YearRow { key: string; title: string; note: string; state: YearState; from: number; to: number; href: string; order: number; level?: Level; eventFrom?: number; eventTo?: number }
 
 /**
  * 活動の量の段。割合は出せないので、その行に入っている資料と答えの数を足した数で分ける。
@@ -48,7 +48,7 @@ const inRange = (month: number, base: YearBase) => {
   return Math.abs(shift(month) - shift(base.from)) <= 1 || Math.abs(shift(month) - shift(base.to)) <= 1;
 };
 
-interface RecordRow { project_id: string; title: string; kind: string; year: number; event_day: string | null }
+interface RecordRow { project_id: string; title: string; kind: string; year: number; event_day: string | null; event_end: string | null }
 
 export async function wardYear(db: D1Database, ward: WardInfo, projects: readonly ProjectSummary[], states: readonly (ProjectState | null)[], today: string) {
   const [materialCounts, answerCounts] = await Promise.all([
@@ -61,7 +61,8 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
   const [overrides, records] = await Promise.all([
     db.prepare("SELECT item_id, title, month, date_text, added, removed_at, source_original_id FROM ward_year_items WHERE ward_id = ?").bind(ward.wardId)
       .all<{ item_id: string; title: string; month: number | null; date_text: string; added: number; removed_at: string | null; source_original_id: string | null }>(),
-    db.prepare(`SELECT p.project_id, p.title, p.kind, p.year, (SELECT d.due_on FROM project_deadlines d WHERE d.ward_id = p.ward_id AND d.project_id = p.project_id AND d.kind = 'event_day') AS event_day
+    db.prepare(`SELECT p.project_id, p.title, p.kind, p.year, (SELECT d.due_on FROM project_deadlines d WHERE d.ward_id = p.ward_id AND d.project_id = p.project_id AND d.kind = 'event_day') AS event_day,
+      (SELECT d.due_on FROM project_deadlines d WHERE d.ward_id = p.ward_id AND d.project_id = p.project_id AND d.kind = 'event_end') AS event_end
       FROM projects p WHERE p.ward_id = ? AND p.closed_at IS NOT NULL ORDER BY p.closed_at DESC LIMIT 12`).bind(ward.wardId).all<RecordRow>(),
   ]);
   const removed = new Set(overrides.results.filter((row) => row.removed_at).map((row) => row.item_id));
@@ -76,6 +77,7 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
   };
   projects.forEach((project, index) => {
     const day = project.deadlines.event_day ?? project.deadlines.submit_due;
+    const endDay = project.deadlines.event_end ?? day;
     const state = states[index];
     if (!day) {
       // 同じ種類の行があれば重ね、無ければ今の時期に置く。進めている行事は必ず地図に出す。
@@ -89,15 +91,20 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
     const month = monthOf(day);
     const firstTask = state?.mapTasks.map((task) => task.periodStart).filter((value): value is string => Boolean(value)).sort()[0];
     claim(project.kind, month, project.title);
-    const start = firstTask && Number(firstTask.slice(0, 4)) === Number(day.slice(0, 4)) ? position(monthOf(firstTask), dayOf(firstTask)) : position(month, dayOf(day));
-    rows.push({ key: project.projectId, title: project.title, note: [formatJstDate(day), activityNote(materialsOf(project.projectId), answersOf(project.projectId))].filter(Boolean).join("。"), state: "fact", level: levelOf(materialsOf(project.projectId) + answersOf(project.projectId)), from: start, to: Math.max(position(month, dayOf(day)) + 2, start + 2), href: adminPath(ward, `/projects/${project.projectId}/map`), order: position(month, dayOf(day)) });
+    const start = firstTask && firstTask < day ? position(monthOf(firstTask), dayOf(firstTask)) : position(month, dayOf(day));
+    const eventFrom = position(month, dayOf(day));
+    const eventTo = position(monthOf(endDay!), dayOf(endDay!)) + 100 / 360;
+    rows.push({ key: project.projectId, title: project.title,
+      note: `${eventPeriodText(day, endDay)}。${firstTask && firstTask < day ? `準備は${seasonText(firstTask)}からです。` : ""}${activityNote(materialsOf(project.projectId), answersOf(project.projectId))}`,
+      state: "fact", level: levelOf(materialsOf(project.projectId) + answersOf(project.projectId)), from: start, to: eventTo, eventFrom, eventTo,
+      href: adminPath(ward, `/projects/${project.projectId}/map`), order: eventFrom });
   });
   for (const record of records.results) {
     if (!record.event_day || rows.some((row) => row.title === record.title)) continue;
     const month = monthOf(record.event_day);
     claim(record.kind, month, record.title);
     const at = position(month, dayOf(record.event_day));
-    rows.push({ key: record.project_id, title: record.title, note: [`${record.year}年に終わったもの`, activityNote(materialsOf(record.project_id), answersOf(record.project_id))].filter(Boolean).join("。"), state: "fact", level: levelOf(materialsOf(record.project_id) + answersOf(record.project_id)), from: at, to: at + 2, href: adminPath(ward, `/archive/${record.project_id}`), order: at });
+    rows.push({ key: record.project_id, title: record.title, note: `${record.year}年${eventPeriodText(record.event_day, record.event_end ?? record.event_day)}。終わりにしました。${activityNote(materialsOf(record.project_id), answersOf(record.project_id))}`, state: "fact", level: levelOf(materialsOf(record.project_id) + answersOf(record.project_id)), from: at, to: position(monthOf(record.event_end ?? record.event_day), dayOf(record.event_end ?? record.event_day)) + 100 / 360, href: adminPath(ward, `/archive/${record.project_id}`), order: at });
   }
   for (const row of overrides.results.filter((entry) => entry.added && !entry.removed_at && entry.month)) {
     const at = position(row.month!);
@@ -123,16 +130,18 @@ export function nearToday(rows: YearRow[], today: number, limit = 14): YearRow[]
 
 export function YearLegend() {
   return <div class="shade-legend"><p>灰色の予定は、よくある自治会の例を仮に置いたもので、まだこの自治会のことではありません。押すと、この自治会ではどうしているかを入れられます。紺の予定は、届いた資料や準備中のものから分かった、この自治会の予定です。紺が濃いほど、資料や出欠の返事がたくさん入っています。黄色の予定には、AIからの質問があります。</p>
-    <p>濃さの目安（資料と返事の数）:</p>
+    <p>薄い部分は準備する時期、濃い部分は実施する期間です。</p><p>実施する期間の濃さの目安（資料と返事の数）:</p>
     <ol>{levelLabels().map((label, index) => <li><i class={`l${index + 1}`} />{label}</li>)}</ol></div>;
 }
 
 export function YearMap({ rows, today }: { rows: YearRow[]; today: number }) {
+  const segments = (from: number, to: number) => to < from ? [{ from, to: 100 }, { from: 0, to }] : [{ from, to }];
   return <div class="map year-map" style={`--today: ${today}`}>
     <div class="map-months"><span>{[4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3].map((month) => (month - 1) % 3 === 0 ? <i class="q">{month === 4 || month === 1 ? `${month}月` : month}</i> : <i>{month}</i>)}</span></div>
     <ol class="map-list">{rows.map((row) => <li><a class={`map-row ${row.state}${row.level ? ` l${row.level}` : ""}`} href={row.href}>
       <span class="map-name"><b>{row.title}</b>{row.note ? <small>{row.note}</small> : null}</span>
-      <span class="map-track"><i style={`--from:${row.from}%;--to:${Math.min(row.to, 100)}%`} /></span>
+      <span class="map-track">{segments(row.from, row.to).map((part) => <i style={`--from:${part.from}%;--to:${Math.min(part.to, 100)}%;${row.eventFrom === undefined ? "" : "opacity:0.25"}`} />)}
+        {row.eventFrom !== undefined && row.eventTo !== undefined ? segments(row.eventFrom, row.eventTo).map((part) => <i style={`--from:${part.from}%;--to:${Math.min(part.to, 100)}%`} />) : null}</span>
     </a></li>)}</ol>
     <div class="map-today"><span>今日</span></div>
   </div>;

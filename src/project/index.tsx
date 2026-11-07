@@ -47,7 +47,8 @@ const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   "invalid_kind": "種類が合いません",
   "invalid_title": "題は1文字から100文字にしてください",
   "invalid_year": "年が合いません",
-  "invalid_day": "当日を入れ直してください",
+  "invalid_day": "始まる日を入れ直してください",
+  "invalid_end": "終わる日は始まる日以降にしてください",
   "seed_missing": "もとにするものが見つかりません",
   "material_failed": "今年の資料として入れ直せませんでした。資料を確かめて、もう一度お試しください。"
 };
@@ -80,14 +81,15 @@ admin.get("/projects", async (c) => {
   const fromYear = Boolean(presetTitle && queryKind);
   return c.html(<Layout title="新しく準備を始める" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a>
-    <h1>{fromYear ? `今年の${presetTitle}の準備を始める` : "新しく準備を始める"}</h1><p class="lead">{fromYear ? "当日が分かれば入れてください。準備でふつうする仕事の一覧を用意します。あとで足したり外したりできます。" : "去年の同じものが「終わったもの」にあれば、そこから始められます。ないときは、何の準備かを選ぶと、その準備でふつうする仕事の一覧を用意します。あとで足したり外したりできます。"}</p>
+    <h1>{fromYear ? `今年の${presetTitle}の準備を始める` : "新しく準備を始める"}</h1><p class="lead">{fromYear ? "始まる日が分かれば入れてください。準備でふつうする仕事の一覧を用意します。あとで足したり外したりできます。" : "去年の同じものが「終わったもの」にあれば、そこから始められます。ないときは、何の準備かを選ぶと、その準備でふつうする仕事の一覧を用意します。あとで足したり外したりできます。"}</p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     {seeds.length ? <><h2>去年の終わったものから始める</h2><ul class="rows">{[...seeds].sort((a, b) => b.year - a.year).slice(0, 3).map((project) => <li><a class="row-link" href={adminPath(ward, `/archive/${project.projectId}`)}><b>{project.year}年 {project.title}</b></a></li>)}</ul>{seeds.length > 3 ? <p><a class="quiet" href={adminPath(ward, "/archive")}>ほかの終わったものから始める</a></p> : null}</> : null}
     <form method="post" action={adminPath(ward, "/projects")}>
       {fromYear ? <><input type="hidden" name="kind" value={presetKind} /><input type="hidden" name="title" value={presetTitle} /></> : <>
       <fieldset><legend>何の準備ですか</legend><div class="choice">{PROJECT_KINDS.map((kind) => <label><input type="radio" name="kind" value={kind} checked={kind === queryKind} required /> {PROJECT_KIND_LABEL[kind]}（{KIND_EXAMPLE[kind]}）</label>)}</div></fieldset>
       <div class="field"><label for="title">名前（あとで直せます）</label><input id="title" name="title" maxlength={100} placeholder="秋の収穫祭" value={presetTitle} /></div></>}
-      <div class="field"><label for="eventDay">当日（分かれば）</label><input id="eventDay" name="eventDay" type="date" /><p class="help-text">入れると、準備を始める時期と終わる時期を、当日から数えて置きます。あとで直せます。</p></div>
+      <div class="field"><label for="eventDay">始まる日（分かれば）</label><input id="eventDay" name="eventDay" type="date" /><p class="help-text">入れると、準備を始める頃と報告をまとめ終える頃を置きます。あとで直せます。</p></div>
+      <div class="field"><label for="eventEnd">終わる日（一日だけなら空のまま）</label><input id="eventEnd" name="eventEnd" type="date" /></div>
       <input type="hidden" name="year" value={new Date().getFullYear()} />
       <div class="action-bar page-action"><button type="submit">始める</button></div>
     </form>
@@ -140,7 +142,7 @@ admin.post("/projects", async (c) => {
   const kind = String(form.get("kind"));
   if (!(PROJECT_KINDS as readonly string[]).includes(kind)) return c.redirect(`${adminPath(ward, "/projects")}?error=choose_kind`, 303);
   try {
-    const project = await createProject(c.env.DB, ward.wardId, { kind: kind as (typeof PROJECT_KINDS)[number], title: String(form.get("title") ?? "").trim() || PROJECT_KIND_LABEL[kind as (typeof PROJECT_KINDS)[number]], year: Number(form.get("eventDay") ? String(form.get("eventDay")).slice(0, 4) : form.get("year")), ...(form.get("eventDay") ? { eventDay: String(form.get("eventDay")) } : {}), accountId: account.accountId });
+    const project = await createProject(c.env.DB, ward.wardId, { kind: kind as (typeof PROJECT_KINDS)[number], title: String(form.get("title") ?? "").trim() || PROJECT_KIND_LABEL[kind as (typeof PROJECT_KINDS)[number]], year: Number(form.get("eventDay") ? String(form.get("eventDay")).slice(0, 4) : form.get("year")), ...(form.get("eventDay") ? { eventDay: String(form.get("eventDay")) } : {}), ...(form.get("eventEnd") ? { eventEnd: String(form.get("eventEnd")) } : {}), accountId: account.accountId });
     return c.redirect(adminPath(ward, `/projects/${project.projectId}/map`), 303);
   } catch (e) {
     const code = e instanceof ProjectInputError

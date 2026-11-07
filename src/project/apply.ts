@@ -12,7 +12,7 @@
 //
 // 書き込みは db.batch（一つの取引）で行う。プロジェクトの中の差分は Workers が一つずつ送る前提（設計書 5.12）。
 import { newId, nowIso } from "../core/ids";
-import { formatJstDate, parseEventDay } from "../core/time";
+import { eventPeriodText, parseEventDay } from "../core/time";
 import { eventDayStatements, getProjectState } from "./state";
 import { materialExemptionQuestions } from "../rota/material-exemptions";
 import {
@@ -374,12 +374,13 @@ async function planItem(ctx: Ctx, n: Normalized, change: ItemChange): Promise<Pl
   if (change.itemKey !== "date_time" || n.source.kind !== "original" || placeSource(n.source, ctx.project.year).scope !== "current"
     || (plan.status !== "applied" && plan.status !== "same")) return plan;
   const day = parseEventDay(change.value, ctx.project.year);
-  if (!day) return plan;
+  const endDay = parseEventDay(change.value, ctx.project.year, "end");
+  if (!day || !endDay) return plan;
   const state = await getProjectState(ctx.db, ctx.wardId, ctx.projectId);
   if (!state) return plan;
   const oldDay = state.project.deadlines.event_day;
-  if (oldDay && oldDay !== day) {
-    const oldText = `${Number(oldDay.slice(0, 4))}年${formatJstDate(oldDay)}`;
+  if (oldDay && (oldDay !== day || (state.project.deadlines.event_end ?? oldDay) !== endDay)) {
+    const oldText = `${Number(oldDay.slice(0, 4))}年${eventPeriodText(oldDay, state.project.deadlines.event_end ?? oldDay)}`;
     return {
       status: "conflict", statements: [], bump: false, staleKinds: [],
       questions: [{
@@ -394,7 +395,7 @@ async function planItem(ctx: Ctx, n: Normalized, change: ItemChange): Promise<Pl
   if (oldDay) return plan;
   return {
     ...plan, status: "applied", bump: true,
-    statements: [...plan.statements, ...eventDayStatements(ctx.db, ctx.wardId, ctx.projectId, state, day, null, ctx.now, true)],
+    statements: [...plan.statements, ...eventDayStatements(ctx.db, ctx.wardId, ctx.projectId, state, day, null, ctx.now, true, endDay)],
   };
 }
 

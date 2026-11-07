@@ -14,11 +14,12 @@ export const PROJECT_KIND_LABEL: Record<ProjectKind, string> = {
   request: "要望",
 };
 
-export const DEADLINE_KINDS = ["event_day", "answer_due", "submit_due", "board_meeting_day"] as const;
+export const DEADLINE_KINDS = ["event_day", "event_end", "answer_due", "submit_due", "board_meeting_day"] as const;
 export type DeadlineKind = (typeof DEADLINE_KINDS)[number];
 
 export const DEADLINE_LABEL: Record<DeadlineKind, string> = {
   event_day: "当日",
+  event_end: "終わる日",
   answer_due: "返事の締切",
   submit_due: "提出期限",
   board_meeting_day: "役員会の日",

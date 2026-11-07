@@ -3,7 +3,7 @@ import { applyChange } from "./apply";
 import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, ITEM_SCREEN_LABEL, TABLES, cleanRowData, isItemKey, isTableKey, rowMatchKey, type DocumentKind, type ProjectKind, type Scope, type ItemKey, type RowData } from "./model";
 import { hashOf, stableStringify } from "./util";
 import { eventDayStatements, getProjectState } from "./state";
-import { parseEventDay } from "../core/time";
+import { isCalendarDay, parseEventDay } from "../core/time";
 import { reconcileDocumentBody, type DocumentBody } from "./document-body";
 import { getDraftPack } from "../draft/packs";
 
@@ -213,7 +213,8 @@ export async function answerQuestion(db: D1Database, wardId: string, projectId: 
         if (detail.itemKey === "date_time") {
           const state = await getProjectState(db, wardId, projectId);
           const day = state ? parseEventDay(value, state.project.year) : null;
-          if (day && !(await setEventDay(db, wardId, projectId, day, accountId))) return false;
+          const end = state ? parseEventDay(value, state.project.year, "end") : null;
+          if (day && end && !(await setEventDay(db, wardId, projectId, day, accountId, end))) return false;
         }
         applied = true;
       } else if (detail.table && isTableKey(detail.table) && detail.rowId && detail.field && detail.values?.[index] !== undefined) {
@@ -272,13 +273,13 @@ export async function addMapTask(db: D1Database, wardId: string, projectId: stri
 }
 
 /** 行事の日を直し、済んでいない仕事だけ時期を置き直す。文書には触れない。 */
-export async function setEventDay(db: D1Database, wardId: string, projectId: string, day: string, accountId: string): Promise<boolean> {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(Date.parse(day)) || new Date(day).toISOString().slice(0, 10) !== day) return false;
+export async function setEventDay(db: D1Database, wardId: string, projectId: string, day: string, accountId: string, endDay = day): Promise<boolean> {
+  if (!isCalendarDay(day) || !isCalendarDay(endDay) || endDay < day) return false;
   const state = await getProjectState(db, wardId, projectId);
   if (!state || state.project.closedAt) return false;
   const oldDay = state.project.deadlines.event_day;
-  if (oldDay === day) return true;
-  await db.batch(eventDayStatements(db, wardId, projectId, state, day, accountId, nowIso()));
+  if (oldDay === day && (state.project.deadlines.event_end ?? oldDay) === endDay) return true;
+  await db.batch(eventDayStatements(db, wardId, projectId, state, day, accountId, nowIso(), false, endDay));
   return true;
 }
 
@@ -303,10 +304,13 @@ export async function setMapTask(db: D1Database, wardId: string, projectId: stri
   if (!date(input.start) || !date(input.end)) return false;
   if (input.start && input.end && input.start > input.end) return false;
   if (input.seatId && !(await db.prepare("SELECT 1 AS ok FROM seats WHERE ward_id = ? AND seat_id = ? AND removed_at IS NULL").bind(wardId, input.seatId).first())) return false;
-  const r = await db.prepare(`UPDATE project_map_tasks SET name = ?, period_start = ?, period_end = ?, progress = ?, seat_id = ?,
+  const r = await db.prepare(`UPDATE project_map_tasks SET
+    offset_start_days = CASE WHEN period_start IS ? AND period_end IS ? THEN offset_start_days ELSE NULL END,
+    offset_end_days = CASE WHEN period_start IS ? AND period_end IS ? THEN offset_end_days ELSE NULL END,
+    name = ?, period_start = ?, period_end = ?, progress = ?, seat_id = ?,
     progress_source_kind = 'person', progress_source_ref = NULL, progress_source_locator = NULL, progress_confidence = 'high', progress_change_id = NULL
     WHERE ward_id = ? AND project_id = ? AND task_id = ? AND removed_at IS NULL`)
-    .bind(name, input.start || null, input.end || null, input.progress, input.seatId, wardId, projectId, taskId).run();
+    .bind(input.start || null, input.end || null, input.start || null, input.end || null, name, input.start || null, input.end || null, input.progress, input.seatId, wardId, projectId, taskId).run();
   return (r.meta.changes ?? 0) > 0;
 }
 

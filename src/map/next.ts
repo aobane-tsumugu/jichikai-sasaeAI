@@ -1,4 +1,21 @@
 import type { MapTaskView } from "../project/types";
+import { eventPeriodText, formatJstDate, seasonText, shortDate } from "../core/time";
+
+/** 型の目安と、役員が入れた日を区別して示す。内部の比較には元の日付を使う。 */
+export function taskPeriodText(task: MapTaskView, endOnly = false): string {
+  const start = task.periodStart;
+  const end = task.periodEnd;
+  const estimated = task.taskKey !== "day" && "periodEstimated" in task && task.periodEstimated === true;
+  const show = estimated ? seasonText : shortDate;
+  if (endOnly && end) return `${show(end)}まで`;
+  if (start && end) {
+    if (!estimated) return eventPeriodText(start, end);
+    return show(start) === show(end) ? show(start) : `${show(start)}から${show(end)}`;
+  }
+  if (start) return `${estimated ? show(start) : formatJstDate(start)}から`;
+  if (end) return `${estimated ? show(end) : formatJstDate(end)}まで`;
+  return "時期はまだ決まっていません";
+}
 
 /** 日付と進み具合だけで案を一つ出す。日付のない仕事も開ける。 */
 export function nextMapTask(tasks: readonly MapTaskView[], today: string): MapTaskView | undefined {
