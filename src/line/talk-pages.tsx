@@ -38,6 +38,8 @@ function actionText(topic: TalkTopic, names: Map<string, string>) {
 }
 
 const dayOf = (at: string) => formatJstDate(at).replace(/（.）$/, "");
+/** 九つまでは「つ」、十からは「件」で数える（「11つ」と書かない）。 */
+const pieces = (n: number) => n < 10 ? `${n}つ` : `${n}件`;
 
 /** 届いた先の行き先を、AIが入れた先の言葉にする。決めていないものと関係ないものは出さない。 */
 function placeText(topic: TalkTopic, names: Map<string, string>): string {
@@ -61,7 +63,7 @@ function talkFacts(talk: Talk, questions: ClarificationRow[], names: Map<string,
   const photos = originals.filter((o) => o.media_type.startsWith("image/")).length;
   const files = originals.filter((o) => !o.media_type.startsWith("image/") && o.kind !== "text").length;
   const words = talk.posts.filter((post) => post.text.trim() || post.originals.some((o) => o.kind === "text")).length;
-  const things = [photos ? `写真${photos}枚` : "", words ? `言葉${words}つ` : "", files ? `ファイル${files}つ` : ""].filter(Boolean).join("と") || "写真や言葉";
+  const things = [photos ? `写真${photos}枚` : "", words ? `言葉${pieces(words)}` : "", files ? `ファイル${pieces(files)}` : ""].filter(Boolean).join("と") || "写真や言葉";
   const start = dayOf(talk.posts[0]?.at ?? talk.at), end = dayOf(talk.at);
   const range = start === end ? `${end}に` : `${start}から${end}までに`;
   const arrived = source === "admin" ? `役員の画面から、${range}${things}を送っています。`
@@ -77,9 +79,9 @@ function talkFacts(talk: Talk, questions: ClarificationRow[], names: Map<string,
   const replies = talk.topics.filter(replying).length;
   const choices = talk.topics.filter(undecided).length;
   const parts = [
-    open.length ? `AIから役員への質問が${open.length}つあり、まだ答えがありません` : "",
-    replies ? `問い合わせ${replies}つに、まだ返事をしていません` : "",
-    choices ? `写真と言葉${choices}つは、どう使うかをまだ決めていません` : "",
+    open.length ? `AIから役員への質問が${pieces(open.length)}あり、まだ答えがありません` : "",
+    replies ? `問い合わせ${pieces(replies)}に、まだ返事をしていません` : "",
+    choices ? `写真と言葉${pieces(choices)}は、どう使うかをまだ決めていません` : "",
   ].filter(Boolean);
   const first = talk.topics.find((topic) => asking(topic) || replying(topic) || undecided(topic)) ?? null;
   const kind = !first ? null : asking(first) ? "asking" : replying(first) ? "replying" : "undecided";
@@ -209,7 +211,7 @@ talkAdmin.get("/inbox/talks/:talkId", async (c) => {
           {post.jobId && roster.includes(post.jobId) ? <div><p>この資料で、世帯の名簿を入れ直しますか？</p><a class="button secondary" href={`${adminPath(ward, "/answers/roster")}?job=${encodeURIComponent(post.jobId)}`}>入れ直す</a>
             <form method="post" action={adminPath(ward, `/inbox/roster/${post.jobId}/skip`)}><button class="quiet">入れ直さない</button></form></div> : null}
         </article>)}
-        <p class="talk-decision">{clock(first.at)}{first.at !== last.at ? `〜${clock(last.at)}` : ""}の{photos ? `写真${photos}枚${words ? "と言葉" : ""}` : "言葉"}: {summary} {actionText(topic, names)}</p>
+        <p class="talk-decision">{clock(first.at)}{clock(first.at) !== clock(last.at) ? `〜${clock(last.at)}` : ""}の{photos ? `写真${photos}枚${words ? "と言葉" : ""}` : "言葉"}: {summary} {actionText(topic, names)}</p>
         {topic.inquiry && action === "inquiry" ? <p><a class="button secondary" href={adminPath(ward, `/inquiries/${topic.inquiry.inquiry_id}`)}>返事を書く</a></p> : null}
         <details class="fold"><summary>直す</summary><div>
           <form method="post" action={edit}>

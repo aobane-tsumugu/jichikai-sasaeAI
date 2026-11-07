@@ -115,7 +115,7 @@ it("行き先のない写真は聞かずに自治会の資料へ残し、名簿�
   expect(inbox).toContain("この資料で、世帯の名簿を入れ直しますか？");
   expect(inbox).toContain("自治会の資料にしました。");
   expect(inbox).toContain("架空の紙1");
-  expect(await read(`${root}/`, cookie)).toContain("届いた写真やファイルのうち1件は、どれの資料かをAIが決められませんでした");
+  expect(await read(`${root}/`, cookie)).toContain("世帯の名簿のような資料が届いています。名簿に入れ直すかを決めてください。");
   expect(await read(`${root}/files`, cookie)).toContain("架空の紙1");
   await postForm(realApp, `${root}/inbox/roster/${rosterJob}/skip`, {}, cookie);
   const after = await redirectedTalkPage(`${root}/inbox/item-1/pick`, cookie);

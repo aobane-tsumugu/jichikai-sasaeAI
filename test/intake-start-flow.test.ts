@@ -55,7 +55,9 @@ it("新任の役員が題は案内・年不明の実際のフォームから送�
     expect(receivedUrl.searchParams.get("back")).toBe(`${root}/`);
     expect(receivedUrl.searchParams.has("project")).toBe(false);
     await Promise.all(tasks);
-    expect(await (await get(realApp, `${root}/`, cookie)).text()).toContain("今は3件です。");
+    const topAfter = await (await get(realApp, `${root}/`, cookie)).text();
+    expect(topAfter).toContain("資料は今3件届いています。");
+    expect(topAfter).toContain(`href="${root}/intake/read">読み終わった資料を見て、準備を始める</a>`);
     expect(await (await get(realApp, received.redirectTo, cookie)).text()).toContain("受け取りました");
     const read = await (await get(realApp, `${root}/intake/read`, cookie)).text();
     expect(read).toContain(`${FIRST_SLICE.nextYearTitle}の資料のようです`);
