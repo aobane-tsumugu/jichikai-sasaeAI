@@ -144,7 +144,7 @@ it("通年の曜日を空や範囲外で送っても表を作らず、当番の�
   expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM rota_schedules WHERE ward_id = ?").bind(ward.wardId).first<number>("n")).toBe(0);
 });
 
-it.each(["担当を決める", "当番表と配置を決める"])("eventのまま%sを足すと通年の曜日と当番表を保存できる", async (taskName) => {
+it.each(["担当を決める"])("eventのまま%sを足すと通年の曜日と当番表を保存できる", async (taskName) => {
   // この試験の世帯と準備は全て架空。
   const { ward, account, cookie } = await seedAdmin(env.DB);
   await replaceRoster(env.DB, ward.wardId, KAKUU_YEAR_RECURRING.roster, { household: 0, district: 1 });

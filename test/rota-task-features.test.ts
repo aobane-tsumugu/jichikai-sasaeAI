@@ -7,7 +7,7 @@ import { applyChange, createProject, getProjectState } from "../src/project/api"
 import { compareRota, prepareRota } from "../src/rota/store";
 import { get, postForm, realApp } from "./helpers";
 
-it.each(["担当を決める", "当番表と配置を決める"])("eventのまま%sを足すと、届いた三晩の表と翌年の記録から当番表を始める", async (taskName) => {
+it.each(["担当を決める"])("eventのまま%sを足すと、届いた三晩の表と翌年の記録から当番表を始める", async (taskName) => {
   // 日、班、世帯と資料は全て架空。読み取った去年の表を保存したところから通す。
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
@@ -50,8 +50,24 @@ it.each(["担当を決める", "当番表と配置を決める"])("eventのま�
   const next = await createProject(env.DB, ward.wardId, {
     kind: "event", title: project.title, year: 2027, seedProjectId: project.projectId, accountId: account.accountId,
   });
+  expect((await postForm(realApp, `${root}/projects/${next.projectId}/map/add`, { name: taskName }, cookie)).status).toBe(303);
   expect(await prepareRota(env.DB, ward.wardId, next.projectId, account.accountId)).toBe(true);
   expect((await compareRota(env.DB, ward.wardId, next.projectId))?.comparison.sourceProjectId).toBe(project.projectId);
   expect((await getProjectState(env.DB, ward.wardId, next.projectId))?.tables.duties.filter((row) => row.scope === "current").map((row) => row.data))
     .toEqual(expected.map((row) => ({ ...row, slot: row.slot.replace("2026", "2027") })));
+});
+
+it("行事の「当番表と配置を決める」だけでは名簿の順で回さず、手伝いの返事から AI に下書きを頼む", async () => {
+  // 名簿の順で回すのは「担当を決める」がある時だけ。行事の当番表は手伝いの申し込みと世帯の返事から作る。
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の秋の祭り", year: 2026, accountId: account.accountId });
+  const state = await getProjectState(env.DB, ward.wardId, project.projectId);
+  expect(state?.mapTasks.some((task) => task.taskKey === "duty_roster")).toBe(true);
+  expect(state?.mapTasks.some((task) => task.taskKey === "assign")).toBe(false);
+  const path = `/${ward.slug}/admin/projects/${project.projectId}`;
+  const list = await (await get(realApp, `${path}/draft`, cookie)).text();
+  expect(list).not.toContain("当番の下書きを作る</button>");
+  const draft = await (await get(realApp, `${path}/draft/duty_roster`, cookie)).text();
+  expect(draft).toContain("手伝いの申し込みと、世帯の返事にある手伝いから、AIが担当の下書きを入れます。");
+  expect(await prepareRota(env.DB, ward.wardId, project.projectId, account.accountId)).toBe(false);
 });
