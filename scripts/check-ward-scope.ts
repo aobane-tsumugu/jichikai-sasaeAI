@@ -6,10 +6,6 @@ export interface ScopeException { file: string; sql: string; reason: string }
 
 // ファイル全体を除外しない。SQLが変われば、改めて理由を確認する。
 export const exceptions: readonly ScopeException[] = [
-  { file: "src/ai/complete.ts", sql: "UPDATE jobs SET status = 'read', ticket_hash = NULL, updated_at = ? WHERE status = 'connecting' AND session_id IS NULL AND connect_started_at < ?", reason: "Cronが全区の、AI側の処理を開く前に止まった仕事を再開待ちへ戻す。本文は読み書きしない。" },
-  { file: "src/ai/complete.ts", sql: "SELECT ward_id, job_id FROM jobs WHERE status = 'connecting' AND session_id IS NOT NULL AND connect_started_at < ? LIMIT 20", reason: "Cronが全区の確認待ちを拾い、以後は得られた区と仕事に絞って確認する。" },
-  { file: "src/ai/complete.ts", sql: "SELECT DISTINCT ward_id, project_id FROM jobs WHERE status = 'read' AND project_id IS NOT NULL LIMIT 20", reason: "Cronが全区の接続待ちを拾い、以後は得られた区と行事に絞って処理する。" },
-  { file: "src/ai/complete.ts", sql: "SELECT ward_id, job_id, session_id FROM jobs WHERE session_id IS NOT NULL AND session_deleted_at IS NULL AND status <> 'connecting' LIMIT 20", reason: "Cronが全区のAI側の消し残しを拾い、以後は得られた区と仕事に絞って消す。" },
   { file: "src/ai/webhook.ts", sql: "SELECT ward_id, job_id FROM jobs WHERE session_id = ?", reason: "署名を確かめたwebhookの宛先の解決。AI側の処理のIDから区を決める。" },
   { file: "src/archive/snapshot.ts", sql: "SELECT ward_id FROM wards WHERE ward_id IS NOT NULL ORDER BY ward_id", reason: "日次Cronが写しを作る区を列挙し、各表とR2はその区に絞って扱う。" },
   { file: "src/core/app.tsx", sql: "SELECT w.is_active FROM line_channels l JOIN wards w ON w.ward_id = l.ward_id WHERE w.ward_id IS NOT NULL AND l.destination = ? LIMIT 1", reason: "LINEのwebhookの宛先から停止中の区かを調べる。区の本文は返さない。" },

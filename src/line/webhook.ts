@@ -1,6 +1,7 @@
 import { nowIso } from "../core/ids";
 import type { Env } from "../env";
-import { createLineIntakePorts, type InboxMatch, type LineIntakePorts, type LineOriginal } from "./intake";
+import { createLineIntakePorts, lineAiLimitReason, type InboxMatch, type LineIntakePorts, type LineOriginal } from "./intake";
+import { getWardAiLimits } from "../ops/metrics";
 import type { Waitable } from "../intake/types";
 import { getLineMemberDisplayName, lineChannelCredentials, replyLineText } from "./api";
 import { getClient } from "../ai/deps";
@@ -218,6 +219,7 @@ export async function acceptLineWebhook(
         original.bytes = content.bytes;
         original.contentType = content.contentType;
       }
+      original.aiLimitReason = await lineAiLimitReason(db, wardId, eventId, original.senderId, now);
       // テキストは受信ジョブを作る前に分類する。無関係な文はジョブや原本を残さず、日次集計だけに加える。
       let match: InboxMatch | null = null;
       let answers: Array<{ question: ClarificationRow; text: string }> = [];
@@ -234,7 +236,7 @@ export async function acceptLineWebhook(
         if (event.replyToken) await replyLineText(accessToken, event.replyToken, "この質問の写真を撮り直して送ってください。", fetcher);
         continue;
       }
-      if (original.kind === "text") {
+      if (original.kind === "text" && !original.aiLimitReason) {
         receivedText = true;
         await rememberPhotoText(db, wardId, { destination: payload.destination!, sourceType: source.type, sourceId: source.id,
           eventId, receivedAt: original.receivedAt, text: original.text ?? "" }, now);
@@ -320,11 +322,23 @@ export async function acceptLineWebhook(
         original.senderDisplayName, original.sourceType === "group" ? "LINEグループ" : original.sourceType === "room" ? "LINE複数人トーク" : "LINE個別",
         itemId, source.type, source.id,
       ).run();
+      if (original.aiLimitReason) await db.prepare("UPDATE line_inbox_items SET official_addressed = ? WHERE ward_id = ? AND item_id = ?")
+        .bind(original.officialAddressed ? 1 : 0, wardId, itemId).run();
       if (original.kind === "image") {
         await registerLinePhoto(db, wardId, { destination: payload.destination!, source, jobId: itemId, messageId: event.message.id,
           imageSet: event.message.imageSet, quoteToken: event.message.quoteToken, replyToken: event.replyToken, now });
         // 保存できた一対一の写真には、AIの確認や当て先への接続より先に受領を返す。
         await replyPhotoReceipt(env, wardId, itemId, { fetch: fetcher, now });
+        if (original.aiLimitReason) {
+          if (original.aiLimitReason === "sender") {
+            // 原本だけを残す写真は、同時に届いたほかの写真の読み終わりを待たせない。
+            await db.prepare(`UPDATE line_photo_batches SET expected_count = MAX(0, expected_count - 1)
+              WHERE ward_id = ? AND batch_id = (SELECT batch_id FROM line_photo_items WHERE ward_id = ? AND job_id = ?)
+              AND expected_count IS NOT NULL`).bind(wardId, wardId, itemId).run();
+            await db.prepare("DELETE FROM line_photo_items WHERE ward_id = ? AND job_id = ?").bind(wardId, itemId).run();
+          }
+          continue;
+        }
         const retake = activeQuestions.find((question) => question.topic === "unreadable");
         if (retake) {
           await db.prepare("UPDATE line_photo_items SET retake_clarification_id = ? WHERE ward_id = ? AND job_id = ?")
@@ -336,6 +350,7 @@ export async function acceptLineWebhook(
         photoJobs.push(itemId);
         if (ports.checkPhoto) photoChecksPending.push(ports.checkPhoto(wardId, original, itemId).catch(() => undefined));
       }
+      if (original.aiLimitReason) continue;
       if (answers.length) {
         await saveClarificationAnswers(db, wardId, eventId, itemId, original.senderDisplayName || "LINEで答えた人", answers, now);
         await replyAfterClarification(env, wardId, answers[0]!.question.batch_id, event.replyToken, { fetch: fetcher, now });
@@ -379,8 +394,10 @@ export async function acceptLineWebhook(
     if (!dependencies) await new Promise((resolve) => setTimeout(resolve, PHOTO_GROUP_GAP_MS));
     const deliveryNow = dependencies ? now : new Date();
     try {
-      await replyQuickPhotoChecks(env, wardId, { fetch: fetcher, now: deliveryNow });
-      await processPhotoBatches(env, wardId, { fetch: fetcher, now: deliveryNow });
+      if (!(await getWardAiLimits(db, wardId, deliveryNow)).monthlyBlocked) {
+        await replyQuickPhotoChecks(env, wardId, { fetch: fetcher, now: deliveryNow });
+        await processPhotoBatches(env, wardId, { fetch: fetcher, now: deliveryNow });
+      }
     } catch { console.error("写真の質問を準備できませんでした", wardId); }
     // 全部の読みがそろってから、同じ送信の写真をまとめて当てる。
     for (const jobId of photoJobs) {
@@ -388,7 +405,7 @@ export async function acceptLineWebhook(
       catch { console.error("写真の読み取りを始められませんでした", wardId, jobId); }
     }
   }
-  if (receivedText) await processPhotoBatches(env, wardId, { fetch: fetcher, now }).catch(() => {
+  if (receivedText && !(await getWardAiLimits(db, wardId, now)).monthlyBlocked) await processPhotoBatches(env, wardId, { fetch: fetcher, now }).catch(() => {
     console.error("後から届いた文で写真を確認できませんでした", wardId);
   });
   };

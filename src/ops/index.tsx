@@ -12,7 +12,7 @@ import { dispatchProject, SESSION_BUDGET_CENTS } from "../ai/session";
 import { retryJob } from "../intake/api";
 import { listAccounts } from "../settings/accounts";
 import { checkOpsLogin, createOpsSession, OPS_COOKIE, OPS_SESSION_HOURS, opsConfigured, verifyOpsSession } from "./session";
-import { getWardMetrics, listWardQueue, type MonthlyMetrics } from "./metrics";
+import { getWardAiLimits, getWardMetrics, listWardQueue, type MonthlyMetrics } from "./metrics";
 import { listWards, openWard } from "./wards";
 import { clearLoginFailures, delayLoginAfterFailures } from "../core/login-throttle";
 import { formatJstDate, formatJst } from "../core/time";
@@ -328,7 +328,7 @@ opsRoutes.get("/wards/:slug", async (c) => {
       <nav class="action-links" aria-label="提供側の画面">
         <a class="row-link" href={`/ops/photo-settings/${encodeURIComponent(ward.wardId)}`}><b>報告の写真の設定</b><span>写真を処理する準備と測定の結果を確かめます</span></a>
         <a class="row-link" href={`/ops/wards/${ward.slug}/costs`}><b>費用</b><span>月ごとに、AIに読んでもらった費用を見ます</span></a>
-        <a class="row-link" href={`/ops/wards/${ward.slug}/budget`}><b>予算</b><span>一回の処理の上限と、月の目安を決めます</span></a>
+        <a class="row-link" href={`/ops/wards/${ward.slug}/budget`}><b>予算とLINEの受付</b><span>区ごとにAIを動かす上限を決めます</span></a>
         <a class="row-link" href={`/ops/wards/${ward.slug}/queue`}><b>読み取りの状況</b><span>失敗したものを、もう一度動かします</span></a>
         <a class="row-link" href={`/ops/wards/${ward.slug}/lifecycle`}><b>保管と消去</b><span>毎日の控え、引き渡し、区を止める、区の消去</span></a>
       </nav>
@@ -425,7 +425,7 @@ function CostCard(props: { months: MonthlyMetrics[]; title: string }) {
       <h2>{props.title}</h2>
       <p>送られた資料{total.inputs.toLocaleString("ja-JP")}件</p>
       <p>失敗か、対応が必要{(total.failed + total.attention).toLocaleString("ja-JP")}件</p>
-      <dl class="facts"><dt>費用の合計</dt><dd>{usd(totalCost)}</dd><dt>読む見積もり</dt><dd>{usd(total.readEstimateCents)}</dd><dt>利用の記録の金額</dt><dd>{usd(total.actualRunCostCents)}</dd>
+      <dl class="facts"><dt>費用の合計</dt><dd>{usd(totalCost)}</dd><dt>読む・当て先を調べる見積もり</dt><dd>{usd(total.readEstimateCents)}</dd><dt>利用の記録の金額</dt><dd>{usd(total.actualRunCostCents)}</dd>
         <dt>資料を読む</dt><dd>{total.readRuns.toLocaleString("ja-JP")}回、読み書きした量{total.readTokens.toLocaleString("ja-JP")}</dd>
         <dt>段取りを作る</dt><dd>{total.connectRuns.toLocaleString("ja-JP")}回、読み書きした量{total.connectTokens.toLocaleString("ja-JP")}</dd>
         <dt>一件あたり</dt><dd>{total.inputs ? usd(Math.round(totalCost / total.inputs)) : "—"}、平均{total.inputs ? minutes(total.durationMs / total.inputs) : "—"}</dd>
@@ -478,16 +478,15 @@ opsRoutes.get("/wards/:slug/budget", async (c) => {
   const ward = await wardOrNull(c, c.req.param("slug"));
   if (!ward) return c.html(<WardNotFound />, 404);
   const metrics = await getWardMetrics(c.env.DB, ward);
-  const thisMonth = new Date().toISOString().slice(0, 7);
-  const current = metrics.months.find((row) => row.month === thisMonth);
-  const currentCost = (current?.readEstimateCents ?? 0) + (current?.actualRunCostCents ?? 0);
-  const ratio = metrics.monthlyLimitCents > 0 ? currentCost / metrics.monthlyLimitCents : 0;
+  const limits = await getWardAiLimits(c.env.DB, ward.wardId);
+  const currentCost = limits.costCents;
   const sessionBudget = await c.env.DB.prepare("SELECT session_budget_cents FROM ops_ward_limits WHERE ward_id = ?")
     .bind(ward.wardId).first<{ session_budget_cents: number }>();
   return c.html(
     <OpsPage title={`${ward.name}の予算`} loggedIn>
       <p class="link-line"><a href={`/ops/wards/${ward.slug}`}>{ward.name} の画面</a></p>
-      <h1>{ward.name}の予算</h1><p class="lead">AIの費用の上限を決めます。上限は目安です。上限に達しても、役員の配る操作は止まりません。</p>
+      <h1>{ward.name}の予算</h1><p class="lead">AIの費用とLINEの受付の上限を決めます。資料は受け取り、上限に達したらAIを待たせます。</p>
+      <p>月の上限: {limits.monthlyBlocked ? "上限に達し、AIの開始を待っています" : limits.monthlyLimitCents ? "設定あり・上限には達していません" : "制限なし"}。LINEの一日上限: {limits.lineSenderDailyLimit ? `同じ送信元から${limits.lineSenderDailyLimit}件までAIで処理します` : "制限なし"}。</p>
       <section class="panel">
         <h2>一回の処理</h2>
         <p>現在の上限: {((sessionBudget?.session_budget_cents ?? SESSION_BUDGET_CENTS) / 100).toFixed(2)}ドル</p>
@@ -500,15 +499,21 @@ opsRoutes.get("/wards/:slug/budget", async (c) => {
       </section>
       <section class="panel">
         <h2>今月</h2>
-        <p>費用{usd(currentCost)} / 目安上限{metrics.monthlyLimitCents ? usd(metrics.monthlyLimitCents) : "まだ決めていません"}</p>
-        {metrics.monthlyLimitCents > 0 && ratio >= 1 ? <p class="notice error">目安上限に達しています。</p>
-          : metrics.monthlyLimitCents > 0 && ratio >= 0.8 ? <p class="notice">目安上限に近づいています。</p>
-            : null}
-        <p>目安上限に達しても、役員の配る操作は止まりません。</p>
+        <p>費用{usd(currentCost)} / 月の上限{metrics.monthlyLimitCents ? usd(metrics.monthlyLimitCents) : "制限なし"}</p>
+        <p>上限に達したら、読み取りと当て先の確認と段取り作りを待たせます。上限を上げるか0にするか、月が替わると、5分ごとの処理で続けます。区のページ、記録、印刷、Webの答えは止まりません。</p>
         <form method="post" action={`/ops/wards/${ward.slug}/budget`}>
-          <label for="monthlyLimit">月の目安上限（USD。0は上限なし）</label>
+          <label for="monthlyLimit">月の上限（USD。0は制限なし）</label>
           <input id="monthlyLimit" name="monthlyLimit" type="number" min="0" step="0.01" required value={(metrics.monthlyLimitCents / 100).toFixed(2)} />
-          <div class="action-bar"><button type="submit">月の目安を保存する</button></div>
+          <div class="action-bar"><button type="submit">月の上限を保存する</button></div>
+        </form>
+      </section>
+      <section class="panel"><h2>LINEの一日の受付</h2>
+        <p>日本時間の一日で数えます。同じ送信元の文と写真を合わせて数え、超えた分はAIに回さず元の資料だけを残します。写真を受け取った返事は変わりません。</p>
+        <form method="post" action={`/ops/wards/${ward.slug}/budget`}>
+          <input type="hidden" name="saveLineDailyLimit" value="1" />
+          <label for="lineSenderDailyLimit">同じ送信元から一日にAIへ回す件数（0は制限なし）</label>
+          <input id="lineSenderDailyLimit" name="lineSenderDailyLimit" type="number" min="0" step="1" required value={metrics.lineSenderDailyLimit} />
+          <div class="action-bar"><button type="submit">LINEの件数を保存する</button></div>
         </form>
       </section>
     </OpsPage>,
@@ -519,6 +524,17 @@ opsRoutes.post("/wards/:slug/budget", async (c) => {
   const ward = await wardOrNull(c, c.req.param("slug"));
   if (!ward) return c.html(<WardNotFound />, 404);
   const form = await c.req.parseBody();
+  if (form["saveLineDailyLimit"] === "1") {
+    const rawDaily = typeof form["lineSenderDailyLimit"] === "string" ? form["lineSenderDailyLimit"] : "";
+    const daily = Number(rawDaily);
+    if (rawDaily.trim() === "" || !Number.isSafeInteger(daily) || daily < 0) {
+      return c.html(<OpsPage title="件数を保存できません" loggedIn><h1>0以上の整数で件数を入れてください</h1><a class="button" href={`/ops/wards/${ward.slug}/budget`}>戻って直す</a></OpsPage>, 400);
+    }
+    await c.env.DB.prepare(`INSERT INTO ops_ward_limits (ward_id, line_sender_daily_limit, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT (ward_id) DO UPDATE SET line_sender_daily_limit = excluded.line_sender_daily_limit, updated_at = excluded.updated_at`)
+      .bind(ward.wardId, daily, new Date().toISOString()).run();
+    return budgetSaved(c, ward.slug);
+  }
   if (form["saveSessionBudget"] === "1") {
     const rawSession = typeof form["sessionBudget"] === "string" ? form["sessionBudget"] : "";
     const sessionAmount = Number(rawSession);
