@@ -264,7 +264,7 @@ let adminLoggedIn = false;
 const startLogin = Date.now();
 try {
   const { name, password } = credentials(credsArg);
-  const login = await post(admin + "/login", { name, password });
+  const login = await post(admin + "/login", { loginId: name, name, password });
   const home = await get(admin + "/");
   if (login.status !== 303 || !cookies.has("device") || !home.response.ok) throw new Error("役員画面に入れません");
   adminLoggedIn = true;
