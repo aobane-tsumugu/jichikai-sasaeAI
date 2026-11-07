@@ -50,7 +50,7 @@ admin.get("/know", async (c) => {
     <h1>自治会の基本情報</h1>
     <p class="lead">新しい役員が知っておきたい、この自治会の決まりや手順です。届いた資料からAIが読み取って入れ、役員が直せます。書かれていなくても、準備は進められます。</p>
     {c.req.query("n") === "added" ? <Notice>項目を足しました。</Notice> : c.req.query("n") === "removed" ? <Notice>項目を外しました。下の「外した項目」から戻せます。</Notice> : c.req.query("n") === "restored" ? <Notice>項目を戻しました。</Notice> : null}
-    {first ? <section class="next"><p>{first.state === "checking" ? `「${first.title}」について、新しく届いた資料に違うことが書かれていました。どちらが今の内容か教えてください。` : `「${first.title}」は、${first.note || "入れてから時間がたっています"}。今も合っているか見てください。`}{shown(first) ? `今は「${shown(first)}」と書かれています。` : ""}</p>
+    {first ? <section class="next"><p>{first.state === "checking" ? `「${first.title}」について、新しく届いた資料に違うことが書かれていました。どちらが今の内容か教えてください。` : `「${first.title}」は、${first.note || "入れてから時間がたっています"}。今も合っているか見てください。`}{shown(first) ? `今の内容は「${shown(first)}」です。` : ""}</p>
       <a class="button" href={path(first)}>「{first.title}」を見て直す</a></section> : null}
     {needs.length > 1 ? <p>ほかに、{needs.slice(1).map((item) => `「${item.title}」`).join("、")}も、見直す時期か、AIからの質問があります。</p> : null}
     {written.length ? <><h2>書かれていること</h2><ul class="links">{written.map((item) => <li><a href={path(item)}>{item.title}</a>{shown(item) ? `　${shown(item)}` : ""}</li>)}</ul></> : null}
@@ -79,10 +79,9 @@ admin.get("/know/:itemId", async (c) => {
   const id = c.req.param("itemId");
   const item = await knownItem(c.env.DB, ward.wardId, id);
   if (!item) return c.notFound();
-  const [sources, recent, summaries] = await Promise.all([listKnowSources(c.env.DB, ward.wardId, id), listWardFiles(c.env.DB, ward.wardId, 0), jobSummaries(c.env.DB, ward.wardId)]);
-  const linked = new Set(sources.map((source) => source.original_id));
+  // 元の資料は、AI が読み取って入れた時に自動でつながる（know/apply.ts）。役員に資料を選ばせない（前提 1）。
+  const [sources, summaries] = await Promise.all([listKnowSources(c.env.DB, ward.wardId, id), jobSummaries(c.env.DB, ward.wardId)]);
   const base = adminPath(ward, `/know/${encodeURIComponent(id)}`);
-  const candidates = recent.files.filter((file) => !linked.has(file.original_id)).slice(0, 12);
   const n = c.req.query("n");
   return c.html(<AdminPage ward={ward} account={account} title={item.title} back={{ href: adminPath(ward, "/know"), label: "自治会の基本情報へ" }}>
     {n && NOTICE[n] ? <Notice>{NOTICE[n]}</Notice> : null}
@@ -103,12 +102,7 @@ admin.get("/know/:itemId", async (c) => {
     {sources.length ? <ul class="rows">{sources.map((source) => <li class="panel">
       {isImage(source.media_type) ? <a href={adminPath(ward, `/intake/originals/${source.original_id}`)}><img class="photo" src={`${adminPath(ward, `/intake/originals/${source.original_id}`)}?raw=1`} alt={source.filename || "資料の写真"} loading="lazy" /></a> : <p class="link-line"><a href={adminPath(ward, `/intake/originals/${source.original_id}`)}>{source.filename || "資料"}を開く</a></p>}
       <form method="post" action={`${base}/links/${source.link_id}/remove`}><button class="quiet">つながりを外す</button></form>
-    </li>)}</ul> : <p>つながっている資料はありません。</p>}
-    {candidates.length ? <details class="fold"><summary>自治会の資料からつなげる</summary><div><ul class="rows">{candidates.map((file) => <li>
-      <form method="post" action={`${base}/links`}><input type="hidden" name="originalId" value={file.original_id} />
-        <p><b>{firstLine(summaries.get(file.job_id) ?? "").slice(0, 36) || file.filename || "届いた資料"}</b></p>
-        <p class="muted">{formatJst(file.received_at)}</p>
-        <button class="secondary">この資料をつなげる</button></form></li>)}</ul></div></details> : null}
+    </li>)}</ul> : <p>この項目の元の資料は、まだつながっていません。規約や去年の総会の資料の写真を送ると、AIが読んで、この項目に入れ、元の資料としてつなぎます。</p>}
     <p class="link-line"><a href={adminPath(ward, "/intake")}>写真やファイルを送る</a></p>
     <details class="fold"><summary>名前を変える</summary><div><form method="post" action={`${base}/title`}>
       <div class="field"><label for="know-rename">項目の名前</label><input id="know-rename" name="title" type="text" value={item.title} required maxlength={KNOW_LIMITS.title} /></div>
