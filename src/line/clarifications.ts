@@ -171,7 +171,7 @@ async function prepareQuestions(env: Env, wardId: string, batch: Batch, now: Dat
     }
     if (!item.project_id && originals.results[0]) {
       // 区のページで読める配布物がある行事だけを、送った人に示す。
-      const candidates = await env.DB.prepare(`SELECT p.title FROM projects p WHERE p.ward_id = ? AND p.closed_at IS NULL
+      const candidates = await env.DB.prepare(`SELECT p.title FROM projects p WHERE p.ward_id = ? AND p.is_ward_notices = 0 AND p.closed_at IS NULL
         AND EXISTS (SELECT 1 FROM publication_records r
           JOIN document_versions v ON v.ward_id = r.ward_id AND v.version_id = r.version_id
           WHERE r.ward_id = p.ward_id AND r.project_id = p.project_id AND v.scope = 'public' AND r.unpublished_at IS NULL

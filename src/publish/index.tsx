@@ -408,14 +408,15 @@ admin.post("/publish/:projectId/send", async (c) => {
         AND published_at IS NULL
         AND version_no = (SELECT MAX(v.version_no) FROM document_versions v WHERE v.ward_id = ? AND v.document_id = ?)
         AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL)
-        AND EXISTS (SELECT 1 FROM documents d WHERE d.ward_id = ? AND d.document_id = ? AND d.scope = 'public')`)
+        AND EXISTS (SELECT 1 FROM documents d WHERE d.ward_id = ? AND d.document_id = ? AND d.scope = 'public')
+      RETURNING version_id`)
       .bind(publishedBody, now, account.accountId, project.title, ward.wardId, projectId, ward.wardId, projectId, documentId, versionId, versionNo,
         ward.wardId, documentId, ward.wardId, projectId, ward.wardId, documentId),
     c.env.DB.prepare(`INSERT INTO publication_records
       (ward_id, publication_id, project_id, document_id, version_id, version_no, recipient_scope, distribution, line_status, published_at, published_by_account_id)
       SELECT ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ? WHERE EXISTS (
         SELECT 1 FROM document_versions v WHERE v.ward_id = ? AND v.version_id = ? AND v.published_at = ? AND v.published_by_account_id = ?
-      )`)
+      ) RETURNING publication_id`)
       .bind(ward.wardId, publicationId, projectId, documentId, versionId, versionNo, recipientScope, JSON.stringify(distribution), now, account.accountId,
         ward.wardId, versionId, now, account.accountId),
     // 配った内容と同時に締切を保存する。回答画面で保存した日付は上書きしない。
@@ -427,7 +428,8 @@ admin.post("/publish/:projectId/send", async (c) => {
       WHERE project_deadlines.updated_by_account_id IS NULL`)
       .bind(answerDue, now, ward.wardId, projectId, publicationId)] : []),
   ]);
-  if (publication[0]?.meta.changes !== 1 || publication[1]?.meta.changes !== 1) {
+  // 変更件数には検索索引のトリガーも含まれるため、文書の更新と配布記録の作成はそれぞれ返された行で確かめる。
+  if (publication[0]?.results.length !== 1 || publication[1]?.results.length !== 1) {
     return c.html(<AdminPage ward={ward} account={account} title="知らせる内容を確かめてください" back={{ href: adminPath(ward, `/publish/${projectId}`), label: "下書きに戻る" }}>
       <h1>知らせる内容を確かめてください</h1><p>下書きの内容が変わったか、すでに知らせています。知らせる画面で内容を確かめてください。</p>
     </AdminPage>, 409);

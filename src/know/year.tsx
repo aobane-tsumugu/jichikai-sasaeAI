@@ -80,7 +80,7 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
       .all<YearItem>(),
     db.prepare(`SELECT p.project_id, p.title, p.kind, p.year, (SELECT d.due_on FROM project_deadlines d WHERE d.ward_id = p.ward_id AND d.project_id = p.project_id AND d.kind = 'event_day') AS event_day,
       (SELECT d.due_on FROM project_deadlines d WHERE d.ward_id = p.ward_id AND d.project_id = p.project_id AND d.kind = 'event_end') AS event_end
-      FROM projects p WHERE p.ward_id = ? AND p.closed_at IS NOT NULL ORDER BY p.closed_at DESC LIMIT 12`).bind(ward.wardId).all<RecordRow>(),
+      FROM projects p WHERE p.ward_id = ? AND p.is_ward_notices = 0 AND p.closed_at IS NOT NULL ORDER BY p.closed_at DESC LIMIT 12`).bind(ward.wardId).all<RecordRow>(),
     db.prepare("SELECT project_id, weekday FROM rota_schedules WHERE ward_id = ?").bind(ward.wardId).all<{ project_id: string; weekday: number }>(),
   ]);
   const removed = new Set(overrides.results.filter((row) => row.removed_at).map((row) => row.item_id));
