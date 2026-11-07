@@ -196,3 +196,34 @@ it("作ったばかりの行事は、行事が多い区でもトップから開�
   expect(home).toContain("架空の作ったばかりの要望");
   expect(home).toContain("ほかの行事（16件）は一年の画面で見る");
 });
+
+it("紙は行事から外して区の資料だけに置け、移しても前の行事の中身は消さずに知らせ、地図のどの行も外して戻せる", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const root = `/${ward.slug}/admin`;
+  const first = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の夏祭り", year: 2026, accountId: account.accountId });
+  const second = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の秋祭り", year: 2026, accountId: account.accountId });
+  const got = await receive(env, { wardId: ward.wardId, projectId: first.projectId, via: "admin", parts: [{ kind: "photo", filename: "架空の紙.jpg", mediaType: "image/jpeg", bytes: new Uint8Array(fictionalPaperPhoto()) }] });
+  await env.DB.prepare("UPDATE jobs SET status = 'done' WHERE ward_id = ? AND job_id = ?").bind(ward.wardId, got.jobId).run();
+  const pick = await read(`${root}/inbox/city/${got.jobId}/pick`, cookie);
+  expect(pick).toContain("この行事から外す");
+  const moved = await postForm(realApp, `${root}/inbox/city/${got.jobId}`, { operation: "assign", projectId: second.projectId }, cookie);
+  const movedPage = await read(moved.headers.get("location")!, cookie);
+  expect(movedPage).toContain("架空の秋祭りに入れました");
+  expect(movedPage).toContain("架空の夏祭りの下書きに、この紙から入った内容が残っていることがあります");
+  // 繋いでいる間は動かせない。繋ぎ終わった後に外す。
+  await env.DB.prepare("UPDATE jobs SET status = 'done' WHERE ward_id = ? AND job_id = ?").bind(ward.wardId, got.jobId).run();
+  const detached = await postForm(realApp, `${root}/inbox/city/${got.jobId}`, { operation: "detach" }, cookie);
+  const detachedPage = await read(detached.headers.get("location")!, cookie);
+  expect(detachedPage).toContain("架空の秋祭りから外しました。紙は区の資料に残っています。");
+  expect((await env.DB.prepare("SELECT project_id FROM jobs WHERE ward_id = ? AND job_id = ?").bind(ward.wardId, got.jobId).first<{ project_id: string | null }>())?.project_id).toBeNull();
+  expect(await read(`${root}/files`, cookie)).toContain("架空の紙.jpg");
+  await applyWardReading(env.DB, ward.wardId, { document_kind: "year_plan", original_years: [], summary: "", text_blocks: [], fields: [], tables: [], decisions: [], unreadable: [], ward_facts: [], year_entries: [{ original_id: got.received[0]!.originalId, title: "架空の読み違えた行事", month: 7, date_text: "" }] } as never);
+  const id = (await env.DB.prepare("SELECT item_id FROM ward_year_items WHERE ward_id = ? AND title = '架空の読み違えた行事'").bind(ward.wardId).first<{ item_id: string }>())!.item_id;
+  expect(await read(`${root}/year/${id}`, cookie)).toContain("この行を外す");
+  await postForm(realApp, `${root}/year/${id}/remove`, {}, cookie);
+  const year = await read(`${root}/year`, cookie);
+  expect(year).toContain("外した行（1つ）");
+  expect(year).not.toContain("<b>架空の読み違えた行事</b>");
+  await postForm(realApp, `${root}/year/${id}/restore`, {}, cookie);
+  expect(await read(`${root}/year`, cookie)).toContain("<b>架空の読み違えた行事</b>");
+});

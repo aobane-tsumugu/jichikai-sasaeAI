@@ -84,7 +84,7 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
   for (const row of overrides.results.filter((entry) => entry.added && !entry.removed_at && entry.month)) {
     const at = position(row.month!);
     if (row.source_original_id) claim("", row.month!, row.title);
-    rows.push({ key: row.item_id, title: row.title, note: row.date_text || (row.source_original_id ? "紙から読み取りました" : ""), state: "fact", from: at, to: at + 4, href: row.source_original_id ? adminPath(ward, `/intake/originals/${row.source_original_id}`) : adminPath(ward, "/files"), order: at });
+    rows.push({ key: row.item_id, title: row.title, note: row.date_text || (row.source_original_id ? "紙から読み取りました" : ""), state: "fact", from: at, to: at + 4, href: adminPath(ward, `/year/${row.item_id}`), order: at });
   }
   for (const base of YEAR_BASE) {
     if (used.has(base.key) || removed.has(base.key)) continue;
