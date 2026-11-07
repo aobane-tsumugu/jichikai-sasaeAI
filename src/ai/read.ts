@@ -13,8 +13,7 @@ import {
   isAnswerSheetReading,
   normalizeOriginalYears,
   type ReadingBody,
-  type ReadUnreadable,
-} from "./schema";
+  type ReadUnreadable, KNOW_TOPIC_GUIDE, cleanWardFacts, cleanYearEntries } from "./schema";
 
 export type ReadKind = "general" | "answer_sheet" | "restore";
 
@@ -80,6 +79,8 @@ const GENERAL_SYSTEM = `${COMMON_RULES}
 - summary は一行の要約です。
 - project_suggestions は原本ごとの行事の題と種類の案です。title は「案内」などの文書の題でなく、中身に書かれた行事や依頼の名前にしてください。年度は題に足さず、同じ行事の資料は同じ題にします。kind は event（行事）、general_meeting（総会）、city_request（行政の依頼）、board_meeting（役員会）、duty（当番）、request（要望）。一つの原本につき一つまでで、分からなければその原本は入れません。年を推測してはいけません。
 - project_suggestions の date_text と place は、その原本に書かれた行事の日付と場所を文字のまま写し、分からなければ空文字にします。書かれていない年や曜日は足しません。今年の日付には直しません。
+- ward_facts は、一つの行事に限らず、自治会全体に関わる決まりや情報です。topic は次の鍵から選びます: ${KNOW_TOPIC_GUIDE}。text はその資料に書かれた内容を短い文にします。書かれていないことは入れず、推測しません。通帳の番号、暗証番号、パスワードは入れません。無ければ空の配列にします。
+- year_entries は、年間の予定や事業計画のように、一枚に一年の行事や仕事が並ぶ資料だけに入れます。title は行事の名前、month は1から12の月、date_text は書かれたままの日付です。月が分からなければ month は null にします。それ以外の資料では空の配列にします。
 - text_blocks は、資料の文字を元の箇所つきで写したものです。読める文字は落とさずに入れてください。
 - fields は、項目に当てはまる中身です。name は次のいずれかを使ってください: 日時、場所、雨天時、行事の中身、持ち物、手伝いの時間帯、締切、公開用の連絡先。当てはまらない物は、資料に書かれた見出しをそのまま name にしてください。value は書かれたままの文字です。
 - 「持ち物」は参加する住民が持ってくる物だけです。運営側が用意する食材、道具、備品は持ち物に入れず、「運営の準備物」など資料の見出しでfieldsに残し、text_blocksにも書かれたまま残してください。仕事や進め方の資料として使います。
@@ -182,6 +183,8 @@ export function fixOriginalIds(body: ReadingBody, validIds: string[]): ReadingBo
   return {
     ...body,
     project_suggestions: cleanSuggestions(body.project_suggestions, validIds),
+    ward_facts: cleanWardFacts(body.ward_facts, validIds),
+    year_entries: cleanYearEntries(body.year_entries, validIds),
     text_blocks: body.text_blocks.map(fix),
     fields: body.fields.map(fix),
     tables: body.tables.map(fix),

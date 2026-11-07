@@ -11,6 +11,7 @@ import { WardBucket } from "../core/storage";
 import { newId, nowIso } from "../core/ids";
 import type { Env } from "../env";
 import { createAnthropic, MODEL } from "../ai/anthropic";
+import { applyWardReading } from "../know/apply";
 import { dispatchProject } from "../ai/session";
 import { matchProject, MATCH_NEW, MATCH_MULTIPLE, MATCH_UNRELATED, MATCH_UNCERTAIN, MATCH_PACK_VERSION } from "../ai/match";
 import { projectApi } from "../ai/project-binding";
@@ -114,7 +115,7 @@ async function performRead(
       try {
         const directOriginals = (await listOriginals(env.DB, wardId, jobId)).filter((o) => !o.media_type.startsWith("image/") && o.media_type !== "application/pdf");
         const suggested = await suggestProjects(client, direct.body, directOriginals);
-        direct = { ...direct, body: { ...direct.body, project_suggestions: suggested.suggestions },
+        direct = { ...direct, body: { ...direct.body, project_suggestions: suggested.suggestions, ward_facts: suggested.wardFacts, year_entries: suggested.yearEntries },
           pack_version: `${direct.pack_version}/${SUGGEST_PACK_VERSION}`, model: suggested.model };
         directUsage = { ...suggested.usage, cache_read_input_tokens: suggested.usage.cache_read_input_tokens ?? 0 };
         await env.DB.prepare(`UPDATE readings SET body = ?, pack_version = ?, model = ? WHERE ward_id = ? AND job_id = ? AND source = 'direct'
@@ -130,6 +131,7 @@ async function performRead(
       if (!direct) throw new ReadError("読む元の資料がありません", "unsupported", false);
       const placed = await finishRead(env.DB, { wardId, jobId, attempt, source: "direct", packVersion: direct.pack_version,
         model: direct.model, body: direct.body });
+      if (placed) await applyWardReading(env.DB, wardId, direct.body).catch((error) => console.error("区の情報を入れられませんでした", describe(error)));
       await endRun(env.DB, run, wardId, { ok: true, usage: directUsage });
       const latest = placed ? await getJob(env.DB, wardId, jobId) : null;
       if (latest?.project_id) await dispatchProject(env, wardId, latest.project_id).catch((error) => console.error("繋げるの起動に失敗しました", describe(error)));
@@ -169,6 +171,10 @@ async function performRead(
       model: result.model,
       body: fixOriginalIds(result.body, readable.map((original) => original.originalId)),
     });
+    if (placed) {
+      await applyWardReading(env.DB, wardId, fixOriginalIds(result.body, readable.map((original) => original.originalId))).catch((error) => console.error("区の情報を入れられませんでした", describe(error)));
+      if (direct) await applyWardReading(env.DB, wardId, direct.body).catch((error) => console.error("区の情報を入れられませんでした", describe(error)));
+    }
     await endRun(env.DB, run, wardId, { ok: true, usage: { input_tokens: result.usage.input_tokens + directUsage.input_tokens, output_tokens: result.usage.output_tokens + directUsage.output_tokens, cache_read_input_tokens: result.usage.cache_read_input_tokens + directUsage.cache_read_input_tokens }, error: placed ? "" : "置く前に取り下げられました" });
     // 読み終わった。プロジェクトが決まっていれば、繋げる順番に入る（同じプロジェクトでは一つずつ）
     // 読みの間に当て先が付いた場合も、最新の入った物から当て先を拾う。

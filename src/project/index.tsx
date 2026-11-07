@@ -62,14 +62,15 @@ admin.get("/projects", async (c) => {
   const { ward } = c.var;
   const allProjects = await listProjects(c.env.DB, ward.wardId, { includeClosed: true });
   const seeds = allProjects.filter((project) => project.closedAt);
+  const presetKind = PROJECT_KINDS.find((kind) => kind === c.req.query("kind")) ?? PROJECT_KINDS[0];
   return c.html(<Layout title="新しく始める" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a>
     <h1>新しく始める</h1><p class="lead">去年の記録があれば、そこから始められます。ないときは、種類を選ぶと、ふつうの仕事の並びを用意します。</p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     {seeds.length ? <><h2>去年の記録から始める</h2><ul class="rows">{[...seeds].sort((a, b) => b.year - a.year).slice(0, 3).map((project) => <li><a class="row-link" href={adminPath(ward, `/archive/${project.projectId}`)}><b>{project.year}年 {project.title}</b></a></li>)}</ul>{seeds.length > 3 ? <p><a class="quiet" href={adminPath(ward, "/archive")}>ほかの記録から始める</a></p> : null}</> : null}
     <form method="post" action={adminPath(ward, "/projects")}>
-      <fieldset><legend>種類</legend><div class="choice">{PROJECT_KINDS.map((kind, index) => <label><input type="radio" name="kind" value={kind} checked={index === 0} required /> {PROJECT_KIND_LABEL[kind]}</label>)}</div></fieldset>
-      <div class="field"><label for="title">名前（あとで直せます）</label><input id="title" name="title" maxlength={100} placeholder="秋の収穫祭" /></div>
+      <fieldset><legend>種類</legend><div class="choice">{PROJECT_KINDS.map((kind) => <label><input type="radio" name="kind" value={kind} checked={kind === presetKind} required /> {PROJECT_KIND_LABEL[kind]}</label>)}</div></fieldset>
+      <div class="field"><label for="title">名前（あとで直せます）</label><input id="title" name="title" maxlength={100} placeholder="秋の収穫祭" value={c.req.query("title")?.slice(0, 100) ?? ""} /></div>
       <div class="field"><label for="eventDay">行事の日（分かれば）</label><input id="eventDay" name="eventDay" type="date" /><p class="help-text">入れると、仕事の時期を置きます。</p></div>
       <input type="hidden" name="year" value={new Date().getFullYear()} />
       <div class="action-bar page-action"><button type="submit">始める</button></div>

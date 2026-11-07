@@ -82,7 +82,8 @@ admin.get("/", async (c) => {
       {record.continued ? null : <p class="link-line"><a href={`${adminPath(ward, `/archive/${record.project_id}`)}?view=seed`}>これをもとに今年を始める</a></p>}</li>)}</ul></> : null;
   const know = await listKnowItems(c.env.DB, ward.wardId);
   const stale = know.items.filter((item) => item.state === "old");
-  const knowRow = stale.length ? <ul class="year-list"><li><a class="year-row old" href={adminPath(ward, "/know")}><b>見直す時期が{stale.length}項目あります</b><span class="note">{stale.slice(0, 3).map((item) => item.title).join("、")}</span></a></li></ul> : null;
+  const asking = know.items.filter((item) => item.state === "checking");
+  const knowRow = stale.length || asking.length ? <ul class="year-list"><li><a class={`year-row ${asking.length ? "checking" : "old"}`} href={adminPath(ward, "/know")}><b>役員が知っておくこと: {asking.length ? `質問が${asking.length}項目あります。` : ""}{stale.length ? `見直す時期が${stale.length}項目あります。` : ""}</b><span class="note">{[...asking, ...stale].slice(0, 3).map((item) => item.title).join("、")}</span></a></li></ul> : null;
   const place = (path: string, name: string, note: string) => <li><a class="row-link" href={adminPath(ward, path)}><b>{name}</b><span>{note}</span></a></li>;
   const places = <><h2>ほかにできること</h2><ul class="rows two">
     {projects.length ? <>{place("/projects/today", "今やること", "締切のある仕事を近い順に見ます")}{place("/answers", "答えを見る", "住民から届いた出欠と手伝いを見ます")}</> : null}

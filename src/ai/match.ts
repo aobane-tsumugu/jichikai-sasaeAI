@@ -1,6 +1,7 @@
 // 当てる: 受け箱に来た物（公式 LINE の一対一とグループ、QR の無い紙、市の通知）がどのプロジェクトの物かを、
 // Workers が作った候補の ID から選ぶだけの一回の呼び出し（claude-haiku-5-5）。AI は候補に無い ID を返せない
 // （出力の型を候補の列挙にする）。写真は自信がなければ当てずに残す。受け箱の画面は束 6。
+import { KNOW_TOPICS, KNOW_TOPIC_GUIDE, type KnowTopic } from "./schema";
 import type Anthropic from "@anthropic-ai/sdk";
 import { MODEL } from "./anthropic";
 
@@ -49,6 +50,8 @@ export interface MatchResult {
   intent?: "inquiry" | "material";
   attendanceAnswer?: boolean;
   confident?: boolean;
+  /** 行事に限らない区の決まりや情報の文のとき、当てはまる項目。 */
+  knowTopic?: KnowTopic;
   usage: { input_tokens: number; output_tokens: number };
 }
 
@@ -73,19 +76,21 @@ const SYSTEM = `あなたは自治会の役員が受け取った物（LINE の�
 - あいさつや天気などの雑談だけなら choice は「__unrelated__」、intent は material、attendanceAnswer は false です。返事や対応を求める文と区別してください。
 - attendanceAnswer は、届いた文そのものが行事への出欠の答えで、参加する、参加しない、何人で行くという意思を伝えているときだけ true にしてください。作業の連絡（「設営は3人で進めます」）、手配の報告、予定の相談は false です。数字と「人」があるだけでは出欠の答えにしません。写真や写真の前後の資料も出欠の答えにしません。
 - 出欠の答えかを問い合わせより先に判断してください。attendanceAnswer が true なら、一対一でも intent は material にし、当てはまる行事を選んでください。「参加します。よろしくお願いします。」も出欠の答えです。
+- knowTopic は、文が一つの行事に限らない区の決まりや情報（会費の変更、役員の交代、ごみ当番の決まりの変更など）を伝えている時だけ、次の鍵から選びます: ${KNOW_TOPIC_GUIDE}。それ以外は none です。行事の連絡を選ぶ時も、区の決まりが含まれていれば選べます。
 - reason は選んだ根拠を日本語で一文にし、雑談の本文や個人の名前を写さないでください。`;
 
 export function buildMatchSchema(candidates: MatchCandidate[], photo = false) {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["choice", "reason", "intent", "attendanceAnswer", ...(photo ? ["confident"] : [])],
+    required: ["choice", "reason", "intent", "attendanceAnswer", "knowTopic", ...(photo ? ["confident"] : [])],
     properties: {
       choice: { type: "string", enum: [...candidates.map((c) => c.id), MATCH_NEW, MATCH_MULTIPLE, MATCH_UNRELATED, ...(photo ? [MATCH_UNCERTAIN] : [])] },
       reason: { type: "string", minLength: 1 },
       ...(photo ? { confident: { type: "boolean" } } : {}),
       intent: { type: "string", enum: ["inquiry", "material"] },
       attendanceAnswer: { type: "boolean" },
+      knowTopic: { type: "string", enum: [...KNOW_TOPICS, "none"] },
     },
   } as const;
 }
@@ -129,7 +134,7 @@ export async function matchProject(client: Anthropic, input: MatchInput): Promis
   if (response.stop_reason === "refusal") throw new Error("当てるの呼び出しが断られました");
   const text = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
   if (!text) throw new Error("当てるの応答に本文がありません");
-  const parsed = JSON.parse(text.text) as { choice?: unknown; reason?: unknown; intent?: unknown; confident?: unknown; attendanceAnswer?: unknown };
+  const parsed = JSON.parse(text.text) as { choice?: unknown; reason?: unknown; intent?: unknown; confident?: unknown; attendanceAnswer?: unknown; knowTopic?: unknown };
   const allowed = new Set([...ids, MATCH_NEW, MATCH_MULTIPLE, MATCH_UNRELATED, MATCH_UNCERTAIN]);
   if (typeof parsed.choice !== "string" || !allowed.has(parsed.choice)) {
     throw new Error("当てるの応答が候補にないIDを返しました");
@@ -142,6 +147,7 @@ export async function matchProject(client: Anthropic, input: MatchInput): Promis
     ...(input.photoContext || input.photo ? { confident: parsed.confident === true } : {}),
     reason: typeof parsed.reason === "string" ? parsed.reason : "",
     attendanceAnswer: parsed.attendanceAnswer === true,
+    ...(KNOW_TOPICS.some((topic) => topic === parsed.knowTopic) ? { knowTopic: parsed.knowTopic as KnowTopic } : {}),
     ...(input.officialAddressed ? { intent: parsed.intent === "inquiry" ? "inquiry" as const : "material" as const } : {}),
     usage: { input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens },
   };
