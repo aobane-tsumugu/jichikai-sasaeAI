@@ -7,7 +7,7 @@ import { CRON } from "../src/core/cron";
 import { seedAdmin } from "../src/core/testing";
 import type { AdminEnv, AppEnv, WardEnv } from "../src/env";
 import { bundles } from "../src/index";
-import { appWith, get, postForm } from "./helpers";
+import { appWith, get, opsEnv, postForm } from "./helpers";
 
 function routeKeys(app: Hono<AdminEnv> | Hono<WardEnv> | Hono<AppEnv>): string[] {
   return app.routes.filter((r) => r.method !== "ALL").map((r) => `${r.method} ${r.path}`);
@@ -79,8 +79,8 @@ describe("各置き場の差し込み口", () => {
   it("写真の設定のGETとPOSTは提供側の入口に戻し、ほかのhooksへ認証を広げない", async () => {
     const app = appWith({ hooks: new Hono<AppEnv>().post("/probe-photo-hook", (c) => c.text("hook")) });
     for (const response of [
-      await get(app, "/hooks/photo-settings/fictional-ward"),
-      await postForm(app, "/hooks/photo-settings/fictional-ward", {}),
+      await get(app, "/ops/photo-settings/fictional-ward", undefined, opsEnv),
+      await postForm(app, "/ops/photo-settings/fictional-ward", {}, undefined, opsEnv),
     ]) {
       expect(response.status).toBe(303);
       expect(response.headers.get("location")).toBe("/ops/login");

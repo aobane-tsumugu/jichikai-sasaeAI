@@ -19,6 +19,8 @@ import { formatJstDate, formatJst } from "../core/time";
 import { lifecyclePages } from "./lifecycle-pages";
 import { contactOpsRoutes } from "./contacts";
 import { alertsRoutes } from "./alerts";
+import { contactDeletionRoutes } from "./contact-deletion";
+import { photoProvider } from "../photos/provider";
 import { PrivateWardContact, getPrivateWardContact, savePrivateWardContact } from "./private-contact";
 import { readSpacePaper } from "../space/receive-paper";
 
@@ -156,6 +158,7 @@ opsRoutes.get("/", async (c) => {
     <OpsPage title="区の一覧" loggedIn>
       <h1>区の一覧</h1><p class="lead">SasaeAIを提供している区です。区の名前を押すと、その区の画面が開きます。</p><a class="quiet" href="#open-ward">新しい区を開く</a>
       <p class="link-line"><a href="/ops/contacts">問い合わせを見る</a></p>
+      <p class="link-line"><a href="/ops/contact-deletions">問い合わせを消す</a></p>
       <p class="link-line"><a href="/ops/alerts">提供側で見る知らせ</a></p>
       <p class="link-line"><a href="/ops/costs">全体の費用を見る</a></p>
       <p class="link-line"><a href="/ops/deletions">消去の状況</a></p>
@@ -320,6 +323,7 @@ opsRoutes.get("/wards/:slug", async (c) => {
       <form method="post" action={`/ops/wards/${ward.slug}/digest`}><DigestFields value={digest} /><button class="secondary">知らせの時刻と日数を保存する</button></form>
       <h2>この区のほかの画面</h2>
       <nav class="action-links" aria-label="提供側の画面">
+        <a class="row-link" href={`/ops/photo-settings/${encodeURIComponent(ward.wardId)}`}><b>報告の写真の設定</b><span>写真を処理する準備と測定の結果を確かめます</span></a>
         <a class="row-link" href={`/ops/wards/${ward.slug}/costs`}><b>費用</b><span>月ごとに、AIに読んでもらった費用を見ます</span></a>
         <a class="row-link" href={`/ops/wards/${ward.slug}/budget`}><b>予算</b><span>一回の処理の上限と、月の目安を決めます</span></a>
         <a class="row-link" href={`/ops/wards/${ward.slug}/queue`}><b>読み取りの状況</b><span>失敗したものを、もう一度動かします</span></a>
@@ -594,6 +598,8 @@ opsRoutes.post("/wards/:slug/queue/:jobId/retry", async (c) => {
 });
 
 opsRoutes.route("/contacts", contactOpsRoutes);
+opsRoutes.route("/contact-deletions", contactDeletionRoutes);
+opsRoutes.route("/", photoProvider);
 opsRoutes.route("/alerts", alertsRoutes);
 opsRoutes.route("/", lifecyclePages);
 
