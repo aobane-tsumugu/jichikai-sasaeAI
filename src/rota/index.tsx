@@ -9,17 +9,45 @@ import { addExemption, compareRota, exemptions, householdKey, householdLabel, la
 import { getProjectSummary } from "../project/api";
 import { householdHistory } from "./history";
 import { rotaSchedule, WEEKDAYS } from "./schedule";
-import { yearRecurringAdmin } from "../know/year";
+import { YEAR_BASE, yearRecurringAdmin } from "../know/year";
 
 const admin = new Hono<AdminEnv>();
 admin.route("/", yearRecurringAdmin);
 admin.use("/rota/*", async (c, next) => { c.header("Cache-Control", "private, no-store"); await next(); });
 
+const cleanTitle = (title: string) => title.replace(/\s+/g, "").replace(/^(令和\d+|20\d{2})年度?の?/, "");
+/**
+ * 毎週回す当番か。曜日を選んだことがあるか、当日が無く、一年の予定のくり返しが「毎週」の物だけ。
+ * 当日のある準備（12月26日から28日の見回りなど）や、くり返しの分からない物は、毎週の当番として扱わない。
+ */
+async function weeklyRota(db: D1Database, wardId: string, projectId: string, scheduled: boolean): Promise<boolean> {
+  if (scheduled) return true;
+  const project = await getProjectSummary(db, wardId, projectId);
+  if (!project || project.deadlines.event_day) return false;
+  const name = cleanTitle(project.title);
+  const rows = (await db.prepare("SELECT item_id, title, recurrence_text FROM ward_year_items WHERE ward_id = ? AND removed_at IS NULL AND recurrence_text <> ''")
+    .bind(wardId).all<{ item_id: string; title: string | null; recurrence_text: string }>()).results;
+  const removed = new Set((await db.prepare("SELECT item_id FROM ward_year_items WHERE ward_id = ? AND removed_at IS NOT NULL").bind(wardId).all<{ item_id: string }>()).results.map((row) => row.item_id));
+  const recurring = [
+    ...rows.map((row) => ({ title: row.title || YEAR_BASE.find((base) => base.key === row.item_id)?.title || "", recurrence: row.recurrence_text })),
+    ...YEAR_BASE.filter((base) => base.recurrence && !removed.has(base.key) && !rows.some((row) => row.item_id === base.key)).map((base) => ({ title: base.title, recurrence: base.recurrence! })),
+  ];
+  return recurring.some((entry) => entry.recurrence.startsWith("毎週") && cleanTitle(entry.title) === name);
+}
+
 export async function rotaPanel(db: D1Database, ward: WardInfo, projectId: string) {
   const proposal = await compareRota(db, ward.wardId, projectId);
   const preparation = await lastPreparation(db, ward.wardId, projectId);
   const schedule = await rotaSchedule(db, ward.wardId, projectId);
+  const weekly = await weeklyRota(db, ward.wardId, projectId, Boolean(schedule));
   const comparison = proposal?.comparison;
+  // この準備に届いている当番表。去年の表がまだ出ない時に、送り直しを頼まず、今どうなっているかを書く。
+  const sent = comparison ? null : await db.prepare(`SELECT j.status, o.filename, o.original_id FROM readings r
+    JOIN jobs j ON j.ward_id = r.ward_id AND j.job_id = r.job_id JOIN originals o ON o.ward_id = j.ward_id AND o.job_id = j.job_id
+    WHERE r.ward_id = ? AND j.project_id = ? AND j.withdrawn_at IS NULL AND o.withdrawn_at IS NULL
+      AND CASE WHEN json_valid(r.body) THEN json_extract(r.body, '$.document_kind') END = 'rota'
+    ORDER BY o.received_at DESC LIMIT 1`).bind(ward.wardId, projectId).first<{ status: string; filename: string; original_id: string }>();
+  const sentName = sent ? `「${sent.filename || "届いた当番表"}」` : "";
   const root = adminPath(ward, `/projects/${projectId}/draft/duty_roster`);
   const weeklyForm = <form method="post" action={adminPath(ward, `/rota/${projectId}/weekly`)}>
     <div class="field"><label for="weekly-weekday">何曜日に当番を回しますか</label><select id="weekly-weekday" name="weekday" required>
@@ -28,7 +56,7 @@ export async function rotaPanel(db: D1Database, ward: WardInfo, projectId: strin
   return <section class="panel"><h2>{schedule ? "一年分の当番表" : comparison?.hasPreviousTable === false ? "名簿から当番の下書きを作る" : "去年の表と今の名簿"}</h2>
     <p>{schedule ? `${comparison?.year ?? ""}年の毎週${WEEKDAYS[schedule.weekday]}曜を名簿の順に割り当てます。その日に免除されている世帯は飛ばします。`
       : comparison?.hasPreviousTable === false ? "去年の表がないため、班と世帯を名簿の順で並べます。名簿の順です。" : "去年の表の日と班と世帯を、今年の日に合わせて並べます。免除の期間に当たる人と今の名簿にない人を担当から外します。班や団体で書かれた担当はそのまま残します。"}</p>
-    {schedule ? <details class="fold"><summary>曜日を直す</summary><div>{weeklyForm}</div></details> : <>{weeklyForm}<p>毎週回す当番でなければ、下の操作で去年の表や名簿から作れます。</p></>}
+    {schedule ? <details class="fold"><summary>曜日を直す</summary><div>{weeklyForm}</div></details> : weekly ? <>{weeklyForm}<p>毎週回す当番でなければ、下の操作で去年の表や名簿から作れます。</p></> : null}
     {comparison ? <>
       {schedule ? <p>名簿に加わった世帯: {comparison.added.join("、") || "ありません。"}<br />名簿から外れた世帯: {comparison.removed.join("、") || "ありません。"}</p> : comparison.hasPreviousTable !== false ? <>
       <p class="muted">{comparison.year}年の{comparison.sourceTitle}と比べています。{!comparison.hasOldRoster ? "去年の名簿は残っていません。当番表にある名前と比べています。" : ""}</p>
@@ -41,8 +69,13 @@ export async function rotaPanel(db: D1Database, ward: WardInfo, projectId: strin
       </> : <p>順番のルールは作っていません。免除の期間に当たる人は担当から外します。</p>}
       <form method="post" action={`${root}/start`}><div class="action-links"><button class="secondary">{preparation ? "今の名簿と免除を下書きに反映する" : comparison.hasPreviousTable === false ? "名簿から下書きを作る" : "去年の表と名簿から下書きを作る"}</button></div></form>
       <p class="muted">役員が直した行はそのまま残します。保存しただけでは、実行委員と班長のページに載りません。</p>
-    </> : <section class="next"><strong>次は</strong><p>去年の表も今の名簿もまだありません。手元の当番表を写真やファイルで送れます。</p>
+    </> : sent && sent.status !== "done" && sent.status !== "failed" ? <p>届いた当番表{sentName}を、AIが読んでいます。読み終わると、去年の表としてここに出ます。画面を閉じてもかまいません。</p>
+    : sent ? <section class="next"><strong>次は</strong><p>届いた当番表{sentName}から、担当の行を読み取れませんでした。元の資料を見ながら、下の当番表の行に書き込めます。</p>
+      <a class="button secondary" href={adminPath(ward, `/intake/originals/${sent.original_id}`)}>届いた当番表を見る</a></section>
+    : <section class="next"><strong>次は</strong><p>去年の表も今の名簿もまだありません。手元の当番表を写真やファイルで送れます。</p>
       <a class="button secondary" href={adminPath(ward, `/intake?project=${encodeURIComponent(projectId)}#send-form`)}>当番表を送る</a></section>}
+    {/* 何日かだけの当番では、一年分を割り当てる欄を先に出さない。毎週回す当番に変わった時のために畳みに残す。 */}
+    {!weekly ? <details class="fold"><summary>毎週回す当番にするとき</summary><div><p>ごみ当番のように一年じゅう毎週回す当番なら、曜日を選ぶと、一年分の日付を名簿の順に割り当てます。</p>{weeklyForm}</div></details> : null}
     <ul class="links"><li><a href={adminPath(ward, "/rota/exemptions")}>免除を記録する</a></li>
       <li><a href={adminPath(ward, "/rota/history")}>世帯ごとの当番と役を読む</a></li></ul>
   </section>;
