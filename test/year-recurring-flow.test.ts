@@ -27,6 +27,10 @@ it("通年のごみ当番を月曜で作り、免除と名簿変更を反映し�
   const initialYear = await (await get(realApp, `${root}/year`, cookie)).text();
   for (const title of ["ごみ当番", "市報や回覧の配布", "集会所の管理"]) expect(initialYear).toContain(title);
   for (const base of YEAR_BASE.filter((entry) => entry.recurrence)) expect(initialYear).toContain(`href="${root}/year/${base.key}"`);
+  expect(initialYear).toContain("今は、よくある自治会の例を");
+  expect(initialYear).not.toContain("予定を押すと、時期やくり返しを書けます。");
+  expect(await (await get(realApp, `${root}/year/garbage-duty`, cookie)).text())
+    .toContain("この自治会のごみ当番の資料は、まだ届いていません。今は、よくある自治会の例として「毎週月曜」と置いています。");
 
   expect((await postForm(realApp, `${root}/year/garbage-duty/recurring`, {
     recurrence: "毎週月曜", body: "ごみ当番は世帯の名簿の順で回す。",
@@ -40,7 +44,7 @@ it("通年のごみ当番を月曜で作り、免除と名簿変更を反映し�
   }, cookie)).status).toBe(303);
   expect((await getKnowItem(env.DB, ward.wardId, "delivery"))?.body).toBe("毎月、班長が市報を各世帯に配る。");
   const deliveryPage = await (await get(realApp, `${root}/year/${delivery.item_id}`, cookie)).text();
-  expect(deliveryPage).toContain("毎月。");
+  expect(deliveryPage).toContain("この自治会の市報の配布は、毎月です。進め方は、自治会の基本情報に「毎月、班長が市報を各世帯に配る。」と書いてあります。");
   expect(deliveryPage).not.toContain("準備を始める");
   expect(deliveryPage).not.toContain("/prepare");
   expect((await postForm(realApp, `${root}/year/${delivery.item_id}/prepare`, {}, cookie)).status).toBe(404);

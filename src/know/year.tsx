@@ -158,7 +158,7 @@ export function nearToday(rows: YearRow[], today: number, limit = 14): YearRow[]
 }
 
 export function YearLegend() {
-  return <div class="shade-legend"><p>灰色の予定は、よくある自治会の例を仮に置いたもので、まだこの自治会のことではありません。押すと、この自治会で今年の準備を始めたり、資料を送ったり、この自治会に無い予定を外したりできます。毎週や毎月続く予定は、押すと、くり返す時期と進め方を書けます。紺の予定は、届いた資料や準備中のものから分かった、この自治会の予定です。紺が濃いほど、資料や出欠の返事がたくさん入っています。黄色の予定には、AIからの質問があります。</p>
+  return <div class="shade-legend"><p>灰色の予定は、よくある自治会の例を仮に置いたもので、まだこの自治会のことではありません。押すと、この自治会で今年の準備を始めたり、資料を送ったり、この自治会でしていない予定を外したりできます。毎週や毎月続く予定は、押すと、くり返す時期と進め方を書けます。紺の予定は、届いた資料や準備中のものから分かった、この自治会の予定です。紺が濃いほど、資料や出欠の返事がたくさん入っています。黄色の予定には、AIからの質問があります。</p>
     <p>薄い部分は準備する時期、濃い部分は実施する期間です。</p><p>実施する期間の濃さの目安（資料と返事の数）:</p>
     <ol>{levelLabels().map((label, index) => <li><i class={`l${index + 1}`} />{label}</li>)}</ol></div>;
 }
@@ -193,6 +193,14 @@ const dutyTitle = (title: string) => /当番|集会所.*(?:掃除|清掃)/.test(
 const knowKeyOf = (title: string) => dutyTitle(title) ? "duties" : /市報|回覧|配布/.test(title) ? "delivery"
   : /役員会/.test(title) ? "board" : /問い合わせ/.test(title) ? "inquiries" : "safety";
 
+/** 一年の画面の一番上。仕組みの説明でなく、どれがこの自治会の予定で、どれが仮の例かを書く。 */
+function yearLead(rows: YearRow[]): string {
+  const facts = [...new Set(rows.filter((row) => row.state !== "example").map((row) => row.title))];
+  const examples = rows.filter((row) => row.state === "example").length;
+  if (!facts.length) return `今は、よくある自治会の例を${examples}つ仮に置いています。この自治会の予定は、まだ届いた資料から分かっていません。規約や去年の総会の資料を送ると、この自治会の予定に変わります。`;
+  return `${facts.slice(0, 6).join("、")}${facts.length > 6 ? "など" : ""}は、届いた資料や準備中のものから分かった、この自治会の予定です。${examples ? `ほかの${examples}つは、よくある自治会の例を仮に置いています。` : ""}`;
+}
+
 /** 通年の画面は一年の処理に置き、既存の役員用の差し込み口から登録する。 */
 export const yearRecurringAdmin = new Hono<AdminEnv>();
 
@@ -206,7 +214,7 @@ yearRecurringAdmin.get("/year", async (c) => {
   const taken = removed.results.map((row) => ({ key: row.item_id, title: row.added ? row.title : YEAR_BASE.find((base) => base.key === row.item_id)?.title ?? "" })).filter((row) => row.title);
   return c.html(<AdminPage ward={ward} account={account} title="この自治会の一年" back={{ href: adminPath(ward, "/"), label: "最初の画面へ" }}>
     <h1>この自治会の一年</h1>
-    <p class="lead">予定を押すと、時期やくり返しを書けます。通年の予定は一年を通して表示します。</p>
+    <p class="lead">{yearLead(year.rows)}</p>
     {c.req.query("notice") === "saved" ? <Notice>予定を保存しました。予定を押すと、書き直したり外したりできます。</Notice> : null}
     <YearLegend /><YearMap rows={year.rows} today={year.today} />
     <details class="fold" open={c.req.query("error") === "input"}><summary>予定を足す</summary><div>
@@ -250,7 +258,8 @@ yearRecurringAdmin.get("/year/:key", async (c, next) => {
   const year = Number(todayJst().slice(0, 4));
   return c.html(<AdminPage ward={ward} account={account} title={item.title} back={{ href: adminPath(ward, "/year"), label: "この自治会の一年へ" }}>
     {/* 押す物を一画面目に入れるため、説明は一つの文にまとめ、欄は短くする。 */}
-    <h1>{item.title}</h1><p class="lead">{item.example ? "一般の自治会の例です。この自治会でくり返す時期と進め方を書いてください。" : `通年。${item.recurrence}。この自治会での進め方を書き直せます。`}</p>
+    <h1>{item.title}</h1><p class="lead">{item.example ? `この自治会の${item.title}の資料は、まだ届いていません。今は、よくある自治会の例として「${item.recurrence}」と置いています。違うときは下で直せます。当番表や規約の写真を送ると、AIが読んで入れます。`
+      : `この自治会の${item.title}は、${item.recurrence.replace(/。$/, "")}です。${know?.body ? `進め方は、自治会の基本情報に「${know.body.split("\n")[0]!.slice(0, 80)}」と書いてあります。` : "進め方は、まだ書かれていません。"}`}</p>
     {c.req.query("error") ? <p>くり返す時期と進め方の長さを確かめて、もう一度保存してください。</p> : null}
     {c.req.query("notice") === "saved" ? <Notice>予定と自治会の基本情報を保存しました。下の欄で書き直せます。</Notice> : null}
     <form method="post" action={`${root}/recurring`}>

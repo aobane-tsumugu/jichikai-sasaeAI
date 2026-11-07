@@ -65,7 +65,9 @@ it("U83: トーク、参考への直し、AIの上書き防止、分割と戻す
   const inbox = await (await get(realApp, `${root}/inbox`, cookie)).text();
   expect(inbox).toContain("役員のLINEグループ");
   expect(inbox).toContain("架空の住民");
-  expect(inbox).toContain("答えを待っている質問: 1");
+  expect(inbox).toContain("AIから役員への質問が1つあり、まだ答えがありません。");
+  expect(inbox).not.toContain("その場で直せます");
+  expect(inbox).not.toContain("答えを待っている質問: ");
   expect(inbox).not.toContain(fixture.group);
   const page = await (await get(realApp, path, cookie)).text();
   expect(page.match(/class="talk-topic"/g)).toHaveLength(1);
@@ -75,6 +77,9 @@ it("U83: トーク、参考への直し、AIの上書き防止、分割と戻す
   expect(page.indexOf(`originals/${original.original_id}`)).toBeLessThan(page.indexOf(fixture.question));
   expect(page.indexOf(fixture.question)).toBeLessThan(page.indexOf(fixture.words));
   expect(page).toContain("関係のない会話は残していません");
+  expect(page).toContain("AIから役員への質問が1つあり、まだ答えがありません。");
+  expect(page).toContain(`${topic.anchor}">AIからの質問のところへ移る</a>`);
+  expect(page).not.toContain("届いた順に読めます。");
   const edit = `${path}/topics/${topic.anchor.slice(6)}`;
   const corrected = await postForm(realApp, edit, { action: "reference", projectId: project.projectId, summary: fixture.summary }, cookie);
   expect(corrected.status).toBe(303);
