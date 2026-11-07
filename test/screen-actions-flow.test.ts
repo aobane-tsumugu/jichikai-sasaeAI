@@ -19,8 +19,8 @@ it("行事を開き、当番の行を保存しても、主な操作と記録を�
     .map((match) => match[3]);
 
   const list = await page("/projects");
-  expect(primaryLabels(list)).toEqual(["始める"]);
-  expect(list).toMatch(/<form\b[^>]*>[\s\S]*?<div class="action-bar page-action"><button type="submit">始める<\/button><\/div>[\s\S]*?<\/form>/);
+  expect(primaryLabels(list)).toEqual(["一年の予定に足して始める"]);
+  expect(list).toMatch(/<form\b[^>]*>[\s\S]*?<div class="action-bar page-action"><button type="submit">一年の予定に足して始める<\/button><\/div>[\s\S]*?<\/form>/);
   const opened = await postForm(realApp, root + "/projects", {
     kind: "event", title: FIRST_SLICE.nextYearTitle, year: String(FIRST_SLICE.eventYear),
   }, cookie);

@@ -133,7 +133,7 @@ it("架空の下書きにチラシを付けて知らせ、文と画像を一度�
   expect((await get(realApp, path)).status).toBe(404);
 });
 
-it("届いたものから選べるのは役員グループの自分たちの資料で、原本のURLは公開しない", async () => {
+it("届いたものから選べるのは役員グループに届いた写真で、問い合わせと住民の写真は入れず、原本のURLは公開しない", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "資料の確認（架空）", year: 2027, accountId: account.accountId });
   const group = "fictional-notice-officer-group";
@@ -157,12 +157,14 @@ it("届いたものから選べるのは役員グループの自分たちの資�
       .bind(ward.wardId, bundle, action === "resident" ? "material" : action, project.projectId, now, now, now).run();
   }
   const materials = await flyerMaterials(env, ward.wardId, project.projectId);
-  expect(materials.map((photo) => photo.original_id)).toEqual([originals.material]);
+  // チラシかどうかをAIに当てさせない（L-311）。資料も参考も確かめ待ちも選べる。
+  expect(materials.map((photo) => photo.original_id).sort()).toEqual([originals.material, originals.reference, originals.confirm_purpose, originals.confirm_share].sort());
   const source = `/${ward.slug}/admin/projects/${project.projectId}/flyer-material/${originals.material}`;
   expect((await get(realApp, source, cookie)).status).toBe(200);
   expect((await get(realApp, source)).status).not.toBe(200);
   expect((await get(realApp, `/${ward.slug}/originals/${originals.material}.jpg`)).status).toBe(404);
-  expect((await get(realApp, source.replace(originals.material!, originals.reference!), cookie)).status).toBe(404);
+  expect((await get(realApp, source.replace(originals.material!, originals.inquiry!), cookie)).status).toBe(404);
+  expect((await get(realApp, source.replace(originals.material!, originals.resident!), cookie)).status).toBe(404);
   const data = form(project.stateVersion); data.set("flyer_material", originals.material!);
   expect((await upload(`/${ward.slug}/admin/projects/${project.projectId}/draft/announcement/save`, data, cookie)).status).toBe(303);
   const version = await latest(ward.wardId, project.projectId);

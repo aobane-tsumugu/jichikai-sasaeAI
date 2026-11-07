@@ -96,6 +96,7 @@ admin.get("/projects/:projectId/map", async (c) => {
         </a></li>; })}</ul> : <p>まだ届いていません。</p>}
         <h2>{project.title}でできること</h2>
         <ul class="rows">
+          {!project.closedAt ? <li><a class="row-link" href={`${adminPath(ward, "/messages/new")}?project=${encodeURIComponent(id)}`}><b>住民へのメッセージを作る</b><span>{project.title}の案内や宣伝、手伝いの募集、連絡事項、終わった報告を作り、住民向けのページと自治会のLINEと紙で送ります</span></a></li> : null}
           {[[`/print/${id}`, "紙を印刷する", "案内、回答票、掲示、班長への一枚を印刷します"], [`/answers/${id}`, "出欠の返事を見る", "紙、電話、スマホの返事を見ます"], [`/projects/${id}/draft`, "文書を書く", "案内、募集、当番表などの下書きを書きます"], [`/space/${id}`, "実行委員と班長のページ", "実行委員と班長に渡す入口を作ります"], [`/projects/${id}/ledger`, "運営メモ", "何に、どこに、いくらかけたかを残します"], [`/projects/${id}`, "届いた資料と今年の内容", "届いた資料と、そこから読み取った内容を見ます"]].map(([path, name, note]) => <li><a class="row-link" href={adminPath(ward, path!)}><b>{name}</b><span>{note}</span></a></li>)}
           {canRain && !project.closedAt ? <li><a class="row-link" href={adminPath(ward, `/projects/${id}/draft/notice`)}><b>雨の変更を知らせる</b><span>雨のときの変更を住民に知らせます</span></a></li> : null}
           <li><a class="row-link" href={adminPath(ward, `/close/${id}`)}><b>報告を書いて終わりにする</b><span>終わったら、報告と来年への一言を残します</span></a></li>

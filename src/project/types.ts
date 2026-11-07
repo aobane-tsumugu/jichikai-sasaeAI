@@ -37,6 +37,8 @@ export interface CreateProjectInput {
   /** 去年の地図を種にする時の、元のプロジェクト。 */
   seedProjectId?: string;
   accountId?: string;
+  /** 置く仕事を型の一部に絞る時の仕事の印。名前から種類が分からない時の短い段取りに使う。 */
+  taskKeys?: readonly string[];
 }
 
 // ---- 差分 ----

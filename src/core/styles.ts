@@ -148,6 +148,8 @@ legend { padding: 0; margin-bottom: var(--space-2); font-weight: 700; }
 }
 .choice input { flex: none; width: 1.4rem; height: 1.4rem; margin: 0; accent-color: var(--accent); }
 .choice label:has(input:checked) { border-color: var(--accent); background: var(--info-bg); font-weight: 700; }
+/* 選ぶ物の名前の下に、何のための物かと、選ぶと何が起きるかを添える */
+.choice label small.muted { display: block; margin-top: var(--space-1); font-weight: 400; }
 
 /* Hint。details で作り、JS を使わない */
 details.hint { margin: var(--space-2) 0 var(--space-3); }

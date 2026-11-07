@@ -18,6 +18,9 @@ import { questionPages, questionShort } from "./question-pages";
 import type { ProjectState } from "./types";
 import { markMaterialThisYear, unknownYearContents } from "./material-year";
 import { committeePages } from "./committee";
+import { startTemplate, startTemplateText, type StartTemplate } from "./start-template";
+import { addYearItem } from "../know/year";
+import { copySeed } from "../archive";
 
 /** 変わった所の対象を、内部の鍵ではなく画面の言葉で示す。 */
 function changeTargetLabel(kind: string, target: string, state: ProjectState): string {
@@ -42,7 +45,8 @@ function changeTargetLabel(kind: string, target: string, state: ProjectState): s
 }
 
 const ERROR_MESSAGES: Readonly<Record<string, string>> = {
-  "choose_kind": "何の準備かを選んでください",
+  "choose_kind": "名前を入れてください",
+  "need_title": "名前を入れてください",
   "open_failed": "始められませんでした",
   "invalid_kind": "種類が合いません",
   "invalid_title": "題は1文字から100文字にしてください",
@@ -59,39 +63,29 @@ admin.route("/", followupAdmin);
 admin.route("/", questionPages);
 admin.route("/", committeePages);
 
-/** 何の準備かを選ぶ時の例。種類の名前だけでは初めての人に分からないので、身近な例を添える。 */
-const KIND_EXAMPLE: Record<(typeof PROJECT_KINDS)[number], string> = {
-  event: "祭り、清掃、敬老会など、人が集まるもの",
-  general_meeting: "年に一度の総会",
-  city_request: "市から頼まれた調査、推薦、配布など",
-  board_meeting: "役員の集まり",
-  duty: "ごみ当番のように、順番で回すもの",
-  request: "住民の声を、自治会から市に伝えるもの",
-};
 
 admin.get("/projects", async (c) => {
   const { ward } = c.var;
   const allProjects = await listProjects(c.env.DB, ward.wardId, { includeClosed: true });
   const seeds = allProjects.filter((project) => project.closedAt);
-  // 何の準備かは、一年の予定から分かる時だけ決めて渡す。分からない時は最初から選ばず、例を見て選んでもらう。
-  const queryKind = PROJECT_KINDS.find((kind) => kind === c.req.query("kind"));
-  const presetKind = queryKind ?? PROJECT_KINDS[0];
-  // 一年の表の行から来た時は、名前も何の準備かも決まっているので聞かない。
+  // 何の準備かは聞かない（決定ログ L-312、L-313）。一年の表の予定から来た時は名前が決まっているので、何を置くかを一文で書き、ボタンを一つにする。
   const presetTitle = c.req.query("title")?.slice(0, 100) ?? "";
-  const fromYear = Boolean(presetTitle && queryKind);
+  const template = presetTitle ? startTemplate(presetTitle, allProjects) : null;
   return c.html(<Layout title="新しく準備を始める" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a>
-    <h1>{fromYear ? `今年の${presetTitle}の準備を始める` : "新しく準備を始める"}</h1><p class="lead">{fromYear ? "始まる日が分かれば入れてください。準備でふつうする仕事の一覧を用意します。あとで足したり外したりできます。" : "去年の同じものが「終わったもの」にあれば、そこから始められます。ないときは、何の準備かを選ぶと、その準備でふつうする仕事の一覧を用意します。あとで足したり外したりできます。"}</p>
+    <a class="back" href={adminPath(ward, presetTitle ? "/year" : "/")}>← {presetTitle ? "この自治会の一年へ" : "最初の画面へ"}</a>
+    <h1>{presetTitle ? `今年の${presetTitle}を始める` : "新しく準備を始める"}</h1>
+    <p class="lead">{template ? startTemplateText(presetTitle, template) : "去年の同じものが「終わったもの」にあれば、そこから始められます。一年の予定にないものは、名前とだいたいの時期を入れると、一年の予定に足して、知らせる、当日、まとめるの三つだけのやることで始めます。あとで足したり外したりできます。"}</p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
-    {seeds.length ? <><h2>去年の終わったものから始める</h2><ul class="rows">{[...seeds].sort((a, b) => b.year - a.year).slice(0, 3).map((project) => <li><a class="row-link" href={adminPath(ward, `/archive/${project.projectId}`)}><b>{project.year}年 {project.title}</b></a></li>)}</ul>{seeds.length > 3 ? <p><a class="quiet" href={adminPath(ward, "/archive")}>ほかの終わったものから始める</a></p> : null}</> : null}
+    {!presetTitle && seeds.length ? <><h2>去年の終わったものから始める</h2><ul class="rows">{[...seeds].sort((a, b) => b.year - a.year).slice(0, 3).map((project) => <li><a class="row-link" href={adminPath(ward, `/archive/${project.projectId}`)}><b>{project.year}年 {project.title}</b></a></li>)}</ul>{seeds.length > 3 ? <p><a class="quiet" href={adminPath(ward, "/archive")}>ほかの終わったものから始める</a></p> : null}</> : null}
     <form method="post" action={adminPath(ward, "/projects")}>
-      {fromYear ? <><input type="hidden" name="kind" value={presetKind} /><input type="hidden" name="title" value={presetTitle} /></> : <>
-      <fieldset><legend>何の準備ですか</legend><div class="choice">{PROJECT_KINDS.map((kind) => <label><input type="radio" name="kind" value={kind} checked={kind === queryKind} required /> {PROJECT_KIND_LABEL[kind]}（{KIND_EXAMPLE[kind]}）</label>)}</div></fieldset>
-      <div class="field"><label for="title">名前（あとで直せます）</label><input id="title" name="title" maxlength={100} placeholder="秋の収穫祭" value={presetTitle} /></div></>}
-      <div class="field"><label for="eventDay">始まる日（分かれば）</label><input id="eventDay" name="eventDay" type="date" /><p class="help-text">入れると、準備を始める頃と報告をまとめ終える頃を置きます。あとで直せます。</p></div>
-      <div class="field"><label for="eventEnd">終わる日（一日だけなら空のまま）</label><input id="eventEnd" name="eventEnd" type="date" /></div>
+      {presetTitle ? <><input type="hidden" name="title" value={presetTitle} />
+        <div class="field"><label for="eventDay">今年の当日（分かれば）</label><input id="eventDay" name="eventDay" type="date" /><p class="help-text">入れると、準備を始める頃と報告をまとめ終える頃を置きます。あとで直せます。</p></div>
+        <div class="field"><label for="eventEnd">終わる日（一日だけなら空のまま）</label><input id="eventEnd" name="eventEnd" type="date" /></div></>
+        : <><h2>一年の予定に足す</h2>
+        <div class="field"><label for="title">名前（あとで直せます）</label><input id="title" name="title" maxlength={100} placeholder="秋の収穫祭" required /><p class="help-text">「秋の収穫祭」「定期総会」「ごみ当番」のように、ふだん呼んでいる名前で入れてください。</p></div>
+        <div class="field"><label for="month">だいたいの時期</label><select id="month" name="month"><option value="">まだ分からない</option>{[4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3].map((month) => <option value={String(month)}>{month}月</option>)}</select><p class="help-text">一年の表のその月に置きます。日が決まったら、やることの画面で入れられます。</p></div></>}
       <input type="hidden" name="year" value={new Date().getFullYear()} />
-      <div class="action-bar page-action"><button type="submit">始める</button></div>
+      <div class="action-bar page-action"><button type="submit">{presetTitle ? `今年の${presetTitle}を始める` : "一年の予定に足して始める"}</button></div>
     </form>
   </Layout>);
 });
@@ -163,10 +157,26 @@ admin.get("/projects/today", async (c) => {
 
 admin.post("/projects", async (c) => {
   const { ward, account } = c.var; const form = await c.req.formData();
-  const kind = String(form.get("kind"));
-  if (!(PROJECT_KINDS as readonly string[]).includes(kind)) return c.redirect(`${adminPath(ward, "/projects")}?error=choose_kind`, 303);
+  // 画面では名前を必ず聞く。種類を渡す中の道（通しの道具など）は、名前が無い時は種類の名前を仮の名前にする。
+  const passedKind = PROJECT_KINDS.find((kind) => kind === form.get("kind"));
+  const title = String(form.get("title") ?? "").trim() || (passedKind ? PROJECT_KIND_LABEL[passedKind] : "");
+  if (!title) return c.redirect(`${adminPath(ward, "/projects")}?error=need_title`, 303);
+  // 種類は聞かない（決定ログ L-312）。去年の同じ予定の並び、一年の予定ごとの型、短い一般の型の順で置く。
+  const formKind = PROJECT_KINDS.find((kind) => kind === form.get("kind"));
+  const past = await listProjects(c.env.DB, ward.wardId, { includeClosed: true });
+  const template: StartTemplate = formKind ? { kind: formKind, from: "year_plan" } : startTemplate(title, past);
   try {
-    const project = await createProject(c.env.DB, ward.wardId, { kind: kind as (typeof PROJECT_KINDS)[number], title: String(form.get("title") ?? "").trim() || PROJECT_KIND_LABEL[kind as (typeof PROJECT_KINDS)[number]], year: Number(form.get("eventDay") ? String(form.get("eventDay")).slice(0, 4) : form.get("year")), ...(form.get("eventDay") ? { eventDay: String(form.get("eventDay")) } : {}), ...(form.get("eventEnd") ? { eventEnd: String(form.get("eventEnd")) } : {}), accountId: account.accountId });
+    const project = await createProject(c.env.DB, ward.wardId, { kind: template.kind, title, ...(template.taskKeys ? { taskKeys: template.taskKeys } : {}), ...(template.seedProjectId ? { seedProjectId: template.seedProjectId } : {}), year: Number(form.get("eventDay") ? String(form.get("eventDay")).slice(0, 4) : form.get("year")), ...(form.get("eventDay") ? { eventDay: String(form.get("eventDay")) } : {}), ...(form.get("eventEnd") ? { eventEnd: String(form.get("eventEnd")) } : {}), accountId: account.accountId });
+    // 去年の同じ予定の準備があれば、そのやることの並びを写す（終わったものから始める時と同じ写し方）。
+    const seed = template.seedProjectId ? past.find((entry) => entry.projectId === template.seedProjectId) : undefined;
+    if (seed) await copySeed(c.env.DB, ward.wardId, seed.projectId, project.projectId, seed.year, form.get("eventDay") ? String(form.get("eventDay")) : null);
+    // 一年の予定に無い物は、名前とだいたいの時期で一年の予定に足す。来年は去年の並びから始まる（L-313）。
+    if (template.from === "short") {
+      const chosen = Number(form.get("month"));
+      const month = chosen >= 1 && chosen <= 12 ? chosen : form.get("eventDay") ? Number(String(form.get("eventDay")).slice(5, 7)) : null;
+      const already = await c.env.DB.prepare("SELECT 1 FROM ward_year_items WHERE ward_id = ? AND title = ? AND removed_at IS NULL").bind(ward.wardId, title).first();
+      if (!already) await addYearItem(c.env.DB, ward.wardId, { title, month, dateText: "", originalId: null });
+    }
     return c.redirect(adminPath(ward, `/projects/${project.projectId}/map`), 303);
   } catch (e) {
     const code = e instanceof ProjectInputError

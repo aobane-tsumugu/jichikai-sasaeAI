@@ -182,6 +182,7 @@ admin.get("/", async (c) => {
       <h1>{ward.name}の自治会の今</h1>
       {intro}
       {main}
+      {projects.length ? <div class="action-links"><a class="button secondary" href={adminPath(ward, "/messages/new")}>住民へのメッセージを作る</a></div> : null}
       {readingLine}
       {waiting.length ? <><h2>役員が見ないと進まないこと</h2><ul class="rows">{waiting}</ul></> : null}
       {othersBlock}

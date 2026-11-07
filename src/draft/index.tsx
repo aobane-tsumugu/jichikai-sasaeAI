@@ -3,15 +3,14 @@ import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
 import { ErrorNotice, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
-import { startTask } from "../ai/api";
 import { getProjectState, getProjectSummary } from "../project/api";
 import { getEditableDocument, saveDocument, DOCUMENT_TEXT_LIMIT } from "../project/actions";
 import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, ITEMS_BY_KIND, PROJECT_KIND_LABEL, SCOPES, SCOPE_LABEL, type DocumentKind, type Scope, type ItemKey } from "../project/model";
 import { documentBodyCheckMessage } from "../project/document-body";
 import { getDraftPack, listDraftPacks } from "./packs";
 import type { DraftBody } from "./packs/types";
-import { getDistrictCopies, getDutyDraftHelpers } from "../answers/api";
-import { getPublicContact, getTemplates } from "../settings/store";
+import { getDistrictCopies } from "../answers/api";
+import { getTemplates } from "../settings/store";
 import { renderTemplate } from "../settings/keys";
 import { saveDutyRow } from "../project/actions";
 import { formatJstDate } from "../core/time";
@@ -20,12 +19,18 @@ import { rainDraft, rainSent, rainTemplate } from "./rain";
 import { checkPublicDraft } from "../publish/check";
 import { paperHeading } from "../project/heading";
 import { opensOf, taskDraftKind } from "../map/template";
-import { draftMaterials } from "./materials";
-import { startMaterialDraft } from "./start";
-import { getMeetingMaterials, meetingMaterialInstruction, MeetingMaterialsView } from "./meeting-materials";
+import { getMeetingMaterials, MeetingMaterialsView } from "./meeting-materials";
 import { rotaPanel, rotaRowNotes } from "../rota";
 import { prepareRota } from "../rota/store";
 import { FlyerPanel, flyerPanelState, mountFlyerRoutes, readFlyerInput, saveFlyer } from "./notice-flyers";
+import { mountMessageRoutes, MESSAGE_KINDS } from "./message";
+import { requestDraft } from "./request";
+import { Choices } from "../core/choice";
+import { PENDING } from "../project/document-body";
+import { canSendLine } from "../publish";
+
+/** 画像を付けられる下書き。住民へのメッセージの四つ（L-311）。 */
+const FLYER_KINDS: readonly string[] = MESSAGE_KINDS.map((entry) => entry.kind);
 
 const SEE_LABEL: Record<Scope, string> = { public: "だれでも読める", space: "実行委員と班長だけ", staff: "役員だけ" };
 const ERROR_MESSAGES: Readonly<Record<string, string>> = {
@@ -41,6 +46,7 @@ const ERROR_MESSAGES: Readonly<Record<string, string>> = {
 
 const admin = new Hono<AdminEnv>();
 mountFlyerRoutes(admin);
+mountMessageRoutes(admin);
 admin.get("/projects/:projectId/draft/rain-sent", rainSent);
 const isKind = (value: string): value is DocumentKind => (DOCUMENT_KINDS as readonly string[]).includes(value);
 function parseBody(raw: string): DraftBody {
@@ -130,13 +136,16 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
   const dateValue = body.items.find((item) => item.key === "date_time")?.content ?? "";
   const oldDates = [...new Set(state.items.find((item) => item.key === "date_time")?.references.flatMap((ref) => ref.content.match(/\d{1,2}月\d{1,2}日/g) ?? []) ?? [])].filter((date) => body.text.includes(date) && !dateValue.includes(date));
   const bodyCheck = c.req.query("notice") === "saved" ? documentBodyCheckMessage(c.req.query("check_body")) : null;
-  const flyerState = ["announcement", "notice"].includes(kindRaw) ? await flyerPanelState(c.env, ward.wardId, id, kindRaw) : null;
+  const flyerState = FLYER_KINDS.includes(kindRaw) ? await flyerPanelState(c.env, ward.wardId, id, kindRaw) : null;
   const rota = project.kind === "duty" && kindRaw === "duty_roster" ? await rotaPanel(c.env.DB, ward, id) : null;
+  // 住民へのメッセージ（案内、募集、連絡、報告）で、住民向けの下書きは、この画面の一番下から住民に送る。
+  const sendable = FLYER_KINDS.includes(kindRaw) && scope === "public";
+  const sentBefore = versions.results.some((version) => version.published_at);
   const rotaNotes = project.kind === "duty" && kindRaw === "duty_roster" ? await rotaRowNotes(c.env.DB, ward.wardId, id) : [];
   return c.html(<Layout title={`${pack.title}の下書きを直す`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, kindRaw === "duty_roster" ? `/projects/${id}/draft` : relatedTask ? `/projects/${id}/map/${relatedTask.taskId}` : `/projects/${id}/map`)}>← {kindRaw === "duty_roster" ? "下書きの一覧" : relatedTask ? relatedTask.name : `${project.title}のやること`}へ</a>
     <h1>{pack.title}の下書きを直す</h1>
-    <p class="lead">{kindRaw === "announcement" && scope === "public" ? `直して保存しても、まだ知らせません。だれでも読める${project.kind === "event" ? "案内" : pack.title}です。` : <>{kindRaw === "duty_roster" ? "実行委員と班長に見せる当番表です。" : kindRaw === "recruitment" && scope === "public" ? "住民向けのページの「一回だけ手伝う」に出る募集です。" : scope === "public" ? `だれでも読める${project.kind === "event" ? "案内" : pack.title}です。` : scope === "space" ? "実行委員と班長だけが読めます。" : "役員だけが読めます。"}直して保存しても、まだ知らせません。</>}</p>
+    <p class="lead">{kindRaw === "announcement" && scope === "public" ? `直して保存しても、まだ住民には送りません。だれでも読める${project.kind === "event" ? "案内" : pack.title}です。` : <>{kindRaw === "duty_roster" ? "実行委員と班長に見せる当番表です。" : kindRaw === "recruitment" && scope === "public" ? "住民向けのページの「一回だけ手伝う」に出る募集です。" : scope === "public" ? `だれでも読める${project.kind === "event" ? "案内" : pack.title}です。` : scope === "space" ? "実行委員と班長だけが読めます。" : "役員だけが読めます。"}{scope === "public" ? "直して保存しても、まだ住民には送りません。" : "直して保存しても、まだ載せません。"}</>}</p>
     {minutes ? <p>決めたことを書いた紙を撮るか、文を送ってから、AIに下書きを頼めます。書かれていることだけをまとめます。<a class="button secondary" href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>紙や文を送る</a></p> : null}
     {retry ? <Notice error>{retry.message} 書いた内容は下に残っています。</Notice> : <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />}
     {c.req.query("notice") === "saved" ? <section class="next"><strong>保存しました。まだ知らせていません</strong><p>前の下書きにも戻せます。</p>{scope !== "staff" ? <a class="button secondary" href={adminPath(ward, `/publish/${id}/confirm?kind=${kindRaw}`)}>知らせる画面へ</a> : null}<a class="quiet" href="#previous-drafts">前の下書きに戻す</a></section> : null}
@@ -159,8 +168,14 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
       <input type="hidden" name="item_content" value={body.items.find((item) => item.key === "content")?.content ?? ""} />
       {kindRaw === "duty_roster" ? body.items.filter((item) => !["date_time", "place", "helper_slots", "rain_plan", "content"].includes(item.key)).map((item) => <input type="hidden" name={`item_${item.key}`} value={item.content} />) : [...ITEMS_BY_KIND[project.kind]].filter((key) => !["date_time", "place", "rain_plan", "content"].includes(key)).sort((a, b) => Number(b === "helper_slots") - Number(a === "helper_slots")).map(field)}
       {flyerState && !project.closedAt ? <FlyerPanel c={c} projectId={id} state={flyerState} /> : null}
-      <p><button class="secondary" name="after" value="paper">保存して紙の見え方を見る</button></p><p class="muted">撮って役員のグループへ送ると、見てもらえます。まだ知らせていません。</p>
-      {kindRaw === "duty_roster" ? null : <details class="fold"><summary>誰に見せるかを変える</summary><div class="choice">{SCOPES.map((value) => <label><input type="radio" name="scope" value={value} checked={value === scope} /> {value === "public" ? "だれでも読める" : value === "space" ? "実行委員と班長だけ" : "役員だけ"}</label>)}</div></details>}
+      <p><button class="secondary" name="after" value="paper">保存して紙の見え方を見る</button></p><p class="muted">紙の見え方を撮って役員のグループへ送ると、見てもらえます。まだ住民には送りません。</p>
+      {sendable && canSendLine(kindRaw) && !project.closedAt ? <Choices name="lineDelivery" legend="自治会のLINE" items={[
+        { value: "send", title: "LINEの友だちにも送る", note: "文と画像を、自治会のLINEを友だちに追加している人みんなに送ります。LINEで送ったものは取り消せません。", checked: true },
+        { value: "skip", title: "今回はLINEで送らない", note: "住民向けのページに載せ、紙を印刷できるようにします。" },
+      ]} /> : null}
+      {kindRaw === "duty_roster" ? null : <details class="fold"><summary>誰に見せるかを変える</summary><div><Choices name="scope" legend="誰に見せるか" required={false} items={SCOPES.map((value) => ({ value, checked: value === scope,
+        title: value === "public" ? "だれでも読める" : value === "space" ? "実行委員と班長だけ" : "役員だけ",
+        note: value === "public" ? "住民向けのページに載せ、自治会のLINEで送り、紙にも印刷できます。" : value === "space" ? "実行委員と班長のページにだけ載せます。住民向けのページには載りません。" : "役員の画面で読めるだけで、どこにも載せません。紙には印刷できます。" }))} /></div></details>}
     </form>
     {kindRaw === "duty_roster" ? <section>
       <h2>当番の担当を直す</h2>
@@ -186,8 +201,10 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
       {project.kind === "duty" && kindRaw === "duty_roster" ? null : <details class="fold" id="redo"><summary>AIに言葉で頼む</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/start`)}>
         <div class="field"><label for="instruction">頼むこと</label><input id="instruction" name="instruction" type="text" maxlength={800} /><p class="help-text">{project.kind === "event" ? "例: 雨のときの場所の変更を入れてください" : minutes ? "例: 送った資料から決めたことをまとめてください" : "例: 送った資料の内容を入れてください"}</p></div><button class="secondary">AIに頼む</button>
       </form></div></details>}
-      <p class="muted">下のボタンを押しても、まだ知らせません。次の画面で内容を確かめてから知らせます。</p>
-      <div class="action-bar page-action"><button type="submit" form="draft-form" name="after" value={paperFirst ? "paper" : "confirm"}>{paperFirst ? "保存して紙の見え方を見る" : "保存して知らせる内容を見る"}</button><button class="secondary" type="submit" form="draft-form">保存だけする</button></div>
+      {sendable ? <><p class="muted">「{sentBefore ? "直した内容を住民に送る" : "住民に送る"}」を押すと、この内容を住民向けのページに載せ、{canSendLine(kindRaw) ? "上で選んだとおり自治会のLINEでも送り、" : ""}紙を印刷できるようにします。個人の名前や電話番号のように載せない方がよいものや、まだ決まっていないところが見つかったときだけ、送る前に確かめる画面を出します。</p>
+        <div class="action-bar page-action"><button type="submit" form="draft-form" name="after" value="send">{sentBefore ? "直した内容を住民に送る" : "住民に送る"}</button><button class="secondary" type="submit" form="draft-form">保存だけする</button></div></>
+      : <><p class="muted">下のボタンを押しても、まだ住民には送りません。次の画面で内容を確かめてから送ります。</p>
+        <div class="action-bar page-action"><button type="submit" form="draft-form" name="after" value={paperFirst ? "paper" : "confirm"}>{paperFirst ? "保存して紙の見え方を見る" : "保存して知らせる内容を見る"}</button><button class="secondary" type="submit" form="draft-form">保存だけする</button></div></>}
     </> : null}
   </Layout>, retry?.status ?? 200);
 }
@@ -201,9 +218,10 @@ async function latestFields(c: import("hono").Context<AdminEnv>, kind: DocumentK
   if (!row) return null;
   return new URLSearchParams({ documentId: row.document_id, versionId: row.version_id, versionNo: String(row.version_no), scope: row.scope });
 }
-async function confirmDraft(c: import("hono").Context<AdminEnv>, kind: DocumentKind, bodyChecks: ItemKey[]): Promise<Response> {
+async function confirmDraft(c: import("hono").Context<AdminEnv>, kind: DocumentKind, bodyChecks: ItemKey[], lineDelivery?: string): Promise<Response> {
   const fields = await latestFields(c, kind); const id = c.req.param("projectId");
   if (!fields) return c.notFound();
+  if (lineDelivery) fields.set("lineDelivery", lineDelivery);
   const query = new URLSearchParams({ check_body: bodyChecks.join(",") });
   if (fields.get("scope") === "staff") return c.redirect(adminPath(c.var.ward, `/publish/${id}?${query}`), 303);
   if (fields.get("scope") === "public") {
@@ -211,6 +229,22 @@ async function confirmDraft(c: import("hono").Context<AdminEnv>, kind: DocumentK
     fields.set("distribution", copies.map((row) => `${row.district} ${row.copies}`).join("\n"));
   }
   return openPublish(c, `/publish/${id}/confirm?${query}`, fields);
+}
+
+/**
+ * 下書きの画面の「住民に送る」。保存した版を、今の知らせる処理（publish の send）でそのまま送る。
+ * 載せない方がよいものや、まだ決まっていないところがある時だけ、今の確かめの画面に回す（雨の変更の知らせと同じ道）。
+ */
+async function sendDraft(c: import("hono").Context<AdminEnv>, kind: DocumentKind, bodyChecks: ItemKey[], body: string, lineDelivery: string): Promise<Response> {
+  const fields = await latestFields(c, kind); const id = c.req.param("projectId");
+  if (!fields || !id) return c.notFound();
+  if (fields.get("scope") !== "public") return confirmDraft(c, kind, bodyChecks, lineDelivery);
+  const warnings = await checkPublicDraft(c.env.DB, c.var.ward.wardId, id, kind, body);
+  if (warnings.length || body.includes(PENDING)) return confirmDraft(c, kind, bodyChecks, lineDelivery);
+  const copies = await getDistrictCopies(c.env.DB, c.var.ward.wardId);
+  fields.set("distribution", copies.map((row) => `${row.district} ${row.copies}`).join("\n"));
+  fields.set("lineDelivery", lineDelivery);
+  return openPublish(c, `/publish/${id}/send`, fields);
 }
 
 admin.post("/projects/:projectId/draft/:kind/restore/:versionNo", async (c) => {
@@ -294,7 +328,7 @@ admin.post("/projects/:projectId/draft/:kind/save", async (c) => {
   if (body.text.replace(/\r\n/g, "\n").length > DOCUMENT_TEXT_LIMIT) return retry(`本文が長いため保存できませんでした。${DOCUMENT_TEXT_LIMIT}文字以内にして、もう一度保存してください。`, 400);
   if (!title.trim() || title.length > 100) return retry("題を1文字以上100文字以内で書いて、もう一度保存してください。", 400);
   if (body.items.some((item) => item.content.length > 2000)) return retry("本文以外の欄は、それぞれ2000文字以内にして、もう一度保存してください。", 400);
-  const flyerInput = ["announcement", "notice"].includes(kindRaw) ? await readFlyerInput(c.env, ward.wardId, id, kindRaw, form) : null;
+  const flyerInput = FLYER_KINDS.includes(kindRaw) ? await readFlyerInput(c.env, ward.wardId, id, kindRaw, form) : null;
   if (typeof flyerInput === "string") return retry(flyerInput, 400);
   let ok: boolean;
   try {
@@ -315,6 +349,7 @@ admin.post("/projects/:projectId/draft/:kind/save", async (c) => {
     if (saved) return c.redirect(adminPath(ward, `/print/${id}/${saved.get("documentId")}/${saved.get("versionNo")}/preview`), 303);
   }
   if (ok && form.get("after") === "confirm") return confirmDraft(c, kindRaw, bodyChecks);
+  if (ok && form.get("after") === "send") return sendDraft(c, kindRaw, bodyChecks, JSON.stringify(body), form.get("lineDelivery") === "skip" ? "skip" : "send");
   const query = new URLSearchParams(ok ? { notice: "saved", check_body: bodyChecks.join(",") } : { error: "save_failed" });
   return c.redirect(`${adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}?${query}`, 303);
 });
@@ -339,19 +374,10 @@ admin.post("/projects/:projectId/draft/:kind/start", async (c) => {
     const ok = await prepareRota(c.env.DB, ward.wardId, id, account.accountId);
     return c.redirect(`${adminPath(ward, `/projects/${id}/draft/duty_roster`)}?${ok ? "notice=saved" : "error=rota_missing"}`, 303);
   }
-  const pack = getDraftPack(kindRaw, project.kind);
   const form = await c.req.formData();
   const instruction = String(form.get("instruction") ?? "").trim().slice(0, 800);
   try {
-    const contact = await getPublicContact(c.env.DB, ward.wardId);
-    const helpers = pack.kind === "duty_roster" ? await getDutyDraftHelpers(c.env.DB, ward.wardId, id) : [];
-    const helperInstruction = helpers.length
-      ? `\n答えから集めた手伝いの希望（この一覧を当番表の下書きに含めてください）: ${JSON.stringify(helpers)}`
-      : "\n答えに手伝いの希望はまだありません。";
-    const start = project.kind === "event" ? startTask : startMaterialDraft;
-    const materials = project.kind === "event" ? "" : await draftMaterials(c.env.DB, ward.wardId, id);
-    const meetingMaterials = pack.kind === "procedure" ? meetingMaterialInstruction(await getMeetingMaterials(c.env.DB, ward.wardId, project)) : "";
-    await start(c.env, c.executionCtx, { wardId: ward.wardId, projectId: id, task: "draft", instruction: `${pack.instruction}${contact ? `\n区の公開用の連絡先（問い合わせ先に使う）: ${contact}` : ""}${instruction ? `\n役員からの頼み: ${instruction}` : ""}\n対象の文書: ${pack.kind}。範囲: ${pack.scope}。dataにpack_versionを${pack.version}、based_on_state_versionを引いた状態の番号として含めてください。${pack.kind === "duty_roster" ? helperInstruction : ""}${materials}${meetingMaterials}`, accountId: account.accountId });
+    await requestDraft(c, project, kindRaw, instruction);
     return c.redirect(`${adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}?notice=started`, 303);
   } catch { return c.redirect(`${adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}?error=ai_failed`, 303); }
 });

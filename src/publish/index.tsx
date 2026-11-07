@@ -12,6 +12,7 @@ import { formatDateText, formatJst } from "../core/time";
 import type { AdminEnv } from "../env";
 import { broadcastLineText, getLineAllowance, lineAccessToken, LINE_NOT_CONFIGURED, sendLineTitleAndUrl } from "../line/api";
 import { getNoticeFlyer, noticeFlyerPath, noticeLineText } from "./notice-flyers";
+import { Choices } from "../core/choice";
 import { previousFlyer } from "../draft/notice-flyers";
 import { answerDeadlineFromDraft, getRoster, parseDistribution } from "../answers/api";
 import { checkPublicDraft } from "./check";
@@ -109,7 +110,8 @@ async function getDrafts(db: D1Database, wardId: string, projectId: string): Pro
 
 const admin = new Hono<AdminEnv>();
 
-const canSendLine = (kind: string) => ["announcement", "recruitment", "notice"].includes(kind);
+/** 自治会のLINEで送る種類。報告は住民向けのページと紙だけに出す。 */
+export const canSendLine = (kind: string) => ["announcement", "recruitment", "notice"].includes(kind);
 
 async function markDistributedTask(db: D1Database, wardId: string, projectId: string, accountId: string, taskKey: string, versionId: string) {
   const task = await db.prepare(`SELECT progress_source_kind FROM project_map_tasks
@@ -333,7 +335,10 @@ async function confirmPublication(c: Context<AdminEnv>) {
           return <label><input type="checkbox" name="district" value={district} checked={Boolean(target)} />{district}<input type="number" name={`copies_${index}`} min="1" value={target?.copies ?? roster.filter((row) => row.district === district).length} /><span>部</span></label>;
         })}</div>{!roster.length ? <label>全戸に配るときの部数<input type="number" name="allCopies" min="1" value={distribution.targets[0]?.copies} /></label> : null}</fieldset>
         {roster.length ? <details class="fold"><summary>世帯を選ぶ</summary><p>加入世帯の一部に配るときは、世帯に印を付けてください。</p>{householdChoices(roster).map(({ district, household, count }) => <label><input type="checkbox" name="household" value={JSON.stringify([district, household])} checked={distribution.mode === "household" && distribution.targets.some((target) => target.district === district && target.household === household)} />{district} / {household}{count > 1 ? `（${count}部）` : ""}</label>)}</details> : null}
-        {canSendLine(draft.kind) ? <fieldset><legend>自治会のLINE</legend><div class="choice"><label><input type="radio" name="lineDelivery" value="send" checked={lineDelivery === "send"} /> LINEで友だちに知らせる</label><label><input type="radio" name="lineDelivery" value="skip" checked={lineDelivery === "skip"} /> 今回は知らせない</label></div>{remaining !== null ? <p class="muted">送ったあと、今月はあと{Math.max(remaining - (friends ?? 0), 0)}通です。</p> : null}</fieldset> : <input type="hidden" name="lineDelivery" value="skip" />}
+        {canSendLine(draft.kind) ? <><Choices name="lineDelivery" legend="自治会のLINE" required={false} items={[
+          { value: "send", title: "LINEで友だちに知らせる", note: "自治会のLINEを友だちに追加している人みんなに、文と画像を送ります。LINEで送ったものは取り消せません。", checked: lineDelivery === "send" },
+          { value: "skip", title: "今回は知らせない", note: "住民向けのページに載せ、紙を印刷できるようにします。", checked: lineDelivery === "skip" },
+        ]} />{remaining !== null ? <p class="muted">送ったあと、今月はあと{Math.max(remaining - (friends ?? 0), 0)}通です。</p> : null}</> : <input type="hidden" name="lineDelivery" value="skip" />}
       </div></details> : <><input type="hidden" name="distribution" value={JSON.stringify({ mode: "district", targets: [] })} /><input type="hidden" name="lineDelivery" value={lineDelivery} /></>}
       {lineDelivery === "send" && remaining !== null && friends !== null && remaining < friends ? <Notice>今月、自治会のLINEで送れる通数が足りません。住民向けのページに載せて、紙を配れます。</Notice> : null}
       {draft.published_at ? <Notice>載せたときから表が変わっています。ここに出ている今の表で載せ直します。</Notice> : null}

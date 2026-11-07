@@ -5,6 +5,7 @@ import { WardBucket } from "../core/storage";
 import { PHOTO_SCRIPT } from "../intake/photo-script";
 import { imageDimensions } from "../intake/photo";
 import { officerGroupId } from "../line/api";
+import { formatJst } from "../core/time";
 
 export interface NoticeFlyer {
   version_id: string;
@@ -12,21 +13,25 @@ export interface NoticeFlyer {
   r2_path: string | null;
   preview_r2_path: string | null;
 }
-interface MaterialPhoto { original_id: string; filename: string; r2_path: string; media_type: string }
+interface MaterialPhoto { original_id: string; filename: string; r2_path: string; media_type: string; received_at: string; project_title: string | null }
 
-/** 自分たちの資料だけを並べる。参考・問い合わせ・確認待ち・住民の写真は含めない。 */
+/**
+ * 画像に選べる写真。役員の画面から送った写真と、役員のLINEグループに届いた写真を、準備を問わず並べる（L-311）。
+ * チラシかどうか、配る物かどうかはAIに当てさせない。問い合わせとして入った物と、住民から個別に届いた写真は含めない。
+ */
 export async function flyerMaterials(env: Env, wardId: string, projectId: string): Promise<MaterialPhoto[]> {
   const group = await officerGroupId(env, wardId);
-  const rows = await env.DB.prepare(`SELECT DISTINCT o.original_id, o.filename, o.r2_path, o.media_type
+  const rows = await env.DB.prepare(`SELECT o.original_id, o.filename, o.r2_path, o.media_type, o.received_at, p.title AS project_title
     FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
+    LEFT JOIN projects p ON p.ward_id = j.ward_id AND p.project_id = j.project_id
     WHERE o.ward_id = ? AND o.withdrawn_at IS NULL AND o.r2_path IS NOT NULL
       AND o.media_type IN ('image/jpeg', 'image/png') AND j.withdrawn_at IS NULL
-      AND ((j.via = 'admin' AND j.project_id = ?) OR EXISTS (
-        SELECT 1 FROM line_inbox_items i JOIN line_bundle_decisions d
+      AND (j.via = 'admin' OR EXISTS (
+        SELECT 1 FROM line_inbox_items i LEFT JOIN line_bundle_decisions d
           ON d.ward_id = i.ward_id AND d.bundle_id = i.bundle_id
         WHERE i.ward_id = o.ward_id AND i.job_id = o.job_id AND i.source_type = 'group' AND i.source_id = ?
-          AND d.action = 'material' AND d.decided_at IS NOT NULL AND d.project_id = ?))
-    ORDER BY o.received_at DESC, o.original_id`).bind(wardId, projectId, group ?? "", projectId).all<MaterialPhoto>();
+          AND COALESCE(d.action, 'material') NOT IN ('inquiry', 'unrelated')))
+    ORDER BY COALESCE(j.project_id = ?, 0) DESC, o.received_at DESC, o.original_id LIMIT 40`).bind(wardId, group ?? "", projectId).all<MaterialPhoto>();
   return rows.results;
 }
 
@@ -62,16 +67,16 @@ export function FlyerPanel({ c, projectId, state }: {
 }) {
   const { current, previous, materials } = state;
   const ask = previous && !current;
-  return <fieldset><legend>チラシの画像を付ける</legend>
-    <p>知らせる文のあとに、チラシの画像を一枚付けられます。付けると、住民向けのページと自治会のLINEの知らせに、文と一緒に画像が出ます。</p>
+  return <fieldset><legend>画像を付ける</legend>
+    <p>チラシや写真を一枚付けられます。付けると、住民向けのページと自治会のLINEで、文のあとに画像が出ます。印刷する紙には付きません。</p>
     {ask ? <p>前の知らせにはチラシの画像が付いていました。付け直しますか？</p> : null}
     {current?.flyer_id ? <><img src={adminPath(c.var.ward, `/projects/${projectId}/flyer/${current.version_id}`)} alt="付けたチラシ" style="max-width:100%;height:auto" />
       <label><input type="radio" name="flyer_choice" value="keep" checked />付けた画像を使う</label></> : null}
     <label><input type="radio" name="flyer_choice" value="none" checked={!ask && !current?.flyer_id} required={ask} />{current?.flyer_id ? "画像を外す" : "画像を付けない"}</label>
     <label><input type="radio" name="flyer_choice" value="attach" required={ask} />{ask ? "画像を付け直す" : "画像を付ける"}</label>
     <label>スマホやパソコンの画像<input type="file" name="flyer_file" accept="image/*" /></label>
-    {materials.length ? <label>届いたものにある自分たちの資料<select name="flyer_material"><option value="">写真を選んでください</option>
-      {materials.map((photo) => <option value={photo.original_id}>{photo.filename || "資料の写真"}</option>)}</select></label> : null}
+    {materials.length ? <label>届いた写真から選ぶ（役員の画面と、役員のLINEグループに届いたもの）<select name="flyer_material"><option value="">写真を選んでください</option>
+      {materials.map((photo) => <option value={photo.original_id}>{formatJst(photo.received_at)}　{photo.project_title ?? "自治会の資料"}　{photo.filename || "写真"}</option>)}</select></label> : null}
     <p class="help-text">写真、JPEG、PNGを使えます。WordやPDFは付けられません。保存しただけでは住民には見えません。</p>
     <p role="status" data-flyer-status="" aria-live="polite"></p>
     <script dangerouslySetInnerHTML={{ __html: PHOTO_SCRIPT }} />
@@ -157,7 +162,7 @@ export async function readFlyerInput(env: Env, wardId: string, projectId: string
   if (!choice || choice === "none") return { current: null, image: null, preview: null };
   if (choice !== "attach" || form.get("flyer_prepared") !== "jpeg") return "画像を整えられませんでした。JPEGかPNGの画像を選び直してください。";
   const material = String(form.get("flyer_material") ?? "");
-  if (material && !(await flyerMaterials(env, wardId, projectId)).some((photo) => photo.original_id === material)) return "自分たちの資料の写真を選び直してください。";
+  if (material && !(await flyerMaterials(env, wardId, projectId)).some((photo) => photo.original_id === material)) return "届いた写真から選び直してください。";
   const image = await jpeg(form.get("flyer_file"), 5 * 1024 * 1024);
   if (!image) return "JPEGの画像を5MB以内に整えてから、もう一度保存してください。";
   const preview = image.byteLength <= 1024 * 1024 ? image : await jpeg(form.get("flyer_preview"), 1024 * 1024);

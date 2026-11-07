@@ -6,7 +6,8 @@ import { receive } from "../intake/receive";
 import type { Waitable } from "../intake/types";
 import { linkKnowSource, listKnowItems } from "../know/store";
 import { createProject } from "../project/api";
-import { PROJECT_KINDS, type ProjectKind } from "../project/model";
+import type { ProjectKind } from "../project/model";
+import { startTemplate } from "../project/start-template";
 import { type BundleAction, type BundleDecision } from "./bundle-decisions";
 import { markInboxItemUnrelated, saveLineBundleInquiry } from "./intake";
 import { rememberPhotoSource } from "./photo-context";
@@ -196,14 +197,15 @@ export async function editTopic(env: Env, ctx: Waitable, wardId: string, account
   const action = String(form.get("action") ?? "material");
   if (!summary || summary.length > 500 || !["material", "reference", "inquiry", "know", "unrelated"].includes(action)) throw new Error("input");
   let projectId: string | null = null;
-  let newProject: { title: string; kind: ProjectKind } | null = null;
+  let newProject: { title: string; kind: ProjectKind; taskKeys?: readonly string[] } | null = null;
   if (action === "material" || action === "reference") {
     projectId = String(form.get("projectId") ?? "") || null;
     if (projectId === "new") {
       const title = String(form.get("projectName") ?? "").trim();
-      const kind = String(form.get("kind") ?? "event");
-      if (!title || title.length > 100 || !PROJECT_KINDS.some((k) => k === kind)) throw new Error("input");
-      newProject = { title, kind: kind as ProjectKind };
+      if (!title || title.length > 100) throw new Error("input");
+      // 種類は聞かない（決定ログ L-312）。一年の予定ごとの型か、短い一般の型を置く。
+      const template = startTemplate(title);
+      newProject = { title, kind: template.kind, ...(template.taskKeys ? { taskKeys: template.taskKeys } : {}) };
     } else if (projectId && !await env.DB.prepare("SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND (closed_at IS NULL OR project_id = ?)")
       .bind(wardId, projectId, topic.decision?.project_id ?? topic.posts[0]?.projectId ?? "").first()) throw new Error("input");
     if (action === "reference" && !projectId) throw new Error("input");

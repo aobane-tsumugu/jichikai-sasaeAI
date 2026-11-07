@@ -53,7 +53,7 @@ it("一日と二日間と集金期間を持ち、旬の目安と決まった日�
   expect(taskPeriodText(task((await state(one.projectId)).mapTasks, "committee"))).toBe("8月中旬から9月上旬");
   expect(taskPeriodText(task((await state(one.projectId)).mapTasks, "day"))).toBe("11月2日（月）");
 
-  const entry = await (await get(realApp, `${root}/projects`, cookie)).text();
+  const entry = await (await get(realApp, `${root}/projects?title=${encodeURIComponent(`${title}の二日間`)}`, cookie)).text();
   expect(entry).toContain('name="eventEnd" type="date"');
   const started = await postForm(realApp, `${root}/projects`, {
     kind: "event", title: `${title}の二日間`, year: "2026", eventDay: "2026-11-02", eventEnd: "2026-11-03",

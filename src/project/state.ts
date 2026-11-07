@@ -136,7 +136,7 @@ export async function createProject(db: D1Database, wardId: string, input: Creat
         .bind(wardId, projectId, kind, date, now, input.accountId ?? null),
     );
   }
-  (MAP_TEMPLATES[input.kind] ?? []).forEach((task, index) => {
+  (MAP_TEMPLATES[input.kind] ?? []).filter((task) => !input.taskKeys || input.taskKeys.includes(task.key)).forEach((task, index) => {
     const period = input.eventDay ? templatePeriod(task, input.eventDay, input.eventEnd) : null;
     statements.push(
       db

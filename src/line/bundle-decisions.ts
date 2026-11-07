@@ -16,6 +16,7 @@ export interface BundleDecision {
 }
 
 export const PURPOSE_QUESTION = "参考にする資料ですか、この準備の資料ですか";
+/** 前の作りで聞いていた問い。もう作らないが、保存済みの行を見分けるために残す（L-311）。 */
 export const SHARE_QUESTION = "住民に知らせますか";
 export const isPurposeQuestion = (text: string) => text === PURPOSE_QUESTION || text === SHARE_QUESTION;
 
@@ -42,7 +43,6 @@ export async function holdOfficerBundle(db: D1Database, wardId: string, bundleId
 
 export function bundleAction(result: MatchResult): BundleAction {
   if (result.intent === "reference") return "reference";
-  if (result.intent === "share") return "confirm_share";
   if (result.intent === "purpose_uncertain" || !result.intent) return "confirm_purpose";
   if (result.intent === "inquiry") return "inquiry";
   return "material";
@@ -91,7 +91,8 @@ export async function removeReferenceYearItems(db: D1Database, wardId: string): 
 
 /** 写真の当て先と同じ質問の保存先を使い、一つのまとまりに一問だけ置く。 */
 export async function ensureBundleQuestion(db: D1Database, wardId: string, decision: BundleDecision): Promise<void> {
-  if (decision.action !== "confirm_purpose" && decision.action !== "confirm_share") return;
+  // 住民に知らせるかは聞かない（L-311）。参考か資料かが読めない時だけ聞く。
+  if (decision.action !== "confirm_purpose") return;
   if (decision.clarification_id) return;
   const photo = await db.prepare(`SELECT p.batch_id, p.job_id, o.original_id FROM line_inbox_items i
     JOIN line_photo_items p ON p.ward_id = i.ward_id AND p.job_id = i.job_id
@@ -101,8 +102,8 @@ export async function ensureBundleQuestion(db: D1Database, wardId: string, decis
     .bind(wardId, decision.bundle_id).first<{ batch_id: string; job_id: string; original_id: string }>();
   if (!photo) return;
   const id = `purpose:${decision.bundle_id}`;
-  const text = decision.action === "confirm_share" ? SHARE_QUESTION : PURPOSE_QUESTION;
-  const options = decision.action === "confirm_share" ? ["知らせる", "今回は知らせない"] : ["参考資料", "この準備の資料"];
+  const text = PURPOSE_QUESTION;
+  const options = ["参考資料", "この準備の資料"];
   await db.batch([
     db.prepare(`INSERT OR IGNORE INTO line_clarifications
       (ward_id, clarification_id, batch_id, job_id, original_id, topic, text, options)
