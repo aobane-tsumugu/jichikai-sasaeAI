@@ -9,7 +9,7 @@ import { AdminPage } from "../core/admin-ui";
 import { Layout } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { createProject, getProjectState, getProjectSummary, listProjects, ProjectInputError } from "../project/api";
-import { MAP_PROGRESS_LABEL, PROJECT_KINDS, PROJECT_KIND_LABEL, TABLES, displayFieldValue, type MapProgress, type ProjectKind, type TableKey } from "../project/model";
+import { PROJECT_KINDS, PROJECT_KIND_LABEL, TABLES, displayFieldValue, type ProjectKind, type TableKey } from "../project/model";
 import type { ProjectSummary, RowView } from "../project/types";
 import { listAnswers } from "../answers/api";
 import { countMeetingAnswers } from "../answers/meeting-store";
@@ -58,17 +58,15 @@ function projectRecordPath(result: ArchiveSearchResult): string {
 admin.get("/archive", async (c) => {
   const { ward } = c.var;
   const projects = (await listProjects(c.env.DB, ward.wardId, { includeClosed: true })).filter((project) => project.closedAt);
-  const byMonth = new Map<string, typeof projects>();
-  for (const project of projects) {
-    const month = new Date(Date.parse(project.closedAt!) + 9 * 3600_000).toISOString().slice(0, 7);
-    byMonth.set(month, [...(byMonth.get(month) ?? []), project]);
-  }
+  // 終わりにした月でなく、行った年で分ける。来年の担当の人は「去年の〇〇」で探すため。
+  const byYear = new Map<number, typeof projects>();
+  for (const project of projects) byYear.set(project.year, [...(byYear.get(project.year) ?? []), project]);
   return c.html(<Layout title="終わったもの" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a><h1>終わったもの</h1>
     {projects.length === 0 ? <><div class="notice" role="status"><strong>終わったものはまだありません</strong><p>終わりにすると、ここに残ります。</p></div><section class="next"><strong>次は</strong><p>去年の資料が手元にあれば、送るとやることに使えます。</p><a class="button" href={adminPath(ward, "/intake")}>資料を送る</a></section></> : <><p class="lead">終わったものです。去年の動きを読めます。ここから新しい年の準備も始められます。</p>
-    <nav class="action-links"><a class="button secondary" href={adminPath(ward, "/archive/search")}>終わったものを探す</a><a class="button secondary" href={adminPath(ward, "/archive/map")}>一年の予定を見る</a></nav>
-    {[...byMonth.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([month, entries]) => <section><h2>{Number(month.slice(0, 4))}年{Number(month.slice(5, 7))}月に終わりにしたもの</h2><ul class="rows two">{entries.map((p) => <li><a class="row-link" href={adminPath(ward, `/archive/${p.projectId}`)}><b>{p.title}</b><span>{p.year}年　{PROJECT_KIND_LABEL[p.kind]}</span><span>やることと報告を読めます</span></a></li>)}</ul></section>)}
-    <p class="muted">名前を押すと、やること、知らせたもの、出欠の返事を読めます。</p></>}
+    <p class="lead">終わりにしたものを、行った年ごとに並べています。名前を押すと、その年の動き、住民に知らせたもの、出欠の返事、報告を読めます。</p>
+    {[...byYear.entries()].sort(([a], [b]) => b - a).map(([year, entries]) => <section><h2>{year}年に行ったもの</h2><ul class="links">{entries.map((p) => <li><a href={adminPath(ward, `/archive/${p.projectId}`)}>{p.title}{p.deadlines.event_day ? `（${formatJstDate(p.deadlines.event_day)}）` : ""}</a></li>)}</ul></section>)}
+    <p class="link-line"><a href={adminPath(ward, "/archive/search")}>終わったものを言葉で探す</a></p></>}
   </Layout>);
 });
 
@@ -234,11 +232,12 @@ admin.get("/archive/:projectId", async (c) => {
     totals.set(answer.district, total);
   }
   return c.html(<AdminPage ward={ward} account={c.var.account} title={`${project.year}年 ${project.title}（終わったもの）`} back={{ href: adminPath(ward, "/archive"), label: "← 終わったものの一覧へ" }}>
-    <h1>{project.year}年 {project.title}（終わったもの）</h1><p class="lead">去年の動きを読めます。ここから新しい年の準備を始められます。</p>
-    <div class="action-links"><a class="button" href={`${root}?view=seed`}>これをもとに新しく始める</a></div>
+    <h1>{project.year}年 {project.title}（終わったもの）</h1><p class="lead">{project.year}年に行った{project.title}の動きと、住民に知らせたもの、返事、報告を読めます。今年も行うときは、これをもとに、今年の日に合わせて始められます。このページの中身は変わりません。</p>
+    <div class="action-links"><a class="button" href={`${root}?view=seed`}>これをもとに今年の{project.title}を始める</a></div>
     <div class="record-split"><section>
-    <h2>やること</h2>{map.results?.map((task) => <section class="panel"><h3>{task.name}</h3><p>{formatDateText(task.period)} / {MAP_PROGRESS_LABEL[task.progress as MapProgress] ?? "これから"}</p>
-      {task.requested_by ? <p>頼んだ人: {task.requested_by}</p> : null}{task.difficulty ? <p>困ったこと: {task.difficulty}</p> : null}{task.next_year ? <p>来年変えること: {task.next_year}</p> : null}</section>)}
+    {/* 終わったものの仕事に「これから」の札は付けない。日付の順に、いつ何をしたかを一行ずつ読めるようにする。 */}
+    <h2>{project.year}年の動き</h2><ul class="rows">{[...map.results].sort((a, b) => Number(!a.period) - Number(!b.period) || a.period.localeCompare(b.period)).map((task) => <li class="panel"><p><b>{task.period ? `${formatDateText(task.period)}　` : ""}{task.name}</b></p>
+      {task.requested_by ? <p>頼んだ人: {task.requested_by}</p> : null}{task.difficulty ? <p>困ったこと: {task.difficulty}</p> : null}{task.next_year ? <p>来年変えること: {task.next_year}</p> : null}</li>)}</ul>
 
     {!map.results.length ? <p>残っている仕事はありません。</p> : null}
     <h2>知らせたもの</h2>
