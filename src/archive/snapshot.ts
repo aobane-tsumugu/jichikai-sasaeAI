@@ -81,6 +81,7 @@ export const WARD_TABLE_POLICY: readonly WardTablePolicy[] = [
   { table: "line_photo_context_texts", snapshot: "写真を当てる間だけ使い、長くても1日で消す文。記録に戻さない。", export: "写真の判断のための一時的な文で、区の記録ではない。", deletion: true },
   { table: "ward_know_items", snapshot: true, export: true, deletion: true },
   { table: "ward_material_links", snapshot: true, export: true, deletion: { cascade: "originals" } },
+  { table: "ward_year_items", snapshot: true, export: true, deletion: true },
   { table: "project_close_map", snapshot: true, export: true, deletion: true },
   { table: "project_close_reports", snapshot: true, export: true, deletion: true },
   { table: "archive_search_entries", snapshot: true, export: true, deletion: true },

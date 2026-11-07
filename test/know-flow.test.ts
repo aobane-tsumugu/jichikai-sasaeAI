@@ -111,3 +111,27 @@ it("行き先のない写真は聞かずに区の資料へ残し、名簿と読�
   expect(pick).toContain("役員が知っておくことにつなげる");
   expect(pick).toContain("総会");
 });
+
+it("一年の地図は一般の例から始まり、行事が入ると置き換わり、外す、戻す、足すができる", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const root = `/${ward.slug}/admin`;
+  const empty = await read(`${root}/`, cookie);
+  expect(empty).toContain("まず、手元の紙を十枚送ってください");
+  expect(empty).toContain("年末の役員会");
+  expect(empty).toContain("仮の内容");
+  await postForm(realApp, `${root}/year/drill/remove`, {}, cookie);
+  const year = await read(`${root}/year`, cookie);
+  expect(year).toContain("外した行（1つ）");
+  expect(year).not.toContain('<b>防災訓練</b>');
+  await postForm(realApp, `${root}/year/drill/restore`, {}, cookie);
+  await postForm(realApp, `${root}/year`, { title: "架空の草刈り", month: "6" }, cookie);
+  expect(await read(`${root}/year`, cookie)).toContain("架空の草刈り");
+  await createProject(env.DB, ward.wardId, { kind: "general_meeting", title: "架空の定期総会", year: 2026, accountId: account.accountId });
+  await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の秋祭り", year: 2026, eventDay: "2026-10-18", accountId: account.accountId });
+  const home = await read(`${root}/`, cookie);
+  expect(home).toContain("架空の定期総会");
+  expect(home).toContain("日はまだ決まっていません");
+  expect(home).not.toContain('<b>定期総会</b>');
+  expect(home).toContain("架空の秋祭り");
+  expect(home).not.toContain('<b>秋の行事</b>');
+});

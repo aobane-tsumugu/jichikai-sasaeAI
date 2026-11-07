@@ -12,6 +12,7 @@ import { countWord } from "../project/model";
 import { listInboxItems } from "../line";
 import { mapTaskPath, nextMapTask } from "../map/next";
 import { listKnowItems } from "../know/store";
+import { wardYear, YearLegend, YearMap } from "../know/year";
 import { pendingMaterialGroups } from "../intake/groups";
 import { rosterCandidates } from "../intake/store";
 import { nearInquiryDates } from "../line/digest";
@@ -88,7 +89,7 @@ admin.get("/", async (c) => {
     {place("/know", "役員が知っておくこと", "自治会を動かすのに知っておきたいことを見ます")}
     {place("/files", "区の資料", "送った紙やファイルを全部見ます")}
     {place("/archive", "記録を読む", "閉じた行事の段取り、配ったもの、報告を読みます")}
-    {projects.length ? <>{place("/archive/map", "一年の予定", "区の仕事を月ごとに見ます")}{place("/answers/roster", "名簿", "代表者の名前と班を入れます")}</> : null}
+    {projects.length ? place("/answers/roster", "名簿", "代表者の名前と班を入れます") : null}
     {projects.length ? <>{place("/requests/city", "行政の依頼", "市から届いた依頼と締切を見ます")}{place("/inquiries", "問い合わせと要望", "住民からの問い合わせに返事をします")}</> : null}
     {place("/settings", "区の設定", "役員、連絡先、知らせの文を直します")}
     <li><a class="row-link" href={`/${ward.slug}/`}><b>区のページ</b><span>住民が読むページを見ます</span></a></li>
@@ -105,46 +106,41 @@ admin.get("/", async (c) => {
     : chosen ? { title: `${chosen.project.title}　${chosen.task.name}`, body: `${mine ? "あなたの担当の仕事です。" : ""}${chosen.task.periodEnd ? `${shortDate(chosen.task.periodEnd)}まで。${daysRemaining(chosen.task.periodEnd)}。` : ""}押すと、この仕事の画面が開きます。`, href: mapTaskPath(chosen.project.projectId, chosen.project.kind, chosen.task), label: "この仕事を開く" }
     : unseeded ? { title: `${unseeded.year}年の${unseeded.title}をもとに今年を始める`, body: "去年の段取りを、新しい日に合わせて置き直します。全部を見直す必要はありません。", href: `/archive/${unseeded.project_id}?view=seed`, label: "今年を始める" }
     : { title: "手元の紙や資料を送る", body: "案内の紙も、Wordも、写真も、そのまま送れます。AIが読んで、行事に入れます。", href: "/intake", label: "紙や資料を送る" };
+  const year = await wardYear(c.env.DB, ward, projects, states, today);
+  const yearMap = <><YearLegend /><YearMap rows={year.rows} today={year.today} /></>;
+  const sheets = (await c.env.DB.prepare("SELECT COUNT(*) AS n FROM originals WHERE ward_id = ? AND withdrawn_at IS NULL").bind(ward.wardId).first<{ n: number }>())?.n ?? 0;
+  const GOAL = 10;
+  const questionCard = undecided ? <section class="next"><strong>{next.title}</strong><p>{next.body}</p><a class="button" href={adminPath(ward, next.href)}>{next.label}</a></section> : null;
+  const running = projects.flatMap((project, index) => (states[index]?.mapTasks ?? [])
+    .filter((task) => task.progress !== "done" && (task.periodStart || task.periodEnd) && (!task.periodStart || task.periodStart <= today) && (!task.periodEnd || task.periodEnd >= today))
+    .map((task) => ({ project, task })))
+    .sort((a, b) => Number(b.task.seatId === account.seatId && Boolean(account.seatId)) - Number(a.task.seatId === account.seatId && Boolean(account.seatId)) || (a.task.periodEnd ?? "9999").localeCompare(b.task.periodEnd ?? "9999")).slice(0, 5);
+  const nowRows = running.length ? running : chosen ? [chosen] : [];
   return c.html(<AdminPage ward={ward} account={account} title="最初の画面" home>
-    {projects.length === 0 ? sent === 0 ? records.length ? <>
-      {about}{heading("次にすること")}
-      <section class="next"><strong>{next.title}</strong><p>{next.body}</p><a class="button" href={adminPath(ward, next.href)}>{next.label}</a></section>
-      {memory}
-      <div class="action-links"><a class="button secondary" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>新しい行事を始める</a></div>
+    {!projects.length && !records.length ? <>
+      {about}{questionCard}
+      <section class="next"><strong>{sheets >= GOAL ? "十枚届きました" : "まず、手元の紙を十枚送ってください"}</strong>
+        <p class="start-count">{sheets ? `${sheets}枚届きました。${sheets < GOAL ? `あと${GOAL - sheets}枚です。` : ""}` : "写真でも、Wordでも、PDFでも送れます。"}</p>
+        <div class="start-bar" aria-hidden="true">{Array.from({ length: GOAL }, (_, index) => <i class={index < sheets ? "in" : undefined} />)}</div>
+        <a class="button" href={adminPath(ward, "/intake")}>紙や資料を送る</a>
+        <p style="margin: .5rem 0 0">公式LINEに写真を送っても入ります。分けたり名前を付けたりしなくてかまいません。</p></section>
+      {read ? <p class="link-line"><a href={adminPath(ward, "/intake/read")}>読み終わった資料を見て、行事を始める</a></p> : null}
+      {reading || delayed ? <p class="muted">{reading ? `${reading}件を読んでいます。` : ""}{delayed ? `${delayed}件は読み取りが遅れています。送り直す必要はありません。` : ""}</p> : null}
+      <h2>この区の一年</h2><p class="muted">今は一般の自治会の例を仮に置いています。行事が入ると、この区の内容に変わります。</p>
+      {yearMap}
+      <h2>どんな紙がよいか</h2><p class="muted">あるものだけでかまいません。上のものほど役立ちます。</p>
+      <ul><li>規約や会則</li><li>去年の総会の資料</li><li>年間の予定が分かる紙</li><li>世帯の名簿（班が分かるもの）</li><li>役員の一覧</li><li>去年の案内や回覧（二、三枚）</li><li>当番表や配置図</li><li>市から来た依頼の紙</li><li>会費や会計の報告</li></ul>
+      <details class="hint"><summary>手元に紙がないとき</summary><div><p>前の役員や、公民館の棚にあることが多いです。見つからないときは、何の準備かを選ぶと、ふつうの段取りから始められます。</p><p><a class="quiet" href={adminPath(ward, "/projects")}>紙がないので、何の準備かを選ぶ</a></p></div></details>
       {received}{places}{aboutFold}
     </> : <>
-      {about}{undecided ? <section class="next"><strong>{next.title}</strong><p>{next.body}</p><a class="button" href={adminPath(ward, next.href)}>{next.label}</a></section> : null}{heading("手元に去年の案内や資料はありますか")}
-      <p>案内の紙でも、Wordでも、写真でも、そのまま送れます。整理はいりません。</p>
-      <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>ある。そのまま送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>ない。何の準備かを選ぶ</a></div>
-      <h2>送ると、こうなります</h2><ul>
-        <li>AIが読んで、日時、場所、協賛先などを取り出します。</li><li>資料から、今年の段取りができます。</li><li>案内の下書きができます。直して配るのは役員です。</li>
-      </ul>
-      <details class="hint"><summary>資料がどこにあるか分からないとき</summary><div><p>見つかったものから一枚だけでも送れます。何もないときは「ない。何の準備かを選ぶ」から始められます。ふつうの段取りが出て、あとで直せます。</p></div></details>
-      {received}{places}{aboutFold}
-    </> : <>
-      {about}{heading("送った資料")}<p>{sent}回分を預かっています。読み終わった分から、段取りを作れます。</p>
-      <p class="muted">{read ? `読み終わりました${read}件。` : ""}{reading ? `読んでいます${reading}件。` : ""}{delayed ? `読み取りが遅れています${delayed}件。送り直す必要はありません。` : ""}{failed ? `読めませんでした${failed}件。もう一度読むか、このまま進められます。` : ""}</p>
-      <section class="next"><strong>次は</strong><p>読み終わったものを見てください。</p><a class="button" href={adminPath(ward, "/intake/read")}>読み終わったものを見る</a></section>
-      <div class="action-links"><a class="button secondary" href={adminPath(ward, "/intake")}>続けて送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>資料がないので、種類を選んで始める</a></div>
-      <p class="link-line"><a href={adminPath(ward, "/intake/received")}>送ったものを見る</a></p>{received}{places}{aboutFold}
-    </> : <>
-      {about}{heading("次にすること")}
-      <section class="next"><strong>{next.title}</strong><p>{next.body}</p><a class="button" href={adminPath(ward, next.href)}>{next.label}</a></section>
-      {memory}{knowRow}
+      {about}{heading(`${ward.name}の一年`)}
+      {yearMap}
       {near.length ? <div class="notice"><strong>{near[0]}</strong><p>{inquiryNotice(digest)}</p><a class="quiet" href={adminPath(ward, "/inquiries")}>問い合わせを見る</a></div> : null}
+      {questionCard}
+      {nowRows.length ? <><h2>今の時期の仕事</h2><ul class="year-list">{nowRows.map(({ project, task }) => <li><a class="year-row fact" href={adminPath(ward, mapTaskPath(project.projectId, project.kind, task))}><b>{project.title}　{task.name}</b><span class="note">{task.seatId && task.seatId === account.seatId ? "あなたの担当です。" : ""}{task.periodEnd ? `${shortDate(task.periodEnd)}まで。${daysRemaining(task.periodEnd)}` : ""}</span></a></li>)}</ul></> : !undecided ? <section class="next"><strong>{next.title}</strong><p>{next.body}</p><a class="button" href={adminPath(ward, next.href)}>{next.label}</a></section> : null}
+      {knowRow}
+      {memory}
       {received}
-      <h2>進めている行事</h2><p class="muted">押すと、その行事の段取りが開きます。</p>
-      <ul class="rows two">{projects.map((p, index) => {
-        const state = states[index];
-        const task = state ? nextMapTask(state.mapTasks, today) : undefined;
-        const due = p.deadlines.event_day ?? p.deadlines.submit_due;
-        const days = due ? Math.ceil((Date.parse(due) - Date.parse(today)) / 86400_000) : null;
-        return <li><a class="row-link" href={adminPath(ward, `/projects/${p.projectId}/map`)}><b>{p.title}</b>
-          {due ? <span>{formatJstDate(due)}{p.deadlines.submit_due && !p.deadlines.event_day ? "までに提出" : days !== null && days >= 0 ? `まで、あと${days}日` : ""}</span> : null}
-          <span>{task ? `次は ${task.name}` : state?.mapTasks.length ? "段取りの仕事は全部済みました" : "仕事はまだありません。段取りから足せます"}</span>
-          {state?.mapTasks.length ? <span>仕事{state.mapTasks.length}つのうち{state.mapTasks.filter((entry) => entry.progress === "done").length}つ済み</span> : null}
-        </a></li>;
-      })}</ul>
       <div class="action-links"><a class="button secondary" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>新しい行事を始める</a></div>
       {sent ? <p class="link-line"><a href={adminPath(ward, "/intake/read")}>送った資料{sent}件を見る</a></p> : null}
       {places}{aboutFold}
