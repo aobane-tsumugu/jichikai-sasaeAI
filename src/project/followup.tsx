@@ -101,7 +101,7 @@ followupAdmin.get("/inquiries", async (c) => {
     <div class="action-links"><a class="button secondary" href={adminPath(ward, "/inquiries/write")}>電話や立ち話で受けたことを書く</a></div>
     {records.some((r) => r.line_replied_at) ? <Notice><strong>送った人には返事をしてあります</strong><p>「役員に伝えて、内容を確認します」と返しました。</p></Notice> : null}
     <p class="muted">{notice}</p>
-    <h2>届いた問い合わせ（{open.length}件）</h2>
+    <h2>まだ返事をしていないもの（{open.length}件）</h2>
     <p class="muted">「明日」などの日付の言葉、行事までの日数、締切、同じ内容の件数が分かるものを上に並べています。ほかのものも同じ一覧にあります。</p>
     <ul class="rows">{open.map(({ group, project }) => { const record = group[0]!; return <li>
       <a class="row-link" href={adminPath(ward, inquiryPath(record.inquiry_id))}><b>「{inquirySubject(record.subject)}」</b>
@@ -109,10 +109,10 @@ followupAdmin.get("/inquiries", async (c) => {
         <span>{dateWords(record.subject).map((word) => `「${word}」と書かれています　`).join("")}{group.length > 1 ? `同じ内容が${group.length}件あります　最初は` : ""}{formatJstDate(group[group.length - 1]!.received_at)}に届きました</span>
         {project ? <span>{project.title}の話のようです{project.deadlines.event_day ? `　${untilText("行事", project.deadlines.event_day)}` : ""}{project.deadlines.answer_due ? `　${untilText("答えの締切", project.deadlines.answer_due)}` : ""}{project.deadlines.submit_due ? `　${untilText("提出の締切", project.deadlines.submit_due)}` : ""}</span> : null}
       </a></li>; })}</ul>
-    {open.length === 0 ? <p>届いている問い合わせはありません。</p> : null}
-    <h2>答えを残したもの</h2><ul class="rows">{answered.map((r) => <li><a class="row-link" href={adminPath(ward, inquiryPath(r.inquiry_id))}><b>{r.kind === "request" ? "要望" : "問い合わせ"}　{inquirySubject(r.subject)}</b><span>{formatJstDate(r.received_at)}に受けました</span><span>答え: {r.answer}</span><span>{r.submitted_to_city ? "行政に出しました" : "行政には出していません"}</span></a></li>)}</ul>
-    {answered.length === 0 ? <p>答えを残したものは、まだありません。</p> : null}
-    <details class="fold"><summary>要望だけを見る（{requests.length}件）</summary><div><ul class="rows">{requests.map((r) => <li><a class="row-link" href={adminPath(ward, inquiryPath(r.inquiry_id))}><b>{inquirySubject(r.subject)}</b><span>{formatJstDate(r.received_at)}に受けました　{r.submitted_to_city ? "行政に出しました" : "行政には出していません"}</span></a></li>)}</ul>{requests.length === 0 ? <p>要望はまだありません。</p> : null}</div></details></>}
+    {open.length === 0 ? <p>まだ返事をしていないものはありません。</p> : null}
+    <h2>返事が済んだもの</h2><ul class="rows">{answered.map((r) => <li><a class="row-link" href={adminPath(ward, inquiryPath(r.inquiry_id))}><b>{r.kind === "request" ? "市に伝える要望" : "問い合わせ"}　{inquirySubject(r.subject)}</b><span>{formatJstDate(r.received_at)}に受けました</span><span>返事: {r.answer}</span>{r.kind === "request" ? <span>{r.submitted_to_city ? "市に伝えました" : "まだ市に伝えていません"}</span> : null}</a></li>)}</ul>
+    {answered.length === 0 ? <p>返事が済んだものは、まだありません。</p> : null}
+    <details class="fold"><summary>市に伝える要望（{requests.length}件）</summary><div><p>道路や街灯のように、住民の声を自治会から市に伝えるものです。</p><ul class="rows">{requests.map((r) => <li><a class="row-link" href={adminPath(ward, inquiryPath(r.inquiry_id))}><b>{inquirySubject(r.subject)}</b><span>{formatJstDate(r.received_at)}に受けました　{r.submitted_to_city ? "市に伝えました" : "まだ市に伝えていません"}</span></a></li>)}</ul>{requests.length === 0 ? <p>市に伝える要望は、まだありません。</p> : null}</div></details></>}
   </Layout>);
 });
 
@@ -123,10 +123,9 @@ followupAdmin.get("/inquiries/write", (c) => {
     <h1>受けたことを書く</h1><p class="lead">電話や立ち話で受けた問い合わせや要望を、一行で書いてください。</p>
     <form method="post" action={adminPath(ward, "/inquiries")}>
       <label for="receivedAt">受けた日</label><input id="receivedAt" name="receivedAt" type="date" value={today()} required />
-      <details class="fold"><summary>要望として残すとき</summary><div><label for="kind">種類</label><select id="kind" name="kind"><option value="inquiry">問い合わせ</option><option value="request">要望</option></select></div></details>
+      <details class="fold"><summary>市に伝える要望だったとき</summary><div><label for="kind">どちらですか</label><select id="kind" name="kind"><option value="inquiry">問い合わせ（自治会が答えるもの）</option><option value="request">市に伝える要望（道路や街灯など）</option></select><label><input type="checkbox" name="submittedToCity" value="yes" />もう市に伝えた</label></div></details>
       <label for="subject">何を受けたか</label><textarea id="subject" name="subject" maxlength={2000} required />
-      <label for="answer">返事の文、または電話や直接答えたこと</label><textarea id="answer" name="answer" maxlength={2000} />
-      <label><input type="checkbox" name="submittedToCity" value="yes" />行政に出した</label>
+      <label for="answer">答えた内容（もう答えたときだけ）</label><textarea id="answer" name="answer" maxlength={2000} />
       <div class="action-bar"><button>記録する</button><a class="button secondary" href={adminPath(ward, "/inquiries")}>やめて一覧に戻る</a></div>
     </form>
   </Layout>);
@@ -157,9 +156,9 @@ followupAdmin.get("/inquiries/:inquiryId", async (c) => {
   const path = adminPath(ward, inquiryPath(record.inquiry_id));
   if (c.req.query("saved")) return c.html(<Layout title="答えを記録しました" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/inquiries")}>← 問い合わせと要望へ</a><h1>記録しました</h1>
-    <div class="notice done"><strong>「{inquirySubject(record.subject)}」の{record.answer ? "答え" : "内容"}を残しました</strong><p>{record.answer ? "一覧の「答えを残したもの」に移しました。" : "一覧の「届いた問い合わせ」に入れました。"}書き間違えたときは、もう一度書いて記録してください。新しい記録が足されます。</p></div>
+    <div class="notice done"><strong>「{inquirySubject(record.subject)}」の{record.answer ? "答え" : "内容"}を残しました</strong><p>{record.answer ? "一覧の「返事が済んだもの」に移しました。" : "一覧の「まだ返事をしていないもの」に入れました。"}書き間違えたときは、もう一度書いて記録してください。新しい記録が足されます。</p></div>
     <section class="next"><strong>次は</strong><p>ほかに届いている問い合わせは{inquiryGroups(records.filter((r) => !r.answer && r.subject.trim() !== record.subject.trim())).length}件です。</p><a class="button" href={adminPath(ward, "/inquiries")}>問い合わせの一覧を開く</a></section>
-    {record.kind === "request" ? <a class="button" href={`${path}/request`}>要望の仕事を進める</a> : null}
+    {record.kind === "request" ? <a class="button" href={`${path}/request`}>市に出す要望書を書く</a> : null}
     <a class="quiet" href={path}>記録を直す</a>
   </Layout>);
   const sentResult = c.req.query("sent") === "1";
@@ -176,26 +175,26 @@ followupAdmin.get("/inquiries/:inquiryId", async (c) => {
   return c.html(<Layout title="問い合わせに答えを残す" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/inquiries")}>← 問い合わせと要望へ</a><h1>「{inquirySubject(record.subject)}」</h1>
     <p class="lead">{canPush ? "AIは答えていません。返事を書いて送ると、来たところへ届き、そのまま記録に残ります。" : "AIは答えていません。LINEでは返せません。だれか分かるときは、電話や直接答えてください。"}</p>
-    {c.req.query("wish") === "1" ? <Notice>要望として残しました。</Notice> : null}
-    {record.kind === "request" ? <a class="button" href={`${path}/request`}>要望の仕事を進める</a> : null}
-    {group.some((r) => r.line_source_type && !inquiryTarget(r)) ? <div class="notice warn"><strong>公式LINEで返事を送れない人がいます</strong><p>送り先が分からないため送れません。書いた返事を残し、電話や直接答えたときは、その内容を記録してください。</p></div> : null}<p class="muted">{notice}</p>
+    {c.req.query("wish") === "1" ? <Notice>市に伝える要望にしました。</Notice> : null}
+    {record.kind === "request" ? <a class="button" href={`${path}/request`}>市に出す要望書を書く</a> : null}
+    {group.some((r) => r.line_source_type && !inquiryTarget(r)) ? <div class="notice warn"><strong>公式LINEで返事を送れない人がいます</strong><p>送り先が分からないため、LINEでは送れません。電話や会って答えたら、答えた内容を残してください。</p></div> : null}<p class="muted">{notice}</p>
     <a class="quiet" href={`${path}/original`}>元の文を見る</a>
     <dl class="facts"><dt>送った人</dt><dd>{record.line_sender_label || "名前は分かりません"}{record.line_source_type ? `（${record.line_source_type === "user" ? "公式への一対一" : "LINEグループ"}）` : ""}</dd><dt>届いた日</dt><dd>{group.map((r) => formatJstDate(r.received_at)).join("、")}</dd><dt>同じ内容</dt><dd>{group.length}件</dd>{canPush ? <><dt>返事の送り先</dt><dd>{recipients}</dd></> : null}
       {project ? <><dt>関係する行事</dt><dd>{project.title}のようです。{project.deadlines.event_day ? `行事まで${daysRemaining(project.deadlines.event_day)}` : ""}</dd>{project.deadlines.answer_due ? <><dt>答えの締切</dt><dd>{formatJstDate(project.deadlines.answer_due)}　{daysRemaining(project.deadlines.answer_due)}</dd></> : null}</> : null}</dl>
     <form method="post" action={path}>
-      <label for="answer">{canPush ? "返事" : "どう答えたか"}</label>
+      <label for="answer">{canPush ? "返事（LINEで送ります）" : "答えた内容"}</label>
       <textarea id="answer" name="answer" maxlength={2000}>{record.line_pending_answer ?? record.answer}</textarea>
-      {canPush ? <details class="fold"><summary>電話や直接答えたとき</summary><div>
-        <label for="phoneAnswer">どう答えたか</label><textarea id="phoneAnswer" name="phoneAnswer" maxlength={2000} />
-        <label><input type="checkbox" name="submittedToCity" value="yes" checked={Boolean(record.submitted_to_city)} />行政に出した</label>
-        <button class="secondary" name="operation" value="record">どう答えたかを残す</button>
-      </div></details> : <label><input type="checkbox" name="submittedToCity" value="yes" checked={Boolean(record.submitted_to_city)} />行政に出した</label>}
-      {record.kind === "request" ? <details class="fold"><summary>要望ではなかったとき</summary><div><button class="secondary" name="operation" value="unwish">問い合わせに戻す</button></div></details> : <details class="fold"><summary>要望として残すとき</summary><div><p>要望の一覧に入ります。</p><button class="secondary" name="operation" value="wish">要望として残す</button></div></details>}
+      {canPush ? <details class="fold"><summary>もう電話や会って答えたとき</summary><div><p>LINEでは送らずに、答えた内容だけを残します。</p>
+        <label for="phoneAnswer">答えた内容</label><textarea id="phoneAnswer" name="phoneAnswer" maxlength={2000} />
+        {record.kind === "request" ? <label><input type="checkbox" name="submittedToCity" value="yes" checked={Boolean(record.submitted_to_city)} />もう市に伝えた</label> : null}
+        <button class="secondary" name="operation" value="record">答えた内容を残す</button>
+      </div></details> : record.kind === "request" ? <label><input type="checkbox" name="submittedToCity" value="yes" checked={Boolean(record.submitted_to_city)} />もう市に伝えた</label> : null}
+      {record.kind === "request" ? <details class="fold"><summary>市に伝える要望ではなかったとき</summary><div><button class="secondary" name="operation" value="unwish">問い合わせに戻す</button></div></details> : <details class="fold"><summary>市に伝える要望だったとき</summary><div><p>道路や街灯のように、自治会から市に伝えることなら、ここを押します。一覧の「市に伝える要望」に移り、要望書を書いて市に出すまでを残せます。</p><button class="secondary" name="operation" value="wish">市に伝える要望にする</button></div></details>}
       {!record.line_source_type ? <><label for="receivedAt">受けた日</label><input id="receivedAt" name="receivedAt" type="date" value={record.received_at.slice(0, 10)} required /><label for="subject">何を受けたか</label><textarea id="subject" name="subject" maxlength={2000} required>{inquirySubject(record.subject)}</textarea></> : null}
       {canPush ? <p>問い合わせが届いたグループや、一対一のトークへ送ります。同じ内容が届いたときは、それぞれの送り先へ送ります。送った返事は取り消せません。</p> : null}
-      <div class="action-bar">{canPush ? <button name="operation" value="send">{!destinationCount ? "返事を送る" : group.some((r) => r.line_source_type && r.line_source_type !== "user") ? `返事を${destinationCount}か所に送る` : `返事を${destinationCount}人に送る`}</button> : <button name="operation" value="record">どう答えたかを残す</button>}<a class="button secondary" href={adminPath(ward, "/inquiries")}>今は返事をしないで戻る</a></div>
+      <div class="action-bar">{canPush ? <button name="operation" value="send">{!destinationCount ? "返事を送る" : group.some((r) => r.line_source_type && r.line_source_type !== "user") ? `返事を${destinationCount}か所に送る` : `返事を${destinationCount}人に送る`}</button> : <button name="operation" value="record">答えた内容を残す</button>}<a class="button secondary" href={adminPath(ward, "/inquiries")}>今は返事をしないで戻る</a></div>
     </form>
-    {notes.length ? <details class="fold"><summary>これまでに残した答え</summary><div>{notes.map((n) => <article><p>{formatJstDate(n.created_at)}</p><p class="preserve-lines">{n.answer}</p><p>{n.submitted_to_city ? "行政に出しました" : "行政には出していません"}</p></article>)}</div></details> : null}
+    {notes.length ? <details class="fold"><summary>これまでに残した返事</summary><div>{notes.map((n) => <article><p>{formatJstDate(n.created_at)}</p><p class="preserve-lines">{n.answer}</p>{record.kind === "request" ? <p>{n.submitted_to_city ? "市に伝えました" : "まだ市に伝えていません"}</p> : null}</article>)}</div></details> : null}
     <details class="fold"><summary>この問い合わせを消す</summary><div><p>間違えて残したときに、この記録と答えを消せます。消すと戻せません。</p><form method="post" action={`${path}/remove`}><button class="danger">この記録を消す</button></form></div></details>
   </Layout>);
 });

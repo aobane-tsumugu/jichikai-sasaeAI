@@ -12,11 +12,11 @@ it("入力の誤りから戻って行事を開き、住民も書き直して答�
   expect(invalid.status).toBe(303);
   expect(invalid.headers.get("location")).toBe(`${root}/projects?error=choose_kind`);
   const guidance = await (await get(realApp, invalid.headers.get("location")!, cookie)).text();
-  expect(guidance).toContain("種類を選んでください");
+  expect(guidance).toContain("何の準備かを選んでください");
   expect(guidance).toContain(`${ward.name} 役員の画面`);
   expect(guidance).toContain('>最初の画面</a>');
   expect(guidance).toContain('<body ontouchstart="">');
-  expect(guidance).toContain('<p class="lead">去年の記録があれば');
+  expect(guidance).toContain('<p class="lead">去年の同じものの記録があれば');
   const unknown = "URLに書いた文を表示しない";
   const ignored = await (await get(realApp, `${root}/projects?error=${encodeURIComponent(unknown)}`, cookie)).text();
   expect(ignored).not.toContain(unknown);

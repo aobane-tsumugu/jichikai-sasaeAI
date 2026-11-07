@@ -70,10 +70,10 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
   const inquiryPage = await read(inquiryPath);
   expect(inquiryPage).toContain("返事を書いて送ると、来たところへ届き");
   expect(inquiryPage).toContain('<button name="operation" value="send">返事を1か所に送る</button>');
-  expect(inquiryPage).toContain('<button class="secondary" name="operation" value="record">どう答えたかを残す</button>');
+  expect(inquiryPage).toContain('<button class="secondary" name="operation" value="record">答えた内容を残す</button>');
   expect(inquiryPage).toContain("公式LINEで返事を送れない人がいます");
-  expect(inquiryPage).toContain("送り先が分からないため送れません");
-  expect(inquiryPage).toContain("電話や直接答えたときは、その内容を記録してください");
+  expect(inquiryPage).toContain("送り先が分からないため、LINEでは送れません");
+  expect(inquiryPage).toContain("電話や会って答えたら、答えた内容を残してください");
   const saved = await follow(await postForm(realApp, inquiryPath, {
     answer: fixture.reportText, submittedToCity: "yes", kind: "request", operation: "record",
   }, cookie));

@@ -92,7 +92,7 @@ it("空の下書きを項目から整え、行事の日を直し、名簿なし�
   expect(await read(mapPath)).toContain('name="event_day" type="date"');
   const firstDay = await postForm(realApp, `${mapPath}/event-day`, { event_day: fixture.eventDay }, cookie);
   expect(firstDay.status).toBe(303);
-  expect(await read(firstDay.headers.get("location")!)).toContain("行事の日を変えました。済んでいない仕事の時期を置き直しました。案内の文は変わりません");
+  expect(await read(firstDay.headers.get("location")!)).toContain("当日を変えました。済んでいない仕事の時期を置き直しました。案内の文は変わりません");
   expect((await state()).mapTasks.find((task) => task.taskId === manual.taskId)?.periodStart).toBe(addDays(fixture.eventDay, -70));
   expect(await setMapTask(env.DB, ward.wardId, id, manual.taskId, {
     name: manual.name, start: addDays(fixture.eventDay, -12), end: addDays(fixture.eventDay, -10), progress: "started", seatId: null,

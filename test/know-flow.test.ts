@@ -173,7 +173,7 @@ it("地図の行から種類と名前を選んだ状態で行事を始められ�
   expect(page).toContain(`/projects?kind=general_meeting&amp;title=`);
   const start = await read(`${root}/projects?kind=general_meeting&title=${encodeURIComponent("定期総会")}`, cookie);
   expect(start).toContain('value="定期総会"');
-  expect(start).toMatch(/value="general_meeting" checked/);
+  expect(start).toContain('<input type="hidden" name="kind" value="general_meeting"/>');
 });
 
 it("行事が増えてもトップの地図は今に近い行に絞り、全部は一年の画面で見る", async () => {
@@ -261,4 +261,27 @@ it("進めている行事の帯は、資料と答えの数で五段の濃さに�
   expect(home).toContain('<i class="q">10</i>');
   expect(home).toContain('<i class="q">4月</i>');
   expect(home).toContain("<i>11</i>");
+});
+
+it("一年の行から始めると何の準備かを聞かず、段取りの先頭に準備の始まり、当日、終わりが出る", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const root = `/${ward.slug}/admin`;
+  const row = await read(`${root}/year/general-meeting`, cookie);
+  expect(row).toContain("今年の定期総会の準備を始める");
+  const form = await read(`${root}/projects?kind=general_meeting&title=${encodeURIComponent("定期総会")}`, cookie);
+  expect(form).toContain("今年の定期総会の準備を始める");
+  expect(form).not.toContain("何の準備ですか");
+  expect(form).toContain('<input type="hidden" name="kind" value="general_meeting"/>');
+  const plain = await read(`${root}/projects`, cookie);
+  expect(plain).toContain("何の準備ですか");
+  expect(plain).toContain("ごみ当番のように、順番で回すもの");
+  const undated = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の日のない祭り", year: 2026, accountId: account.accountId });
+  const undatedMap = await read(`${root}/projects/${undated.projectId}/map`, cookie);
+  expect(undatedMap).toContain("当日がまだ決まっていません");
+  const dated = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の日のある祭り", year: 2026, eventDay: "2026-11-28", accountId: account.accountId });
+  const datedMap = await read(`${root}/projects/${dated.projectId}/map`, cookie);
+  expect(datedMap).toContain("<dt>準備を始める</dt>");
+  expect(datedMap).toContain("<dt>当日</dt>");
+  expect(datedMap).toContain("<dt>終わる</dt>");
+  expect(datedMap).not.toContain("当日がまだ決まっていません");
 });
