@@ -12,6 +12,7 @@ import { questionOptionLabel } from "../project/question-pages";
 import { listClarifications, type ClarificationRow } from "./clarifications";
 import { listTalks, conversationFor, conversationPath, talkPage, talkPath, type TalkTopic } from "./talks";
 import { changeBoundary, checkEditable, editTopic, saveUndo, undoTalk } from "./talk-edits";
+import { senderText } from "./sender";
 
 export const talkAdmin = new Hono<AdminEnv>();
 const waitable = (c: Context<AdminEnv>) => { try { return c.executionCtx; } catch { return { waitUntil: () => undefined }; } };
@@ -105,7 +106,7 @@ talkAdmin.get("/inbox/talks/:talkId", async (c) => {
         {c.req.query("at") === topic.anchor.slice(6) ? <><Notice>{c.req.query("n") === "answered" ? "答えを残しました。続けて会話を読めます。" : `${actionText(topic, names).replace("→ ", "")}続けて会話を読めます。`}</Notice>
           {undo ? <form method="post" action={`${path}/undo`}><input type="hidden" name="undoId" value={undo.undo_id} /><button class="secondary">直す前に戻す</button></form> : null}</> : null}
         {topic.posts.map((post) => <article class="talk-post" id={`post-${post.id}`}>
-          <p><strong>{post.sender}</strong>　<time datetime={post.at}>{formatJst(post.at)}</time></p>
+          <p><strong>{post.sourceType === "admin" ? post.sender : senderText(post.sender, post.sourceType, post.senderNumber)}</strong>　<time datetime={post.at}>{formatJst(post.at)}</time></p>
           {post.text ? <p class="preserve-lines">{post.text}</p> : null}
           {post.originals.map((original) => {
             const source = adminPath(ward, `/intake/originals/${encodeURIComponent(original.original_id)}`);

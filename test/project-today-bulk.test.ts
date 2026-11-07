@@ -32,7 +32,7 @@ async function addQuestion(db: D1Database, wardId: string, projectId: string, st
     .bind(wardId, projectId, questionId, state, questionId).run();
 }
 
-/** 修正前の取得と描画を残した比較用。HTMLの順序、文、リンク、フォームをまとめて比べる。 */
+/** 一括取得にする前の取得と描画を残した比較用。送った人の表示を加え、HTMLの順序、文、リンク、フォームをまとめて比べる。 */
 async function legacyMain(db: D1Database, wardId: string, root: string): Promise<string> {
   const entries: Array<{ date: string | null; until?: boolean; taskId?: string; projectId: string; project: string; label: string; href: string }> = [];
   for (const project of await listProjects(db, wardId)) {
@@ -59,7 +59,7 @@ async function legacyMain(db: D1Database, wardId: string, root: string): Promise
   const coming = dated.filter((entry) => !late.includes(entry));
   const questions = entries.filter((entry) => !entry.date);
   const row = (entry: (typeof entries)[number]) => html`<li><a class="row-link" href="${root}${entry.href}"><b>${entry.project}　${entry.label}</b><span>${`${entry.until ? `${shortDate(entry.date!)}まで` : formatJstDate(entry.date!)}　${daysRemaining(entry.date!)}`}</span></a>${entry.taskId ? html`<form method="post" action="${root}/projects/${entry.projectId}/map/${entry.taskId}/done"><input type="hidden" name="back" value="today"/><button class="quiet">済みにする</button></form>` : ""}</li>`;
-  const inquirySection = inquiries.length ? html`<ul class="rows">${inquiries.slice(0, 3).map(({ group }) => html`<li><a class="row-link" href="${root}/inquiries/${encodeURIComponent(group[0]!.inquiry_id)}"><b>問い合わせ「${inquirySubject(group[0]!.subject)}」</b><span>${(dateWords(group[0]!.subject).length ? `急ぎかもしれません（${dateWords(group[0]!.subject).map((word) => `「${word}」`).join("")}とあります）。` : "") || `${formatJstDate(group[0]!.received_at)}に届きました`}</span></a></li>`)}</ul>` : "";
+  const inquirySection = inquiries.length ? html`<ul class="rows">${inquiries.slice(0, 3).map(({ group }) => html`<li><a class="row-link" href="${root}/inquiries/${encodeURIComponent(group[0]!.inquiry_id)}"><b>問い合わせ「${inquirySubject(group[0]!.subject)}」</b><span>送った人: 名前の分からない人</span><span>${(dateWords(group[0]!.subject).length ? `急ぎかもしれません（${dateWords(group[0]!.subject).map((word) => `「${word}」`).join("")}とあります）。` : "") || `${formatJstDate(group[0]!.received_at)}に届きました`}</span></a></li>`)}</ul>` : "";
   const lead = html`<p class="lead">締切の近い順に並べています。どれから始めてもかまいません。押すと、その仕事の画面が開きます。</p>`;
   const comingSection = coming.length ? html`<h2>これからの仕事</h2><ul class="rows">${coming.map(row)}</ul>` : "";
   const lateSection = late.length ? html`<h2>時期を過ぎた仕事</h2><p class="muted">終わっているものは「済みにする」を押してください。まだのものは、開くと時期を直せます。</p><ul class="rows">${late.map(row)}</ul>` : "";
