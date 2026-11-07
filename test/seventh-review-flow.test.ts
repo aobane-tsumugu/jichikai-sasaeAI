@@ -9,7 +9,7 @@ import { createProject, getProjectState } from "../src/project/api";
 import { PROJECT_KINDS } from "../src/project/model";
 import { cookieFrom, get, postForm, realApp } from "./helpers";
 
-it("初年度の空欄を仕事にせず、入口を相手に渡し、途中で閉じる画面を見ても最後の段取りと手直しを記録に残す", async () => {
+it("初年度の空欄を仕事にせず、入口を相手に渡し、途中で閉じる画面を見ても最後のやることと手直しを記録に残す", async () => {
   // データはすべてfixturesの架空の行事から取る。実際のHonoの入口とD1で通し、外部のAIは呼ばない。
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
@@ -28,7 +28,7 @@ it("初年度の空欄を仕事にせず、入口を相手に渡し、途中で�
   expect(today).not.toContain("まだ入っていないもの");
   expect(today).not.toContain("持ち物");
   expect(today).not.toContain("手伝いの時間帯");
-  expect(today).toContain("行事の日");
+  expect(today).toContain("当日");
 
   expect(PACK_VERSION).toBe("connect@17");
   expect(PACK_SYSTEM).not.toContain("本文や項目を空欄にして");
@@ -68,7 +68,7 @@ it("初年度の空欄を仕事にせず、入口を相手に渡し、途中で�
   const live = state?.mapTasks.find((task) => task.taskKey === "venue");
   const edited = state?.mapTasks.find((task) => task.taskKey === "day");
   const removed = state?.mapTasks.find((task) => task.taskKey !== "venue" && task.taskKey !== "day");
-  if (!live || !edited || !removed) throw new Error("架空の段取りの仕事が足りません");
+  if (!live || !edited || !removed) throw new Error("架空のやることが足りません");
   await read(close);
   expect((await postForm(realApp, `${close}/map/${edited.taskId}`, {
     name: FIRST_SLICE.nextYearTask, period: FIRST_SLICE.nextYearPeriod, progress: "done",

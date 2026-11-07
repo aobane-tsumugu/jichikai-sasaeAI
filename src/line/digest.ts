@@ -13,7 +13,7 @@ export function nearInquiryDates(projects: Array<{ title: string; deadlines: Par
     const event = project.deadlines.event_day;
     const due = project.deadlines.answer_due ?? project.deadlines.submit_due;
     if (event && days(event) >= 0 && days(event) <= settings.eventDays) return [`${project.title}まで、あと${days(event)}日です`];
-    if (due && days(due) >= 0 && days(due) <= settings.dueDays) return [`${project.title}の${project.deadlines.answer_due ? "答え" : "提出"}の締切まで、あと${days(due)}日です`];
+    if (due && days(due) >= 0 && days(due) <= settings.dueDays) return [`${project.title}の${project.deadlines.answer_due ? "返事" : "提出"}の締切まで、あと${days(due)}日です`];
     return [];
   });
 }
@@ -56,15 +56,15 @@ export async function sendOfficerDigest(env: Env, wardId: string, slug: string, 
   if (!token) return;
   let budget;
   try { budget = await officerPushAllowance(token, groupId, request); }
-  catch { await deliveryAlert(env.DB, wardId, "digest", "問い合わせの知らせを送れる通数を確かめられませんでした。"); return; }
-  if (!budget) { await deliveryAlert(env.DB, wardId, "digest", "問い合わせの知らせを送れる通数を確かめられませんでした。"); return; }
+  catch { await deliveryAlert(env.DB, wardId, "digest", "問い合わせの通知を送れる通数を確かめられませんでした。"); return; }
+  if (!budget) { await deliveryAlert(env.DB, wardId, "digest", "問い合わせの通知を送れる通数を確かめられませんでした。"); return; }
   const month = day.slice(0, 7);
   // LINE側の通数の反映が遅れても、自分が送った人数を下回らせない。
   const usage = await env.DB.prepare(`SELECT COALESCE(MAX(usage_before + recipients), 0) AS used
     FROM line_officer_digests WHERE ward_id = ? AND substr(day, 1, 7) = ?`).bind(wardId, month).first<{ used: number }>();
   const used = Math.max(budget.used, usage?.used ?? 0);
   if (budget.limit !== null && used + budget.recipients > budget.limit) {
-    await deliveryAlert(env.DB, wardId, "digest", "公式LINEの通数が足りないため、問い合わせの知らせを止めました。問い合わせは役員の画面で見られます。"); return;
+    await deliveryAlert(env.DB, wardId, "digest", "自治会のLINEの通数が足りないため、問い合わせの通知を止めました。問い合わせは役員の画面で見られます。"); return;
   }
   const base = new URL(env.PUBLIC_BASE_URL);
   if (base.protocol !== "https:") return;
@@ -78,7 +78,7 @@ export async function sendOfficerDigest(env: Env, wardId: string, slug: string, 
     await pushOfficerDigest(token, groupId, `${digestPeriodLabel(settings, cutoff)}の分です。\n` + officerDigestText(inquiries.results.map((row) => row.subject), url,
       receivedDays.some((received) => received < day), receivedDays), crypto.randomUUID(), request);
   } catch (error) {
-    await deliveryAlert(env.DB, wardId, "digest", "問い合わせの知らせを公式LINEに送れませんでした。問い合わせは役員の画面で見られます。");
+    await deliveryAlert(env.DB, wardId, "digest", "問い合わせの通知を自治会のLINEに送れませんでした。問い合わせは役員の画面で見られます。");
     throw error;
   }
   await env.DB.prepare("UPDATE line_officer_digests SET sent_at = ? WHERE ward_id = ? AND day = ?")

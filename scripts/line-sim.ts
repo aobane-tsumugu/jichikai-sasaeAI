@@ -126,7 +126,7 @@ export async function runSimulation(options: SimOptions, scenes: Scenes, ports: 
   const report = () => {
     const matched = results.filter((r) => r.matches).length;
     const total = scenes.scenes.reduce((sum, scene) => sum + scene.messages.length, 0);
-    const lines = ["# 公式LINEの確認（架空）", "", scenes.notice, "", `実行: ${runId}`, `対象: ${base.origin}/${options.ward}/`,
+    const lines = ["# 自治会のLINEの確認（架空）", "", scenes.notice, "", `実行: ${runId}`, `対象: ${base.origin}/${options.ward}/`,
       `合った文: ${matched}/${total}。送信を試した文: ${results.length}。送っていない文: ${total - results.length}。`,
       "HTTPの成功とD1の保存結果を分けて確認します。資料の読み取りとAIによる内容の反映完了、実LINEへの到達は、この集計の対象外です。",
       "残さない結果は受信の記録、原本・届いたもの・問い合わせとして本文が残っていないこと、日ごとの件数の増加を合わせて確認します。写真を当てるための一時的な文の保持はこの判定に含みません。写真のあとの文と写真自体の判断は未確認です。",

@@ -9,7 +9,7 @@ import { saveAIDraft, setMapTask } from "../src/project/actions";
 import { applyChange, createProject, getProjectState, type DocumentKind } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("去年から下書きを作り、新しい資料が入っても全戸に配り、段取りと報告を残す", async () => {
+it("去年から下書きを作り、新しい資料が入っても全戸に配り、やることと報告を残す", async () => {
   let broadcasts = 0;
   vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -80,7 +80,7 @@ it("去年から下書きを作り、新しい資料が入っても全戸に配�
     }, cookie);
     expect(confirmed.status).toBe(200);
     const confirmHtml = await confirmed.text();
-    expect(confirmHtml).toContain("ここに表示した内容で配れます。");
+    expect(confirmHtml).toContain("ここに表示した内容で知らせられます。");
     expect(confirmHtml).toContain("まだ決めていないところがあります");
     expect(confirmHtml).toContain("全戸に3部");
     const distribution = JSON.stringify({ mode: "district", targets: [{ district: FIRST_SLICE.district, copies: 3 }] });
@@ -116,7 +116,7 @@ it("去年から下書きを作り、新しい資料が入っても全戸に配�
     const reportConfirm = await postForm(realApp, `${root}/publish/${project.projectId}/confirm`, {
       ...confirmFields, ...report, recipientScope: "all_households", lineDelivery: "send",
     }, cookie);
-    expect(await reportConfirm.text()).toContain("今回は公式LINEに送りません。");
+    expect(await reportConfirm.text()).toContain("今回は自治会のLINEに送りません。");
     expect((await postForm(realApp, `${root}/publish/${project.projectId}/send`, {
       ...sendFields, ...report, lineDelivery: "send",
     }, cookie)).status).toBe(303);

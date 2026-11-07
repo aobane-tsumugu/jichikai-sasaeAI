@@ -7,7 +7,7 @@ import { saveDocument } from "../src/project/actions";
 import { getMemoRows } from "../src/map/memo";
 import { get, postForm, realApp } from "./helpers";
 
-it("資料のない一年目に運営メモを書き、情報なしのまま残し、行を足し、閉じた記録を来年の段取りで読む", async () => {
+it("資料のない一年目に運営メモを書き、情報なしのまま残し、行を足し、閉じた記録を来年のやることで読む", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, { kind: "event", title: fixture.nextYearTitle, year: fixture.eventYear, accountId: account.accountId });
@@ -25,7 +25,7 @@ it("資料のない一年目に運営メモを書き、情報なしのまま残�
   expect(count?.n).toBe(0);
   expect(await read(`${root}/projects/${project.projectId}/map`)).toContain(`href="${memo}"><b>運営メモ`);
   const empty = await read(memo);
-  expect(empty).toContain("警備"); expect(empty).toContain("情報なし"); expect(empty).toContain("参考の記録です");
+  expect(empty).toContain("警備"); expect(empty).toContain("まだ書いていません"); expect(empty).toContain("来年のためのメモです");
   expect(empty).not.toContain("未入力"); expect(empty).not.toContain("確かめ中");
   expect(empty).not.toContain('href="' + root + '/ledger"');
   expect(await read(security)).not.toMatch(/<(?:input|select|textarea)\b[^>]*\brequired\b/);
@@ -34,7 +34,7 @@ it("資料のない一年目に運営メモを書き、情報なしのまま残�
     body: JSON.stringify({ text: fixture.publicAnnouncement, items: [{ key: "content", content: fixture.draftText }] }),
   })).toBe(true);
   const saved = await follow(await postForm(realApp, security, { what: "警備", note: fixture.nextYearChange }, cookie));
-  expect(saved).toContain("メモを残しました"); expect(saved).toContain(fixture.nextYearChange); expect(saved).toContain("情報なし");
+  expect(saved).toContain("メモを残しました"); expect(saved).toContain(fixture.nextYearChange); expect(saved).toContain("まだ書いていません");
   let state = await getProjectState(env.DB, ward.wardId, project.projectId);
   expect(state?.tables.ledger.find((row) => row.data.what === "警備")?.data.amount).toBeUndefined();
   const withZero = await follow(await postForm(realApp, security, { what: "警備", amount: "0", note: fixture.nextYearChange, contact: fixture.requestedBy, estimate: "0" }, cookie));
@@ -53,7 +53,7 @@ it("資料のない一年目に運営メモを書き、情報なしのまま残�
   expect((await get(realApp, otherPath, other.cookie)).status).toBe(404);
   expect((await postForm(realApp, otherPath, { note: fixture.reportText }, other.cookie)).status).toBe(404);
   expect((await postForm(realApp, `${root}/close/${project.projectId}/finalize`, { body: fixture.reportText }, cookie)).status).toBe(303);
-  const frozen = await read(memo); expect(frozen).toContain(fixture.nextYearChange); expect(frozen).not.toContain("行を足す");
+  const frozen = await read(memo); expect(frozen).toContain(fixture.nextYearChange); expect(frozen).not.toContain("項目を足す");
   expect((await postForm(realApp, security, { note: fixture.reportText }, cookie)).status).toBe(409);
   expect((await postForm(realApp, `${security}/remove`, {}, cookie)).status).toBe(404);
   const started = await postForm(realApp, `${root}/archive/${project.projectId}/seed`, { title: fixture.nextYearTitle, year: String(fixture.nextYear), eventDay: fixture.eventDay }, cookie);
@@ -65,7 +65,7 @@ it("資料のない一年目に運営メモを書き、情報なしのまま残�
   const nextEdit = await read(`${nextMemo}/template%3Asecurity`); expect(nextEdit).toContain(fixture.requestedBy);
   expect(nextEdit).not.toMatch(/name="amount"[^>]*value="0"/);
   state = await getProjectState(env.DB, ward.wardId, nextId);
-  if (!state) throw new Error("来年の段取りがありません");
+  if (!state) throw new Error("来年のやることがありません");
   const nextRows = await getMemoRows(env.DB, ward.wardId, state);
   expect(nextRows.find((row) => row.key === "template:security")).toMatchObject({ data: { what: "警備" }, reference: { data: { amount: 0, note: fixture.nextYearChange } } });
   expect(nextRows.find((row) => row.key === "template:security")?.data.amount).toBeUndefined();

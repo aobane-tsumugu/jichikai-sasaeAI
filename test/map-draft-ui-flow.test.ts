@@ -17,11 +17,11 @@ it("資料のない一年目から仕事・質問・下書き・別の雨の知�
   const path = `${root}/projects/${project.projectId}`;
   const state = async () => {
     const current = await getProjectState(env.DB, ward.wardId, project.projectId);
-    if (!current) throw new Error("段取りがありません");
+    if (!current) throw new Error("やることがありません");
     return current;
   };
   const empty = await (await get(realApp, `${path}/map`, cookie)).text();
-  expect(empty).toContain("ふつうの8つの仕事の段取りを用意しました");
+  expect(empty).toContain("ふつうの8つのやることを用意しました");
   expect(empty).toContain('class="map-list"');
   expect(empty).not.toContain('<svg viewBox=');
   expect(empty).not.toContain("雨の変更を知らせる");
@@ -69,18 +69,18 @@ it("資料のない一年目から仕事・質問・下書き・別の雨の知�
   const draft = await (await get(realApp, `${path}/draft/announcement`, cookie)).text();
   expect(draft).toMatch(/name="title" value="[^"]+のご案内"/);
   expect(draft).toContain(`value="${FIRST_SLICE.layoutPosition}"`);
-  expect(draft).toContain("保存して配る内容を見る");
+  expect(draft).toContain("保存して知らせる内容を見る");
   const fields = { title: "案内", scope: "public", based_on: String((await state()).project.stateVersion), text: FIRST_SLICE.publicAnnouncement, item_place: FIRST_SLICE.layoutPosition };
   expect((await postForm(realApp, `${path}/draft/announcement/save`, fields, cookie)).status).toBe(303);
   const saved = await (await get(realApp, `${path}/draft/announcement?notice=saved`, cookie)).text();
-  expect(saved).toContain("保存しました。まだ配っていません");
+  expect(saved).toContain("保存しました。まだ知らせていません");
   expect(saved).toContain("前の下書きに戻す");
   const confirmed = await postForm(realApp, `${path}/draft/announcement/save`, { ...fields, after: "confirm" }, cookie);
   expect(confirmed.status).toBe(200);
   const confirmHtml = await confirmed.text();
   const value = (name: string) => {
     const found = new RegExp(`name="${name}" value="([^"]*)"`).exec(confirmHtml)?.[1];
-    if (!found) throw new Error(`配る内容の${name}がありません`);
+    if (!found) throw new Error(`知らせる内容の${name}がありません`);
     return found.replaceAll("&quot;", '"').replaceAll("&amp;", "&");
   };
   const beforeRain = await getEditableDocument(env.DB, ward.wardId, project.projectId, "announcement");
@@ -110,5 +110,5 @@ it("資料のない一年目から仕事・質問・下書き・別の雨の知�
   for (const task of (await state()).mapTasks) expect((await postForm(realApp, `${path}/map/${task.taskId}/remove`, {}, cookie)).status).toBe(303);
   const noTasks = await (await get(realApp, `${path}/map`, cookie)).text();
   expect(noTasks).toContain("仕事はまだありません");
-  expect(noTasks).toContain("報告を書いて閉じる");
+  expect(noTasks).toContain("報告を書いて終わりにする");
 });

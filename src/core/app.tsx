@@ -38,7 +38,7 @@ export function createApp(bundles: Bundle[]) {
     c.html(
       <Layout title="SasaeAI">
         <h1>SasaeAI</h1>
-        <p>自治会の役員の準備を支える仕組みです。区のページのURL（案内や掲示のQRに書かれたもの）からお入りください。</p>
+        <p>SasaeAIは、自治会の役員の準備を支えるサービスです。住民向けのページは、案内や掲示のQRに書かれたURLから開いてください。</p>
         <a class="quiet" href="/contact">SasaeAIに問い合わせる</a>
       </Layout>,
     ),
@@ -139,7 +139,7 @@ export function createApp(bundles: Bundle[]) {
     return c.html(
       <Layout title="うまく動きませんでした">
         <h1>うまく動きませんでした</h1>
-        <div class="notice warn"><strong>{reading ? "今は、この画面を開けません" : "操作を最後まで終えられませんでした"}</strong><p>{reading ? "時間をおくと開けることがあります。" : "保存や配布が済んでいることもあります。元の画面で結果を確かめてください。"}</p></div>
+        <div class="notice warn"><strong>{reading ? "今は、この画面を開けません" : "操作を最後まで終えられませんでした"}</strong><p>{reading ? "時間をおくと開けることがあります。" : "保存や住民への知らせが済んでいることもあります。元の画面で結果を確かめてください。"}</p></div>
         <section class="next"><strong>次は</strong><p>{reading ? "時間をおいて、もう一度開いてください。" : "結果が分からないときは、時間をおいて確かめてください。"}</p><a class="button" href={reading ? c.req.path : back}>{reading ? "もう一度開く" : back === home ? "最初の画面で確かめる" : "元の画面で確かめる"}</a></section>
         <a class="quiet" href={c.req.param("ward") ? `/${encodeURIComponent(c.req.param("ward")!)}/` : "/"}>最初の画面に戻る</a>
         

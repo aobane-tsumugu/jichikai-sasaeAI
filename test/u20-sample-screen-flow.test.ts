@@ -9,7 +9,7 @@ import { applyChange, createProject, getProjectState } from "../src/project/api"
 import type { RowData } from "../src/project/model";
 import { cookieFrom, get, postForm, realApp } from "./helpers";
 
-it("当番の下書きと記入用紙から実行委員のページを開き、読み取った答えを直して閉じたあとの案内まで進める", async () => {
+it("当番の下書きと記入用紙から実行委員のページを開き、読み取った返事を直して閉じたあとの案内まで進める", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: fixture.nextYearTitle, year: fixture.eventYear, accountId: account.accountId,
@@ -35,7 +35,7 @@ it("当番の下書きと記入用紙から実行委員のページを開き、�
   expect(meeting).toContain(`${fixture.nextYearTitle} 役員会の記入欄`);
   expect(meeting).toContain("きれいに書かなくてかまいません。");
   expect(meeting.match(/min-height:66mm/g)).toHaveLength(3);
-  expect(meeting).not.toContain("に配りましたに印刷しました");
+  expect(meeting).not.toContain("に知らせましたに印刷しました");
   const sponsors = await (await get(realApp, `${root}/print/${id}/paper/sponsors`, cookie)).text();
   expect(sponsors).toContain('class="paper-header"');
   expect(sponsors).toContain("お願いした日");
@@ -87,10 +87,10 @@ it("当番の下書きと記入用紙から実行委員のページを開き、�
   })).toBe(true);
   const answersPath = `${root}/answers/${id}`;
   const read = await (await get(realApp, `${answersPath}?view=read`, cookie)).text();
-  expect(read).toContain("読み取った答えを直して入れる");
+  expect(read).toContain("読み取った返事を直して入れる");
   expect(read).toContain("元の資料（回答票の写真）を見る");
   expect(read).toContain('class="choice half"');
-  expect(read).toContain("答えに入れる");
+  expect(read).toContain("返事に入れる");
   expect((await postForm(realApp, `${answersPath}/sheet/${originalId}/row/0`, {
     household: fixture.firstHousehold, district: fixture.district, attend: "yes",
     children_count: "1", adults_count: "2", seniors_count: "0", helper_name: fixture.sheetHelper, helper_times: fixture.helperTime,
@@ -98,12 +98,12 @@ it("当番の下書きと記入用紙から実行委員のページを開き、�
   expect((await getAnswerTotals(env.DB, ward.wardId, id)).people).toBe(3);
   const savedAnswers = await listAnswers(env.DB, ward.wardId, id);
   const answer = savedAnswers[0];
-  if (!answer) throw new Error("入れた答えがありません。");
+  if (!answer) throw new Error("入れた返事がありません。");
   expect((await postForm(realApp, `${root}/close/${id}/finalize`, {}, cookie)).status).toBe(303);
   const closed = await (await get(realApp, `${answersPath}/${answer.answerId}/edit`, cookie)).text();
-  expect(closed).toContain("この行事は終わっています");
-  expect(closed).toContain(`href="${root}/close/${id}">行事をもう一度開く画面へ`);
-  expect(closed).toContain("もう一度開いても、これまでの記録は残ります。");
+  expect(closed).toContain("は終わりにしました");
+  expect(closed).toContain(`href="${root}/close/${id}">終わりを取り消す画面へ`);
+  expect(closed).toContain("終わりを取り消しても、これまでの記録は残ります。");
   expect(closed).not.toContain('name="household"');
   expect(await listAnswers(env.DB, ward.wardId, id)).toEqual(savedAnswers);
 });

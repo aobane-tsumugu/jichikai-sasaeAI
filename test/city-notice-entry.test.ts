@@ -5,7 +5,7 @@ import { seedAdmin } from "../src/core/testing";
 import { createProject } from "../src/project/api";
 import { get, postForm, realApp, withEnv } from "./helpers";
 
-it("入口の四つから進み、市の通知を知らせに保存して通常の配る画面から紙とWebに出せる", async () => {
+it("入口の四つから進み、市の通知を知らせに保存して通常の知らせる画面から紙とWebに出せる", async () => {
   // 外部には接続せず、送信前に LINE を呼んでいないことも確かめる。
   const request = vi.fn<typeof fetch>(async () => new Response(null, { status: 503 }));
   vi.stubGlobal("fetch", request);
@@ -27,8 +27,8 @@ it("入口の四つから進み、市の通知を知らせに保存して通常�
     const cityPage = await get(realApp, cityPath, cookie, bindings);
     expect(cityPage.status).toBe(200);
     const cityHtml = await cityPage.text();
-    expect(cityHtml).toContain("配る画面へ進む");
-    expect(cityHtml).not.toContain("公式LINEで配る");
+    expect(cityHtml).toContain("知らせる画面へ進む");
+    expect(cityHtml).not.toContain("自治会のLINEで配る");
     // 古い画面から operation=send を送っても、その場では送らない。
     const prepared = await postForm(realApp, cityPath, {
       operation: "send", noticeBody: FIRST_SLICE.publicAnnouncement,
@@ -57,7 +57,7 @@ it("入口の四つから進み、市の通知を知らせに保存して通常�
     expect(before?.n).toBe(0);
     const publishPage = await get(realApp, publishPath, cookie, bindings);
     expect(publishPage.status).toBe(200);
-    expect(await publishPage.text()).toContain("配る内容を見る");
+    expect(await publishPage.text()).toContain("知らせる内容を見る");
     const form = {
       documentId: version.document_id, versionId: version.version_id, versionNo: String(version.version_no), lineDelivery: "skip",
     };

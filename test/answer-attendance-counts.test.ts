@@ -5,7 +5,7 @@ import { seedAdmin } from "../src/core/testing";
 import { createProject } from "../src/project/api";
 import { postForm, realApp } from "./helpers";
 
-it("参加すると答えた人数の入力漏れを不参加にせず、人数を直して同じ答えを保存できる", async () => {
+it("参加すると返事をした人数の入力漏れを不参加にせず、人数を直して同じ返事を保存できる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "架空の人数確認会", year: 2026, accountId: account.accountId,
@@ -27,7 +27,7 @@ it("参加すると答えた人数の入力漏れを不参加にせず、人数�
 
   const accepted = await postForm(realApp, publicPath, { ...input, adults_count: "2" });
   expect(accepted.status).toBe(200);
-  expect(await accepted.text()).toContain("答えを受け付けました");
+  expect(await accepted.text()).toContain("返事を受け付けました");
   const saved = await listAnswers(env.DB, ward.wardId, project.projectId);
   expect(saved).toEqual([expect.objectContaining({ peopleCount: 2, adultsCount: 2 })]);
   const editPath = `${adminPath}/${saved[0]!.answerId}/edit`;

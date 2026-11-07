@@ -186,7 +186,7 @@ it("資料から当番の下書きを行にし、役員が直して紙と実行�
     const leaderPaper = await (await postForm(realApp, `${printRoot}/leader`, {}, cookie)).text();
     expect(leaderPaper.match(/class="sheet"/g)).toHaveLength(1);
     expect(leaderPaper).toContain("班長さんへ");
-    expect(leaderPaper).not.toContain("区の設定で班の名前を入れる");
+    expect(leaderPaper).not.toContain("自治会の設定で班の名前を入れる");
     const anonymousLeader = await env.DB.prepare(`SELECT district FROM project_space_members
       WHERE ward_id = ? AND project_id = ? AND role = 'leader'`).bind(ward.wardId, id).first<{ district: string | null }>();
     expect(anonymousLeader?.district).toBe("");

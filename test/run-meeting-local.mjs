@@ -13,7 +13,7 @@ await build({ entryPoints: ["test/meeting-local-worker.ts"], outfile: output + "
 const mf = new Miniflare(convertV4MiniflareOptions({
   modules: true, scriptPath: output + "/worker.mjs", compatibilityDate: "2026-08-01", compatibilityFlags: ["nodejs_compat"],
   d1Databases: ["DB"], r2Buckets: ["ORIGINALS"],
-  bindings: { PUBLIC_BASE_URL: "http://localhost", DEMO_NOTICE: "この区の資料と名前はすべて架空です。" },
+  bindings: { PUBLIC_BASE_URL: "http://localhost", DEMO_NOTICE: "この自治会の資料と名前はすべて架空です。" },
   // 外へは一切接続しない。SDKのfetchは架空の応答に置き換えてある。
   outboundService: () => new Response("ローカル確認では外へ接続しません", { status: 503 }),
 }));

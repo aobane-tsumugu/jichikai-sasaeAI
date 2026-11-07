@@ -9,7 +9,7 @@ it("初めての役員に行事・資料・実行委員と班長のページの�
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   const opening = "まず、手元の資料を十件送ってください";
-  const materials = "ふつうの8つの仕事の段取りを用意しました";
+  const materials = "ふつうの8つのやることを用意しました";
   const emptyHome = await get(realApp, `${root}/`, cookie);
   expect(emptyHome.status).toBe(200);
   const homeHtml = await emptyHome.text();
@@ -19,7 +19,7 @@ it("初めての役員に行事・資料・実行委員と班長のページの�
   const projectEntry = await get(realApp, `${root}/projects`, cookie);
   expect(projectEntry.status).toBe(200);
   const projectEntryHtml = await projectEntry.text();
-  expect(projectEntryHtml).toContain("<h1>新しく始める</h1>");
+  expect(projectEntryHtml).toContain("<h1>新しく準備を始める</h1>");
   expect(projectEntryHtml).toContain(`<form method="post" action="${root}/projects">`);
   expect(projectEntryHtml).toContain('<button type="submit">始める</button>');
 
@@ -36,5 +36,5 @@ it("初めての役員に行事・資料・実行委員と班長のページの�
   ] });
   expect(await (await get(realApp, `${root}/projects/${project.projectId}/map`, cookie)).text()).not.toContain(materials);
   const space = await get(realApp, `${root}/space/${project.projectId}`, cookie);
-  expect(await space.text()).toContain("実行委員と班長が、配られたものを見て、紙を撮って送るページです。");
+  expect(await space.text()).toContain("実行委員と班長が、役員から届いたものを見て、紙を撮って送るページです。");
 });

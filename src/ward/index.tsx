@@ -79,16 +79,16 @@ const pub = new Hono<WardEnv>();
 pub.get("/line", async (c) => {
   const lineUrl = await getOfficialLineUrl(c.env.DB, c.var.ward.wardId);
   const contact = await getPublicContact(c.env.DB, c.var.ward.wardId);
-  return c.html(<Layout title="公式LINEで受け取る" siteName={c.var.ward.name}>
+  return c.html(<Layout title="自治会のLINEで受け取る" siteName={c.var.ward.name}>
     <a class="back" href={`/${c.var.ward.slug}/`}>← {c.var.ward.name}のお知らせへ</a>
     <h1>新しいお知らせを、LINEで受け取る</h1>
-    <p class="lead">区の公式LINEを友だちに追加すると、新しい案内や変更が、スマホのLINEに届きます。追加は、してもしなくてもかまいません。</p>
-    {lineUrl ? <><div class="action-links"><a class="button" href={lineUrl}>LINEで友だちに追加する</a></div><p class="muted">LINEが開きます。</p></> : <p>この区の公式LINEは、まだ用意されていません。</p>}
+    <p class="lead">自治会のLINEを友だちに追加すると、新しい案内や変更が、スマホのLINEに届きます。追加は、してもしなくてもかまいません。</p>
+    {lineUrl ? <><div class="action-links"><a class="button" href={lineUrl}>LINEで友だちに追加する</a></div><p class="muted">LINEが開きます。</p></> : <p>この自治会のLINEは、まだ用意されていません。</p>}
     <h2>追加しなくても読めます</h2><p>案内は、このページと、紙の回覧、掲示でも読めます。LINEを使わない方は、追加しなくてかまいません。</p>
     <h2>届くもの</h2><p>案内の題と、このページへのリンクが届きます。くわしい内容は、リンクを開いて、このページで読みます。</p>
     <div class="sheet-preview"><p><b>届く知らせの例</b></p><p style="margin-bottom: 0; overflow-wrap: anywhere">秋の収穫祭のご案内<br />{`${new URL(c.req.url).origin}/${c.var.ward.slug}/p/akimatsuri`}</p></div>
     <h2>名前や世帯の登録はいりません</h2><p>友だちに追加すれば、受け取れます。名前、世帯、班を伝える必要はありません。LINEの中で、質問したり答えたりする必要もありません。</p>
-    <h2>届かなくしたいとき</h2><p>LINEで、区の公式アカウントをブロックすると、届かなくなります。もう一度追加すれば、また届きます。</p>
+    <h2>届かなくしたいとき</h2><p>LINEで、自治会のLINEのアカウントをブロックすると、届かなくなります。もう一度追加すれば、また届きます。</p>
     <h2>分からないときは</h2><ResidentContact contact={contact} /><ul class="links"><li><a href={`/${c.var.ward.slug}/privacy`}>個人情報の扱い</a></li></ul>
   </Layout>);
 });
@@ -98,14 +98,14 @@ pub.get("/privacy", async (c) => {
   const purpose = await getSetting(c.env.DB, c.var.ward.wardId, "privacy_notice");
   return c.html(<Layout title="個人情報の扱い" siteName={c.var.ward.name}>
     <a class="back" href={`/${c.var.ward.slug}/`}>← {c.var.ward.name}のお知らせへ</a>
-    <h1>個人情報の扱い</h1><p class="lead">答えや送られた資料を、何に使い、どう預かるかです。</p>
-    <h2>何に使うか</h2><p>答えや送られた資料は、自治会の行事や連絡、答えの受付のために使います。</p>
-    <h2>だれが預かるか</h2><p>この区のページの仕組みを自治会に提供している事業者が、自治会から頼まれて、答えや資料を預かります。個人情報を守る決まりが守られているかは、この事業者が確かめます。</p>
+    <h1>個人情報の扱い</h1><p class="lead">返事や送られた資料を、何に使い、どう預かるかです。</p>
+    <h2>何に使うか</h2><p>返事や送られた資料は、自治会の行事や連絡、返事の受付のために使います。</p>
+    <h2>だれが預かるか</h2><p>このページを動かしているSasaeAIの運営者が、自治会から頼まれて、返事や資料を預かります。個人情報を守る決まりが守られているかは、SasaeAIの運営者が確かめます。</p>
     <h2>文章の読み取り</h2><p>紙や写真の文章の読み取りは、AI事業者のAnthropicに委託します。</p>
     <p>Anthropic社に送った内容は、通常、受け取ったときか文章を作ったときから30日以内に消されます。利用ポリシーへの対応、法令、契約の条件により、もっと長く残る場合があります。</p>
     <h2>消してほしいとき</h2><p>消してほしいときや、個人情報について聞きたいときは、{contact ? "下の連絡先" : "班長か役員"}へお知らせください。</p><p>役員が対象を確かめて、元の資料、読み取った内容、それらを探すための一覧を、いっしょに消します。</p>
-    <h2>この仕組みをやめるとき</h2><p>自治会がこの仕組みの利用をやめるときは、元の資料、配ったもの、記録を、自治会にお渡しします。そのあと、預かっているものと、Anthropic社での処理を消します。読み取りの設定を止めて、保管場所も消します。</p>
-    {purpose && purpose !== PUBLIC_PRIVACY_NOTICE ? <><h2>この区からのお知らせ</h2><p class="preserve-lines">{purpose}</p></> : null}
+    <h2>SasaeAIをやめるとき</h2><p>自治会がSasaeAIの利用をやめるときは、元の資料、知らせたもの、記録を、自治会にお渡しします。そのあと、預かっているものと、Anthropic社での処理を消します。読み取りの設定を止めて、保管場所も消します。</p>
+    {purpose && purpose !== PUBLIC_PRIVACY_NOTICE ? <><h2>この自治会からのお知らせ</h2><p class="preserve-lines">{purpose}</p></> : null}
     <h2>連絡先</h2><ResidentContact contact={contact} />
   </Layout>);
 });
@@ -149,15 +149,15 @@ pub.get("/", async (c) => {
   const [contact, lineUrl] = await Promise.all([getPublicContact(c.env.DB, c.var.ward.wardId), getOfficialLineUrl(c.env.DB, c.var.ward.wardId)]);
   return c.html(<Layout title={`${c.var.ward.name}のお知らせ`} siteName={c.var.ward.name}>
     <h1>{c.var.ward.name}のお知らせ</h1>
-    <p class="lead">{c.var.ward.name}は、この地域の自治会です。入っていなくても、登録しなくても読めます。</p>
+    <p class="lead">{c.var.ward.name}は、この地域の自治会です。加入していなくても、登録しなくても読めます。</p>
     {c.env.DEMO_NOTICE ? <p class="muted">{c.env.DEMO_NOTICE}</p> : null}
     {current.length ? <ul class="rows two">{current.map(row)}</ul> : <div class="notice" role="status"><strong>今、出ているお知らせはありません</strong><p>案内が出ると、ここに載ります。</p></div>}
-    {opportunities.length ? <><h2>一回だけ手伝う</h2><p>自治会に入っていなくても手伝えます。お名前と手伝える時間帯を教えてください。</p><div class="action-links"><a class="button secondary" href={`/${c.var.ward.slug}/help`}>手伝いを申し込む</a></div></> : null}
-    {lineUrl ? <><h2>新しいお知らせを受け取る</h2><p>区の公式LINEを友だちに追加すると、新しいお知らせがスマホに届きます。名前の登録はいりません。追加しなくても、このページと紙で読めます。</p><div class="action-links"><a class="button secondary" href={`/${c.var.ward.slug}/line`}>LINEで受け取る</a></div></> : null}
+    {opportunities.length ? <><h2>一回だけ手伝う</h2><p>自治会に加入していなくても手伝えます。お名前と手伝える時間帯を教えてください。</p><div class="action-links"><a class="button secondary" href={`/${c.var.ward.slug}/help`}>手伝いを申し込む</a></div></> : null}
+    {lineUrl ? <><h2>新しいお知らせを受け取る</h2><p>自治会のLINEを友だちに追加すると、新しいお知らせがスマホに届きます。名前の登録はいりません。追加しなくても、このページと紙で読めます。</p><div class="action-links"><a class="button secondary" href={`/${c.var.ward.slug}/line`}>LINEで受け取る</a></div></> : null}
     {past.length ? <><h2>これまでのお知らせと報告</h2><ul class="rows two">{past.map(row)}</ul></> : null}
     {descriptions.length ? <><h2>自治会の説明をご覧ください</h2><ul class="rows">{descriptions.map((item) => <li key={item.project_id}><a class="row-link" href={`/${c.var.ward.slug}/work/${encodeURIComponent(item.project_id)}`}><b>{item.title}と自治会の説明を読む</b><span>{item.topics.join("、")}</span></a></li>)}</ul></> : null}
     <h2>分からないときは</h2><ResidentContact contact={contact} />
-    <details class="hint"><summary>個人情報の扱いについて</summary><div><p>答えは行事の準備と運営のために使います。消してほしいときは、{contact ? "上の連絡先" : "班長か役員"}へお知らせください。</p><p><a class="quiet" href={`/${c.var.ward.slug}/privacy`}>個人情報の扱いを読む</a></p></div></details>
+    <details class="hint"><summary>個人情報の扱いについて</summary><div><p>返事は行事の準備と運営のために使います。消してほしいときは、{contact ? "上の連絡先" : "班長か役員"}へお知らせください。</p><p><a class="quiet" href={`/${c.var.ward.slug}/privacy`}>個人情報の扱いを読む</a></p></div></details>
   </Layout>);
 });
 
@@ -191,10 +191,10 @@ pub.get("/work/:projectId", async (c) => {
     <h2>関わり方は選べます</h2><p>読むだけでも、一回だけ手伝うだけでもかまいません。</p>
     {opportunities.length ? <p class="link-line"><a href={`/${c.var.ward.slug}/help`}>手伝いを申し込む</a></p> : null}
     <h2>来年の案内をご覧ください</h2>
-    <p>来年の案内も区のページで読めます。名前や世帯の登録はいりません。</p>
-    <p class="link-line"><a href={`/${c.var.ward.slug}/`}>区のページで案内を見る</a></p>
-    {lineUrl ? <><p>公式LINEを友だちに追加すると、新しい案内が届きます。追加は、してもしなくてもかまいません。</p>
-      <p class="link-line"><a href={`/${c.var.ward.slug}/line`}>公式LINEで案内を受け取る</a></p></> : null}
+    <p>来年の案内も住民向けのページで読めます。名前や世帯の登録はいりません。</p>
+    <p class="link-line"><a href={`/${c.var.ward.slug}/`}>住民向けのページで案内を見る</a></p>
+    {lineUrl ? <><p>自治会のLINEを友だちに追加すると、新しい案内が届きます。追加は、してもしなくてもかまいません。</p>
+      <p class="link-line"><a href={`/${c.var.ward.slug}/line`}>自治会のLINEで案内を受け取る</a></p></> : null}
     {notices[0] ? <p class="link-line"><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>{notices[0].project_kind === "event" ? "この行事の案内を見る" : `${publicDocumentTitle(notices[0])}を見る`}</a></p> : null}
   </Layout>);
 });
@@ -205,9 +205,9 @@ pub.get("/help", async (c) => {
   return c.html(<Layout title="一回だけ手伝う" siteName={c.var.ward.name}>
     <p class="link-line"><a href={`/${c.var.ward.slug}/`}>{c.var.ward.name}のページへ</a></p>
     <h1>一回だけ手伝う</h1>
-    <p>自治会に入っていなくても申し込めます。手伝える行事を選んでください。</p>
+    <p>自治会に加入していなくても申し込めます。手伝える行事を選んでください。</p>
     {opportunities.length ? opportunities.map((item) => <section class="panel">
-      <h2>{item.title}</h2><p>{publishedItem(item.body, "date_time") ? formatDateText(publishedItem(item.body, "date_time")) : `案内を配った日: ${formatJstDate(item.publishedAt)}`}</p>
+      <h2>{item.title}</h2><p>{publishedItem(item.body, "date_time") ? formatDateText(publishedItem(item.body, "date_time")) : `案内を知らせた日: ${formatJstDate(item.publishedAt)}`}</p>
       <p class="link-line"><a href={`/${c.var.ward.slug}/help/${encodeURIComponent(item.projectId)}`}>この行事に手伝いを申し込む</a></p>
     </section>) : <p>現在、手伝いを募集中の行事はありません。</p>}
   </Layout>);
@@ -248,10 +248,10 @@ pub.get("/p/:projectId", async (c) => {
       const title = publicDocumentTitle(latest);
       const event = latest.project_kind === "event";
       if (latest.unpublished_at) return <article class="panel" key={latest.document_id}>
-        <p>{date(latest)} に載せた{event ? "案内" : title}は、区のページから下げました。</p>
+        <p>{date(latest)} に載せた{event ? "案内" : title}は、住民向けのページから取り下げました。</p>
       </article>;
       return <article class="panel" key={latest.document_id}>
-        <h2>{latest.kind === "announcement" ? changes ? `${date(latest)}に配った案内` : "くわしい案内" : title}</h2>
+        <h2>{latest.kind === "announcement" ? changes ? `${date(latest)}に知らせた案内` : "くわしい案内" : title}</h2>
         {latest.kind === "announcement" && changes ? <p>変わったところは、上のお知らせのとおりです。</p> : null}
         <ArticleBody body={latest.body} title={{ project: latest.title, document: latest.document_title }} kind={latest.kind} hide={latest.kind === "announcement" && !changes ? ["date_time", "place", "rain_plan", "due", "public_contact"] : []} />
         {latest.kind === "report" ? reportPhotos.filter((p) => p.document_id === latest.document_id && p.version_no === latest.version_no).map((p) =>
@@ -269,11 +269,11 @@ pub.get("/p/:projectId", async (c) => {
     <h1>{heading}</h1>
     {ordered.filter(({ latest }) => latest.kind === "notice").map(renderDocument)}
     {activeAnnouncement ? <>
-      {!newerNotice ? <EventDetails item={context.item} due={deadline} /> : deadline ? <p>答えの締切 {formatJstDate(deadline)}まで</p> : null}
-      {closed ? <ReceptionClosed closed={!!items[0]!.closed_at} due={deadline} /> : <><p><a class="button" href={`/${c.var.ward.slug}/answer/${encodeURIComponent(projectId)}${suffix}`}>出欠を答える</a></p><p>{items[0]!.project_kind === "general_meeting" ? "出席、委任、欠席のどれかを答えてください。" : "参加しないときも、答えてください。答えがないときは、欠席として数えます。"}代表者のお名前、班、人数を聞きます。紙の回答票を班長に渡しても答えられます。</p></>}
+      {!newerNotice ? <EventDetails item={context.item} due={deadline} /> : deadline ? <p>返事の締切 {formatJstDate(deadline)}まで</p> : null}
+      {closed ? <ReceptionClosed closed={!!items[0]!.closed_at} due={deadline} /> : <><p><a class="button" href={`/${c.var.ward.slug}/answer/${encodeURIComponent(projectId)}${suffix}`}>出欠を答える</a></p><p>{items[0]!.project_kind === "general_meeting" ? "出席、委任、欠席のどれかを答えてください。" : "参加しないときも、答えてください。返事がないときは、欠席として数えます。"}代表者のお名前、班、人数を聞きます。紙の回答票を班長に渡しても答えられます。</p></>}
     </> : null}
     {ordered.filter(({ latest }) => latest.kind !== "notice").map(renderDocument)}
-    {context.documents.some((document) => document.kind === "recruitment") && !closed ? <section><h2>手伝える方へ</h2><p>自治会に入っていない方も手伝えます。</p><a href={`/${c.var.ward.slug}/help/${encodeURIComponent(projectId)}`}>手伝いを申し込む</a></section> : null}
+    {context.documents.some((document) => document.kind === "recruitment") && !closed ? <section><h2>手伝える方へ</h2><p>自治会に加入していない方も手伝えます。</p><a href={`/${c.var.ward.slug}/help/${encodeURIComponent(projectId)}`}>手伝いを申し込む</a></section> : null}
     {activity ? <p class="link-line"><a href={`/${c.var.ward.slug}/work/${encodeURIComponent(projectId)}`}>役員の仕事と活動を見る</a></p> : null}
     {details}
   </Layout>);

@@ -21,11 +21,11 @@ it("資料のない一年目に案内を手で保存し、出欠の入口と当�
   expect(materials).toContain("下書きの一覧を開く");
 
   const dutyDraft = await (await get(realApp, `${root}/projects/${id}/draft/duty_roster`, cookie)).text();
-  expect(dutyDraft).toContain("実行委員と班長に見せる当番表です。直して保存しても、まだ配られません。");
+  expect(dutyDraft).toContain("実行委員と班長に見せる当番表です。直して保存しても、まだ知らせません。");
   expect(dutyDraft).toContain("当番表の説明");
   expect(dutyDraft).toContain("当番表の行はまだありません。");
   const recruitment = await (await get(realApp, `${root}/projects/${id}/draft/recruitment`, cookie)).text();
-  expect(recruitment).toContain("区のページの「一回だけ手伝う」に出る募集です。");
+  expect(recruitment).toContain("住民向けのページの「一回だけ手伝う」に出る募集です。");
   expect(recruitment).toContain("募集の文");
   expect(recruitment).toContain("申し込みの締切");
 
@@ -38,8 +38,8 @@ it("資料のない一年目に案内を手で保存し、出欠の入口と当�
   const savedLocation = saved.headers.get("location");
   if (!savedLocation) throw new Error("保存後の行き先がありません");
   const savedPage = await (await get(realApp, savedLocation, cookie)).text();
-  expect(savedPage).toContain("保存しました。まだ配っていません");
-  expect(savedPage).toContain("配る画面へ");
+  expect(savedPage).toContain("保存しました。まだ知らせていません");
+  expect(savedPage).toContain("知らせる画面へ");
   expect(savedPage).toContain("前の下書きに戻す");
 
   const draft = await env.DB.prepare(`SELECT v.document_id, v.version_id, v.version_no FROM documents d
@@ -53,7 +53,7 @@ it("資料のない一年目に案内を手で保存し、出欠の入口と当�
   const confirmPage = await confirmation.text();
   expect(confirmPage).toContain(`この下に「出欠を答える」のボタンが出ます。`);
   expect(confirmPage).toContain("まだ決めていないところがあります");
-  expect(confirmPage).toContain("紙とページから外して配ります。");
+  expect(confirmPage).toContain("紙とページから外して知らせます。");
   expect(confirmPage).toContain("下書きに戻る");
   const sent = await postForm(realApp, `${root}/publish/${id}/send`, fields, cookie);
   expect(sent.status).toBe(303);

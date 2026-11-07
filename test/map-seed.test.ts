@@ -4,7 +4,7 @@ import { seedAdmin } from "../src/core/testing";
 import { createProject, getProjectState } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("閉じるときに残した三つの記録を種から開いた段取りの同じ仕事に出す", async () => {
+it("閉じるときに残した三つの記録を種から開いたやることの同じ仕事に出す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "去年の行事（架空）", year: 2026, eventDay: "2026-10-24", accountId: account.accountId,
@@ -26,7 +26,7 @@ it("閉じるときに残した三つの記録を種から開いた段取りの�
   const location = seeded.headers.get("location");
   expect(location).toMatch(/\?started=.+$/);
   const projectId = new URL(location!, "http://localhost").searchParams.get("started");
-  if (!projectId) throw new Error("引き継いだ段取りがありません");
+  if (!projectId) throw new Error("引き継いだやることがありません");
   const seededTask = (await getProjectState(env.DB, ward.wardId, projectId))?.mapTasks.find((row) => row.taskKey === "venue");
   if (!seededTask) throw new Error("引き継いだ仕事がありません");
   const page = await get(realApp, `${root}/projects/${projectId}/map/${seededTask.taskId}`, cookie);
@@ -39,7 +39,7 @@ it("閉じるときに残した三つの記録を種から開いた段取りの�
   expect(html.match(/去年の記録/g)).toHaveLength(1);
 });
 
-it("種のない行事の段取りには去年の記録を出さない", async () => {
+it("種のない行事のやることには去年の記録を出さない", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "新しい行事（架空）", year: 2027, accountId: account.accountId,

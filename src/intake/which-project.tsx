@@ -19,13 +19,13 @@ export function WhichProject({ id, question, projects, suggested, suggestedName,
       <fieldset><legend>{question}</legend><div class="action-links">
         {ordered.map((project, index) => <button class={suggested && index === 0 ? undefined : "secondary"} name="projectId" value={project.project_id}>{project.name}</button>)}
       </div></fieldset>
-    </form> : <p><b>進めている行事はありません。新しい行事にしますか？</b></p>}
-    <details class="none-of-these" open={!ordered.length || Boolean(suggestedName && !suggested)}><summary>{ordered.length ? "この中にない" : "新しい行事にする"}</summary><div>
+    </form> : <p><b>準備中のものはありません。新しく準備を始めますか？</b></p>}
+    <details class="none-of-these" open={!ordered.length || Boolean(suggestedName && !suggested)}><summary>{ordered.length ? "この中にない" : "新しく準備を始める"}</summary><div>
       <form method="post" action={action}>{fields}<input type="hidden" name="operation" value="new-project" /><input type="hidden" name="year" value={String(year)} />
-        <div class="field"><label for={`${id}-name`}>新しい行事の名前</label><input id={`${id}-name`} name="projectName" type="text" maxlength={100} value={suggestedName ?? ""} required /><p class="help-text">あとで直せます。</p></div>
+        <div class="field"><label for={`${id}-name`}>新しく始めるものの名前</label><input id={`${id}-name`} name="projectName" type="text" maxlength={100} value={suggestedName ?? ""} required /><p class="help-text">あとで直せます。</p></div>
         <fieldset><legend>種類</legend><div class="choice half">{PROJECT_KINDS.map((value) => <label><input type="radio" name="kind" value={value} checked={value === kind} /> {PROJECT_KIND_LABEL[value]}</label>)}</div></fieldset>
-        {withDay ? <div class="field"><label for={`${id}-day`}>今年の行事の日（分かれば。あとでも直せます）</label><input id={`${id}-day`} name="eventDay" type="date" /></div> : null}
-        <button class="secondary">この名前で新しい行事にする</button>
+        {withDay ? <div class="field"><label for={`${id}-day`}>当日（分かれば。あとでも直せます）</label><input id={`${id}-day`} name="eventDay" type="date" /></div> : null}
+        <button class="secondary">この名前で新しく準備を始める</button>
       </form>
     </div></details>
   </div>;

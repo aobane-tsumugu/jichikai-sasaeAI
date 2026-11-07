@@ -51,17 +51,17 @@ export async function openWard(
   if (slugError) return { ok: false, message: slugError };
 
   const name = cleanName(input.name);
-  if (name === "") return { ok: false, message: "区の名前を入れてください。" };
-  if (name.length > 60) return { ok: false, message: "区の名前は60文字までです。" };
+  if (name === "") return { ok: false, message: "自治会の名前を入れてください。" };
+  if (name.length > 60) return { ok: false, message: "自治会の名前は60文字までです。" };
 
-  if (await findWardBySlug(db, slug)) return { ok: false, message: "その区のURLはもう使われています。" };
+  if (await findWardBySlug(db, slug)) return { ok: false, message: "その自治会のURLはもう使われています。" };
   const destination = input.lineDestination?.trim() ?? "";
-  if (!destination) return { ok: false, message: "公式LINEの送信先IDを入れてください。" };
+  if (!destination) return { ok: false, message: "自治会のLINEの送信先IDを入れてください。" };
   const lineUrl = input.officialLineUrl?.trim() ?? "";
   try { if (new URL(lineUrl).protocol !== "https:") throw new Error("https"); }
   catch { return { ok: false, message: "友だち追加の入口をhttps://で始まるURLで入れてください。" }; }
   if (lineUrl.length > 2000) return { ok: false, message: "友だち追加の入口を確かめてください。" };
-  if (destination.length > 100) return { ok: false, message: "公式LINEの送信先IDを確かめてください。" };
+  if (destination.length > 100) return { ok: false, message: "自治会のLINEの送信先IDを確かめてください。" };
   const wardId = newId();
   const line = destination ? lineSecretNames(wardId) : undefined;
   try {
@@ -71,7 +71,7 @@ export async function openWard(
     statements.push(db.prepare("INSERT INTO ward_settings (ward_id, key, value) VALUES (?, ?, ?)").bind(wardId, SETTING_KEYS.officialLineUrl, lineUrl));
     await db.batch(statements);
   } catch {
-    return { ok: false, message: destination ? "区のURLか公式LINEの送信先IDはもう使われています。" : "その区のURLはもう使われています。" };
+    return { ok: false, message: destination ? "自治会のURLか自治会のLINEの送信先IDはもう使われています。" : "その自治会のURLはもう使われています。" };
   }
 
   const account = await createInvitedAccount(db, wardId, { name: input.firstAccountName, seatId: null, createdBy: null, provider: true });

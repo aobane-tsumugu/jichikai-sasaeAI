@@ -62,7 +62,7 @@ it("過ぎた締切を知らせて配り、雨の変更後に答えと手伝い�
       versionNo: String(announcementDraft.version_no), lineDelivery: "skip" };
     const confirm = await postForm(realApp, `${root}/publish/${id}/confirm`, fields, cookie);
     expect(confirm.status).toBe(200);
-    expect(await confirm.text()).toContain("本文の締切は過ぎているため、このまま配ると答えの受付が続きますが、締切は配ったあとに変えられます。");
+    expect(await confirm.text()).toContain("本文の締切は過ぎているため、このまま知らせると返事の受付が続きますが、締切は知らせたあとに変えられます。");
     const announcement = await publish("announcement");
     const original = (await latest("announcement")).body;
     const paperBase = `${root}/print/${id}/${announcement.document_id}/${announcement.version_no}`;
@@ -88,7 +88,7 @@ it("過ぎた締切を知らせて配り、雨の変更後に答えと手伝い�
       templateId: "rain", eventName: project.title, place: fixture.layoutSpot, dateTime: fixture.eventDay, lineDelivery: "skip",
     }, cookie);
     expect(rain.status).toBe(303);
-    expect(await read(rain.headers.get("location")!)).toContain("区のページに載せました");
+    expect(await read(rain.headers.get("location")!)).toContain("住民向けのページに載せました");
     const notice = await getEditableDocument(env.DB, ward.wardId, id, "notice");
     expect(notice).not.toBeNull();
     const rainBody = JSON.parse(notice!.body) as DocumentBody;

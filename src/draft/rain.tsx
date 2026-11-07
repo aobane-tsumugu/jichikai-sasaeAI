@@ -9,7 +9,7 @@ import { DEFAULT_TEMPLATES, renderTemplate, type Template } from "../settings/ke
 /** 標準の文面は見本に揃え、区が直した文面はそのまま使う。 */
 export function rainTemplate(template: Template): Template {
   return template.id === "rain" && template.body === DEFAULT_TEMPLATES.find((item) => item.id === "rain")?.body
-    ? { ...template, body: "{行事名}は、雨のため{会場}で行います。日ときは{日時}です。くわしくは区のページをご覧ください。" }
+    ? { ...template, body: "{行事名}は、雨のため{会場}で行います。日ときは{日時}です。くわしくは住民向けのページをご覧ください。" }
     : template;
 }
 
@@ -25,23 +25,23 @@ export async function rainDraft(c: Context<AdminEnv>) {
   const place = values("rain_plan"); const dateTime = values("date_time");
   const canSend = !state.project.closedAt && state.documents.some((document) => document.kind === "announcement" && document.publishedVersionNo !== null);
   return c.html(<Layout title="雨の変更を知らせる" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {state.project.title}の段取りへ</a>
-    <h1>雨の変更を知らせる</h1><p class="lead">いつもの文面に場所を入れて、すぐ配れます。</p>
-    <ErrorNotice code={c.req.query("error")} messages={{ rain_input: "変更後の場所と日時を入れてください", rain_template: "いつもの文面を使えません。知らせの下書きから書けます。", notice_save_failed: "知らせを保存できませんでした" }} />
+    <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {state.project.title}のやることへ</a>
+    <h1>雨の変更を知らせる</h1><p class="lead">いつもの文面に場所を入れて、すぐ知らせられます。</p>
+    <ErrorNotice code={c.req.query("error")} messages={{ rain_input: "変更後の場所と日時を入れてください", rain_template: "いつもの文面を使えません。連絡の下書きから書けます。", notice_save_failed: "連絡を保存できませんでした" }} />
     {canSend && template ? <form method="post" action={adminPath(ward, `/projects/${id}/draft/rain-notice`)} id="rain-form">
       <input type="hidden" name="eventName" value={state.project.title} />
       {templates.length === 1 ? <input type="hidden" name="templateId" value={template.id} /> : <div class="field"><label for="rain-template">いつもの文面</label><select id="rain-template" name="templateId">{templates.map((item) => <option value={item.id} selected={item.id === template.id}>{item.name}</option>)}</select></div>}
       <div class="field"><label for="place">変更後の場所</label><input id="place" name="place" value={place} maxlength={200} required /></div>
       <div class="field"><label for="date">日時</label><input id="date" name="dateTime" value={dateTime} maxlength={200} required /></div>
-      <div class="sheet-preview"><b>配る文</b><p id="rain-preview">{renderTemplate(template.body, { 行事名: state.project.title, 会場: place, 日時: dateTime })}</p></div>
+      <div class="sheet-preview"><b>知らせる文</b><p id="rain-preview">{renderTemplate(template.body, { 行事名: state.project.title, 会場: place, 日時: dateTime })}</p></div>
       <script type="application/json" id="rain-templates" dangerouslySetInnerHTML={{ __html: JSON.stringify(templates).replace(/</g, "\\u003c") }} />
       <script dangerouslySetInnerHTML={{ __html: `(() => { const form = document.getElementById('rain-form'); const templates = JSON.parse(document.getElementById('rain-templates').textContent); const update = () => { const data = new FormData(form); const template = templates.find(item => item.id === data.get('templateId')); if (!template) return; const values = { '行事名': data.get('eventName'), '会場': data.get('place'), '日時': data.get('dateTime') }; document.getElementById('rain-preview').textContent = template.body.replace(/\\{([^{}]+)\\}/g, (whole, key) => values[key.trim()] ?? whole); }; form.addEventListener('input', update); form.addEventListener('change', update); })();` }} />
-      <fieldset><legend>公式LINE</legend><label><input type="radio" name="lineDelivery" value="send" checked />LINEで友だちに知らせる</label><label><input type="radio" name="lineDelivery" value="skip" />今回は知らせない</label></fieldset>
-      <p>「送る」を選んで配ると、公式LINEの友だち全員へ知らせます。LINEで送った知らせは取り消せません。</p>
-      <div class="action-bar"><button>配る</button></div>
-    </form> : <p>{state.project.closedAt ? "この行事は閉じました。" : "案内を配ったあとに、雨の変更を知らせられます。"}</p>}
-    <p class="muted">配ると、区のページに載ります。公式LINEには、上で選んだとおりに送ります。</p>
-    {!template ? <p class="link-line"><a href={adminPath(ward, `/projects/${id}/draft/notice?edit=1`)}>知らせの下書きを書く</a></p> : null}
+      <fieldset><legend>自治会のLINE</legend><label><input type="radio" name="lineDelivery" value="send" checked />LINEで友だちに知らせる</label><label><input type="radio" name="lineDelivery" value="skip" />今回は知らせない</label></fieldset>
+      <p>「LINEで友だちに知らせる」を選ぶと、自治会のLINEの友だち全員へ送ります。LINEで送った知らせは取り消せません。</p>
+      <div class="action-bar"><button>住民に知らせる</button></div>
+    </form> : <p>{state.project.closedAt ? `${state.project.title}は終わりにしました。` : "案内を知らせたあとに、雨の変更を知らせられます。"}</p>}
+    <p class="muted">住民向けのページに載せ、LINEで送り、紙を印刷できるようにします。LINEは、上で選んだとおりに送ります。</p>
+    {!template ? <p class="link-line"><a href={adminPath(ward, `/projects/${id}/draft/notice?edit=1`)}>連絡の下書きを書く</a></p> : null}
   </Layout>);
 }
 
@@ -54,10 +54,10 @@ export async function rainSent(c: Context<AdminEnv>) {
     .bind(ward.wardId, id, c.req.query("done") ?? "").first<{ line_status: string }>();
   if (!record) return c.notFound();
   return c.html(<Layout title="雨の変更を知らせました" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← 段取りへ</a>
-    <h1>区のページに載せました</h1>
-    <p class="lead">{record.line_status === "sent" ? "公式LINEに送りました。" : record.line_status === "failed" ? "公式LINEには送れませんでした。区のページには載っています。" : "公式LINEには送っていません。"}</p>
+    <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← やることへ</a>
+    <h1>住民向けのページに載せました</h1>
+    <p class="lead">{record.line_status === "sent" ? "自治会のLINEに送りました。" : record.line_status === "failed" ? "自治会のLINEには送れませんでした。住民向けのページには載っています。" : "自治会のLINEには送っていません。"}</p>
     <section class="next"><strong>次は</strong><p>班長に電話し、掲示の紙を張り替えてください。</p></section>
-    <p><a class="quiet" href={adminPath(ward, `/projects/${id}/draft/notice`)}>直して配り直す</a></p>
+    <p><a class="quiet" href={adminPath(ward, `/projects/${id}/draft/notice`)}>直して知らせ直す</a></p>
   </Layout>);
 }

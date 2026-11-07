@@ -46,16 +46,16 @@ export function digestPeriodLabel(value: DigestSettings, cutoff: Date): string {
 }
 
 export const inquiryNotice = (value: DigestSettings, hasGroup = true) => `${hasGroup
-  ? `問い合わせは毎日${timeLabel(value.cutoff)}に締め、${value.send > value.cutoff ? "その日" : "翌日"}の${timeLabel(value.send)}に、前回の締めからの分を役員グループへ知らせます。来ない日は送りません。`
-  : "役員グループへの知らせは、まだ使えません。問い合わせはこの画面で見られます。"}行事の${value.eventDays}日前や締切の${value.dueDays}日前からは、知らせを待たずに、ときどき見てください。`;
+  ? `問い合わせは毎日${timeLabel(value.cutoff)}に締め、${value.send > value.cutoff ? "その日" : "翌日"}の${timeLabel(value.send)}に、前回の締めからの分を役員のLINEグループへ通知します。来ない日は送りません。`
+  : "役員のLINEグループへの通知は、まだ使えません。問い合わせはこの画面で見られます。"}当日の${value.eventDays}日前や締切の${value.dueDays}日前からは、通知を待たずに、ときどき見てください。`;
 
 export function DigestFields({ value, rawValues, open = false }: { value: DigestSettings; rawValues?: Record<string, unknown>; open?: boolean }) {
   const field = (name: string, saved: string | number) => typeof rawValues?.[name] === "string" ? String(rawValues[name]) : saved;
-  return <details class="fold" open={open}><summary>問い合わせの知らせの時刻と、近い日の案内</summary><div>
-    <p>役員グループへ知らせます。時刻は日本時間です。送る時刻から5分ほど遅れることがあります。</p>
+  return <details class="fold" open={open}><summary>問い合わせの通知の時刻と、近い日の案内</summary><div>
+    <p>役員のLINEグループへ通知します。時刻は日本時間です。送る時刻から5分ほど遅れることがあります。</p>
     <label for="digest-cutoff">問い合わせを締める時刻</label><input id="digest-cutoff" name="digest_cutoff" type="time" value={field("digest_cutoff", value.cutoff)} required />
-    <label for="digest-send">知らせを送る時刻</label><input id="digest-send" name="digest_send" type="time" value={field("digest_send", value.send)} required />
-    <label for="digest-event-days">行事の何日前から、ときどき見る案内を出すか</label><input id="digest-event-days" name="digest_event_days" type="number" min="0" max="365" value={field("digest_event_days", value.eventDays)} required />
+    <label for="digest-send">通知を送る時刻</label><input id="digest-send" name="digest_send" type="time" value={field("digest_send", value.send)} required />
+    <label for="digest-event-days">当日の何日前から、ときどき見る案内を出すか</label><input id="digest-event-days" name="digest_event_days" type="number" min="0" max="365" value={field("digest_event_days", value.eventDays)} required />
     <label for="digest-due-days">締切の何日前から、ときどき見る案内を出すか</label><input id="digest-due-days" name="digest_due_days" type="number" min="0" max="365" value={field("digest_due_days", value.dueDays)} required />
   </div></details>;
 }

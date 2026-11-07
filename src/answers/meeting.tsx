@@ -29,11 +29,11 @@ export function meetingText(answer: { meetingStatus?: MeetingStatus | null; prox
 }
 
 export function meetingTotalsText(totals: MeetingTotals): string {
-  return `答えた世帯${totals.answered}世帯 / 出席${totals.attend}世帯 / 委任${totals.proxy}世帯 / 欠席${totals.absent}世帯`;
+  return `返事のあった世帯${totals.answered}世帯 / 出席${totals.attend}世帯 / 委任${totals.proxy}世帯 / 欠席${totals.absent}世帯`;
 }
 
 export function MeetingCounts({ totals, className = "counts space-counts" }: { totals: MeetingTotals; className?: string }) {
-  return <div class={className}><div class="count"><b>{totals.answered}<small>世帯</small></b><span>答えた世帯</span></div>
+  return <div class={className}><div class="count"><b>{totals.answered}<small>世帯</small></b><span>返事のあった世帯</span></div>
     {Object.entries(MEETING_LABELS).map(([status, label]) => <div class="count"><b>{totals[status as MeetingStatus]}<small>世帯</small></b><span>{label}</span></div>)}
   </div>;
 }

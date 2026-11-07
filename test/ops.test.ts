@@ -36,7 +36,7 @@ describe("運用の画面の入る", () => {
     expect(setCookie).not.toContain(OPS_PASSWORD);
   });
 
-  it("違えば401で、札を渡さない（IDが違う時もパスワードが違う時も同じ答え）", async () => {
+  it("違えば401で、札を渡さない（IDが違う時もパスワードが違う時も同じ返事）", async () => {
     const wrongPassword = await postForm(realApp, "/ops/login", { id: OPS_ID, password: "x" }, undefined, opsEnv);
     const wrongId = await postForm(realApp, "/ops/login", { id: "x", password: OPS_PASSWORD }, undefined, opsEnv);
     for (const res of [wrongPassword, wrongId]) {
@@ -75,7 +75,7 @@ describe("運用の画面の入る", () => {
 });
 
 describe("区の開設", () => {
-  it("区と最初の役員を作り、本人が入り方を選んで役員画面に入れる", async () => {
+  it("区と最初の役員を作り、本人がログインの方法を選んで役員画面に入れる", async () => {
     const cookie = await opsLogin();
     const slug = uniqueSlug("open");
     const res = await postForm(
@@ -113,14 +113,14 @@ describe("区の開設", () => {
     expect(JSON.stringify(stored.results)).not.toContain(body.account.invitationUrl);
   });
 
-  it("画面からも開け、結果の画面に入るためのリンクが一度だけ出る", async () => {
+  it("画面からも開け、結果の画面にログインするためのリンクが一度だけ出る", async () => {
     const cookie = await opsLogin();
     const slug = uniqueSlug("form");
     const res = await postForm(realApp, "/ops/wards", { name: "画面から開く区", slug, firstAccountName: "役員A", ...lineInput() }, cookie, opsEnv);
     expect(res.status).toBe(201);
     expect(res.headers.get("cache-control")).toBe("no-store");
     const html = await res.text();
-    expect(html).toContain("区を開きました");
+    expect(html).toContain("自治会を開きました");
     expect(html).toContain('class="secret invite-link"');
     expect(html).toContain(`/${slug}/`);
     // 一覧には出るが、パスワードは出ない
@@ -174,7 +174,7 @@ describe("区の開設", () => {
 });
 
 describe("固定URLとQRと案内", () => {
-  it("区の画面にURLとQRが出る。QRの画像は区のページのURL", async () => {
+  it("自治会の画面にURLとQRが出る。QRの画像は住民向けのページのURL", async () => {
     const cookie = await opsLogin();
     const slug = uniqueSlug("qr");
     await postForm(realApp, "/ops/wards", { name: "QRの区", slug, firstAccountName: "役員", ...lineInput() }, cookie, opsEnv);
@@ -202,7 +202,7 @@ describe("固定URLとQRと案内", () => {
 });
 
 describe("役員が入れなくなったときの復旧（提供側）", () => {
-  it("区の画面からは足さず、作り直さず、問い合わせの受付へ案内する", async () => {
+  it("自治会の画面からは足さず、作り直さず、問い合わせの受付へ案内する", async () => {
     const cookie = await opsLogin();
     const slug = uniqueSlug("recover");
     await postForm(realApp, "/ops/wards", { name: "復旧の区（架空）", slug, firstAccountName: "役員", ...lineInput() }, cookie, opsEnv, JSON_HEADERS);

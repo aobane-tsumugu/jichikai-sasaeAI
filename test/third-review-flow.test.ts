@@ -14,7 +14,7 @@ import { recordLineInquiry } from "../src/project/followup";
 import { DEFAULT_ANSWER_LABELS } from "../src/settings/answer-labels";
 import { get, postForm, realApp } from "./helpers";
 
-it("空の下書きを項目から整え、行事の日を直し、名簿なしのLINEの答えと雨の知らせを記録する", async () => {
+it("空の下書きを項目から整え、行事の日を直し、名簿なしのLINEの返事と雨の知らせを記録する", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: fixture.nextYearTitle, year: fixture.eventYear, accountId: account.accountId,
@@ -76,7 +76,7 @@ it("空の下書きを項目から整え、行事の日を直し、名簿なし�
   const announcement = await publish("announcement");
   // 配ると人数の聞き方も保存される。本文と項目は保存した内容を保つ。
   const publishedDocument = await getEditableDocument(env.DB, ward.wardId, id, "announcement");
-  if (!publishedDocument) throw new Error("配った案内がありません");
+  if (!publishedDocument) throw new Error("知らせた案内がありません");
   expect(JSON.parse(publishedDocument.body)).toEqual({ ...body, answerLabels: DEFAULT_ANSWER_LABELS });
   const paperPath = `${root}/print/${id}/${announcement.document_id}/${announcement.version_no}/announcement`;
   expect(await read(paperPath)).toContain(renderedText);
@@ -85,7 +85,7 @@ it("空の下書きを項目から整え、行事の日を直し、名簿なし�
   const tasks = (await state()).mapTasks;
   const done = tasks.find((task) => task.taskKey === "committee");
   const manual = tasks.find((task) => task.taskKey === "venue");
-  if (!done || !manual) throw new Error("架空の段取りがありません");
+  if (!done || !manual) throw new Error("架空のやることがありません");
   expect(await setMapTask(env.DB, ward.wardId, id, done.taskId, {
     name: done.name, start: fixture.eventDay, end: fixture.eventDay, progress: "done", seatId: null,
   })).toBe(true);
@@ -136,7 +136,7 @@ it("空の下書きを項目から整え、行事の日を直し、名簿なし�
       wardId: ward.wardId, projectId: id, via: "line_direct",
       parts: [{ kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode(reply) }],
     });
-    if (!received.jobId || !ports.saveAnswerReply) throw new Error("架空のLINEの答えを受け付けられません");
+    if (!received.jobId || !ports.saveAnswerReply) throw new Error("架空のLINEの返事を受け付けられません");
     await ports.saveAnswerReply(ward.wardId, id, {
       eventId: crypto.randomUUID(), senderId: fixture.firstHousehold, sourceType: "user", receivedAt: new Date().toISOString(), kind: "text", text: reply,
     }, received.jobId);
@@ -151,7 +151,7 @@ it("空の下書きを項目から整え、行事の日を直し、名簿なし�
   expect((await getAnswerTotals(env.DB, ward.wardId, id)).people).toBe(6);
 
   expect(await saveDocument(env.DB, ward.wardId, id, account.accountId, {
-    kind: "notice", title: "知らせ", scope: "public", basedOn: (await state()).project.stateVersion,
+    kind: "notice", title: "連絡", scope: "public", basedOn: (await state()).project.stateVersion,
     body: JSON.stringify({ text: fixture.rainAnnouncement, items: [{ key: "place", content: fixture.layoutSpot }] }),
   })).toBe(true);
   await env.DB.prepare("UPDATE publication_records SET published_at = ? WHERE ward_id = ? AND project_id = ? AND document_id = ?")
@@ -162,13 +162,13 @@ it("空の下書きを項目から整え、行事の日を直し、名簿なし�
   expect(publicHtml).not.toContain("<dt>どこで</dt>");
   expect(publicHtml).not.toContain("<dt>いつ</dt>");
   expect(publicHtml).toContain("出欠を答える");
-  expect(publicHtml).toContain("答えの締切");
+  expect(publicHtml).toContain("返事の締切");
   expect(publicHtml.indexOf(fixture.rainAnnouncement)).toBeLessThan(publicHtml.indexOf(renderedText));
   expect(publicHtml).toContain(renderedText);
-  expect(await read(`/${ward.slug}/`)).toContain(`${fixture.nextYearTitle} 知らせ`);
+  expect(await read(`/${ward.slug}/`)).toContain(`${fixture.nextYearTitle} 連絡`);
   expect((await postForm(realApp, `${root}/close/${id}/finalize`, { body: fixture.reportText }, cookie)).status).toBe(303);
   const record = await read(`${root}/archive/${id}`);
-  expect(record).toContain("参加すると答えた");
+  expect(record).toContain("参加すると返事をした");
   expect(record).not.toContain("参加した");
   expect(await read(`/${ward.slug}/`)).toContain(`${fixture.nextYearTitle} 実施報告`);
   expect(getDraftPack("report").instruction).toContain("参加すると答えた人数");

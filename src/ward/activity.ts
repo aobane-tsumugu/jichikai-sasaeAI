@@ -80,13 +80,13 @@ export async function activityFacts(db: D1Database, wardId: string, projectId: s
       if (record) {
         const dates = [...new Set([record.period_start, record.period_end].filter((date): date is string => !!date))];
         const planned = dates.map(formatJstDate).join(" 〜 ");
-        // 型から置いた日付は実施日と言わず、段取りの時期として示す。
+        // 型から置いた日付は実施日と言わず、予定の時期として示す。
         if (eventDay && record.offset_start_days !== null && record.offset_end_days !== null &&
           record.period_start === addDays(eventDay, record.offset_start_days) && record.period_end === addDays(eventDay, record.offset_end_days) &&
           (!period || period === planned)) {
           const start = relativeDay(record.offset_start_days); const end = relativeDay(record.offset_end_days);
-          period = `段取りでは行事の${start}${start === end ? "" : `〜${end}`}`;
-        } else if (!period && planned) period = `段取りの時期: ${planned}`;
+          period = `予定では当日の${start}${start === end ? "" : `〜${end}`}`;
+        } else if (!period && planned) period = `予定の時期: ${planned}`;
       }
       return { ...task, period };
     });
@@ -112,11 +112,11 @@ export async function activityFacts(db: D1Database, wardId: string, projectId: s
   const offerCount = (offers?.help_offer_count_on_close ?? 0) + (offers?.current_count ?? 0);
   if (offerCount) facts.push(`一回だけの手伝いの申し込みは${offerCount}件`);
   for (const publication of publications.results) {
-    const label = ({ announcement: "案内", recruitment: "手伝いの募集", notice: "知らせ", report: "報告" } as Record<string, string>)[publication.kind];
+    const label = ({ announcement: "案内", recruitment: "手伝いの募集", notice: "連絡", report: "報告" } as Record<string, string>)[publication.kind];
     const date = formatJstDate(publication.published_at);
     if (!label || !date) continue;
     const count = copies(publication.distribution);
-    facts.push(`${label}を配った日: ${date}${count === null ? "" : `。紙は${count}部（配るときの部数）`}`);
+    facts.push(`${label}を知らせた日: ${date}${count === null ? "" : `。紙は${count}部（配るときの部数）`}`);
   }
   return { tasks, facts };
 }

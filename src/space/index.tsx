@@ -41,23 +41,23 @@ async function renderAdminSpace(c: Context<AdminEnv>, passphrase?: string) {
     ORDER BY published_at DESC, rowid DESC LIMIT 1`).bind(ward.wardId, projectId).first<{ document_id: string; version_no: number }>();
   const base = adminPath(ward.slug, `/space/${encodeURIComponent(projectId)}`);
   c.header("Cache-Control", "private, no-store");
-  return c.html(<AdminPage ward={ward} account={account} title="実行委員と班長のページ" back={{ href: adminPath(ward.slug, `/projects/${projectId}/map`), label: `${project.title}の段取りへ` }}>
-    <h1>実行委員と班長のページ</h1><p class="lead">実行委員と班長が、配られたものを見て、紙を撮って送るページです。区のページとは別で、住民には見えません。</p>
+  return c.html(<AdminPage ward={ward} account={account} title="実行委員と班長のページ" back={{ href: adminPath(ward.slug, `/projects/${projectId}/map`), label: `${project.title}のやることへ` }}>
+    <h1>実行委員と班長のページ</h1><p class="lead">実行委員と班長が、役員から届いたものを見て、紙を撮って送るページです。住民向けのページとは別で、住民には見えません。</p>
     {opened ? <>
-      <div class="notice done" role="status"><strong>開いています</strong><p>紙の案内を配ると、班長は班長への一枚のQRコードから入れます。</p></div>
-      <section class="next"><strong>次は</strong>{published ? <><p>班長への一枚を印刷して、案内といっしょに渡してください。</p><a class="button" href={adminPath(ward.slug, `/print/${projectId}/${published.document_id}/${published.version_no}/leader`)}>班長への一枚を印刷する</a></> : <><p>案内を配ると、班長への一枚を印刷できます。</p><a class="button" href={adminPath(ward.slug, `/publish/${projectId}`)}>配る内容を見る</a></>}</section>
+      <div class="notice done" role="status"><strong>見せています</strong><p>紙の案内を配ると、班長は班長への一枚のQRコードからこのページを見られます。</p></div>
+      <section class="next"><strong>次は</strong>{published ? <><p>班長への一枚を印刷して、案内といっしょに渡してください。</p><a class="button" href={adminPath(ward.slug, `/print/${projectId}/${published.document_id}/${published.version_no}/leader`)}>班長への一枚を印刷する</a></> : <><p>案内を住民に知らせると、班長への一枚を印刷できます。</p><a class="button" href={adminPath(ward.slug, `/publish/${projectId}`)}>知らせる内容を見る</a></>}</section>
       <h2>実行委員に伝えること</h2>
       <dl class="facts">{passphrase ? <><dt>合言葉</dt><dd>{passphrase}</dd></> : null}<dt>入口のアドレス</dt><dd style="overflow-wrap: anywhere"><a href={`/${encodeURIComponent(ward.slug)}/space/${encodeURIComponent(projectId)}`}>{`${new URL(c.req.url).origin}/${encodeURIComponent(ward.slug)}/space/${encodeURIComponent(projectId)}`}</a></dd></dl>
-      {!passphrase ? <p>合言葉は開くときに表示します。分からないときは、下の「合言葉を変える」から作り直せます。</p> : null}
+      {!passphrase ? <p>合言葉は見せ始めるときに表示します。分からないときは、下の「合言葉を変える」から作り直せます。</p> : null}
       <section class="panel" style="display: flex; gap: 1rem; align-items: center"><div class="qrbox" style="flex: none; width: 112px; height: 112px" dangerouslySetInnerHTML={{ __html: qrSvg(`${new URL(c.req.url).origin}/${encodeURIComponent(ward.slug)}/space/${encodeURIComponent(projectId)}`) }} /><p style="margin: 0">入口のQRコードです。スマホで読み取ると、合言葉を入れる画面が開きます。</p></section>
       <p class="muted">この合言葉と入口を、LINEや電話で実行委員に伝えてください。</p>
       <form method="post" action={`${base}/invite`}><input type="hidden" name="role" value="member" /><div class="action-links"><button class="secondary" type="submit">一人用の入口を作る</button></div><p class="muted">合言葉を使わずに入れる入口です。一度だけ使えます。</p></form>
-      <details class="fold"><summary>合言葉を変える</summary><div><form method="post" action={`${base}/open`}><label for="passphrase">新しい合言葉</label><input id="passphrase" name="passphrase" type="text" value={makePassphrase()} minlength={6} maxlength={120} required autocomplete="off" /><button class="secondary" type="submit">変えてもう一度開く</button><p class="muted">今の合言葉と、作った入口は使えなくなります。合言葉を変えると、配った班長への一枚も作り直しです。</p></form></div></details>
-      <details class="fold"><summary>このページを閉じる</summary><div><p>閉じると、渡した一人用の入口と班長への一枚のQRコードは使えなくなります。もう一度開くときは、新しい入口と紙を渡し直してください。</p><form method="post" action={`${base}/close`}><button class="secondary" type="submit">閉じる</button></form></div></details>
-      <p>間違えたときは、このページを閉じられます。閉じたあとも、もう一度開けます。新しい入口と紙は渡し直してください。</p>
+      <details class="fold"><summary>合言葉を変える</summary><div><form method="post" action={`${base}/open`}><label for="passphrase">新しい合言葉</label><input id="passphrase" name="passphrase" type="text" value={makePassphrase()} minlength={6} maxlength={120} required autocomplete="off" /><button class="secondary" type="submit">変えて見せ直す</button><p class="muted">今の合言葉と、作った入口は使えなくなります。合言葉を変えると、配った班長への一枚も作り直しです。</p></form></div></details>
+      <details class="fold"><summary>このページを見せるのをやめる</summary><div><p>やめると、渡した一人用の入口と班長への一枚のQRコードは使えなくなります。もう一度見せ始めるときは、新しい入口と紙を渡し直してください。</p><form method="post" action={`${base}/close`}><button class="secondary" type="submit">見せるのをやめる</button></form></div></details>
+      <p>間違えたときは、このページを見せるのをやめられます。やめたあとも、もう一度見せ始められます。新しい入口と紙は渡し直してください。</p>
     </> : <>
-      <Notice>{project.closed_at ? "この行事は閉じています。" : space?.closed_at ? "閉じています。もう一度開けます。" : "まだ開いていません。"}</Notice>
-      {!project.closed_at ? <form method="post" action={`${base}/open`}><label for="passphrase">合言葉</label><input id="passphrase" name="passphrase" type="text" value={makePassphrase()} minlength={6} maxlength={120} required autocomplete="off" /><p>この合言葉を使えます。書き換えることもできます。</p><button type="submit">開く</button></form> : null}
+      <Notice>{project.closed_at ? `${project.title}は終わりにしました。` : space?.closed_at ? "見せるのをやめています。もう一度見せ始められます。" : "まだ見せていません。"}</Notice>
+      {!project.closed_at ? <form method="post" action={`${base}/open`}><label for="passphrase">合言葉</label><input id="passphrase" name="passphrase" type="text" value={makePassphrase()} minlength={6} maxlength={120} required autocomplete="off" /><p>この合言葉を使えます。書き換えることもできます。</p><button type="submit">見せ始める</button></form> : null}
     </>}
   </AdminPage>);
 }
@@ -74,7 +74,7 @@ admin.post("/space/:projectId/open", async (c) => {
   try {
     await openSpace(c.env.DB, c.var.ward.wardId, c.req.param("projectId"), passphrase, c.var.account.accountId);
   } catch {
-    return adminSpaceError(c, "開けませんでした。入力した合言葉を確かめて、もう一度開けます。");
+    return adminSpaceError(c, "見せ始められませんでした。入力した合言葉を確かめて、もう一度お試しください。");
   }
   return renderAdminSpace(c, passphrase);
 });
@@ -92,9 +92,9 @@ admin.post("/space/:projectId/invite", async (c) => {
   try {
     const token = await createInvite(c.env.DB, c.var.ward.wardId, c.req.param("projectId"), role, district, c.var.account.accountId);
       const url = `${new URL(c.req.url).origin}/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(c.req.param("projectId"))}/join/${token}`;
-    return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="一人用の入口を作りました"><h1>一人用の入口を作りました</h1><p class="lead">相手に渡す入口です。相手が一度使うと、使えなくなります。</p><section class="next"><strong>次は</strong><p>下のアドレスを写して、LINEなどで相手にだけ送ってください。</p><label for="invite-url">相手に渡すアドレス</label><input id="invite-url" type="text" readonly value={url} onclick="this.select()" /><p class="help-text">欄を押すと、アドレスをまとめて選べます。「コピー」を選んでください。</p></section><h2>間違えたときは</h2><p>合言葉を変えてもう一度開くと、作った入口は使えなくなります。</p><a class="quiet" href={adminPath(c.var.ward.slug, `/space/${encodeURIComponent(c.req.param("projectId"))}`)}>実行委員と班長のページに戻る</a></AdminPage>);
+    return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="一人用の入口を作りました"><h1>一人用の入口を作りました</h1><p class="lead">相手に渡す入口です。相手が一度使うと、使えなくなります。</p><section class="next"><strong>次は</strong><p>下のアドレスを写して、LINEなどで相手にだけ送ってください。</p><label for="invite-url">相手に渡すアドレス</label><input id="invite-url" type="text" readonly value={url} onclick="this.select()" /><p class="help-text">欄を押すと、アドレスをまとめて選べます。「コピー」を選んでください。</p></section><h2>間違えたときは</h2><p>合言葉を変えて見せ直すと、作った入口は使えなくなります。</p><a class="quiet" href={adminPath(c.var.ward.slug, `/space/${encodeURIComponent(c.req.param("projectId"))}`)}>実行委員と班長のページに戻る</a></AdminPage>);
   } catch {
-    return adminSpaceError(c, "入口を作れませんでした。ページを開いてから、もう一度作れます。");
+    return adminSpaceError(c, "入口を作れませんでした。ページを見せ始めてから、もう一度作れます。");
   }
 });
 
@@ -106,9 +106,9 @@ admin.post("/space/:projectId/leader", async (c) => {
     const token = await createInvite(c.env.DB, c.var.ward.wardId, c.req.param("projectId"), "leader", district, c.var.account.accountId, true);
     const url = `${new URL(c.req.url).origin}/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(c.req.param("projectId"))}/person/${token}`;
     const contact = await getPublicContact(c.env.DB, c.var.ward.wardId);
-    return c.html(<PrintDocument title="班長への一枚" hint={<a href={adminPath(c.var.ward.slug, `/space/${c.req.param("projectId")}`)}>実行委員と班長のページに戻る</a>}><Sheet footer={<>{c.var.ward.name} {district}</>}><h1>{district}の班長さんへ</h1><p>このQRコードは、その班長にだけ渡してください。</p><PrintQr text={url} sizeMm={32} /><h2>次は</h2><p>案内といっしょに、班長への一枚を印刷して渡してください。</p><p>このQRコードから、班の答えを見たり、回答票を撮って送ったりできます。</p><p>「答えた世帯」に名前が出たら、紙は名前が読めないようにして捨ててかまいません。捨てにくいときは、ついでのときに役員に渡してください。</p><h2>間違えたときは</h2><p>役員に知らせてください。</p><p>{contact}</p></Sheet></PrintDocument>);
+    return c.html(<PrintDocument title="班長への一枚" hint={<a href={adminPath(c.var.ward.slug, `/space/${c.req.param("projectId")}`)}>実行委員と班長のページに戻る</a>}><Sheet footer={<>{c.var.ward.name} {district}</>}><h1>{district}の班長さんへ</h1><p>このQRコードは、その班長にだけ渡してください。</p><PrintQr text={url} sizeMm={32} /><h2>次は</h2><p>案内といっしょに、班長への一枚を印刷して渡してください。</p><p>このQRコードから、班の返事を見たり、回答票を撮って送ったりできます。</p><p>「返事のあった世帯」に名前が出たら、紙は名前が読めないようにして捨ててかまいません。捨てにくいときは、ついでのときに役員に渡してください。</p><h2>間違えたときは</h2><p>役員に知らせてください。</p><p>{contact}</p></Sheet></PrintDocument>);
   } catch {
-    return adminSpaceError(c, "班長への一枚を作れませんでした。ページを開いてから、もう一度作れます。");
+    return adminSpaceError(c, "班長への一枚を作れませんでした。ページを見せ始めてから、もう一度作れます。");
   }
 });
 
@@ -165,7 +165,7 @@ pub.get("/space/:projectId/file/:originalId", async (c) => {
   const fileUrl = `/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}/file/${encodeURIComponent(c.req.param("originalId"))}`;
   if (c.req.query("raw") !== "1") return c.html(<Layout title={file.filename} siteName={await spaceSiteName(c)} noindex>
     <a class="back" href={`/${c.var.ward.slug}/space/${projectId}`}>← 実行委員のページへ</a><h1>{file.filename}</h1>
-    <p class="lead">実行委員と班長のページから送られた写真です。役員と、このページに入った人だけが見られます。</p>
+    <p class="lead">実行委員と班長のページから送られた写真です。役員と、このページにログインした人だけが見られます。</p>
     {file.media_type.startsWith("image/") ? <img class="space-photo" src={`${fileUrl}?raw=1`} alt={file.filename} /> : <p>PDFのときは、PDFが開きます。</p>}
     <a class="button" href={`${fileUrl}?raw=1`}>{file.media_type.startsWith("image/") ? "写真を大きく開く" : "PDFを開く"}</a><a class="quiet" href={`/${c.var.ward.slug}/space/${projectId}`}>実行委員のページへ戻る</a>
   </Layout>);
@@ -221,7 +221,7 @@ async function renderSpace(c: Context<WardEnv>, direct: string | null) {
   const credential = direct ? await findMember(c.env.DB, c.var.ward.wardId, projectId, direct) : await cookieMember(c, projectId);
   const base = `/${encodeURIComponent(c.var.ward.slug)}/space/${encodeURIComponent(projectId)}`;
   c.header("Cache-Control", "private, no-store");
-  if (!credential) return c.html(<Layout title="実行委員のページに入る" siteName={`${c.var.ward.name} ${project.title}`} noindex><h1>実行委員のページに入る</h1><p class="lead">役員から届いた合言葉を入れてください。</p><form method="post" action={`${base}/enter`}><label for="passphrase">合言葉</label><input id="passphrase" name="passphrase" type="password" required /><button type="submit">入る</button></form><p>分からないときは役員に聞いてください。</p></Layout>);
+  if (!credential) return c.html(<Layout title="実行委員のページにログインする" siteName={`${c.var.ward.name} ${project.title}`} noindex><h1>実行委員のページにログインする</h1><p class="lead">役員から届いた合言葉を入れてください。</p><form method="post" action={`${base}/enter`}><label for="passphrase">合言葉</label><input id="passphrase" name="passphrase" type="password" required /><button type="submit">ログインする</button></form><p>分からないときは役員に聞いてください。</p></Layout>);
   if (direct) setSpaceCookie(c, credential);
   const { labels, documents: publications } = await residentContext(c.env.DB, c.var.ward.wardId, projectId);
   const deadline = await getAnswerDeadline(c.env.DB, c.var.ward.wardId, projectId);
@@ -229,9 +229,9 @@ async function renderSpace(c: Context<WardEnv>, direct: string | null) {
   const leader = credential.role === "leader";
   const homeLabel = leader ? `${credential.district ?? ""}の班長さんのページへ` : "実行委員のページへ";
   const contact = await getPublicContact(c.env.DB, c.var.ward.wardId);
-  if (c.req.query("joined")) return c.html(<Layout title={leader ? "班長のページに入りました" : "実行委員のページに入りました"} siteName={`${c.var.ward.name} ${project.title}`} noindex>
-    <h1>{leader ? `${credential.district ?? ""}の班長として入りました` : "実行委員のページに入りました"}</h1><Notice>このスマホで入りました</Notice><p>30日のあいだは、このスマホで開けば、そのまま入れます。{c.req.query("joined") === "once" ? "いま使った入口は、もう使えません。" : ""}</p>
-    <section class="next"><strong>次は</strong><p>{leader ? "班長さんのページを開いて、答えを見てください。" : "実行委員のページを開いて、配られたものを見てください。"}</p><a class="button" href={base}>{leader ? `${credential.district ?? ""}の班長さんのページを開く` : "実行委員のページを開く"}</a></section>
+  if (c.req.query("joined")) return c.html(<Layout title={leader ? "班長のページにログインしました" : "実行委員のページにログインしました"} siteName={`${c.var.ward.name} ${project.title}`} noindex>
+    <h1>{leader ? `${credential.district ?? ""}の班長としてログインしました` : "実行委員のページにログインしました"}</h1><Notice>このスマホでログインしました</Notice><p>30日のあいだは、このスマホで開けば、ログインしたまま使えます。{c.req.query("joined") === "once" ? "いま使った入口は、もう使えません。" : ""}</p>
+    <section class="next"><strong>次は</strong><p>{leader ? "班長さんのページを開いて、返事を見てください。" : "実行委員のページを開いて、役員から届いたものを見てください。"}</p><a class="button" href={base}>{leader ? `${credential.district ?? ""}の班長さんのページを開く` : "実行委員のページを開く"}</a></section>
     <h2>ほかのスマホやパソコンで開くとき</h2><p>役員に、新しい入口か合言葉を頼んでください。</p><p class="preserve-lines">{contact || "連絡先は役員に聞いてください。"}</p>
   </Layout>);
   const sent = c.req.query("sent");
@@ -248,15 +248,15 @@ async function renderSpace(c: Context<WardEnv>, direct: string | null) {
     <h1>{received ? sheet ? "回答票を受け取りました" : "紙を受け取りました" : sheet ? "回答票を撮って送る" : "手元の紙を撮って送る"}</h1>
     {received ? <>
       <PhotoCheckNotice checks={checks} retakeHref={`${base}?send=${sheet ? "answer" : "paper"}`} continueHref={base} />
-      <p class="lead">{sheet ? "ありがとうございました。読み取れた分から数えます。この画面は閉じてかまいません。" : "役員に届きました。回答票は、読み取った内容が役員の画面と同じ答えの数に入ります。当番表や当日の紙は、役員が読んで必要なところを直します。この画面は閉じてかまいません。"}</p>
+      <p class="lead">{sheet ? "ありがとうございました。読み取れた分から数えます。この画面は閉じてかまいません。" : "役員に届きました。回答票は、読み取った内容が役員の画面と同じ返事の数に入ります。当番表や当日の紙は、役員が読んで必要なところを直します。この画面は閉じてかまいません。"}</p>
       <section class="next"><strong>次は</strong><p>{sheet ? "回答票が残っていれば、続けて撮って送ってください。残りがなければ、これで終わりです。" : "紙が残っていれば、続けて撮って送ってください。残りがなければ、これで終わりです。"}</p><a class="button" href={`${base}?send=${sheet ? "answer" : "paper"}`}>続けて撮って送る</a></section>
-      {received ? <><h2>撮った回答票の紙は</h2><p>「答えた世帯」に名前が出たら、紙は名前が読めないようにして捨ててかまいません。写真が残ります。</p><p>捨てにくいときや、念のため残したいときは、ついでのときに役員に渡してください。急ぎません。</p></> : null}
+      {received ? <><h2>撮った回答票の紙は</h2><p>「返事のあった世帯」に名前が出たら、紙は名前が読めないようにして捨ててかまいません。写真が残ります。</p><p>捨てにくいときや、念のため残したいときは、ついでのときに役員に渡してください。急ぎません。</p></> : null}
       <h2>間違えて送ったときは</h2><p>役員に知らせてください。</p><p class="preserve-lines">{contact || "連絡先は役員に聞いてください。"}</p><a class="quiet" href={base}>{homeLabel}</a>
     </> : <>
       <p class="lead">{sheet ? "預かった回答票を撮ってください。一枚の写真に何枚写っていてもかまいません。" : "回答票、当番表、当日の紙のどれでもかまいません。一枚の写真に何枚写っていてもかまいません。"}</p>
       <form data-photo-form method="post" action={`${base}/${sheet ? "send-answer" : "send"}`} enctype="multipart/form-data"><div class="field"><label class="file-button">{sheet ? "カメラで回答票を撮る" : "カメラで紙を撮る"}<input name="file" type="file" accept="image/*,.pdf" capture="environment" required /></label></div><div class="action-links"><button type="submit">送る</button></div><p role="status" /></form>
       <script dangerouslySetInnerHTML={{ __html: PHOTO_SCRIPT }} />
-      <p>写真かPDFを送れます。写真は紙の文字が分かる大きさに整えて保存します。{deadline ? `答えの締切は${formatJstDate(deadline)}です。` : ""}</p>
+      <p>写真かPDFを送れます。写真は紙の文字が分かる大きさに整えて保存します。{deadline ? `返事の締切は${formatJstDate(deadline)}です。` : ""}</p>
       <details class="hint"><summary>読みにくい字があったとき</summary><div><p>そのまま送ってください。読めないところは役員が直します。{leader ? "班長さん" : "実行委員さん"}が確かめる必要はありません。</p></div></details>
       {!leader ? <details class="hint"><summary>何の紙か書かなくてよいのですか</summary><div><p>書かなくてかまいません。そのまま送ってください。役員が読んで、必要なところを直します。</p></div></details> : null}
     </>}
@@ -268,24 +268,24 @@ async function renderSpace(c: Context<WardEnv>, direct: string | null) {
     .filter((answer) => (!leader || answer.district === (credential.district ?? "")) && isMeetingStatus(answer.meetingStatus)) : null;
   return c.html(<Layout title={leader ? "班長のページ" : "実行委員のページ"} siteName={`${c.var.ward.name} ${project.title}`} noindex>
     <div class="space-page"><h1>{leader ? `${credential.district ?? ""}の班長さんへ` : "実行委員のページ"}</h1>
-    <p class="lead">{leader ? `このページでは、${credential.district ?? ""}の答えを見て、預かった回答票を写真で送れます。` : `${project.title}の準備のために、役員から配られたものを見て、手元の紙の写真を送るページです。住民には見えません。`}{leader && deadline ? `答えの締切は${formatJstDate(deadline)}です。` : ""}</p>
+    <p class="lead">{leader ? `このページでは、${credential.district ?? ""}の返事を見て、預かった回答票を写真で送れます。` : `${project.title}の準備のために、役員から届いたものを見て、手元の紙の写真を送るページです。住民には見えません。`}{leader && deadline ? `返事の締切は${formatJstDate(deadline)}です。` : ""}</p>
     <div class="split"><aside><div class="action-links"><a class="button" href={`${base}?send=${leader ? "answer" : "paper"}`}>{leader ? "回答票を撮って送る" : "手元の紙を撮って送る"}</a></div>
     {!leader ? <p>回答票、当番表、当日の紙のどれでもかまいません。写真かPDFを送れます。送った紙は、役員に届きます。</p> : null}
-    </aside><section><h2>当番表</h2><p class="muted">配ったときの当番表です。役員が配り直すまで変わりません。</p>
-    {data.tablesRecorded ? <><MaterialsTable table="duties" items={data.items} /><h2>配置図</h2><MaterialsTable table="layout" items={data.items} /></> : <p>{data.tablesPublished ? "配ったときの表の記録がありません。役員に聞いてください。" : "まだ配っていません。"}</p>}
-    <h2>実行委員名簿</h2>{data.tablesRecorded ? <MaterialsTable table="committee" items={data.items} /> : <p>まだ配っていません。</p>}
-    {data.documents.length ? data.documents.map((doc) => <section><h2>{doc.title}</h2><p>役員が実行委員と班長に配った文書です。直している途中の文書は出ません。</p><details class="fold"><summary>{doc.title}を読む</summary><div>{articleParagraphs(doc.body).map((text) => <p class="preserve-lines">{text}</p>)}</div></details></section>) : <><h2>配られたもの</h2><p>まだ配っていません。</p></>}
-    <h2>案内</h2>{publications.length ? publications.map((doc) => <p><a class="quiet" href={`/${c.var.ward.slug}/p/${projectId}`}>{doc.title}（区のページ）</a></p>) : <p>まだ配っていません。</p>}
+    </aside><section><h2>当番表</h2><p class="muted">役員がこのページに載せたときの当番表です。役員が載せ直すまで変わりません。</p>
+    {data.tablesRecorded ? <><MaterialsTable table="duties" items={data.items} /><h2>配置図</h2><MaterialsTable table="layout" items={data.items} /></> : <p>{data.tablesPublished ? "載せたときの表の記録がありません。役員に聞いてください。" : "まだ載っていません。"}</p>}
+    <h2>実行委員名簿</h2>{data.tablesRecorded ? <MaterialsTable table="committee" items={data.items} /> : <p>まだ載っていません。</p>}
+    {data.documents.length ? data.documents.map((doc) => <section><h2>{doc.title}</h2><p>役員が実行委員と班長のページに載せた文書です。直している途中の文書は出ません。</p><details class="fold"><summary>{doc.title}を読む</summary><div>{articleParagraphs(doc.body).map((text) => <p class="preserve-lines">{text}</p>)}</div></details></section>) : <><h2>役員から届いたもの</h2><p>まだ載っていません。</p></>}
+    <h2>案内</h2>{publications.length ? publications.map((doc) => <p><a class="quiet" href={`/${c.var.ward.slug}/p/${projectId}`}>{doc.title}（住民向けのページ）</a></p>) : <p>まだ載っていません。</p>}
     <h2>出欠</h2>{meetingAnswers ? <>
       <MeetingCounts totals={countMeetingAnswers(meetingAnswers)} className="counts space-counts" />
-      <p class="muted">紙で答えた世帯も、回答票を送ると数に入ります。</p>
+      <p class="muted">紙で返事をした世帯も、回答票を送ると数に入ります。</p>
       {!leader ? [...new Set([...roster.map((row) => row.district), ...meetingAnswers.map((row) => row.district)])].map((district) => <p>{district || "班が分からない"}: {meetingTotalsText(countMeetingAnswers(meetingAnswers.filter((answer) => answer.district === district)))}</p>) : null}
-      {meetingAnswers.length ? <details class="fold"><summary>答えた世帯の一覧（{meetingAnswers.length}世帯）</summary><div><table class="stack"><thead><tr>{!leader ? <th>班</th> : null}<th>代表者</th><th>答え</th></tr></thead><tbody>{meetingAnswers.map((answer) => <tr>{!leader ? <td data-label="班">{answer.district || "班が分からない"}</td> : null}<td data-label="代表者">{answer.household}</td><td data-label="答え">{meetingText(answer)}</td></tr>)}</tbody></table></div></details> : <p>答えはまだありません。</p>}
+      {meetingAnswers.length ? <details class="fold"><summary>返事のあった世帯の一覧（{meetingAnswers.length}世帯）</summary><div><table class="stack"><thead><tr>{!leader ? <th>班</th> : null}<th>代表者</th><th>返事</th></tr></thead><tbody>{meetingAnswers.map((answer) => <tr>{!leader ? <td data-label="班">{answer.district || "班が分からない"}</td> : null}<td data-label="代表者">{answer.household}</td><td data-label="答え">{meetingText(answer)}</td></tr>)}</tbody></table></div></details> : <p>返事はまだありません。</p>}
     </> : <>
-    <div class="counts space-counts"><div class="count"><b>{data.attendance.length}<small>世帯</small></b><span>{householdCount ? `${householdCount}世帯のうち` : "答えた"}</span></div><div class="count"><b>{data.attendance.reduce((sum, row) => sum + row.people_count, 0)}<small>人</small></b><span>参加する</span></div></div><p class="muted">紙で答えた世帯も、回答票を送ると数に入ります。</p>
-    {data.attendance.length ? <details class="fold"><summary>答えた世帯の一覧（{data.attendance.length}世帯）</summary><div><table class="stack"><thead><tr>{!leader ? <th>班</th> : null}<th>代表者</th><th class="num">人数</th></tr></thead><tbody>{data.attendance.map((row) => <tr>{!leader ? <td data-label="班">{row.district || "班が分からない"}</td> : null}<td data-label="代表者">{row.household}</td><td data-label="人数" class="num">{countText({ peopleCount: row.people_count, childrenCount: row.children_count, adultsCount: row.adults_count, seniorsCount: row.seniors_count }, labels)}</td></tr>)}</tbody></table></div></details> : <p>答えはまだありません。</p>}
+    <div class="counts space-counts"><div class="count"><b>{data.attendance.length}<small>世帯</small></b><span>{householdCount ? `${householdCount}世帯のうち` : "返事のあった世帯"}</span></div><div class="count"><b>{data.attendance.reduce((sum, row) => sum + row.people_count, 0)}<small>人</small></b><span>参加する</span></div></div><p class="muted">紙で返事をした世帯も、回答票を送ると数に入ります。</p>
+    {data.attendance.length ? <details class="fold"><summary>返事のあった世帯の一覧（{data.attendance.length}世帯）</summary><div><table class="stack"><thead><tr>{!leader ? <th>班</th> : null}<th>代表者</th><th class="num">人数</th></tr></thead><tbody>{data.attendance.map((row) => <tr>{!leader ? <td data-label="班">{row.district || "班が分からない"}</td> : null}<td data-label="代表者">{row.household}</td><td data-label="人数" class="num">{countText({ peopleCount: row.people_count, childrenCount: row.children_count, adultsCount: row.adults_count, seniorsCount: row.seniors_count }, labels)}</td></tr>)}</tbody></table></div></details> : <p>返事はまだありません。</p>}
     </>}
-    {leader ? <p class="muted">名前が出た世帯の回答票は、名前が読めないようにして捨ててかまいません。捨てにくいときは、ついでのときに役員に渡してください。</p> : <><h2>協賛先</h2><p>{data.tablesRecorded ? `${data.items.filter((item) => item.kind === "sponsors").length}軒のうち、${data.items.filter((item) => item.kind === "sponsors" && ["yes", "no"].includes(String(item.data.reply))).length}軒から返事がありました。` : ""}額と、お願いした内容は、このページには出ません。</p>{data.tablesRecorded ? <details class="fold"><summary>協賛先の一覧を開く（{data.items.filter((item) => item.kind === "sponsors").length}軒）</summary><div><MaterialsTable table="sponsors" items={data.items} /></div></details> : <p>まだ配っていません。</p>}</>}
+    {leader ? <p class="muted">名前が出た世帯の回答票は、名前が読めないようにして捨ててかまいません。捨てにくいときは、ついでのときに役員に渡してください。</p> : <><h2>協賛先</h2><p>{data.tablesRecorded ? `${data.items.filter((item) => item.kind === "sponsors").length}軒のうち、${data.items.filter((item) => item.kind === "sponsors" && ["yes", "no"].includes(String(item.data.reply))).length}軒から返事がありました。` : ""}額と、お願いした内容は、このページには出ません。</p>{data.tablesRecorded ? <details class="fold"><summary>協賛先の一覧を開く（{data.items.filter((item) => item.kind === "sponsors").length}軒）</summary><div><MaterialsTable table="sponsors" items={data.items} /></div></details> : <p>まだ載っていません。</p>}</>}
     {!leader ? <><h2>写真と届いたもの</h2>{data.originals.length ? data.originals.map((file) => <p><a class="quiet" href={`${base}/file/${encodeURIComponent(file.original_id)}`}>{file.filename}</a></p>) : <p>まだありません。</p>}</> : null}
     <h2>連絡先</h2><p class="preserve-lines">{contact || "役員に聞いてください。"}</p></section></div></div>
   </Layout>);
@@ -311,9 +311,9 @@ async function closedNotice(c: Context<WardEnv>) {
   const project = await c.env.DB.prepare("SELECT closed_at FROM projects WHERE ward_id = ? AND project_id = ?")
     .bind(c.var.ward.wardId, projectId).first<{ closed_at: string | null }>();
   const state = projectId ? await getSpace(c.env.DB, c.var.ward.wardId, projectId) : null;
-  const title = project?.closed_at || state?.closed_at ? "閉じました" : !state ? "まだ開いていません" : "この入口は使えません";
+  const title = project?.closed_at || state?.closed_at ? "このページは見られなくなりました" : !state ? "まだ見られません" : "この入口は使えません";
   const contact = await getPublicContact(c.env.DB, c.var.ward.wardId);
-  return c.html(<Layout title={title} siteName={await spaceSiteName(c)} noindex><h1>{title}</h1><p>{title === "閉じました" ? "閉じました。役員に聞いてください。" : title === "まだ開いていません" ? "役員がまだ開いていません。開いているはずのときは、役員に聞いてください。" : "班長への一枚のQRコードから開き直すか、合言葉で入り直してください。入れないときは、役員に新しい入口を頼んでください。"}</p><p class="preserve-lines">{contact || "連絡先は役員に聞いてください。"}</p>{title === "この入口は使えません" ? <a class="button" href={`/${c.var.ward.slug}/space/${projectId}`}>合言葉で入る</a> : null}<a class="quiet" href={`/${encodeURIComponent(c.var.ward.slug)}/`}>区のページへ</a></Layout>, 403);
+  return c.html(<Layout title={title} siteName={await spaceSiteName(c)} noindex><h1>{title}</h1><p>{title === "このページは見られなくなりました" ? "役員が見せるのをやめました。役員に聞いてください。" : title === "まだ見られません" ? "役員がまだ見せ始めていません。見られるはずのときは、役員に聞いてください。" : "班長への一枚のQRコードから開き直すか、合言葉でログインし直してください。ログインできないときは、役員に新しい入口を頼んでください。"}</p><p class="preserve-lines">{contact || "連絡先は役員に聞いてください。"}</p>{title === "この入口は使えません" ? <a class="button" href={`/${c.var.ward.slug}/space/${projectId}`}>合言葉でログインする</a> : null}<a class="quiet" href={`/${encodeURIComponent(c.var.ward.slug)}/`}>住民向けのページへ</a></Layout>, 403);
 }
 
 export const space: Bundle = { admin, pub };

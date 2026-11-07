@@ -37,7 +37,7 @@ it("二つの架空の区で、配った情報を転送でき、限定・下げ�
       JOIN documents d ON d.ward_id = v.ward_id AND d.document_id = v.document_id
       WHERE v.ward_id = ? AND v.project_id = ? AND d.kind = ? ORDER BY v.version_no DESC LIMIT 1`)
       .bind(owner.ward.wardId, id, kind).first<{ document_id: string; version_id: string; version_no: number }>();
-    if (!version) throw new Error("配る文書がありません。");
+    if (!version) throw new Error("知らせる文書がありません。");
     return version;
   };
   const publish = async (owner: typeof first, id: string, kind: DocumentKind, content: string, scope: Scope = "public") => {

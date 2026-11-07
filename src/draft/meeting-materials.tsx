@@ -143,7 +143,7 @@ export function MeetingMaterialsView({ ward, materials }: { ward: WardInfo; mate
       <h4>決まらなかったこと・残っている質問</h4>{record.questions.length ? <ul>{record.questions.map((question) => <li>{question}</li>)}</ul> : <p>残っている質問はありません。</p>}
       {record.minutes ? <><h4>議事録{record.minutes.proposal ? "の下書き" : ""}</h4><pre class="prose">{record.minutes.text}</pre></> : <p>議事録はまだありません。</p>}
       {record.agenda ? <><h4>議案の資料</h4><pre class="prose">{record.agenda}</pre></> : null}
-      <a class="quiet" href={adminPath(ward, `/archive/${record.projectId}`)}>この会議の記録を読む</a></> : <p>記録はまだありません。</p>}
+      <a class="quiet" href={adminPath(ward, `/archive/${record.projectId}`)}>終わったものの中で、この会議を見る</a></> : <p>記録はまだありません。</p>}
   </section>;
   return <section><h2>下書きに使う資料</h2><p>今ある記録です。読むだけで使えます。</p>
     {materials.ledger === null ? recordView(materials.previous, "前回の役員会") : <>
@@ -158,8 +158,8 @@ export function MeetingMaterialsView({ ward, materials }: { ward: WardInfo; mate
         <p>収入: {materials.ledger.income === null ? "記録はまだありません" : `${materials.ledger.income.toLocaleString("ja-JP")}円`}</p>
         <p>支出: {materials.ledger.expense === null ? "記録はまだありません" : `${materials.ledger.expense.toLocaleString("ja-JP")}円`}</p>
       </section>
-      <section class="panel"><h3>{materials.year}年の行事の報告</h3>{materials.reports.length ? materials.reports.map((report) => <details class="fold"><summary>{report.title}{report.proposal ? "（AIの下書き）" : ""}</summary>
-        <pre class="prose">{report.text}</pre><a class="quiet" href={adminPath(ward, `/archive/${report.projectId}`)}>この行事の記録を読む</a>
+      <section class="panel"><h3>{materials.year}年の報告</h3>{materials.reports.length ? materials.reports.map((report) => <details class="fold"><summary>{report.title}{report.proposal ? "（AIの下書き）" : ""}</summary>
+        <pre class="prose">{report.text}</pre><a class="quiet" href={adminPath(ward, `/archive/${report.projectId}`)}>終わったものの中で、これを見る</a>
       </details>) : <p>記録はまだありません。</p>}</section>
     </>}
   </section>;

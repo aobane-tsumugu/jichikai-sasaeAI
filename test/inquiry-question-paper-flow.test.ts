@@ -144,7 +144,7 @@ it("混ざった送り先の返事を残った場所へだけ送り直し、時�
     if (!document) throw new Error("下書きがありません");
     const paperPath = `${root}/print/${project.projectId}/${document.document_id}/${document.version_no}`;
     const paper = await (await get(realApp, `${paperPath}/preview`, cookie, runtime)).text();
-    expect(paper).toContain("下書きです。まだ配っていません。"); expect(paper).toContain("回答票"); expect(paper).not.toContain("<svg");
+    expect(paper).toContain("下書きです。まだ知らせていません。"); expect(paper).toContain("回答票"); expect(paper).not.toContain("<svg");
     expect(await (await get(realApp, `${root}/print/${project.projectId}`, cookie, runtime)).text()).toContain(`${paperPath}/preview`);
     used = 200;
     expect((await postForm(realApp, `${root}/publish/${project.projectId}/send`, { documentId: document.document_id, versionId: document.version_id, versionNo: String(document.version_no), lineDelivery: "send" }, cookie, runtime)).status).toBe(303);
@@ -156,7 +156,7 @@ it("混ざった送り先の返事を残った場所へだけ送り直し、時�
     expect(await (await get(realApp, `${root}/inquiries`, cookie, runtime)).text()).toContain("翌日の8時");
     const draftReading: Reading = { document_kind: "announcement", summary: fixture.publicAnnouncement,
       original_years: [{ original_id: photo.received[0].originalId, year: null }],
-      text_blocks: [{ original_id: photo.received[0].originalId, locator: fixture.previousLocator, text: `下書きです。まだ配っていません。\n${fixture.publicAnnouncement}` }],
+      text_blocks: [{ original_id: photo.received[0].originalId, locator: fixture.previousLocator, text: `下書きです。まだ知らせていません。\n${fixture.publicAnnouncement}` }],
       fields: [{ original_id: photo.received[0].originalId, locator: fixture.previousLocator, name: "日時", value: fixture.publicDayText, confidence: "high" }],
       tables: [], decisions: [], unreadable: [],
     };

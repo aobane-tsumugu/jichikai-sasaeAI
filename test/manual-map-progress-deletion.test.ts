@@ -9,7 +9,7 @@ import { requestJobDeletion, runDeletionCron } from "../src/ops/lifecycle";
 import { applyChange, createProject, getProjectState } from "../src/project/api";
 import { postForm, realApp } from "./helpers";
 
-it("段取りで人が保存した進み具合は、元の資料を消しても毎日の写しと一緒に残る", async () => {
+it("やることで人が保存した進み具合は、元の資料を消しても毎日の写しと一緒に残る", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,

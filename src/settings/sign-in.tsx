@@ -15,9 +15,9 @@ const kindOf = (raw: string): SignInKind | null => raw === "password" || raw ===
 export function unavailableLink(c: Context<WardEnv> | Context<AdminEnv>) {
   return c.html(<Layout title="このリンクは使えません" siteName={`${c.var.ward.name}役員の画面`} noindex>
     <h1>このリンクは使えません</h1><Notice error>期限が過ぎたか、もう使われました。リンクは一度だけ使えます。</Notice>
-    <section class="next"><strong>次は</strong><p>いつもの入り方で入ってください。まだ入れない方は「入れないとき」を開いてください。</p>
-      <a class="button" href={adminPath(c.var.ward, "/login")}>役員の画面に入る</a></section>
-    <a class="quiet" href={adminPath(c.var.ward, "/login/help")}>入れないとき</a>
+    <section class="next"><strong>次は</strong><p>いつもの方法でログインしてください。まだログインできない方は「ログインできないとき」を開いてください。</p>
+      <a class="button" href={adminPath(c.var.ward, "/login")}>役員の画面にログインする</a></section>
+    <a class="quiet" href={adminPath(c.var.ward, "/login/help")}>ログインできないとき</a>
   </Layout>, 400);
 }
 
@@ -25,9 +25,9 @@ function passwordPage(c: Context<WardEnv> | Context<AdminEnv>, result: { loginId
   return c.html(<Layout title="IDとパスワードを作りました" siteName={`${c.var.ward.name}役員の画面`} noindex>
     <h1>IDとパスワードを作りました</h1><Notice>この画面でしか見られません。紙に書いて、しまっておいてください。</Notice>
     <div class="panel"><p>ID: <strong>{result.loginId}</strong></p><p>パスワード</p><p class="secret">{result.password}</p></div>
-    <section class="next"><strong>次は</strong><p>書き写せたら、下のボタンを押してください。このスマホやパソコンでは、次から入力しなくても入れます。</p>
-      <a class="button" href={adminPath(c.var.ward, added ? "/sign-in/saved?kind=password" : "/sign-in/done")}>書き写したので入る</a></section>
-    <a class="quiet" href={mySignInPath(c.var.ward)}>自分の入り方へ</a>
+    <section class="next"><strong>次は</strong><p>書き写せたら、下のボタンを押してください。このスマホやパソコンでは、次から入力しなくてもログインできます。</p>
+      <a class="button" href={adminPath(c.var.ward, added ? "/sign-in/saved?kind=password" : "/sign-in/done")}>書き写したのでログインする</a></section>
+    <a class="quiet" href={mySignInPath(c.var.ward)}>ログインの方法へ</a>
   </Layout>);
 }
 
@@ -38,8 +38,8 @@ mine.get("/", async (c) => {
   const active = methods.filter((m) => m.removed_at === null);
   const connections = signInConnections(c.env);
   const showKinds: SignInKind[] = ["password", "email", "line"];
-  return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="自分の入り方" back={{ href: adminPath(c.var.ward, "/settings/people"), label: "役員の一覧へ" }}>
-    <h1>自分の入り方</h1><p class="lead">二つにしておくと、片方が使えないときも自分で戻せます。一つでも使えます。</p>
+  return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="ログインの方法" back={{ href: adminPath(c.var.ward, "/settings/people"), label: "役員の一覧へ" }}>
+    <h1>ログインの方法</h1><p class="lead">二つにしておくと、片方が使えないときも自分で戻せます。一つでも使えます。</p>
     {showKinds.map((kind) => {
       const method = active.find((m) => m.kind === kind);
       const available = kind === "password" || connections[kind] !== undefined;
@@ -61,16 +61,16 @@ mine.post("/password", async (c) => {
 
 mine.get("/saved", (c) => {
   const kind = kindOf(c.req.query("kind") ?? "");
-  return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="入り方を足しました" back={{ href: mySignInPath(c.var.ward), label: "自分の入り方へ" }}>
-    <h1>入り方を足しました</h1><Notice>{kind ? SIGN_IN_LABEL[kind] : "入り方"}を足しました。次から、この入り方も使えます。</Notice>
+  return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="ログインの方法を足しました" back={{ href: mySignInPath(c.var.ward), label: "ログインの方法へ" }}>
+    <h1>ログインの方法を足しました</h1><Notice>{kind ? SIGN_IN_LABEL[kind] : "ログインの方法"}を足しました。次から、このログインの方法も使えます。</Notice>
     <section class="next"><strong>次は</strong><p>このまま使ってください。</p><a class="button" href={adminPath(c.var.ward, "/")}>最初の画面へ</a></section>
-    <a class="quiet" href={mySignInPath(c.var.ward)}>自分の入り方へ戻る</a>
+    <a class="quiet" href={mySignInPath(c.var.ward)}>ログインの方法へ戻る</a>
   </AdminPage>);
 });
-mine.get("/done", (c) => c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="入れました">
-  <h1>入れました</h1><Notice>{c.var.account.name}さんとして入りました。このスマホやパソコンでは、次から入力しなくても入れます。</Notice>
-  <section class="next"><strong>次は</strong><p>最初の画面で、今の区の様子を見てください。</p><a class="button" href={adminPath(c.var.ward, "/")}>最初の画面へ</a></section>
-  <h2>使えなくなったときのために</h2><p>入り方をもう一つ足せます。足さなくても使えます。</p><a class="quiet" href={mySignInPath(c.var.ward)}>入り方を足す</a>
+mine.get("/done", (c) => c.html(<AdminPage ward={c.var.ward} account={c.var.account} title="ログインしました">
+  <h1>ログインしました</h1><Notice>{c.var.account.name}さんとしてログインしました。このスマホやパソコンでは、次から入力しなくてもログインできます。</Notice>
+  <section class="next"><strong>次は</strong><p>最初の画面で、今の自治会の様子を見てください。</p><a class="button" href={adminPath(c.var.ward, "/")}>最初の画面へ</a></section>
+  <h2>使えなくなったときのために</h2><p>ログインの方法をもう一つ足せます。足さなくても使えます。</p><a class="quiet" href={mySignInPath(c.var.ward)}>ログインの方法を足す</a>
 </AdminPage>));
 
 export const signInRoutes = new Hono<WardEnv>();
@@ -84,13 +84,13 @@ signInRoutes.get("/invite/:token", async (c) => {
   const invitation = await readInvitation(c.env.DB, c.var.ward.wardId, token);
   if (!invitation) return unavailableLink(c);
   const connections = signInConnections(c.env);
-  return c.html(<Layout title="入り方を選ぶ" siteName={`${c.var.ward.name}役員の画面`} noindex>
-    <h1>{invitation.name}さん、入り方を選んでください</h1>
-    <p class="lead">役員の画面に入れるようになります。入り方はあとから足せます。</p>
+  return c.html(<Layout title="ログインの方法を選ぶ" siteName={`${c.var.ward.name}役員の画面`} noindex>
+    <h1>{invitation.name}さん、ログインの方法を選んでください</h1>
+    <p class="lead">役員の画面にログインできるようになります。ログインの方法はあとから足せます。</p>
     {(["line", "email"] as const).map((kind) => connections[kind] ? <form method="post" action={adminPath(c.var.ward, `/sign-in-connect/${kind}/start`)}>
       <input type="hidden" name="invitation" value={token} /><button class="secondary">{SIGN_IN_LABEL[kind]}で続ける</button></form> : null)}
     <form method="post" action={adminPath(c.var.ward, `/invite/${token}/password`)}><button>IDとパスワードを作る</button></form>
-    <p>名前が違うときは、このリンクをくれた役員に聞いてください。</p><a class="quiet" href={adminPath(c.var.ward, "/login")}>入る画面へ戻る</a>
+    <p>名前が違うときは、このリンクをくれた役員に聞いてください。</p><a class="quiet" href={adminPath(c.var.ward, "/login")}>ログインの画面へ戻る</a>
   </Layout>);
 });
 signInRoutes.post("/invite/:token/password", async (c) => {
@@ -159,10 +159,10 @@ signInRoutes.get("/sign-in-connect/:kind/callback", async (c) => {
         VALUES (?, ?, ?, 'email', ?, ?, ?)`).bind(newId(), c.var.ward.wardId, account.account_id, await sha256Hex(token), new Date(Date.now() + 30 * 60_000).toISOString(), nowIso()).run();
       return { ...account, token };
     }));
-    return c.html(<Layout title="入る人を選ぶ" siteName={`${c.var.ward.name}役員の画面`} noindex>
-      <h1>だれとして入りますか</h1><p class="lead">この入り方で入れる人から、ご自分の名前を選んでください。</p>
+    return c.html(<Layout title="ログインする人を選ぶ" siteName={`${c.var.ward.name}役員の画面`} noindex>
+      <h1>だれとしてログインしますか</h1><p class="lead">このログインの方法でログインできる人から、ご自分の名前を選んでください。</p>
       {choices.map((choice) => <form method="post" action={adminPath(c.var.ward, "/sign-in-select")}><input type="hidden" name="token" value={choice.token} /><button>{choice.name}（ID{choice.login_id}）</button></form>)}
-      <a class="quiet" href={adminPath(c.var.ward, "/login")}>入る画面へ戻る</a>
+      <a class="quiet" href={adminPath(c.var.ward, "/login")}>ログインの画面へ戻る</a>
     </Layout>);
   }
   if ("accountId" in intent) {
@@ -186,6 +186,6 @@ signInRoutes.get("/sign-in-connect/:kind/callback", async (c) => {
 
 function connectionError(c: Context<WardEnv> | Context<AdminEnv>, message: string, back?: string) {
   return c.html(<Layout title="つなげませんでした" noindex><h1>つなげませんでした</h1><Notice error>{message}</Notice>
-    <section class="next"><strong>次は</strong><p>別の入り方でお試しください。</p><a class="button" href={back ?? adminPath(c.var.ward, "/login")}>{back ? "入り方を選ぶ画面へ戻る" : "入る画面へ戻る"}</a></section>
+    <section class="next"><strong>次は</strong><p>別のログインの方法でお試しください。</p><a class="button" href={back ?? adminPath(c.var.ward, "/login")}>{back ? "ログインの方法を選ぶ画面へ戻る" : "ログインの画面へ戻る"}</a></section>
   </Layout>, 400);
 }

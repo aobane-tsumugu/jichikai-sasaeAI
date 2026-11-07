@@ -85,7 +85,7 @@ export function checkKindsDecision(text: string, decision: string) {
 export async function runKindsWalkthrough(options: MeetingOptions, ports: MeetingPorts) {
   const base = new URL(options.base);
   assert(["http:", "https:"].includes(base.protocol) && base.pathname === "/" && !base.search && !base.hash && !base.username && !base.password, "--baseには資格情報や区のパスを含まないURLを指定してください");
-  assert(/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(options.ward) && options.ward !== "demoku", "demokuでは通し確認を実行しません。確認用の区のURL名を指定してください");
+  assert(/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(options.ward) && options.ward !== "demoku", "demokuでは通し確認を実行しません。確認用の自治会のURL名を指定してください");
   const root = `/${options.ward}`, admin = root + "/admin";
   const source = options.files ? kindsMaterial(KINDS_FIXTURE_YEAR) : kindsMaterial();
   const projects: Record<string, string> = {};
@@ -173,7 +173,7 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
         assert(section, "送った資料の読み取りの進み具合がありません");
         const status = visible(section[1] ?? "");
         assert(!/読めませんでした|読み取りが遅れています|繋げられませんでした|止まりました/.test(status), "資料の読み取り・反映が止まりました");
-        done = done && status.includes("行事に入れました");
+        done = done && status.includes("どれの資料か分けました");
       }
       return done ? true : null;
     });
@@ -198,7 +198,7 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
     form.values.delete("body"); form.values.append("body", ""); form.values.append("body", staff);
     if (decisions !== undefined) form.values.set("decisions", decisions);
     redirected(await post(form.action, form.values), "閉じて記録に残せません");
-    assert((await get(path)).includes("もう一度開く"), "閉じたことを確認できません");
+    assert((await get(path)).includes("終わりを取り消す"), "閉じたことを確認できません");
     await get(`${admin}/archive/${id}`);
   };
   const setRoster = async (names: string[], district: string) => {
@@ -214,7 +214,7 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
   const stages: [string, () => Promise<string>][] = [
     ["1 役員会を二回開く", async () => {
       redirected(await post(admin + "/login", { name: options.name, password: options.password }), "役員画面に入れません");
-      assert(cookies.officer.has("device"), "役員画面に入るための応答がありません");
+      assert(cookies.officer.has("device"), "役員の画面にログインするための応答がありません");
       // 区に前の試行の会議が残っていても、同じ日なら閉じた順で今回の一回目が「前回」になる。その年の最後の日に揃える。
       const today = `${source.year}-12-31`, tomorrow = today;
       const first = await open("board1", "board_meeting", source.year, "役員会1回目（架空）", today);
@@ -357,7 +357,7 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
     await ports.record(scrub([
       "# 行事と総会の外の通し確認", "", `- 実行日時: ${new Date().toISOString()}`, `- 接続先: ${base.origin}`, `- 区: ${options.ward}`,
       ...Object.entries(projects).map(([kind, id]) => `- 作った仕事（${kind}）: ${id}`),
-      "- 資料・世帯・理由: すべて架空", "- 公式LINE: 実送信なし", "- 資格情報: 値は記録しません",
+      "- 資料・世帯・理由: すべて架空", "- 自治会のLINE: 実送信なし", "- 資格情報: 値は記録しません",
       `- 入力: ${options.files ? "Word・Excel・PDF・紙の写真風（固定日付の架空資料）" : "文の架空資料"}`,
       "- HTTPとHTMLの確認です。本物のAI・staging・紙の見え方の確認は実行環境に応じてPMが判断します。", "",
       "| 段 | 結果 | 確認したこと | 秒 |", "|---|---|---|---:|", ...rows, "",
@@ -375,7 +375,7 @@ async function main() {
   const arg = (key: string) => { const i = args.indexOf(key); return i < 0 ? undefined : args[i + 1]; };
   const base = arg("--base"), ward = arg("--ward"), creds = arg("--creds");
   if (!base || !ward || !creds || ward === "demoku") {
-    console.error("使い方: npm run walkthrough-kinds -- --base <URL> --ward <架空の区のURL名> --creds <資格情報ファイル> [--files]。demokuでは実行しません。");
+    console.error("使い方: npm run walkthrough-kinds -- --base <URL> --ward <架空の自治会のURL名> --creds <資格情報ファイル> [--files]。demokuでは実行しません。");
     process.exitCode = 2; return;
   }
   const text = readFileSync(resolve(creds), "utf8");

@@ -82,7 +82,7 @@ it("L-258: 写真をまとめて前後で当て、迷えば待ち、AIが止ま�
     } else {
       if (request.system.includes("届いた文が、公式から既に尋ねた質問")) clarificationMatchCalls++;
       if (failMatch) return Response.json({ error: { type: "overloaded_error", message: "fictional failure" } }, { status: 529 });
-      result = { text: "この写真は、どの行事のものですか。" };
+      result = { text: "この写真は、どれの資料ですか？" };
     }
     return Response.json({ id: "fictional-message", type: "message", role: "assistant", model: request.model,
       content: [{ type: "text", text: JSON.stringify(result) }], stop_reason: "end_turn", stop_sequence: null,

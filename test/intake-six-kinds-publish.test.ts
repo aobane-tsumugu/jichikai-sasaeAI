@@ -107,18 +107,18 @@ it("六つの種類の架空資料から適切な下書きに進み、出欠が�
         const sent = await postForm(realApp, `${root}/publish/${id}/${scope === "public" ? "send" : "space"}`, fields, cookie);
         expect(sent.status).toBe(303);
         const done = sent.headers.get("location");
-        if (!done) throw new Error("配ったあとの画面がありません");
+        if (!done) throw new Error("知らせたあとの画面がありません");
         return { ...version, done };
       };
 
       const distributed = await distribute(entry.distributed, entry.public ? "public" : "space");
       const after = await getProjectState(env.DB, ward.wardId, id);
-      if (!after) throw new Error("配ったあとの仕事がありません");
+      if (!after) throw new Error("知らせたあとの仕事がありません");
       const completed = after.mapTasks.find((task) => task.taskKey === entry.task);
       expect(completed?.progress).toBe("done");
       expect(after.mapTasks.filter((task) => task.progress === "done").map((task) => task.taskKey)).toEqual([entry.task]);
       const donePage = await (await get(realApp, distributed.done, cookie)).text();
-      expect(donePage).toContain(`段取りの「${completed?.name}」を済みにしました。`);
+      expect(donePage).toContain(`やることの「${completed?.name}」を済みにしました。`);
       const map = await (await get(realApp, `${root}/projects/${id}/map?changed=${completed?.taskId}`, cookie)).text();
       expect(map).toContain("いま済みにしました");
 

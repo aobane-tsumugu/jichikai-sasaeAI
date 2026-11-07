@@ -13,7 +13,7 @@ import { withdrawJob } from "../src/intake/store";
 import { requestProjectDeletion, requestWardDeletion, runDeletionCron } from "../src/ops/lifecycle";
 import { createProject } from "../src/project/api";
 
-it("架空の原本と写しを別に保管し、失敗後に続け、取り下げ・受付・行事・区の消去も両方へ反映する", async () => {
+it("架空の原本と写しを別に保管し、失敗後に続け、取り下げ・受付・行事・自治会の消去も両方へ反映する", async () => {
   if (!env.ORIGINALS_BACKUP) throw new Error("試験用の別の保管先がありません");
   const { ward, account } = await seedAdmin(env.DB);
   const w = ward.wardId;

@@ -191,7 +191,7 @@ async function checkChange(
       return { ok: true, value: { change, source, target: [...new Set(change.documents)].sort().join(",") } };
     }
     case "map_task": {
-      if (typeof change.taskKey !== "string" || change.taskKey === "") return { ok: false, reason: "段取りの仕事が分かりません" };
+      if (typeof change.taskKey !== "string" || change.taskKey === "") return { ok: false, reason: "やることが分かりません" };
       if (change.progress !== "started" && change.progress !== "done") return { ok: false, reason: "仕事の進み方が合いません" };
       return { ok: true, value: { change, source, target: change.taskKey } };
     }
@@ -691,7 +691,7 @@ async function planMapTask(ctx: Ctx, n: Normalized, change: MapTaskChange): Prom
     .bind(ctx.wardId, ctx.projectId, change.taskKey)
     .first<{ task_id: string; name: string; progress: keyof typeof PROGRESS_RANK }>();
   if (!task) {
-    return { status: "dropped", reason: "段取りに当てはまる仕事がありません", statements: [], questions: [], bump: false, staleKinds: [] };
+    return { status: "dropped", reason: "やることに当てはまる仕事がありません", statements: [], questions: [], bump: false, staleKinds: [] };
   }
   // 済み・進んだの印は前に進める向きだけ。戻す時は役員が地図で直す
   if (PROGRESS_RANK[task.progress] >= PROGRESS_RANK[change.progress]) {
@@ -966,7 +966,7 @@ function describeChange(change: ChangeInput): string {
         ? (raw.documents as DocumentKind[]).map((d) => DOCUMENT_KIND_LABEL[d] ?? "文書").join("、")
         : "文書";
     case "map_task":
-      return "段取りの仕事";
+      return "やること";
     default:
       return "変更";
   }

@@ -128,7 +128,7 @@ it("写真付き報告を閉じて残し、直しても写真を引き継ぎ、�
       if (scope === "staff") {
         expect(page).toContain(`${getDraftPack("report", kind).title}（役員だけ）`);
         expect(page).not.toContain('id="report-public"');
-        expect(page).not.toContain("報告が区のページに載ります");
+        expect(page).not.toContain("報告が住民向けのページに載ります");
       }
       // 下書きは追加の保存操作なしでも閉じた記録へ残る。
       expect((await postForm(realApp, `${path}/finalize`, {}, cookie)).status).toBe(303);

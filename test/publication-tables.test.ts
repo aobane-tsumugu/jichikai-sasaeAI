@@ -9,7 +9,7 @@ import type { RowData } from "../src/project/model";
 import { createInvite, getSpaceMaterials, openSpace } from "../src/space/api";
 import { cookieFrom, get, postForm, realApp } from "./helpers";
 
-it("配った当番・配置・協賛先は直しても変わらず、配り直すと変わり、閉じると手伝いだけの人数が残る", async () => {
+it("配った当番・配置・協賛先は直しても変わらず、知らせ直すと変わり、閉じると手伝いだけの人数が残る", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: FIRST_SLICE.nextYearTitle, year: FIRST_SLICE.eventYear, accountId: account.accountId,
@@ -32,7 +32,7 @@ it("配った当番・配置・協賛先は直しても変わらず、配り直�
   const memberCookie = cookieFrom(entered, `space_${id}`);
   if (!memberCookie) throw new Error("班長が実行委員と班長のページに入れません。");
   const before = await (await get(realApp, spacePath, memberCookie)).text();
-  expect(before).toContain("まだ配っていません。");
+  expect(before).toContain("まだ載っていません。");
   expect(before).not.toContain(FIRST_SLICE.phoneHelper);
   expect(before).not.toContain(FIRST_SLICE.layoutPosition);
   expect(before).not.toContain(FIRST_SLICE.sponsorName);
@@ -71,7 +71,7 @@ it("配った当番・配置・協賛先は直しても変わらず、配り直�
   expect(unchanged).not.toContain(FIRST_SLICE.reportText);
   expect(await (await get(realApp, paperPath(first), cookie)).text()).toBe(originalPaper);
   expect(await (await get(realApp, `${admin}/publish/${id}`, cookie)).text())
-    .toContain("配ったときから表が変わっています。今の表を配り直せます。");
+    .toContain("載せたときから表が変わっています。今の表を載せ直せます。");
 
   // 文書を手で保存し直さなくても、同じ所から今の表を配り直せる。
   expect((await distribute(first)).status).toBe(303);
@@ -89,7 +89,7 @@ it("配った当番・配置・協賛先は直しても変わらず、配り直�
   expect(newPaper).toContain(FIRST_SLICE.previousPlace);
   expect(newPaper).not.toContain(FIRST_SLICE.phoneHelper);
   expect(await (await get(realApp, paperPath(first), cookie)).text()).toBe(originalPaper);
-  expect(await (await get(realApp, `${admin}/publish/${id}`, cookie)).text()).not.toContain("今の表を配り直せます。");
+  expect(await (await get(realApp, `${admin}/publish/${id}`, cookie)).text()).not.toContain("今の表を載せ直せます。");
   const otherWard = await seedWard(env.DB);
   expect((await getSpaceMaterials(env.DB, otherWard.wardId, id, null)).tablesPublished).toBe(false);
 
@@ -97,7 +97,7 @@ it("配った当番・配置・協賛先は直しても変わらず、配り直�
   await env.DB.prepare("UPDATE document_versions SET tables_snapshot = NULL WHERE ward_id = ? AND project_id = ? AND version_id = ?")
     .bind(ward.wardId, id, first.version_id).run();
   const oldPaper = await (await get(realApp, paperPath(first), cookie)).text();
-  expect(oldPaper).toContain("配ったときの表の記録がありません。");
+  expect(oldPaper).toContain("載せたときの表の記録がありません。");
   expect(oldPaper).not.toContain(FIRST_SLICE.requestedBy);
 
   // 記録の画面でも、配った後に直した当番を混ぜない。
@@ -116,8 +116,8 @@ it("配った当番・配置・協賛先は直しても変わらず、配り直�
   expect(archive).toContain(FIRST_SLICE.requestedBy);
   expect(archive).toContain(FIRST_SLICE.previousPlace);
   expect(archive).not.toContain(FIRST_SLICE.firstOfficer);
-  expect(archive).toContain("手伝いだけの申し込み（閉じたとき）: 1人");
-  expect(archive).toContain("参加すると答えた人数2人 / 手伝いの申し出1件");
+  expect(archive).toContain("手伝いだけの申し込み（終わりにしたとき）: 1人");
+  expect(archive).toContain("参加すると返事をした人数2人 / 手伝いの申し出1件");
   expect(archive).not.toContain(FIRST_SLICE.sheetHelper);
   expect((await get(realApp, spacePath, memberCookie)).status).toBe(403);
 });

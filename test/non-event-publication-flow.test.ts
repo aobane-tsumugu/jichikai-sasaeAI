@@ -11,7 +11,7 @@ import { createInvite } from "../src/space/api";
 import { cookieFrom, get, postForm, realApp } from "./helpers";
 
 // 資料、名前、合言葉はfixturesの架空の入力だけを使う。
-it("総会と役員会を種類に合う題で読み、当番の知らせは実行委員と班長へ配り、総会の答えを同じ順で見る", async () => {
+it("総会と役員会を種類に合う題で読み、当番の知らせは実行委員と班長へ配り、総会の返事を同じ順で見る", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const base = `/${ward.slug}`;
   const admin = `${base}/admin`;
@@ -74,7 +74,7 @@ it("総会と役員会を種類に合う題で読み、当番の知らせは実�
   const confirmation = await read(`${admin}/publish/${id}/confirm?kind=notice`, cookie);
   expect(confirmation).toContain(`action="${admin}/publish/${id}/space"`);
   expect(confirmation).toContain(FIRST_SLICE.dutyText);
-  expect(confirmation).toContain("実行委員と班長に配ります。区のページには載りません。");
+  expect(confirmation).toContain("実行委員と班長のページに載せます。住民向けのページには載りません。");
   expect(confirmation).not.toContain('name="lineDelivery" value="send"');
   expect((await postForm(realApp, `${admin}/publish/${id}/space`, notice, cookie)).status).toBe(303);
   const changed = await save(id, duty.stateVersion, "notice", "space", FIRST_SLICE.previousMaterial);
@@ -101,7 +101,7 @@ it("総会と役員会を種類に合う題で読み、当番の知らせは実�
   expect(publication?.count).toBe(0);
   const answers = `${admin}/answers/${meeting.projectId}`;
   const empty = await read(answers, cookie);
-  expect(empty).toContain("まだ答えはありません");
+  expect(empty).toContain("まだ返事はありません");
   expect(empty).toContain(`href="${answers}?view=send"`);
   await replaceRoster(env.DB, ward.wardId, [FIRST_SLICE.firstHousehold, FIRST_SLICE.secondHousehold]
     .map((household) => ({ household, district: FIRST_SLICE.district })), { household: 0, district: 1 });
@@ -112,7 +112,7 @@ it("総会と役員会を種類に合う題で読み、当番の知らせは実�
   expect(summary).toContain('class="answers-wide"');
   expect(summary).toMatch(/<div class="counts space-counts"><div class="count"><b>1<small>世帯<\/small><\/b><span>\d+世帯のうち/);
   const rows = summary.match(/<ul class="rows two">([\s\S]*?)<\/ul>/)?.[1];
-  if (!rows) throw new Error("総会の答えの操作がありません。");
+  if (!rows) throw new Error("総会の返事の操作がありません。");
   const paths = [`${answers}?view=unanswered`, `${answers}?view=hand`, `${answers}?view=list`, `${answers}?view=read`, `${admin}/answers/roster`];
   let previous = -1;
   for (const path of paths) {

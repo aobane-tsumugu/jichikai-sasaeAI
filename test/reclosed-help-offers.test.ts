@@ -40,7 +40,7 @@ it("行事を開き直して閉じても手伝いの件数を保ち、名前を�
     const page = await get(realApp, `${base}/admin/archive/${project.projectId}`, cookie);
     expect(page.status).toBe(200);
     const html = await page.text();
-    expect(/手伝いだけの申し込み（閉じたとき）: (\d+)人/.exec(html)?.[1]).toBe(String(count));
+    expect(/手伝いだけの申し込み（終わりにしたとき）: (\d+)人/.exec(html)?.[1]).toBe(String(count));
     for (const name of names) expect(html).not.toContain(name);
   };
 

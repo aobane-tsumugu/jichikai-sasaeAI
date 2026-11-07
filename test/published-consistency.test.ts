@@ -8,7 +8,7 @@ import { get, postForm, realApp } from "./helpers";
 
 async function fixture() {
   const { ward, account, cookie } = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "配ったときの行事（架空）", year: 2026, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "知らせたときの行事（架空）", year: 2026, accountId: account.accountId });
   const base = `/${ward.slug}`;
   const admin = `${base}/admin`;
   const draft = async (kind: DocumentKind, title: string, scope: "public" | "space", body: { text: string; items: { key: string; content: string }[] }) => {
@@ -116,7 +116,7 @@ it.each(["public", "space"] as const)("行事名を直しても%sに配った紙
   }
 });
 
-it("答える画面とエラー後の画面は、別の募集ではなく配った案内と同じ手伝いの時間帯を出す", async () => {
+it("答える画面とエラー後の画面は、別の募集ではなく知らせた案内と同じ手伝いの時間帯を出す", async () => {
   const f = await fixture();
   const times = ["設営9時〜10時", "受付10時〜11時"];
   const announcement = await f.draft("announcement", "案内", "public", { text: "架空の案内です。", items: [{ key: "helper_slots", content: times.join("、") }] });
@@ -147,7 +147,7 @@ it("答える画面とエラー後の画面は、別の募集ではなく配っ�
   expect(withoutTimes).not.toContain('value="（確認中）"');
 });
 
-it("知らせの確認は紙と区のページと同じ本文を出し、古い項目を足し戻さない", async () => {
+it("知らせの確認は紙と住民向けのページと同じ本文を出し、古い項目を足し戻さない", async () => {
   const f = await fixture();
   const notice = await f.draft("notice", "変更のお知らせ", "public", {
     text: "会場を架空の新会場に変更します。", items: [{ key: "place", content: "架空の旧会場" }],

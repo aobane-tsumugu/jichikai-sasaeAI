@@ -9,9 +9,12 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const sourceRoot = resolve(process.argv[2] ?? resolve(root, "src"));
 const wording = readFileSync(resolve(root, "CLAUDE.md"), "utf8");
 const terms = new Map<string, string>([
-  ["プロジェクト", "行事"], ["空間", "実行委員と班長のページ"], ["原本", "元の資料"],
-  ["受け箱", "届いたもの"], ["地図", "段取り（会場の地図などは対象外）"],
-  ["出した物", "配ったもの"], ["出したもの", "配ったもの"], ["参考の中身", "過去の資料の中身"],
+  ["プロジェクト", "名前（まとめた呼び名を作らない）"], ["空間", "実行委員と班長のページ"], ["原本", "元の資料"],
+  ["受け箱", "届いたもの"], ["地図", "やること（会場の地図などは対象外）"],
+  ["出した物", "知らせたもの"], ["出したもの", "知らせたもの"], ["参考の中身", "過去の資料の中身"],
+  // 2026-11-07 の表で直した言い方。CLAUDE.md の「」の形に書けないものをここに置く。
+  ["」と書かれています", "急ぎかもしれません（「明日」とあります）"], ["一年の行", "一年の予定"], ["外した行", "外した予定"],
+  ["帯の濃さ", "紺が濃い予定ほど、送った資料や出欠の返事がたくさん入っています"], ["この仕組み", "SasaeAI"],
 ]);
 for (const match of wording.matchAll(/「([^」]+)」は「([^」]+)」/g)) {
   for (const old of match[1]!.split("、")) terms.set(old, match[2]!);
@@ -78,6 +81,8 @@ function scan(source: ts.SourceFile, path: string, lineOffset = 0) {
         for (const word of words) {
           const formal = /^(?:(?:この|その|あの|どの))?(物|時|事|所|後|無い)(?:に|は|で|が|を|へ|も|と)?$/.exec(word.segment)?.[1];
           if (!formal || formal === "時" && /[0-9０-９一二三四五六七八九十百]$/.test(text.slice(0, word.index))) continue;
+          // `${hour}時` のように差し込みの直後に来る「時」は時刻で、形式名詞ではない。
+          if (formal === "時" && word.index === 0 && (ts.isTemplateMiddle(node) || ts.isTemplateTail(node))) continue;
           if (formal !== "無い" && /\p{Script=Han}$/u.test(text.slice(0, word.index))) continue;
           add("形式名詞", formal, ({ 物: "もの", 時: "とき", 事: "こと", 所: "ところ", 後: "あと", 無い: "ない" } as Record<string, string>)[formal]!);
         }

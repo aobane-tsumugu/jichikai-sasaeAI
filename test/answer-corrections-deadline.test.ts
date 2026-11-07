@@ -9,7 +9,7 @@ import { get, postForm, realApp } from "./helpers";
 
 afterEach(() => vi.useRealTimers());
 
-it("案内の締切を受付に使い、答えを直して消し、手で延ばした締切は配り直しても残す", async () => {
+it("案内の締切を受付に使い、返事を直して消し、手で延ばした締切は知らせ直しても残す", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-10T03:00:00Z"));
   const { ward, account, cookie } = await seedAdmin(env.DB);
@@ -80,7 +80,7 @@ it("案内の締切を受付に使い、答えを直して消し、手で延ば�
   await publish("10月9日（金）まで");
   expect(await getAnswerDeadline(env.DB, ward.wardId, project.projectId)).toBe("2026-10-09");
   vi.setSystemTime(new Date("2026-10-10T03:00:00Z"));
-  expect(await (await get(realApp, publicPath)).text()).toContain("答えの受付は終わりました");
+  expect(await (await get(realApp, publicPath)).text()).toContain("返事の受付は終わりました");
   const webInput = { ...input, district: FIRST_SLICE.district };
   expect((await postForm(realApp, publicPath, webInput)).status).toBe(400);
 

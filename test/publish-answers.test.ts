@@ -9,7 +9,7 @@ import { SETTING_KEYS } from "../src/settings/keys";
 import { getPublicContact, getSquads, setSetting } from "../src/settings/store";
 import { get, postForm, realApp } from "./helpers";
 
-describe("配る画面と区のページ", () => {
+describe("知らせる画面と住民向けのページ", () => {
   it("班・名簿・公開用の連絡先が空の一年目でも、確認結果を読んで配れる", async () => {
     const { ward, account, cookie } = await seedAdmin(env.DB);
     const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
@@ -85,7 +85,7 @@ describe("名簿の取り込み", () => {
     expect(await done.text()).toContain("54世帯、3班の名簿を入れました");
   });
 
-  it("JSONの行を受け取り、54世帯を区ごとに保存できる", async () => {
+  it("JSONの行を受け取り、54世帯を自治会ごとに保存できる", async () => {
     const { ward, cookie } = await seedAdmin(env.DB);
     const rows = [["番号", "班", "世帯名"], ...Array.from({ length: 54 }, (_, index) => [
       String(index + 1), `${Math.floor(index / 18) + 1}班`, `架空世帯${index + 1}`,
@@ -108,7 +108,7 @@ describe("名簿の取り込み", () => {
 });
 
 describe("答えの入口と一覧", () => {
-  it("Webと電話の答えを数え、名簿からまだ答えていないを出す", async () => {
+  it("Webと電話の返事を数え、名簿からまだ答えていないを出す", async () => {
     const { ward, account, cookie } = await seedAdmin(env.DB);
     const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
     await replaceRoster(env.DB, ward.wardId, [
@@ -148,6 +148,6 @@ describe("答えの入口と一覧", () => {
     ]);
     const adminPage = await get(realApp, `/${ward.slug}/admin/answers/${project.projectId}`, cookie);
     expect(adminPage.status).toBe(200);
-    expect(await adminPage.text()).toContain("まだ答えていない世帯");
+    expect(await adminPage.text()).toContain("まだ返事のない世帯");
   });
 });

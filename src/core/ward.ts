@@ -25,9 +25,9 @@ const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 /** 区のスラッグとして使えるか。使えなければ画面に出せる理由を返す。 */
 export function slugProblem(slug: string): string | null {
-  if (slug.length < 2 || slug.length > 40) return "区のURLは2文字から40文字にしてください。";
-  if (!SLUG_PATTERN.test(slug)) return "区のURLは、小文字の英数字とハイフンだけで、ハイフンを先頭と末尾に置けません。";
-  if (RESERVED_SLUGS.has(slug)) return "この語は区のURLに使えません。";
+  if (slug.length < 2 || slug.length > 40) return "自治会のURLは2文字から40文字にしてください。";
+  if (!SLUG_PATTERN.test(slug)) return "自治会のURLは、小文字の英数字とハイフンだけで、ハイフンを先頭と末尾に置けません。";
+  if (RESERVED_SLUGS.has(slug)) return "この語は自治会のURLに使えません。";
   return null;
 }
 

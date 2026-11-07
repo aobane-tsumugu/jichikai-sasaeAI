@@ -169,7 +169,7 @@ details.fold > div { padding: 0 var(--space-3) var(--space-3); }
 .row-link b { display: block; color: var(--accent); font-size: var(--text-h3); text-decoration: underline; text-underline-offset: .2em; }
 .row-link span { display: block; color: var(--muted); font-size: var(--text-note); }
 
-/* 短いリンクの一覧と、配る前に読む面 */
+/* 短いリンクの一覧と、知らせる前に読む面 */
 .photo { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel); }
 .photo-full { display: block; width: 100%; height: auto; max-height: 75vh; object-fit: contain; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel); }
 .photo-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin: 0 0 var(--space-3); }
@@ -189,13 +189,17 @@ details.none-of-these { margin: var(--space-2) 0; }
 details.none-of-these > summary { display: flex; align-items: center; justify-content: center; min-height: var(--tap); padding: var(--space-2) var(--space-3); border: 2px solid var(--accent); border-radius: var(--radius); background: var(--panel); color: var(--accent); font-weight: 700; cursor: pointer; }
 details.none-of-these > div { padding: var(--space-3) 0 0; }
 .question-block + .question-block { margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--line); }
-/* 型がこの区の事実に変わる: 状態は色と言葉の両方で伝える */
+/* 型がこの自治会の事実に変わる: 状態は色と言葉の両方で伝える */
 .state { display: inline-block; padding: 0 var(--space-2); border: 1px solid currentColor; border-radius: var(--radius); font-size: var(--text-note); font-weight: 700; line-height: 1.6; white-space: nowrap; }
 .state.example { color: var(--muted); background: var(--sunk); }
 .state.checking { color: var(--warn); background: var(--warn-bg); }
 .state.fact { color: var(--accent); background: var(--info-bg); }
 .state.old { color: var(--stale); background: var(--stale-bg); }
-.state-legend { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-2) 0 var(--space-3); }
+.state-legend { margin: var(--space-2) 0 var(--space-3); }
+.state-legend .legend-title { display: block; margin-bottom: var(--space-1); }
+.state-legend ul { display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.state-legend li { color: var(--muted); font-size: var(--text-note); }
+.state-legend li .state { margin-right: var(--space-2); }
 .year-list { display: grid; gap: var(--space-2); margin: var(--space-2) 0 var(--space-3); padding: 0; list-style: none; }
 .year-row { display: block; min-height: var(--tap); padding: var(--space-2) var(--space-3); border: 1px solid var(--line-strong); border-left-width: 8px; border-radius: var(--radius); background: var(--panel); color: var(--fg); text-decoration: none; }
 .year-row b { display: block; line-height: 1.4; }
@@ -249,7 +253,7 @@ details.none-of-these > div { padding: var(--space-3) 0 0; }
 .sheet-preview { margin: var(--space-4) 0; padding: var(--space-4); border: 1px solid var(--line-strong); background: var(--panel); }
 .sheet-preview > :last-child { margin-bottom: 0; }
 
-/* 配る内容を紙と区のページで並べる。狭い幅では区のページの面だけを出し、紙はリンクから開く */
+/* 知らせる内容を紙と住民向けのページで並べる。狭い幅では住民向けのページの面だけを出し、紙はリンクから開く */
 .compare { margin: var(--space-4) 0; }
 .compare .sheet-preview { margin: var(--space-2) 0 0; }
 .compare-paper { display: none; }

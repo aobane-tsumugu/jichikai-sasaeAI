@@ -78,7 +78,7 @@ export function ResidentContact({ contact }: { contact: string }) {
 }
 
 export function ReceptionClosed({ closed, due }: { closed: boolean; due: string | null }) {
-  return <section class="notice"><h2>答えの受付は終わりました</h2>
+  return <section class="notice"><h2>返事の受付は終わりました</h2>
     <p>{closed ? "この行事は終わりました。" : due ? `${formatJstDate(due)}で締め切りました。` : "受付は終わりました。"}変えたいときは、下の連絡先へお知らせください。</p>
   </section>;
 }
@@ -86,5 +86,5 @@ export function ReceptionClosed({ closed, due }: { closed: boolean; due: string 
 export function EventDetails({ item, due, hasNotice = false }: { item: (key: string) => string; due?: string | null; hasNotice?: boolean }) {
   // 知らせの本文に日時も場所も書かれていない時は、案内へ戻って読めるようにする。
   if (hasNotice && !item("date_time") && !item("place")) return <p>お知らせがあります。日時や場所は案内で確かめてください。</p>;
-  return <dl class="facts">{[["date_time", "いつ"], ["place", "どこで"], ["rain_plan", "雨のとき"]].map(([key, label]) => item(key!) ? <><dt>{label}</dt><dd>{formatDateText(item(key!))}</dd></> : null)}{due ? <><dt>答えの締切</dt><dd>{formatJstDate(due)}まで</dd></> : null}</dl>;
+  return <dl class="facts">{[["date_time", "いつ"], ["place", "どこで"], ["rain_plan", "雨のとき"]].map(([key, label]) => item(key!) ? <><dt>{label}</dt><dd>{formatDateText(item(key!))}</dd></> : null)}{due ? <><dt>返事の締切</dt><dd>{formatJstDate(due)}まで</dd></> : null}</dl>;
 }

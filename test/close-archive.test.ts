@@ -8,7 +8,7 @@ import { applyChange, createProject, getProjectState } from "../src/project/api"
 const db = env.DB;
 
 describe("閉じるとこれをもとに新しく始める", () => {
-  it("閉じた行事には中身を書けない", async () => {
+  it("終わったものには中身を書けない", async () => {
     const ward = await seedWard(db);
     const account = await seedAccount(db, ward.wardId, "架空の役員");
     const project = await createProject(db, ward.wardId, { kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId });
@@ -21,7 +21,7 @@ describe("閉じるとこれをもとに新しく始める", () => {
     expect(result).toEqual({ status: "rejected", reason: "closed" });
   });
 
-  it("去年の段取りと今年の中身を種に複写し、行事の日に時期を置き直す", async () => {
+  it("去年のやることと今年の中身を種に複写し、行事の日に時期を置き直す", async () => {
     const ward = await seedWard(db);
     const account = await seedAccount(db, ward.wardId, "架空の役員");
     const source = await createProject(db, ward.wardId, {

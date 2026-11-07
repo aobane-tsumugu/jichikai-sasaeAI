@@ -46,7 +46,7 @@ const OpsPage = (props: { title: string; loggedIn?: boolean; children?: unknown 
       props.loggedIn ? (
         <form class="inline" method="post" action="/ops/logout">
           <button type="submit" class="secondary">
-            このスマホやパソコンから出る
+            ログアウトする
           </button>
         </form>
       ) : null
@@ -65,8 +65,8 @@ opsRoutes.use("*", async (c, next) => {
 // ---- ログイン（ログインの検査の外） ----
 
 const LoginForm = (props: { error?: string }) => (
-  <OpsPage title="入る">
-    <h1>運用の画面に入る</h1>
+  <OpsPage title="ログイン">
+    <h1>運用の画面にログインする</h1>
     {props.error ? <Notice error>{props.error}</Notice> : null}
     <form method="post" action="/ops/login">
       <label for="id">ID</label>
@@ -74,7 +74,7 @@ const LoginForm = (props: { error?: string }) => (
       <label for="password">パスワード</label>
       <input id="password" name="password" type="password" autocomplete="current-password" required />
       <p>
-        <button type="submit">入る</button>
+        <button type="submit">ログインする</button>
       </p>
     </form>
   </OpsPage>
@@ -114,7 +114,7 @@ opsRoutes.post("/login", async (c) => {
 opsRoutes.use("*", async (c, next) => {
   if (!opsConfigured(c.env)) return c.html(<NotConfigured />, 503);
   if (!(await verifyOpsSession(c.env, getCookie(c, OPS_COOKIE)))) {
-    if (wantsJson(c)) return c.json({ ok: false, message: "まだ入っていません。" }, 401);
+    if (wantsJson(c)) return c.json({ ok: false, message: "まだログインしていません。" }, 401);
     return c.redirect("/ops/login", 303);
   }
   await next();
@@ -129,21 +129,21 @@ opsRoutes.post("/logout", (c) => {
 
 const OpenForm = (props: { error?: string; values?: { slug: string; name: string; firstAccountName: string; lineDestination?: string; officialLineUrl?: string; providerPhone?: string; providerEmail?: string } }) => (
   <>
-    <h2 id="open-ward">新しい区を開く</h2>
+    <h2 id="open-ward">新しい自治会を開く</h2>
     {props.error ? <Notice error>{props.error}</Notice> : null}
     <form method="post" action="/ops/wards" class="panel">
-      <label for="name">区の名前</label>
+      <label for="name">自治会の名前</label>
       <input id="name" name="name" type="text" required maxlength={60} value={props.values?.name ?? ""} />
-      <label for="slug">区のページのアドレスに入れる名前（小文字の英数字とハイフン。例aozora-ku）</label>
+      <label for="slug">住民向けのページのアドレスに入れる名前（小文字の英数字とハイフン。例aozora-ku）</label>
       <input id="slug" name="slug" type="text" required maxlength={40} value={props.values?.slug ?? ""} />
       <label for="first">最初の役員の名前</label>
       <input id="first" name="firstAccountName" type="text" required maxlength={40} value={props.values?.firstAccountName ?? ""} />
-      <label for="provider-phone">区の連絡先の電話（提供側だけが見ます）</label><input id="provider-phone" name="providerPhone" maxlength={200} value={props.values?.providerPhone ?? ""} />
-      <label for="provider-email">区の連絡先のメール（書かなくてかまいません）</label><input id="provider-email" name="providerEmail" type="email" maxlength={200} value={props.values?.providerEmail ?? ""} />
-      <section><h3>公式LINE</h3><p>提供側が公式アカウントを作り、接続の設定まで進めます。</p>
-        <label for="line-destination">公式LINEの送信先ID</label>
+      <label for="provider-phone">自治会の連絡先の電話（SasaeAIの運営者だけが見ます）</label><input id="provider-phone" name="providerPhone" maxlength={200} value={props.values?.providerPhone ?? ""} />
+      <label for="provider-email">自治会の連絡先のメール（書かなくてかまいません）</label><input id="provider-email" name="providerEmail" type="email" maxlength={200} value={props.values?.providerEmail ?? ""} />
+      <section><h3>自治会のLINE</h3><p>SasaeAIの運営者が自治会のLINEのアカウントを作り、接続の設定まで進めます。</p>
+        <label for="line-destination">自治会のLINEの送信先ID</label>
         <input id="line-destination" name="lineDestination" type="text" required maxlength={100} value={props.values?.lineDestination ?? ""} />
-        <p>鍵の値は入力しません。開いたあとに出る名前で、提供側の設定に入れてください。</p>
+        <p>鍵の値は入力しません。開いたあとに出る名前で、SasaeAIの運営者の設定に入れてください。</p>
         <label for="official-line-url">友だち追加の入口</label><input id="official-line-url" name="officialLineUrl" type="url" required maxlength={2000} value={props.values?.officialLineUrl ?? ""} />
       </section>
       <p>
@@ -157,19 +157,19 @@ opsRoutes.get("/", async (c) => {
   const wards = await listWards(c.env.DB);
   const backup = await backupStatus(c.env, wards.map((ward) => ward.wardId));
   return c.html(
-    <OpsPage title="区の一覧" loggedIn>
-      <h1>区の一覧</h1><p class="lead">SasaeAIを提供している区です。区の名前を押すと、その区の画面が開きます。</p><a class="quiet" href="#open-ward">新しい区を開く</a>
+    <OpsPage title="自治会の一覧" loggedIn>
+      <h1>自治会の一覧</h1><p class="lead">SasaeAIを提供している自治会です。自治会の名前を押すと、その自治会の画面が開きます。</p><a class="quiet" href="#open-ward">新しい自治会を開く</a>
       <p class="link-line"><a href="/ops/contacts">問い合わせを見る</a></p>
       <p class="link-line"><a href="/ops/contact-deletions">問い合わせを消す</a></p>
-      <p class="link-line"><a href="/ops/alerts">提供側で見る知らせ</a></p>
+      <p class="link-line"><a href="/ops/alerts">運用の知らせ</a></p>
       <p>別の場所への保管: {backup ? <>最後に複写したとき{backup.lastCopiedAt ? formatJst(backup.lastCopiedAt) : "まだありません"}、失敗した処理{backup.failures}件</> : "まだ接続していません"}</p>
       <p class="link-line"><a href="/ops/costs">全体の費用を見る</a></p>
       <p class="link-line"><a href="/ops/deletions">消去の状況</a></p>
       {wards.length === 0 ? (
-        <p class="muted">まだ区がありません。</p>
+        <p class="muted">まだ自治会がありません。</p>
       ) : (
         wards.map((w) => (
-          <p><a class="row-link" href={`/ops/wards/${w.slug}`}><b>{w.name}</b><span>役員の入る人{w.accountCount}人</span><span>見てほしいもの{w.attentionCount}件</span><span>区のページ {wardUrl(c.env, c.req.url, w.slug)}</span></a></p>
+          <p><a class="row-link" href={`/ops/wards/${w.slug}`}><b>{w.name}</b><span>役員の画面を使える人{w.accountCount}人</span><span>見てほしいもの{w.attentionCount}件</span><span>住民向けのページ {wardUrl(c.env, c.req.url, w.slug)}</span></a></p>
         ))
       )}
       <OpenForm />
@@ -186,8 +186,8 @@ opsRoutes.post("/wards", async (c) => {
   if (!result.ok) {
     if (wantsJson(c)) return c.json({ ok: false, message: result.message }, 400);
     return c.html(
-      <OpsPage title="区を開く" loggedIn>
-        <h1>区を開けませんでした</h1>
+      <OpsPage title="自治会を開く" loggedIn>
+        <h1>自治会を開けませんでした</h1>
         <OpenForm error={result.message} values={input} />
       </OpsPage>,
       400,
@@ -213,15 +213,15 @@ opsRoutes.post("/wards", async (c) => {
     );
   }
   return c.html(
-    <OpsPage title="区を開きました" loggedIn>
-      <h1>区を開きました</h1>
-      <Notice>{result.account.name}さんの、入るためのリンクを作りました。</Notice>
-      <p>このリンクを本人に渡してください。開くと入り方を選べます。一度だけ、7日のあいだ使えます。</p>
+    <OpsPage title="自治会を開きました" loggedIn>
+      <h1>自治会を開きました</h1>
+      <Notice>{result.account.name}さんの、ログインするためのリンクを作りました。</Notice>
+      <p>このリンクを本人に渡してください。開くとログインの方法を選べます。一度だけ、7日のあいだ使えます。</p>
       <p class="secret invite-link">{`${adminUrl}invite/${result.account.token}`}</p>
       <div class="qrbox" dangerouslySetInnerHTML={{ __html: qrSvg(`${adminUrl}invite/${result.account.token}`) }} />
-      <section class="next"><strong>次は</strong><p>公式LINEの接続を済ませ、一緒に役員グループの指定まで進めてください。</p><a class="button" href={`/ops/wards/${result.ward.slug}`}>区の画面へ</a></section>
-      <a class="quiet" href="/ops/">区の一覧へ戻る</a>
-      {result.line ? <><h2>公式LINEの鍵の設定</h2>
+      <section class="next"><strong>次は</strong><p>自治会のLINEの接続を済ませ、一緒に役員グループの指定まで進めてください。</p><a class="button" href={`/ops/wards/${result.ward.slug}`}>自治会の画面へ</a></section>
+      <a class="quiet" href="/ops/">自治会の一覧へ戻る</a>
+      {result.line ? <><h2>自治会のLINEの鍵の設定</h2>
         <p>Workers secretsに次の名前で鍵を設定してください。値はこの画面にもD1にも保存しません。</p>
         <p>チャネルシークレット: <code>{result.line.channelSecretBinding}</code></p>
         <p>チャネルアクセストークン: <code>{result.line.accessTokenBinding}</code></p>
@@ -234,9 +234,9 @@ opsRoutes.post("/wards", async (c) => {
 
 const WardUrls = (props: { url: string; adminUrl: string; slug: string }) => (
   <>
-    <h2>区のページのアドレスとQRコード</h2>
+    <h2>住民向けのページのアドレスとQRコード</h2>
     <p>
-      区のページ: <a href={props.url}>{props.url}</a>
+      住民向けのページ: <a href={props.url}>{props.url}</a>
     </p>
     <p>
       役員画面: <a href={props.adminUrl}>{props.adminUrl}</a>
@@ -264,9 +264,9 @@ async function wardOrNull(c: OpsContext, slug: string) {
 
 const WardNotFound = () => (
   <OpsPage title="見つかりません" loggedIn>
-    <h1>その区は見つかりません</h1>
+    <h1>その自治会は見つかりません</h1>
     <p class="link-line">
-      <a href="/ops/">区の一覧へ</a>
+      <a href="/ops/">自治会の一覧へ</a>
     </p>
   </OpsPage>
 );
@@ -288,20 +288,20 @@ opsRoutes.get("/wards/:slug", async (c) => {
   return c.html(
     <OpsPage title={ward.name} loggedIn>
       <p class="link-line">
-        <a href="/ops/">区の一覧</a>
+        <a href="/ops/">自治会の一覧</a>
       </p>
-      <h1>{ward.name}</h1><p class="lead">この区の提供側の画面です。入れない方は、問い合わせの受付で本人を確かめてからリンクを出します。</p>
+      <h1>{ward.name}</h1><p class="lead">この自治会の運用の画面です。ログインできない方は、問い合わせの受付で本人を確かめてからリンクを出します。</p>
       <PrivateWardContact value={privateContact} />
-      <p>入る人を足すことと、リンクを出すことは、問い合わせの受付で行います。</p>
+      <p>画面を使える人を足すことと、リンクを出すことは、問い合わせの受付で行います。</p>
       <a class="button" href="/ops/contacts">問い合わせを見る</a>
-      <h2>公式LINE</h2><p>友だち追加の入口: {officialLineUrl || "開設の途中です"}</p>
-      {c.req.query("group") === "saved" ? <><Notice>役員グループにしました。問い合わせの知らせをこのグループへ送ります。</Notice><section class="next"><strong>次は</strong><p>区の画面で、ほかの内容を確かめてください。</p><a class="button secondary" href={`/ops/wards/${ward.slug}`}>区の画面へ戻る</a></section></> : null}
-      <h3>公式が入っているグループ</h3>
+      <h2>自治会のLINE</h2><p>友だち追加の入口: {officialLineUrl || "開設の途中です"}</p>
+      {c.req.query("group") === "saved" ? <><Notice>役員グループにしました。問い合わせの通知をこのグループへ送ります。</Notice><section class="next"><strong>次は</strong><p>自治会の画面で、ほかの内容を確かめてください。</p><a class="button secondary" href={`/ops/wards/${ward.slug}`}>自治会の画面へ戻る</a></section></> : null}
+      <h3>自治会のLINEが入っているグループ</h3>
       {groups.length ? groups.map((group, index) => <section class="panel"><h3>{group.summary?.name || `参加したグループ${index + 1}`}{group.summary ? `（${group.summary.count}人）` : ""}</h3>
-        {!group.summary ? <p>{formatJst(group.first_joined_at)}に参加しました。名前を取得できません。公式LINEの管理画面で確かめてください。</p> : null}
+        {!group.summary ? <p>{formatJst(group.first_joined_at)}に参加しました。名前を取得できません。LINE公式アカウントの管理画面で確かめてください。</p> : null}
         {selectedGroup === group.group_id ? <p>役員グループ</p> : <form method="post" action={`/ops/wards/${ward.slug}/officer-group`}><input type="hidden" name="groupId" value={group.group_id} /><button class="secondary">役員グループにする</button></form>}
-      </section>) : <p>まだありません。公式を役員のLINEグループに入れてから、この画面を開き直してください。</p>}
-      <h2>役員の入る人</h2>
+      </section>) : <p>まだありません。自治会のLINEを役員のLINEグループに入れてから、この画面を開き直してください。</p>}
+      <h2>役員の画面を使える人</h2>
       <table class="stack">
         <thead>
           <tr>
@@ -322,19 +322,19 @@ opsRoutes.get("/wards/:slug", async (c) => {
         </tbody>
       </table>
 
-      {c.req.query("digest") === "saved" ? <Notice>知らせの時刻と日数を保存しました。区の情報から直すこともできます。</Notice> : null}
-      <form method="post" action={`/ops/wards/${ward.slug}/digest`}><DigestFields value={digest} /><button class="secondary">知らせの時刻と日数を保存する</button></form>
-      <h2>この区のほかの画面</h2>
-      <nav class="action-links" aria-label="提供側の画面">
+      {c.req.query("digest") === "saved" ? <Notice>通知の時刻と日数を保存しました。自治会の情報から直すこともできます。</Notice> : null}
+      <form method="post" action={`/ops/wards/${ward.slug}/digest`}><DigestFields value={digest} /><button class="secondary">通知の時刻と日数を保存する</button></form>
+      <h2>この自治会のほかの画面</h2>
+      <nav class="action-links" aria-label="運用の画面">
         <a class="row-link" href={`/ops/photo-settings/${encodeURIComponent(ward.wardId)}`}><b>報告の写真の設定</b><span>写真を処理する準備と測定の結果を確かめます</span></a>
         <a class="row-link" href={`/ops/wards/${ward.slug}/costs`}><b>費用</b><span>月ごとに、AIに読んでもらった費用を見ます</span></a>
-        <a class="row-link" href={`/ops/wards/${ward.slug}/budget`}><b>予算とLINEの受付</b><span>区ごとにAIを動かす上限を決めます</span></a>
+        <a class="row-link" href={`/ops/wards/${ward.slug}/budget`}><b>予算とLINEの受付</b><span>自治会ごとにAIを動かす上限を決めます</span></a>
         <a class="row-link" href={`/ops/wards/${ward.slug}/queue`}><b>読み取りの状況</b><span>失敗したものを、もう一度動かします</span></a>
-        <a class="row-link" href={`/ops/wards/${ward.slug}/lifecycle`}><b>保管と消去</b><span>毎日の控え、引き渡し、区を止める、区の消去</span></a>
+        <a class="row-link" href={`/ops/wards/${ward.slug}/lifecycle`}><b>保管と消去</b><span>毎日の控え、引き渡し、自治会を止める、自治会の消去</span></a>
       </nav>
       <WardUrls url={url} adminUrl={`${url}admin/`} slug={ward.slug} />
-      {c.req.query("labels") === "saved" ? <Notice>保存しました。次に配る案内から、この言い方で出ます。</Notice> : null}
-      <form method="post" action={`/ops/wards/${ward.slug}/answer-labels`}><p>区分の数は三つのままです。役員の画面の区の情報と同じものを直します。</p><AnswerLabelFields labels={labels} /><button class="secondary" type="submit">人数の聞き方を保存する</button></form>
+      {c.req.query("labels") === "saved" ? <Notice>保存しました。次に知らせる案内から、この言い方で出ます。</Notice> : null}
+      <form method="post" action={`/ops/wards/${ward.slug}/answer-labels`}><p>区分の数は三つのままです。役員の画面の自治会の情報と同じものを直します。</p><AnswerLabelFields labels={labels} /><button class="secondary" type="submit">人数の聞き方を保存する</button></form>
 
     </OpsPage>,
   );
@@ -346,7 +346,7 @@ opsRoutes.post("/wards/:slug/officer-group", async (c) => {
   const form = await c.req.parseBody();
   const groupId = typeof form.groupId === "string" ? form.groupId : "";
   const group = await c.env.DB.prepare("SELECT 1 FROM line_group_notices WHERE ward_id = ? AND group_id = ?").bind(ward.wardId, groupId).first();
-  if (!group) return c.html(<OpsPage title="役員グループを指定できませんでした" loggedIn><h1>役員グループを指定できませんでした</h1><Notice error>公式が入っているグループから選んでください。</Notice><section class="next"><strong>次は</strong><p>区の画面でグループを確かめてください。</p><a class="button" href={`/ops/wards/${ward.slug}`}>区の画面へ戻る</a></section></OpsPage>, 400);
+  if (!group) return c.html(<OpsPage title="役員グループを指定できませんでした" loggedIn><h1>役員グループを指定できませんでした</h1><Notice error>自治会のLINEが入っているグループから選んでください。</Notice><section class="next"><strong>次は</strong><p>自治会の画面でグループを確かめてください。</p><a class="button" href={`/ops/wards/${ward.slug}`}>自治会の画面へ戻る</a></section></OpsPage>, 400);
   await setSetting(c.env.DB, ward.wardId, "line.officer_group", groupId, null);
   return c.redirect(`/ops/wards/${ward.slug}?group=saved`, 303);
 });
@@ -354,7 +354,7 @@ opsRoutes.post("/wards/:slug/officer-group", async (c) => {
 opsRoutes.post("/wards/:slug/digest", async (c) => {
   const ward = await wardOrNull(c, c.req.param("slug"));
   if (!ward) return c.html(<WardNotFound />, 404);
-  if (!await saveDigestSettings(c.env.DB, ward.wardId, await c.req.parseBody(), null)) return c.html(<OpsPage title="知らせの時刻を確かめてください" loggedIn><h1>保存していません</h1><Notice error>時刻と日数を確かめてください。日数は0から365までです。</Notice><section class="next"><strong>次は</strong><p>区の画面に戻って直し、もう一度保存してください。</p><a class="button" href={`/ops/wards/${ward.slug}`}>区の画面に戻る</a></section></OpsPage>, 400);
+  if (!await saveDigestSettings(c.env.DB, ward.wardId, await c.req.parseBody(), null)) return c.html(<OpsPage title="通知の時刻を確かめてください" loggedIn><h1>保存していません</h1><Notice error>時刻と日数を確かめてください。日数は0から365までです。</Notice><section class="next"><strong>次は</strong><p>自治会の画面に戻って直し、もう一度保存してください。</p><a class="button" href={`/ops/wards/${ward.slug}`}>自治会の画面に戻る</a></section></OpsPage>, 400);
   return c.redirect(`/ops/wards/${ward.slug}?digest=saved`, 303);
 });
 
@@ -380,17 +380,17 @@ opsRoutes.get("/wards/:slug/sheet", async (c) => {
   if (!ward) return c.html(<WardNotFound />, 404);
   const url = wardUrl(c.env, c.req.url, ward.slug);
   return c.html(
-    <PrintDocument title={`${ward.name}区のページの案内`}>
+    <PrintDocument title={`${ward.name}住民向けのページの案内`}>
       <Sheet footer={<span>{ward.name} 印刷した日: {formatJstDate(new Date().toISOString())}</span>}>
-        <h1>{ward.name} 区のページ</h1>
+        <h1>{ward.name} 住民向けのページ</h1>
         <p>案内、お知らせ、手伝いの募集は、スマートフォンやパソコンから、登録なしでご覧になれます。</p>
-        <p>下のQRをスマートフォンのカメラで読み取ると、区のページが開きます。</p>
+        <p>下のQRをスマートフォンのカメラで読み取ると、住民向けのページが開きます。</p>
         <p style="text-align:center">
           <PrintQr text={url} sizeMm={70} />
         </p>
         <p style="text-align:center; font-size:16pt; overflow-wrap:anywhere">{url}</p>
         <CutLine label="ここから下は役員の控え" />
-        <p>役員の画面（IDとパスワードで入ります）: {`${url}admin/`}</p>
+        <p>役員の画面（IDとパスワードでログインします）: {`${url}admin/`}</p>
       </Sheet>
     </PrintDocument>,
   );
@@ -427,7 +427,7 @@ function CostCard(props: { months: MonthlyMetrics[]; title: string }) {
       <p>失敗か、対応が必要{(total.failed + total.attention).toLocaleString("ja-JP")}件</p>
       <dl class="facts"><dt>費用の合計</dt><dd>{usd(totalCost)}</dd><dt>読む・当て先を調べる見積もり</dt><dd>{usd(total.readEstimateCents)}</dd><dt>利用の記録の金額</dt><dd>{usd(total.actualRunCostCents)}</dd>
         <dt>資料を読む</dt><dd>{total.readRuns.toLocaleString("ja-JP")}回、読み書きした量{total.readTokens.toLocaleString("ja-JP")}</dd>
-        <dt>段取りを作る</dt><dd>{total.connectRuns.toLocaleString("ja-JP")}回、読み書きした量{total.connectTokens.toLocaleString("ja-JP")}</dd>
+        <dt>やることを作る</dt><dd>{total.connectRuns.toLocaleString("ja-JP")}回、読み書きした量{total.connectTokens.toLocaleString("ja-JP")}</dd>
         <dt>一件あたり</dt><dd>{total.inputs ? usd(Math.round(totalCost / total.inputs)) : "—"}、平均{total.inputs ? minutes(total.durationMs / total.inputs) : "—"}</dd>
         <dt>失敗と対応</dt><dd>失敗{total.failed.toLocaleString("ja-JP")}件、対応が必要{total.attention.toLocaleString("ja-JP")}件</dd>
       </dl>
@@ -441,18 +441,18 @@ opsRoutes.get("/costs", async (c) => {
   const months = [...new Set(summaries.flatMap((ward) => ward.months.map((row) => row.month)))].sort((a, b) => b.localeCompare(a));
   return c.html(
     <OpsPage title="全体の費用" loggedIn>
-      <p class="link-line"><a href="/ops/">区の一覧</a></p>
+      <p class="link-line"><a href="/ops/">自治会の一覧</a></p>
       <h1>全体の費用</h1>
       <p>読む費用は、AIの公開されている単価から見積もった金額です。AIの利用の記録にある金額も足しています。</p>
       <CostCard months={summaries.flatMap((ward) => ward.months)} title="全体の合計" />
-      <h2>区ごと</h2>
+      <h2>自治会ごと</h2>
       {summaries.map((ward) => {
         const total = summarize(ward.months);
         return <section class="panel"><h3><a href={`/ops/wards/${ward.slug}/costs`}>{ward.name}</a></h3><p>送られた資料{total.inputs}件、費用{usd(total.readEstimateCents + total.actualRunCostCents)}</p></section>;
       })}
       <h2>月ごとの全体</h2>
       {months.map((month) => <CostCard months={summaries.flatMap((ward) => ward.months.filter((row) => row.month === month))} title={month} />)}
-      {summaries.length === 0 ? <p class="muted">区がありません。</p> : null}
+      {summaries.length === 0 ? <p class="muted">自治会がありません。</p> : null}
     </OpsPage>,
   );
 });
@@ -500,7 +500,7 @@ opsRoutes.get("/wards/:slug/budget", async (c) => {
       <section class="panel">
         <h2>今月</h2>
         <p>費用{usd(currentCost)} / 月の上限{metrics.monthlyLimitCents ? usd(metrics.monthlyLimitCents) : "制限なし"}</p>
-        <p>上限に達したら、読み取りと当て先の確認と段取り作りを待たせます。上限を上げるか0にするか、月が替わると、5分ごとの処理で続けます。区のページ、記録、印刷、Webの答えは止まりません。</p>
+        <p>上限に達したら、読み取りと当て先の確認とやることの作成を待たせます。上限を上げるか0にするか、月が替わると、5分ごとの処理で続けます。住民向けのページ、記録、印刷、Webの返事は止まりません。</p>
         <form method="post" action={`/ops/wards/${ward.slug}/budget`}>
           <label for="monthlyLimit">月の上限（USD。0は制限なし）</label>
           <input id="monthlyLimit" name="monthlyLimit" type="number" min="0" step="0.01" required value={(metrics.monthlyLimitCents / 100).toFixed(2)} />
@@ -562,8 +562,8 @@ opsRoutes.post("/wards/:slug/budget", async (c) => {
 });
 
 const QUEUE_STATUS: Record<string, string> = {
-  received: "受け付けました", reading: "読んでいます", read: "段取りを作るのを待っています",
-  connecting: "段取りを作っています", attention: "対応が必要", failed: "失敗",
+  received: "受け付けました", reading: "読んでいます", read: "やることを作るのを待っています",
+  connecting: "やることを作っています", attention: "対応が必要", failed: "失敗",
 };
 const QUEUE_FAILURE: Record<string, string> = {
   unsupported: "対応していない形式", too_large: "大きすぎます", unreadable: "読めませんでした",
@@ -577,11 +577,11 @@ opsRoutes.get("/wards/:slug/queue", async (c) => {
   return c.html(
     <OpsPage title={`${ward.name}の読み取りの状況`} loggedIn>
       <p class="link-line"><a href={`/ops/wards/${ward.slug}`}>{ward.name} の画面</a></p>
-      <h1>{ward.name}の読み取りの状況</h1><p class="lead">役員が送った資料を読んで、段取りを作る処理のうち、見てほしいものです。失敗したものは、もう一度動かせます。大きすぎる資料だけは、役員に分けて送り直してもらいます。</p>
+      <h1>{ward.name}の読み取りの状況</h1><p class="lead">役員が送った資料を読んで、やることを作る処理のうち、見てほしいものです。失敗したものは、もう一度動かせます。大きすぎる資料だけは、役員に分けて送り直してもらいます。</p>
       {jobs.length === 0 ? <p class="muted">対応が必要なものはありません。</p> : jobs.map((job) => (
         <section class="panel">
           <h2>{QUEUE_STATUS[job.status]}</h2>
-          <p>資料: {job.filename || "名前のない資料"}<br />受け付け: {formatJst(job.createdAt)}<br />種類: {job.task === "connect" ? "資料から段取りを作る" : "下書きを書く"}{job.failure ? <><br />理由: {QUEUE_FAILURE[job.failure] ?? "内容を確認してください"}</> : null}</p>
+          <p>資料: {job.filename || "名前のない資料"}<br />受け付け: {formatJst(job.createdAt)}<br />種類: {job.task === "connect" ? "資料からやることを作る" : "下書きを書く"}{job.failure ? <><br />理由: {QUEUE_FAILURE[job.failure] ?? "内容を確認してください"}</> : null}</p>
           {job.failure !== "too_large" && (job.status === "failed" || (job.status === "attention" && job.projectId)) ? (
             <form method="post" action={`/ops/wards/${ward.slug}/queue/${job.jobId}/retry`}>
               <button type="submit">もう一度動かす</button>
@@ -623,5 +623,5 @@ opsRoutes.route("/alerts", alertsRoutes);
 opsRoutes.route("/", lifecyclePages);
 
 function budgetSaved(c: OpsContext, slug: string) {
-  return c.html(<OpsPage title="予算を保存しました" loggedIn><h1>予算を保存しました</h1><Notice>AIの費用の上限を変えました。役員の配る操作は止まりません。</Notice><section class="next"><strong>次は</strong><p>この区の画面で、ほかの状況も見られます。</p><a class="button" href={`/ops/wards/${slug}`}>区の画面へ戻る</a></section><h2>間違えたときは</h2><p>予算の画面で、金額を直して保存できます。</p><a class="quiet" href={`/ops/wards/${slug}/budget`}>予算を直す</a></OpsPage>);
+  return c.html(<OpsPage title="予算を保存しました" loggedIn><h1>予算を保存しました</h1><Notice>AIの費用の上限を変えました。役員が知らせる操作は止まりません。</Notice><section class="next"><strong>次は</strong><p>この自治会の画面で、ほかの状況も見られます。</p><a class="button" href={`/ops/wards/${slug}`}>自治会の画面へ戻る</a></section><h2>間違えたときは</h2><p>予算の画面で、金額を直して保存できます。</p><a class="quiet" href={`/ops/wards/${slug}/budget`}>予算を直す</a></OpsPage>);
 }

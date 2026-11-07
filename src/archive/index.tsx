@@ -33,7 +33,7 @@ function AskForm({ action, question = "" }: { action: string; question?: string 
   return <form method="post" action={action}>
     <label for="question">聞きたいこと</label><input id="question" name="question" type="text" value={question} minlength={3} maxlength={300} required />
     <p class="help-text">3文字以上300文字以内で書いてください。</p>
-    <button type="submit" class="secondary">記録に聞く</button>
+    <button type="submit" class="secondary">終わったものについてAIに聞く</button>
   </form>;
 }
 
@@ -50,12 +50,12 @@ admin.get("/archive", async (c) => {
     const month = new Date(Date.parse(project.closedAt!) + 9 * 3600_000).toISOString().slice(0, 7);
     byMonth.set(month, [...(byMonth.get(month) ?? []), project]);
   }
-  return c.html(<Layout title="記録" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a><h1>記録</h1>
-    {projects.length === 0 ? <><div class="notice" role="status"><strong>閉じた行事はまだありません</strong><p>行事を閉じると、ここに残ります。</p></div><section class="next"><strong>次は</strong><p>去年の資料が手元にあれば、送ると段取りに使えます。</p><a class="button" href={adminPath(ward, "/intake")}>資料を送る</a></section></> : <><p class="lead">終わった行事の記録です。去年の動きを読めます。ここから新しい年の準備も始められます。</p>
-    <nav class="action-links"><a class="button secondary" href={adminPath(ward, "/archive/search")}>記録を探す</a><a class="button secondary" href={adminPath(ward, "/archive/map")}>一年の予定を見る</a></nav>
-    {[...byMonth.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([month, entries]) => <section><h2>{Number(month.slice(0, 4))}年{Number(month.slice(5, 7))}月に閉じたもの</h2><ul class="rows two">{entries.map((p) => <li><a class="row-link" href={adminPath(ward, `/archive/${p.projectId}`)}><b>{p.title}</b><span>{p.year}年　{PROJECT_KIND_LABEL[p.kind]}</span><span>段取りと報告を読めます</span></a></li>)}</ul></section>)}
-    <p class="muted">記録を押すと、その行事の段取り、配ったもの、答えを読めます。</p></>}
+  return c.html(<Layout title="終わったもの" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a><h1>終わったもの</h1>
+    {projects.length === 0 ? <><div class="notice" role="status"><strong>終わったものはまだありません</strong><p>終わりにすると、ここに残ります。</p></div><section class="next"><strong>次は</strong><p>去年の資料が手元にあれば、送るとやることに使えます。</p><a class="button" href={adminPath(ward, "/intake")}>資料を送る</a></section></> : <><p class="lead">終わったものです。去年の動きを読めます。ここから新しい年の準備も始められます。</p>
+    <nav class="action-links"><a class="button secondary" href={adminPath(ward, "/archive/search")}>終わったものを探す</a><a class="button secondary" href={adminPath(ward, "/archive/map")}>一年の予定を見る</a></nav>
+    {[...byMonth.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([month, entries]) => <section><h2>{Number(month.slice(0, 4))}年{Number(month.slice(5, 7))}月に終わりにしたもの</h2><ul class="rows two">{entries.map((p) => <li><a class="row-link" href={adminPath(ward, `/archive/${p.projectId}`)}><b>{p.title}</b><span>{p.year}年　{PROJECT_KIND_LABEL[p.kind]}</span><span>やることと報告を読めます</span></a></li>)}</ul></section>)}
+    <p class="muted">名前を押すと、やること、知らせたもの、出欠の返事を読めます。</p></>}
   </Layout>);
 });
 
@@ -72,16 +72,16 @@ admin.get("/archive/map", async (c) => {
     months.set(month, [...(months.get(month) ?? []), row]);
   }
   return c.html(<Layout title="一年の予定" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, "/archive")}>← 記録へ</a><h1>一年の予定</h1><p class="lead">区の仕事を、始まりの月ごとに並べています。去年の記録を開くと、そこから新しく始められます。</p>
+    <a class="back" href={adminPath(ward, "/archive")}>← 終わったものへ</a><h1>一年の予定</h1><p class="lead">自治会の仕事を、始まりの月ごとに並べています。終わったものを開くと、そこから新しく始められます。</p>
     {[...months.entries()].sort(([a], [b]) => b.slice(0, 4).localeCompare(a.slice(0, 4)) || a.localeCompare(b)).map(([month, entries]) => <section>
       <h2>{month.replace(/^(\d{4})-(\d{2})$/, (_, year: string, month: string) => `${year}年${Number(month)}月`)}</h2><ul class="rows two">{entries.map((entry) => <li>
         <a class="row-link" href={adminPath(ward, entry.closed_at ? `/archive/${entry.project_id}` : `/projects/${entry.project_id}/map`)}>
-          <b>{entry.name}</b><span>{entry.title}（{entry.year}年　{entry.closed_at ? "記録" : "進めています"}）</span><span>{entry.period_start && entry.period_start === entry.period_end ? formatJstDate(entry.period_start) : entry.period_start && entry.period_end ? periodText(entry.period_start, entry.period_end) : entry.period_end ? `${shortDate(entry.period_end)}まで` : entry.period_start ? `${shortDate(entry.period_start)}から` : "時期はまだ決まっていません"}</span>
+          <b>{entry.name}</b><span>{entry.title}（{entry.year}年　{entry.closed_at ? "終わりました" : "進めています"}）</span><span>{entry.period_start && entry.period_start === entry.period_end ? formatJstDate(entry.period_start) : entry.period_start && entry.period_end ? periodText(entry.period_start, entry.period_end) : entry.period_end ? `${shortDate(entry.period_end)}まで` : entry.period_start ? `${shortDate(entry.period_start)}から` : "時期はまだ決まっていません"}</span>
         </a>
-        {entry.closed_at ? <a class="quiet" href={adminPath(ward, `/archive/${entry.project_id}?view=seed`)}>この記録から新しく始める</a> : null}
+        {entry.closed_at ? <a class="quiet" href={adminPath(ward, `/archive/${entry.project_id}?view=seed`)}>これをもとに新しく始める</a> : null}
       </li>)}</ul></section>)}
     {rows.results.some((row) => !row.period_start) ? <p class="muted">時期が決まっていない仕事は「時期未定」の月にまとまります。</p> : null}
-    {rows.results.length === 0 ? <><p>予定はまだありません。資料を送ると、行事の段取りがここに入ります。</p><a class="button secondary" href={adminPath(ward, "/intake")}>写真やファイルを送る</a></> : null}
+    {rows.results.length === 0 ? <><p>予定はまだありません。資料を送ると、やることがここに入ります。</p><a class="button secondary" href={adminPath(ward, "/intake")}>写真やファイルを送る</a></> : null}
   </Layout>);
 });
 
@@ -97,20 +97,20 @@ admin.get("/archive/search", async (c) => {
   const counterpart = c.req.query("counterpart") ?? "";
   const results = query.trim().length >= 2 ? await searchArchive(c.env.DB, ward.wardId, { query, year, recordType, projectKind, counterpart, limit: 30 }) : [];
   const years = [...new Set((await listProjects(c.env.DB, ward.wardId, { includeClosed: true })).map((p) => p.year))].sort((a, b) => b - a);
-  const labels: Record<ArchiveRecordType, string> = { reading: "読み取り", decision: "決めたこと", report: "報告", map: "段取り" };
-  return c.html(<Layout title="記録を探す" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>記録を探す</h1><p class="lead">覚えている言葉を入れて、過去の資料や報告を探します。年や相手の名前でも絞れます。</p>
+  const labels: Record<ArchiveRecordType, string> = { reading: "読み取り", decision: "決めたこと", report: "報告", map: "やること" };
+  return c.html(<Layout title="終わったものを探す" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <h1>終わったものを探す</h1><p class="lead">覚えている言葉を入れて、過去の資料や報告を探します。年や相手の名前でも絞れます。</p>
     <p>二文字以上で探します。年、種類、相手の名前で絞れます。</p>
     <form method="get" action={adminPath(ward, "/archive/search")}>
       <label for="q">言葉</label><input id="q" name="q" type="text" value={query} minlength={2} required />
       <label for="year">年</label><select id="year" name="year"><option value="">すべて</option>{years.map((value) => <option value={value} selected={year === value}>{value}年</option>)}</select>
-      <label for="kind">行事の種類</label><select id="kind" name="kind"><option value="">すべて</option>{PROJECT_KINDS.map((value) => <option value={value} selected={projectKind === value}>{PROJECT_KIND_LABEL[value]}</option>)}</select>
-      <label for="type">記録の種類</label><select id="type" name="type"><option value="">すべて</option>{ARCHIVE_RECORD_TYPES.map((value) => <option value={value} selected={recordType === value}>{labels[value]}</option>)}</select>
+      <label for="kind">種類</label><select id="kind" name="kind"><option value="">すべて</option>{PROJECT_KINDS.map((value) => <option value={value} selected={projectKind === value}>{PROJECT_KIND_LABEL[value]}</option>)}</select>
+      <label for="type">中身の種類</label><select id="type" name="type"><option value="">すべて</option>{ARCHIVE_RECORD_TYPES.map((value) => <option value={value} selected={recordType === value}>{labels[value]}</option>)}</select>
       <label for="counterpart">相手の名前</label><input id="counterpart" name="counterpart" type="text" value={counterpart} />
       <p class="action-bar page-action"><button>探す</button></p>
     </form>
     {query.trim().length === 1 ? <p class="notice">二文字以上入れてください。</p> : null}
-    {query.trim().length >= 2 ? <h2>見つかった記録（最大30件）</h2> : null}
+    {query.trim().length >= 2 ? <h2>見つかったもの（最大30件）</h2> : null}
     {results.map((result) => <article class="panel">
       <p>{result.year}年 / {PROJECT_KIND_LABEL[result.project_kind as ProjectKind]} / {labels[result.record_type]}</p>
       <h2><a href={adminPath(ward, projectRecordPath(result))}>{result.title}</a></h2>
@@ -119,8 +119,8 @@ admin.get("/archive/search", async (c) => {
       {result.source_id ? <p><a href={adminPath(ward, `/intake/originals/${result.source_id}`)}>元の箇所へ戻る</a>{result.locator ? `（${result.locator}）` : null}</p> : null}
     </article>)}
     {query.trim().length >= 2 && results.length === 0 ? <p>見つかりませんでした。</p> : null}
-    <h2>記録に聞く</h2>
-    <p>記録から分かることを尋ねます。元の箇所も一緒に表示します。</p>
+    <h2>終わったものについてAIに聞く</h2>
+    <p>終わったものの資料から分かることを、AIに尋ねます。元の箇所も一緒に表示します。</p>
     <AskForm action={adminPath(ward, "/archive/ask")} />
   </Layout>);
 });
@@ -130,15 +130,15 @@ admin.post("/archive/ask", async (c) => {
   const form = await c.req.formData();
   const entered = String(form.get("question") ?? "");
   const question = entered.trim();
-  if (question.length < 3 || question.length > 300) return c.html(<Layout title="記録に聞く" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>記録に聞く</h1><p class="lead">記録から分かることを尋ねます。</p>
+  if (question.length < 3 || question.length > 300) return c.html(<Layout title="終わったものについてAIに聞く" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <h1>終わったものについてAIに聞く</h1><p class="lead">終わったものの資料から分かることを、AIに尋ねます。</p>
     <div class="notice warn" role="alert">聞きたいことを3文字以上300文字以内で書いてください。書いた内容は下に残っています。</div>
     <AskForm action={adminPath(ward, "/archive/ask")} question={entered} />
-    <a class="quiet" href={adminPath(ward, "/archive/search")}>記録を探す画面に戻る</a>
+    <a class="quiet" href={adminPath(ward, "/archive/search")}>終わったものを探す画面に戻る</a>
   </Layout>, 400);
   const fragments = await findFragments(c.env.DB, ward.wardId, question, 8);
-  if (fragments.length === 0) return c.html(<Layout title="記録に聞く" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>記録に聞く</h1><p class="lead">過去の記録について聞いた結果です。元の箇所が示されているときは、そこも開いて内容を読んでください。</p><p>記録の中に答えは見つかりませんでした。</p><p class="link-line"><a href={adminPath(ward, "/archive/search")}>記録を探す</a></p>
+  if (fragments.length === 0) return c.html(<Layout title="終わったものについてAIに聞く" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <h1>終わったものについてAIに聞く</h1><p class="lead">終わったものについてAIに聞いた結果です。元の箇所が示されているときは、そこも開いて内容を読んでください。</p><p>終わったものの中に答えは見つかりませんでした。</p><p class="link-line"><a href={adminPath(ward, "/archive/search")}>終わったものを探す</a></p>
   </Layout>);
   const allowed = fragments.map((fragment) => String(fragment.entry_id));
   const response = await createAnthropic(c.env).messages.create({
@@ -153,7 +153,7 @@ admin.post("/archive/ask", async (c) => {
     }) as unknown as { [key: string]: unknown } } },
   });
   const text = response.content.find((block) => block.type === "text");
-  let answer = "記録の答えを作れませんでした。";
+  let answer = "答えを作れませんでした。";
   let citedIds: string[] = [];
   if (text?.type === "text") {
     try {
@@ -163,11 +163,11 @@ admin.post("/archive/ask", async (c) => {
     } catch { /* structured response was malformed; show a safe unavailable answer */ }
   }
   const citations = fragments.filter((fragment) => citedIds.includes(String(fragment.entry_id)));
-  return c.html(<Layout title="記録に聞く" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>記録に聞く</h1><p class="lead">過去の記録について聞いた結果です。元の箇所が示されているときは、そこも開いて内容を読んでください。</p><p><strong>質問:</strong> {question}</p><section class="panel"><p style="white-space:pre-wrap">{answer}</p></section>
+  return c.html(<Layout title="終わったものについてAIに聞く" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <h1>終わったものについてAIに聞く</h1><p class="lead">終わったものについてAIに聞いた結果です。元の箇所が示されているときは、そこも開いて内容を読んでください。</p><p><strong>質問:</strong> {question}</p><section class="panel"><p style="white-space:pre-wrap">{answer}</p></section>
     <h2>元の箇所</h2>{citations.map((fragment) => <p><a href={adminPath(ward, fragment.source_id ? `/intake/originals/${fragment.source_id}` : projectRecordPath(fragment))}>{fragment.year}年{fragment.title}</a> — {fragment.locator}（{fragment.excerpt}）</p>)}
     {citations.length === 0 ? <p>根拠として示せる箇所は見つかりませんでした。</p> : null}
-    <p class="link-line"><a href={adminPath(ward, "/archive/search")}>記録を探す</a></p>
+    <p class="link-line"><a href={adminPath(ward, "/archive/search")}>終わったものを探す</a></p>
   </Layout>);
 });
 
@@ -185,18 +185,18 @@ admin.get("/archive/:projectId", async (c) => {
     const current = open.filter((task) => (!task.periodStart || task.periodStart <= today) && (!task.periodEnd || task.periodEnd >= today)).sort((a, b) => (a.periodEnd ?? "9999").localeCompare(b.periodEnd ?? "9999"));
     const task = current[0] ?? open.filter((task) => task.periodStart && task.periodStart > today).sort((a, b) => a.periodStart!.localeCompare(b.periodStart!))[0];
     const questions = next.questions.some((question) => question.state === "open" || question.state === "later");
-    const label = questions ? "質問に答える" : task?.name ?? (open.length ? "段取りへ" : "報告を書いて閉じる");
+    const label = questions ? "質問に答える" : task?.name ?? (open.length ? "やることへ" : "報告を書いて終わりにする");
     const href = questions ? adminPath(ward, `/projects/${next.project.projectId}/questions`) : task ? `${mapHref}/${task.taskId}` : open.length ? mapHref : adminPath(ward, `/close/${next.project.projectId}`);
-    return c.html(<AdminPage ward={ward} account={c.var.account} title="新しく始めました" back={{ href: root, label: `← ${project.year}年の記録へ` }}>
-      <h1>{next.project.title}を始めました</h1><p class="lead">去年の段取りを新しい日に置き直しました</p><section class="next"><strong>次は</strong><p>段取りから準備を進められます。</p><a class="button" href={href}>{label}</a></section><p><a class="quiet" href={mapHref}>段取りへ</a></p><p>仕事の時期は、段取りから直せます。去年の記録は変わりません。</p>
+    return c.html(<AdminPage ward={ward} account={c.var.account} title="新しく始めました" back={{ href: root, label: `← ${project.year}年の${project.title}へ` }}>
+      <h1>{next.project.title}を始めました</h1><p class="lead">去年のやることを新しい日に置き直しました</p><section class="next"><strong>次は</strong><p>やることから準備を進められます。</p><a class="button" href={href}>{label}</a></section><p><a class="quiet" href={mapHref}>やることへ</a></p><p>仕事の時期は、やることから直せます。去年のものは変わりません。</p>
     </AdminPage>);
   }
-  if (c.req.query("view") === "seed") return c.html(<AdminPage ward={ward} account={c.var.account} title="記録をもとに新しく始める" back={{ href: root, label: `← ${project.year}年の記録へ` }}>
-    <h1>{project.year}年の{project.title}をもとに新しく始める</h1><p class="lead">去年の段取りを、新しい日に合わせて置き直します。全部を見直す必要はありません。</p>
-    {c.req.query("error") ? <p class="notice error" role="alert">名前、年、行事の日を確かめて、もう一度始めてください。</p> : null}
+  if (c.req.query("view") === "seed") return c.html(<AdminPage ward={ward} account={c.var.account} title="終わったものをもとに新しく始める" back={{ href: root, label: `← ${project.year}年の${project.title}へ` }}>
+    <h1>{project.year}年の{project.title}をもとに新しく始める</h1><p class="lead">去年のやることを、新しい日に合わせて置き直します。全部を見直す必要はありません。</p>
+    {c.req.query("error") ? <p class="notice error" role="alert">名前、年、当日を確かめて、もう一度始めてください。</p> : null}
     <form method="post" action={`${root}/seed`}><div class="field"><label for="title">名前</label><input id="title" name="title" type="text" value={project.title} maxlength={100} required /></div>
       <div class="field"><label for="year">年</label><input id="year" name="year" type="number" inputmode="numeric" value={project.year + 1} min="1900" max="2200" required /></div>
-      <div class="field"><label for="eventDay">行事の日</label><input id="eventDay" name="eventDay" type="date" required={project.kind === "event"} /></div><div class="action-bar"><button>始める</button></div></form><p class="muted">新しく始めても、去年の記録は変わりません。</p>
+      <div class="field"><label for="eventDay">当日</label><input id="eventDay" name="eventDay" type="date" required={project.kind === "event"} /></div><div class="action-bar"><button>始める</button></div></form><p class="muted">新しく始めても、去年のものは変わりません。</p>
   </AdminPage>);
   const [reports, map, originals, documents, answers, state, helpCount, submittedItems] = await Promise.all([
     c.env.DB.prepare("SELECT scope, body FROM project_close_reports WHERE ward_id = ? AND project_id = ? ORDER BY scope").bind(ward.wardId, id).all<{ scope: string; body: string }>(),
@@ -226,47 +226,47 @@ admin.get("/archive/:projectId", async (c) => {
     total.helpers += answer.helperName ? 1 : 0;
     totals.set(answer.district, total);
   }
-  return c.html(<AdminPage ward={ward} account={c.var.account} title={`${project.year}年 ${project.title}の記録`} back={{ href: adminPath(ward, "/archive"), label: "← 記録の一覧へ" }}>
-    <h1>{project.year}年 {project.title}の記録</h1><p class="lead">去年の動きを読めます。ここから新しい年の準備を始められます。</p>
+  return c.html(<AdminPage ward={ward} account={c.var.account} title={`${project.year}年 ${project.title}（終わったもの）`} back={{ href: adminPath(ward, "/archive"), label: "← 終わったものの一覧へ" }}>
+    <h1>{project.year}年 {project.title}（終わったもの）</h1><p class="lead">去年の動きを読めます。ここから新しい年の準備を始められます。</p>
     <div class="action-links"><a class="button" href={`${root}?view=seed`}>これをもとに新しく始める</a></div>
     <div class="record-split"><section>
-    <h2>段取り</h2>{map.results?.map((task) => <section class="panel"><h3>{task.name}</h3><p>{formatDateText(task.period)} / {MAP_PROGRESS_LABEL[task.progress as MapProgress] ?? "これから"}</p>
+    <h2>やること</h2>{map.results?.map((task) => <section class="panel"><h3>{task.name}</h3><p>{formatDateText(task.period)} / {MAP_PROGRESS_LABEL[task.progress as MapProgress] ?? "これから"}</p>
       {task.requested_by ? <p>頼んだ人: {task.requested_by}</p> : null}{task.difficulty ? <p>困ったこと: {task.difficulty}</p> : null}{task.next_year ? <p>来年変えること: {task.next_year}</p> : null}</section>)}
 
     {!map.results.length ? <p>残っている仕事はありません。</p> : null}
-    <h2>配ったもの</h2>
+    <h2>知らせたもの</h2>
     {documents.results.map((document) => <details class="fold"><summary>{document.title}</summary><div>
-      <p>{formatJstDate(document.published_at)} / {document.scope === "public" ? "だれでも読める" : document.scope === "space" ? "実行委員と班長向け" : "役員向け"}{document.unpublished_at ? " / 区のページから下げました" : ""}</p>
+      <p>{formatJstDate(document.published_at)} / {document.scope === "public" ? "だれでも読める" : document.scope === "space" ? "実行委員と班長向け" : "役員向け"}{document.unpublished_at ? " / 住民向けのページから取り下げました" : ""}</p>
       <ArticleBody body={document.body} kind={document.kind} />
       {document.scope === "space" && (document.kind === "duty_roster" || document.kind === "procedure") ? <>
-        <h4>配ったときの当番表と配置図</h4>
+        <h4>載せたときの当番表と配置図</h4>
         <RecordedPublicationTables raw={document.tables_snapshot} />
       </> : null}
     </div></details>)}
-    {!documents.results.length ? <p>配ったものはありません。</p> : null}
+    {!documents.results.length ? <p>知らせたものはありません。</p> : null}
     {submittedItems.length || ["city_request", "request"].includes(project.kind) ? <SubmittedItems items={submittedItems} /> : null}
 
-    </section><aside>{meeting ? <MeetingCounts totals={meetingTotals} className="counts record-counts" /> : <div class="counts record-counts"><div class="count"><b>{answers.length}<small>世帯</small></b><span>答えた</span></div><div class="count"><b>{answers.reduce((sum, answer) => sum + answer.peopleCount, 0)}<small>人</small></b><span>参加すると答えた</span></div></div>}
-      <ul class="links"><li class="link-line"><a href="#report">報告を読む</a></li><li class="link-line"><a href="#answers">答えの一覧を読む</a></li><li class="link-line"><a href="#orig">元の資料を読む（{originals.results.length}件）</a></li></ul>
-      <details class="hint"><summary>ほかの記録を探す</summary><div><form method="get" action={adminPath(ward, "/archive/search")}><label for="q">探す言葉</label><input id="q" name="q" type="text" minlength={2} required /><button class="secondary">探す</button></form></div></details>
+    </section><aside>{meeting ? <MeetingCounts totals={meetingTotals} className="counts record-counts" /> : <div class="counts record-counts"><div class="count"><b>{answers.length}<small>世帯</small></b><span>返事のあった世帯</span></div><div class="count"><b>{answers.reduce((sum, answer) => sum + answer.peopleCount, 0)}<small>人</small></b><span>参加すると返事をした</span></div></div>}
+      <ul class="links"><li class="link-line"><a href="#report">報告を読む</a></li><li class="link-line"><a href="#answers">返事の一覧を読む</a></li><li class="link-line"><a href="#orig">元の資料を読む（{originals.results.length}件）</a></li></ul>
+      <details class="hint"><summary>ほかの終わったものを探す</summary><div><form method="get" action={adminPath(ward, "/archive/search")}><label for="q">探す言葉</label><input id="q" name="q" type="text" minlength={2} required /><button class="secondary">探す</button></form></div></details>
     </aside></div>
     <h2 id="report">報告</h2>{reports.results?.map((report) => <section class="panel"><h3>{report.scope === "public" ? "だれでも読める部分" : "役員だけの部分"}</h3><p style="white-space:pre-wrap">{report.body || "まだ書いていません"}</p></section>)}
-    <h2 id="answers">答えの一覧</h2><p>紙、電話、スマホの答えを合わせた数です。</p>
+    <h2 id="answers">返事の一覧</h2><p>紙、電話、スマホの返事を合わせた数です。</p>
     {meeting ? <>
       <p>{meetingTotalsText(meetingTotals)}</p>
       {[...totals.keys()].map((district) => <p>{district || "班が分からない"}: {meetingTotalsText(countMeetingAnswers(answers.filter((answer) => answer.district === district)))}</p>)}
     </> : <>
-    <p>参加すると答えた人数{answers.reduce((sum, answer) => sum + answer.peopleCount, 0)}人 / 手伝いの申し出{answers.filter((answer) => answer.helperName).length}件</p>
-    {answers.some((answer) => answer.childrenCount != null || answer.adultsCount != null || answer.seniorsCount != null) ? <p>参加する人の内訳: {answerLabels.map((label, index) => `${label}${answers.reduce((sum, answer) => sum + ([answer.childrenCount, answer.adultsCount, answer.seniorsCount][index] ?? 0), 0)}人`).join("、")}。内訳のない答えは合計だけに含めています。</p> : null}
-    <p>手伝いだけの申し込み（閉じたとき）: {helpCount?.help_offer_count_on_close === null || !helpCount ? "人数の記録がありません" : `${helpCount.help_offer_count_on_close}人`}</p>
-    {[...totals].map(([district, total]) => <p>{district || "班が分からない"}: 参加すると答えた人数{total.people}人 / 手伝い{total.helpers}件</p>)}
+    <p>参加すると返事をした人数{answers.reduce((sum, answer) => sum + answer.peopleCount, 0)}人 / 手伝いの申し出{answers.filter((answer) => answer.helperName).length}件</p>
+    {answers.some((answer) => answer.childrenCount != null || answer.adultsCount != null || answer.seniorsCount != null) ? <p>参加する人の内訳: {answerLabels.map((label, index) => `${label}${answers.reduce((sum, answer) => sum + ([answer.childrenCount, answer.adultsCount, answer.seniorsCount][index] ?? 0), 0)}人`).join("、")}。内訳のない返事は合計だけに含めています。</p> : null}
+    <p>手伝いだけの申し込み（終わりにしたとき）: {helpCount?.help_offer_count_on_close === null || !helpCount ? "人数の記録がありません" : `${helpCount.help_offer_count_on_close}人`}</p>
+    {[...totals].map(([district, total]) => <p>{district || "班が分からない"}: 参加すると返事をした人数{total.people}人 / 手伝い{total.helpers}件</p>)}
     </>}
     {answers.map((answer) => <section class="panel">
       <h3>{answer.household || answer.helperName || "手伝いの申し出"}</h3><p>{answer.district || "班が分からない"} / {meeting ? meetingText(answer) : `参加${countText(answer, answerLabels)}`}</p>
       {!meeting && answer.helperName ? <p>手伝い: {answer.helperName} / {answer.helperTimes || "時間の記入なし"}</p> : null}
       {answer.originalId ? <p class="link-line"><a href={adminPath(ward, `/intake/originals/${answer.originalId}`)}>回答票を読む</a></p> : null}
     </section>)}
-    {!answers.length ? <p>答えはありません。</p> : null}
+    {!answers.length ? <p>返事はありません。</p> : null}
     {(["decisions", "sponsors"] as const).map((table) => <section>
       <h2>{TABLES[table].label}</h2><RecordedRows table={table} rows={(state?.tables[table] ?? []).filter((row) => row.scope === "current")} ward={ward} />
     </section>)}
@@ -278,7 +278,7 @@ admin.get("/archive/:projectId", async (c) => {
 
 function RecordedPublicationTables({ raw }: { raw: string | null }) {
   const tables = readPublicationTables(raw);
-  return tables === null ? <p>配ったときの表の記録がありません。</p> : <>
+  return tables === null ? <p>載せたときの表の記録がありません。</p> : <>
     <MaterialsTable table="duties" items={tables} />
     <MaterialsTable table="layout" items={tables} />
   </>;
@@ -306,7 +306,7 @@ admin.post("/archive/:projectId/seed", async (c) => {
     await copySeed(c.env.DB, ward.wardId, sourceId, next.projectId, source.year, eventDay || null);
     return c.redirect(`${adminPath(ward, `/archive/${sourceId}`)}?started=${encodeURIComponent(next.projectId)}`, 303);
   } catch (error) {
-    if (!(error instanceof ProjectInputError)) console.error("去年の段取りから開けませんでした", error instanceof Error ? error.name : "");
+    if (!(error instanceof ProjectInputError)) console.error("去年のやることから開けませんでした", error instanceof Error ? error.name : "");
     return c.redirect(`${adminPath(ward, `/archive/${sourceId}`)}?view=seed&error=input`, 303);
   }
 });

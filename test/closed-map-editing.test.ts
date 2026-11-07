@@ -4,10 +4,10 @@ import { seedAdmin } from "../src/core/testing";
 import { createProject, getProjectState } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-it("閉じた段取りは変更せず、開き直してから仕事を直せる", async () => {
+it("閉じたやることは変更せず、開き直してから仕事を直せる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の段取りの確認", year: 2026, eventDay: "2026-10-24", accountId: account.accountId,
+    kind: "event", title: "架空のやることの確認", year: 2026, eventDay: "2026-10-24", accountId: account.accountId,
   });
   const root = `/${ward.slug}/admin`;
   const path = `${root}/projects/${project.projectId}/map`;
@@ -30,12 +30,12 @@ it("閉じた段取りは変更せず、開き直してから仕事を直せる"
     expect(response.headers.get("location")).toContain(`${root}/close/${project.projectId}?error=`);
   }
   const closed = await (await get(realApp, path, cookie)).text();
-  expect(closed).toContain("直すときは「報告を書いて閉じる」から「もう一度開く」を押してください。");
+  expect(closed).toContain("直すときは「報告を書いて終わりにする」の画面で「終わりを取り消す」を押してください。");
   expect(closed).not.toContain("時期や担当を直す");
-  expect(closed).not.toContain("この仕事を段取りから外す");
+  expect(closed).not.toContain("この仕事をやることから外す");
   expect(closed).not.toContain('name="name"');
   const guidance = await (await get(realApp, responses[0]!.headers.get("location")!, cookie)).text();
-  expect(guidance).toContain("この行事は閉じました。段取りを直すときは「もう一度開く」を押してください。");
+  expect(guidance).toContain("もう終わりにしています。やることを直すときは「終わりを取り消す」を押してください。");
 
   expect((await postForm(realApp, `${root}/close/${project.projectId}/reopen`, {}, cookie)).status).toBe(303);
   expect(await (await get(realApp, `${path}/${task.taskId}`, cookie)).text()).toContain("時期や担当を直す");

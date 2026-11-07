@@ -30,7 +30,7 @@ export function AnswerLabelFields({ labels, open = false }: { labels: AnswerLabe
   return <details class="hint" open={open}><summary>人数の聞き方を変える</summary>
     <p>区分を変えたいときだけ直してください。</p>
     {labels.map((label, index) => <div><label for={`answer-label-${index}`}>{["一つ目", "二つ目", "三つ目"][index]}</label><input id={`answer-label-${index}`} name={`answer_label_${index}`} value={label} maxlength={80} required /></div>)}
-    <p>次に配る案内から、答える画面と紙の回答票はこの言い方になります。もう届いた答えの人数は変わりません。</p>
+    <p>次に知らせる案内から、住民が返事をする画面と紙の回答票はこの言い方になります。もう届いた返事の人数は変わりません。</p>
     <button type="submit" name="answer_labels_reset" value="1" class="secondary" formnovalidate>最初の言い方に戻す</button>
   </details>;
 }

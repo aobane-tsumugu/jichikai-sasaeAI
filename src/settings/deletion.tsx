@@ -33,16 +33,16 @@ deletion.get("/", async (c) => {
     FROM project_answers a JOIN projects p ON p.ward_id = a.ward_id AND p.project_id = a.project_id
     WHERE a.ward_id = ? AND a.original_id IS NULL ORDER BY a.created_at DESC LIMIT 200`).bind(ward.wardId)
     .all<{ answer_id: string; household: string; district: string; source: string; created_at: string; title: string }>();
-  return c.html(<AdminPage ward={ward} account={account} title="消す希望" back={{ href: adminPath(ward, "/settings"), label: "区の設定" }}>
+  return c.html(<AdminPage ward={ward} account={account} title="消す希望" back={{ href: adminPath(ward, "/settings"), label: "自治会の設定" }}>
     <h1>消す希望</h1><p class="lead">住民から消してほしいと頼まれたものを、ここで選んで消します。消すと元に戻せません。</p>
     {c.req.query("queued") === "1" ? <><Notice>消去を受け付けました。処理は続きから進みます。</Notice><section class="next"><strong>次は</strong><p>下の件数で、消している途中か、対応が必要かを見られます。画面を閉じても処理は続きます。</p><a class="button" href={adminPath(ward, "/settings/deletion")}>進み具合を見る</a></section><p>消したものは元に戻せません。</p></> : null}
     <p>元の資料、読み取った内容、それらを探すための一覧を、一緒に消します。AIが読んでいる途中のものは、終わったあとに消します。</p>
     <p>受け付けた{counts.get("pending") ?? 0}件、消している途中{counts.get("running") ?? 0}件、対応が必要{counts.get("error") ?? 0}件</p>
-    <h2>行事ごと消す</h2><p>その行事の元の資料、答え、配った案内などを、まとめて消します。</p>
+    <h2>まとめて消す</h2><p>名前ごとに、元の資料、出欠の返事、知らせた案内などを、まとめて消します。</p>
     {projects.results.map((project, index) => <section class="panel">
       <p>{project.title}</p>
-      <form method="post" action={adminPath(ward, `/settings/deletion/projects/${project.project_id}`)} onsubmit={`return confirm(${JSON.stringify(`「${project.title}」の元の資料、答え、配った案内などを消します。続けますか？`)})`}>
-        <button class="secondary danger">この行事を消す</button> {index === 0 ? <Hint text="元の資料、答え、配った案内などを行事ごと消し、元には戻せません。" /> : null}
+      <form method="post" action={adminPath(ward, `/settings/deletion/projects/${project.project_id}`)} onsubmit={`return confirm(${JSON.stringify(`「${project.title}」の元の資料、出欠の返事、知らせた案内などを消します。続けますか？`)})`}>
+        <button class="secondary danger">「{project.title}」を消す</button> {index === 0 ? <Hint text="元の資料、出欠の返事、知らせた案内などをまとめて消し、元には戻せません。" /> : null}
       </form>
     </section>)}
     <h2>資料を消す</h2><p>届いた写真やファイルを、読み取った内容と一緒に消します。毎日の控えに残る分も消します。</p>
@@ -53,17 +53,17 @@ deletion.get("/", async (c) => {
       </form>
     </section>)}
     {jobs.results.length === 0 ? <p>消せる資料はありません。</p> : null}
-    {c.req.query("answer") === "1" ? <><Notice>答えを消しました。毎日の写しからも、続けて消します。</Notice><section class="next"><strong>次は</strong><p>ほかに頼まれたものがなければ、区の設定へ戻ってください。</p><a class="button" href={adminPath(ward, "/settings")}>区の設定へ戻る</a></section><p>消した答えは元に戻せません。</p></> : null}
-    <h2>答えを一件消す</h2><p>電話やスマホで受けた答えは、元の資料を持たないので、ここで一件ずつ消します。</p>
-    <p>回答票の写真から入った答えは、上の「資料を消す」で一緒に消えます。</p>
+    {c.req.query("answer") === "1" ? <><Notice>返事を消しました。毎日の写しからも、続けて消します。</Notice><section class="next"><strong>次は</strong><p>ほかに頼まれたものがなければ、自治会の設定へ戻ってください。</p><a class="button" href={adminPath(ward, "/settings")}>自治会の設定へ戻る</a></section><p>消した返事は元に戻せません。</p></> : null}
+    <h2>返事を一件消す</h2><p>電話やスマホで受けた返事は、元の資料を持たないので、ここで一件ずつ消します。</p>
+    <p>回答票の写真から入った返事は、上の「資料を消す」で一緒に消えます。</p>
     {answers.results.map((answer, index) => <section class="panel">
       <p>{answer.title} / {answer.district} / {answer.household} / {answer.source === "phone" ? "電話" : answer.source === "line" ? "LINE" : "Web"} / {shownAt(answer.created_at)}</p>
-      <form method="post" action={adminPath(ward, `/settings/deletion/answers/${answer.answer_id}`)} onsubmit="return confirm('この答えを消します。続けますか？')">
-        <button class="secondary danger">この答えを消す</button> {index === 0 ? <Hint text="この答えを一覧と集計から消し、毎日の写しからも消します。" /> : null}
+      <form method="post" action={adminPath(ward, `/settings/deletion/answers/${answer.answer_id}`)} onsubmit="return confirm('この返事を消します。続けますか？')">
+        <button class="secondary danger">この返事を消す</button> {index === 0 ? <Hint text="この返事を一覧と集計から消し、毎日の写しからも消します。" /> : null}
       </form>
     </section>)}
-    {answers.results.length === 0 ? <p>消せる答えはありません。</p> : null}
-    <p class="link-line"><a href={adminPath(ward, "/settings")}>区の設定へ戻る</a></p>
+    {answers.results.length === 0 ? <p>消せる返事はありません。</p> : null}
+    <p class="link-line"><a href={adminPath(ward, "/settings")}>自治会の設定へ戻る</a></p>
   </AdminPage>);
 });
 

@@ -19,7 +19,7 @@ describe("役員画面の入口", () => {
     const res = await get(realApp, `/${ward.slug}/admin/login`);
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain("役員画面に入る");
+    expect(html).toContain("役員の画面にログインする");
     expect(html).toContain(ward.name);
     expect(res.headers.get("x-robots-tag")).toBe("noindex");
   });
@@ -59,7 +59,7 @@ describe("役員画面の入口", () => {
     expect(res.status).toBe(303);
   });
 
-  it("間違ったパスワードと、ない名前は同じ答えで、札を渡さない", async () => {
+  it("間違ったパスワードと、ない名前は同じ返事で、札を渡さない", async () => {
     const { ward, account } = await seedAdmin(env.DB);
     const wrongPassword = await postForm(realApp, `/${ward.slug}/admin/login`, {
       name: account.name,
@@ -91,7 +91,7 @@ describe("役員画面の入口", () => {
     }
   });
 
-  it("このスマホやパソコンから出るはこの端末の記憶だけを消す", async () => {
+  it("ログアウトするはこの端末の記憶だけを消す", async () => {
     const { ward, account, cookie } = await seedAdmin(env.DB);
     const other = await seedDeviceCookie(env.DB, ward.wardId, account.accountId);
     const out = await postForm(realApp, `/${ward.slug}/admin/logout`, {}, cookie);

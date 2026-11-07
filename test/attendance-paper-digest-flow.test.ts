@@ -34,8 +34,8 @@ it("初年度の出欠を紙とWebとLINEで受け、締切後は未回答を欠
       expect(response.status).toBe(200);
       return response.text();
     };
-    expect(await read(answers)).toContain("まだ答えはありません");
-    expect(await read(answers)).not.toContain("答えた0世帯");
+    expect(await read(answers)).toContain("まだ返事はありません");
+    expect(await read(answers)).not.toContain("返事のあった0世帯");
     expect(await read(answers)).toContain("名簿を入れる");
     const form = await read(answer);
     expect(form).toContain(`${fixture.nextYearTitle}の出欠を教えてください`);
@@ -87,7 +87,7 @@ it("初年度の出欠を紙とWebとLINEで受け、締切後は未回答を欠
       expect(paper).toContain(`${fixture.nextYearTitle} 回答票`);
       expect(paper).toContain("□ 参加する");
       expect(paper).toContain("□ 参加しない");
-      expect(paper).toContain("答えがないときは、欠席として数えます");
+      expect(paper).toContain("返事がないときは、欠席として数えます");
       expect(paper).toContain(fixture.helperTime);
     }
 
@@ -114,7 +114,7 @@ it("初年度の出欠を紙とWebとLINEで受け、締切後は未回答を欠
     for (const [index, text] of [`${fixture.secondHousehold}です。参加しません。`, `${fixture.phoneHousehold}です。不参加です。`].entries()) {
       const receivedText = await receive(env, { wardId: ward.wardId, projectId: project.projectId, via: "line_direct",
         parts: [{ kind: "text", filename: fixture.rosterName, mediaType: "text/plain", bytes: new TextEncoder().encode(text) }] });
-      if (!ports.saveAnswerReply || !receivedText.jobId) throw new Error("LINEの答えを受け付けられません。");
+      if (!ports.saveAnswerReply || !receivedText.jobId) throw new Error("LINEの返事を受け付けられません。");
       await ports.saveAnswerReply(ward.wardId, project.projectId, { eventId: crypto.randomUUID(), senderId: account.accountId,
         receivedAt: new Date().toISOString(), sourceType: "user", kind: "text", text }, receivedText.jobId);
       const lineAnswers = (await listAnswers(env.DB, ward.wardId, project.projectId)).filter((entry) => entry.source === "line");
@@ -136,7 +136,7 @@ it("初年度の出欠を紙とWebとLINEで受け、締切後は未回答を欠
     expect((await postForm(realApp, `${answers}/deadline`, { due_on: "2027-10-01" }, cookie)).status).toBe(303);
     vi.setSystemTime(new Date("2027-10-02T03:00:00Z"));
     const answerCount = (await listAnswers(env.DB, ward.wardId, project.projectId)).length;
-    expect(await read(answers)).toContain("答えのない1世帯も欠席として数えています");
+    expect(await read(answers)).toContain("返事のない1世帯も欠席として数えています");
     const unansweredPaper = await read(`${answers}?view=unanswered&print=1`);
     expect(unansweredPaper).toContain('class="sheet"');
     expect(unansweredPaper).toContain(fixture.rosterName);
@@ -144,7 +144,7 @@ it("初年度の出欠を紙とWebとLINEで受け、締切後は未回答を欠
     expect(await listAnswers(env.DB, other.ward.wardId, project.projectId)).toHaveLength(0);
     expect((await get(realApp, `${other.ward.slug}/admin/answers/${project.projectId}`, other.cookie)).status).toBe(404);
     expect((await postForm(realApp, `${answers}/deadline`, { due_on: "2027-10-04" }, cookie)).status).toBe(303);
-    expect(await read(`${root}/`)).toContain("知らせを待たずに、ときどき見てください");
+    expect(await read(`${root}/`)).toContain("通知を待たずに、ときどき見てください");
 
     // Pushは全て偽物。残り通数、翌朝8時、重複実行、別の区、問い合わせ0件を同じ流れで確かめる。
     const secrets = lineSecretNames(ward.wardId);

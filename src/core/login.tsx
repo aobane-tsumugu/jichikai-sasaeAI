@@ -12,12 +12,12 @@ import { signInConnections } from "./sign-in-connections";
 export const loginRoutes = new Hono<WardEnv>();
 
 const LoginPage = (props: { wardName: string; action: string; next: string; error?: string; line?: boolean; email?: boolean }) => (
-  <Layout title={`${props.wardName}役員画面に入る`} siteName={`${props.wardName}役員の画面`} noindex>
-    <h1>役員画面に入る</h1>
-    <p class="lead">いつもの入り方で入ってください。</p>
+  <Layout title={`${props.wardName}役員の画面にログインする`} siteName={`${props.wardName}役員の画面`} noindex>
+    <h1>役員の画面にログインする</h1>
+    <p class="lead">いつもの方法でログインしてください。</p>
     {props.error ? <Notice error>{props.error}</Notice> : null}
-    {(["line", "email"] as const).map((kind) => props[kind] ? <form method="post" action={props.action.replace(/\/login$/, `/sign-in-connect/${kind}/start`)}><button class="secondary">{kind === "line" ? "LINE" : "メール"}で入る</button></form> : null)}
-    <h2>IDとパスワードで入る</h2>
+    {(["line", "email"] as const).map((kind) => props[kind] ? <form method="post" action={props.action.replace(/\/login$/, `/sign-in-connect/${kind}/start`)}><button class="secondary">{kind === "line" ? "LINE" : "メール"}でログインする</button></form> : null)}
+    <h2>IDとパスワードでログインする</h2>
     <form method="post" action={props.action}>
       <input type="hidden" name="next" value={props.next} />
       <label for="loginId">ID</label>
@@ -25,11 +25,11 @@ const LoginPage = (props: { wardName: string; action: string; next: string; erro
       <label for="password">パスワード</label>
       <input id="password" name="password" type="password" autocomplete="current-password" required />
       <p>
-        <button type="submit">入る</button>
+        <button type="submit">ログインする</button>
       </p>
     </form>
-    <p class="muted">このスマホやパソコンでは、次から入力しなくても入れます。</p>
-    <a class="quiet" href={`${props.action}/help`}>入れないとき</a>
+    <p class="muted">このスマホやパソコンでは、次から入力しなくてもログインできます。</p>
+    <a class="quiet" href={`${props.action}/help`}>ログインできないとき</a>
     <a class="quiet" href="/contact">SasaeAIに問い合わせる</a>
   </Layout>
 );
@@ -106,14 +106,14 @@ loginRoutes.post("/login", async (c) => {
 loginRoutes.get("/login/help", (c) => {
   const connections = signInConnections(c.env);
   c.header("Cache-Control", "no-store"); c.header("X-Robots-Tag", "noindex");
-  return c.html(<Layout title="入れないとき" siteName={`${c.var.ward.name}役員の画面`} noindex>
-    <a class="back" href={adminPath(c.var.ward, "/login")}>← 入る画面へ</a><h1>入れないとき</h1>
+  return c.html(<Layout title="ログインできないとき" siteName={`${c.var.ward.name}役員の画面`} noindex>
+    <a class="back" href={adminPath(c.var.ward, "/login")}>← ログインの画面へ</a><h1>ログインできないとき</h1>
     <p class="lead">自分で戻せる方法から、試してください。</p>
-    {connections.email || connections.line ? <><h2>ほかの入り方で入る</h2><p>つないである入り方なら、IDやパスワードが分からなくても入れます。</p>
-      {(["email", "line"] as const).map((kind) => connections[kind] ? <form method="post" action={adminPath(c.var.ward, `/sign-in-connect/${kind}/start`)}><button class="secondary">{kind === "line" ? "LINE" : "メール"}で入る</button></form> : null)}</> : null}
-    <h2>ほかに入れるスマホやパソコンがあるとき</h2><p>入れるスマホやパソコンで「区の設定」を開き、「自分の入り方」から入り方を足せます。</p>
-    <h2>自分で戻せないとき</h2><p>ほかの役員に頼んでください。役員の一覧から、入るためのリンクを作ってもらえます。</p>
-    <h2>ほかの役員も入れないとき</h2><p>連絡のつく連絡先を伝えてください。登録したメールが使えなくなったときも、連絡のつく所へ連絡します。</p>
+    {connections.email || connections.line ? <><h2>ほかの方法でログインする</h2><p>つないであるログインの方法なら、IDやパスワードが分からなくてもログインできます。</p>
+      {(["email", "line"] as const).map((kind) => connections[kind] ? <form method="post" action={adminPath(c.var.ward, `/sign-in-connect/${kind}/start`)}><button class="secondary">{kind === "line" ? "LINE" : "メール"}でログインする</button></form> : null)}</> : null}
+    <h2>ほかにログインできるスマホやパソコンがあるとき</h2><p>ログインできるスマホやパソコンで「自治会の設定」を開き、「ログインの方法」から方法を足せます。</p>
+    <h2>自分で戻せないとき</h2><p>ほかの役員に頼んでください。「この画面を使える人」から、ログインするためのリンクを作ってもらえます。</p>
+    <h2>ほかの役員もログインできないとき</h2><p>連絡のつく連絡先を伝えてください。登録したメールが使えなくなったときも、連絡のつく所へ連絡します。</p>
     <a class="button" href={`/contact?ward=${encodeURIComponent(c.var.ward.name)}`}>SasaeAIに問い合わせる</a>
   </Layout>);
 });

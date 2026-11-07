@@ -74,9 +74,9 @@ export const ProviderContact: FC = () => <a class="quiet" href="/contact">SasaeA
 export const WardStopped: FC<{ wardName: string; homeHref: string }> = ({ wardName, homeHref }) => (
   <Layout title="役員の画面は止まっています" siteName={`${wardName}役員の画面`} noindex>
     <h1>役員の画面は止まっています</h1>
-    <Notice>今は、区の役員の画面を使えません</Notice>
-    <p>区のページと、配った案内は読めます。</p>
+    <Notice>今は、自治会の役員の画面を使えません</Notice>
+    <p>住民向けのページと、知らせた案内は読めます。</p>
     <section class="next"><strong>次は</strong><ProviderContact /></section>
-    <a class="quiet" href={homeHref}>区のページを見る</a>
+    <a class="quiet" href={homeHref}>住民向けのページを見る</a>
   </Layout>
 );

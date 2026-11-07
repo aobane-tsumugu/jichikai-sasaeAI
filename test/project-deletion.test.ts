@@ -22,7 +22,7 @@ async function drain(wardId: string) {
   expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM ops_deletion_queue WHERE ward_id = ?").bind(wardId).first("n")).toBe(0);
 }
 
-it("元の資料と答えと配った案内のある行事を列で消し、D1・R2・毎日の写しに残さない", async () => {
+it("元の資料と答えと知らせた案内のある行事を列で消し、D1・R2・毎日の写しに残さない", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: "消去する行事（架空）", year: 2026, eventDay: "2026-10-24", accountId: account.accountId,
@@ -50,7 +50,7 @@ it("元の資料と答えと配った案内のある行事を列で消し、D1�
   await writeDailyWardSnapshots(env, new Date("2026-11-05T00:00:00Z"));
   const root = `/${ward.slug}/admin/settings/deletion`;
   const page = await get(realApp, root, cookie);
-  expect(await page.text()).toContain("この行事を消す");
+  expect(await page.text()).toContain("」を消す");
   expect((await postForm(realApp, `${root}/projects/${project.projectId}`, {}, cookie)).status).toBe(303);
   expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM ops_deletion_queue WHERE ward_id = ? AND target_type = 'project'").bind(ward.wardId).first("n")).toBe(1);
   await drain(ward.wardId);

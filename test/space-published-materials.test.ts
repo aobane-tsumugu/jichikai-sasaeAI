@@ -55,12 +55,12 @@ it("実行委員と班長のページには配った文書を読みやすく出�
   });
   expect(await save(FIRST_SLICE.dutyText)).toBe(true);
   const before = await (await get(realApp, spacePath, memberCookie)).text();
-  expect(before).toContain("まだ配っていません。");
+  expect(before).toContain("まだ載っていません。");
   expect(before).not.toContain(FIRST_SLICE.dutyText);
   const published = await env.DB.prepare(`SELECT document_id, version_id, version_no FROM document_versions
     WHERE ward_id = ? AND project_id = ? ORDER BY version_no DESC LIMIT 1`)
     .bind(ward.wardId, projectId).first<{ document_id: string; version_id: string; version_no: number }>();
-  if (!published) throw new Error("配る文書がありません。");
+  if (!published) throw new Error("知らせる文書がありません。");
   expect((await postForm(realApp, `${admin}/publish/${projectId}/space`, {
     documentId: published.document_id, versionId: published.version_id, versionNo: String(published.version_no),
   }, cookie)).status).toBe(303);

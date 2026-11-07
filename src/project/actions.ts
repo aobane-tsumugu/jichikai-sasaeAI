@@ -404,7 +404,7 @@ export async function recordPublishedItems(db: D1Database, wardId: string, proje
       }, { publishedDocumentId: version.document_id });
     }
   } catch {
-    console.error("配った中身を今年の記録に残せませんでした");
+    console.error("知らせた中身を今年の記録に残せませんでした");
   }
 }
 

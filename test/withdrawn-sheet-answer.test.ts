@@ -56,9 +56,9 @@ it("取り下げた回答票の古い画面からは追加も入れ直しもで�
     const response = await postForm(realApp, path, { ...form, people_count: "9" }, cookie);
     expect(response.status).toBe(409);
     const html = await response.text();
-    expect(html).toContain("この回答票は取り下げられたため、答えを入れられません。");
+    expect(html).toContain("この回答票は取り下げられたため、返事を入れられません。");
     expect(html).toContain(`href="${answersPath}?view=list"`);
-    expect(html).toContain("答えの一覧に戻る");
+    expect(html).toContain("返事の一覧に戻る");
     expect(await listAnswers(env.DB, ward.wardId, project.projectId)).toEqual(before);
   }
 

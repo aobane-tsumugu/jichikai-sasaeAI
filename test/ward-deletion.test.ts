@@ -7,7 +7,7 @@ import { requestWardDeletion, runDeletionCron } from "../src/ops/lifecycle";
 import { applyChange, createProject } from "../src/project/api";
 import { postForm, realApp } from "./helpers";
 
-it("行政の記録・席・段取りの進み具合がある区も、保管物と一緒に消して印だけ残せる", async () => {
+it("行政の記録・席・やることの進み具合がある区も、保管物と一緒に消して印だけ残せる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const otherWard = await seedWard(env.DB);
   const seatId = await seedSeat(env.DB, ward.wardId, "架空の書記");

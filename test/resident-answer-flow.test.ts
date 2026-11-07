@@ -59,7 +59,7 @@ it("名簿のない初年度から人数を答え、班と古い答えを保ち�
     const sent = await postForm(realApp, answerPath, { ...counts, household: FIRST_SLICE.firstHousehold, district: "", submission_id: submissionId });
     expect(sent.status).toBe(200);
     const receipt = await sent.text();
-    expect(receipt).toContain("答えを受け付けました");
+    expect(receipt).toContain("返事を受け付けました");
     expect(receipt).toContain(FIRST_SLICE.previousPlace);
     expect(receipt).toContain(FIRST_SLICE.firstOfficer);
     expect(receipt).toContain("もう一度送らず");
@@ -72,7 +72,7 @@ it("名簿のない初年度から人数を答え、班と古い答えを保ち�
     expect(await getAnswerTotals(env.DB, ward.wardId, project.projectId)).toEqual({ people: 9, helperRequests: 0 });
     const page = await (await get(realApp, `${answersPath}?view=list`, cookie)).text();
     expect(page).toContain("班が分からない2世帯");
-    expect(await (await get(realApp, answersPath, cookie)).text()).toContain("答えた世帯");
+    expect(await (await get(realApp, answersPath, cookie)).text()).toContain("返事のあった世帯");
     const zero = await postForm(realApp, answerPath, { household: FIRST_SLICE.secondHousehold, district: "", children_count: "", adults_count: "", seniors_count: "" });
     expect(zero.status).toBe(200);
     expect(await zero.text()).not.toContain("次は");
@@ -116,7 +116,7 @@ it("名簿のない初年度から人数を答え、班と古い答えを保ち�
     const help = await (await get(realApp, helpPath)).text();
     expect(help.indexOf("新しいお知らせを読んでください")).toBeLessThan(help.indexOf(FIRST_SLICE.draftText));
     const rainPage = await (await get(realApp, noticePath)).text();
-    expect(rainPage.indexOf(FIRST_SLICE.rainAnnouncement)).toBeLessThan(rainPage.indexOf("に配った案内"));
+    expect(rainPage.indexOf(FIRST_SLICE.rainAnnouncement)).toBeLessThan(rainPage.indexOf("に知らせた案内"));
     const offered = await postForm(realApp, helpPath, { helper_name: FIRST_SLICE.sheetHelper, helper_times: FIRST_SLICE.helperTime });
     expect(offered.status).toBe(200);
     const offeredHtml = await offered.text();
@@ -127,7 +127,7 @@ it("名簿のない初年度から人数を答え、班と古い答えを保ち�
     expect(offeredHtml).toContain(FIRST_SLICE.firstOfficer);
     expect((await postForm(realApp, `${answersPath}/deadline`, { due_on: "2027-09-30" }, cookie)).status).toBe(303);
     const closed = await (await get(realApp, noticePath)).text();
-    expect(closed).toContain("答えの受付は終わりました");
+    expect(closed).toContain("返事の受付は終わりました");
     expect(closed).not.toContain("出欠を答える");
   } finally {
     vi.useRealTimers();

@@ -73,7 +73,7 @@ it("新任の役員が題は案内・年不明の実際のフォームから送�
     if (!resultPath) throw new Error("始めたあとの画面がありません");
     const id = resultPath.split("/").at(-1)!;
     const result = await (await get(realApp, resultPath, cookie)).text();
-    expect(result).toContain("2件の資料を読んで、8つの仕事の段取りを用意しました");
+    expect(result).toContain("2件の資料を読んで、8つのやることを用意しました");
     expect(result).toContain("案内の下書きを見る");
     const originals = await listOriginals(env.DB, ward.wardId, received.jobId);
     expect(originals.map((o) => o.filename)).toEqual(["当番.txt"]);
@@ -88,13 +88,13 @@ it("新任の役員が題は案内・年不明の実際のフォームから送�
     await applyChange(env.DB, ward.wardId, id, { kind: "item", itemKey: "place", value: FIRST_SLICE.previousPlace,
       source: { kind: "original", ref: moved.original_id, locator: "4行目" }, confidence: "high", packVersion: "connect@12" });
     const state = await getProjectState(env.DB, ward.wardId, id);
-    if (!state) throw new Error("段取りがありません");
+    if (!state) throw new Error("やることがありません");
     expect(state.questions).toHaveLength(0);
     expect(state.items.find((item) => item.key === "place")?.current).toBeNull();
     expect(state.items.find((item) => item.key === "place")?.references).toHaveLength(1);
     for (const task of state.mapTasks) await removeMapTask(env.DB, ward.wardId, id, task.taskId);
     const noTasks = await (await get(realApp, `${root}/`, cookie)).text();
-    expect(noTasks).toContain("仕事はまだありません。段取りから足せます");
+    expect(noTasks).toContain("仕事はまだありません。やることから足せます");
     expect(await (await get(realApp, resultPath, cookie)).text()).toContain("案内の下書きを見る");
     expect((await get(realApp, `${root}/projects/${id}/draft/announcement`, cookie)).status).toBe(200);
   } finally {

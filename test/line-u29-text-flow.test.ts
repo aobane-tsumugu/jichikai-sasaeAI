@@ -63,7 +63,7 @@ it("U29: 一対一とグループの作業連絡を残し、出欠だけ数え�
   const ports = createLineIntakePorts(runtime, ctx, async (_wardId, original) => matchProject(ai, {
     candidates: [{ id: project.projectId, title: project.title }], summary: original.text ?? "", officialAddressed: original.officialAddressed,
   }));
-  if (!ports.saveAnswerReply) throw new Error("LINEの答えを保存する口がありません");
+  if (!ports.saveAnswerReply) throw new Error("LINEの返事を保存する口がありません");
   const saveAnswer = vi.spyOn(ports, "saveAnswerReply");
   let eventNo = 0;
   const send = async (text: string, group: boolean, eventId = `fictional-u29-${++eventNo}`) => {
