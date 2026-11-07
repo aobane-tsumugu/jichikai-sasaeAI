@@ -49,7 +49,7 @@ admin.post("/inbox/questions/:clarificationId", async (c) => {
   ]);
   await completeScreenClarifications(c.env, ward.wardId);
   const [page, anchor] = returnTo.split("#");
-  return c.redirect(`${page}?n=answered${anchor ? `&at=${anchor.slice(6)}#${anchor}` : ""}`, 303);
+  return c.redirect(`${page}${page?.includes("?") ? "&" : "?"}n=answered${anchor ? `&at=${anchor.slice(6)}#${anchor}` : ""}`, 303);
 });
 
 admin.post("/inbox/roster/:jobId/skip", async (c) => {
