@@ -143,9 +143,20 @@ intakeAdmin.get("/intake/received", async (c) => {
     <section class="next"><strong>次は</strong><p>このまま進められます。</p><a class="button" href={back}>{backLabel.replace("← ", "")}</a></section>
     <h2>違う資料のときは</h2><p>もう一度送ってください。</p><a class="quiet" href={sendHref}>資料を送る</a>
   </Layout>);
+  // 送った物ごとに、今どこまで読んで、どこに入れたかを文で書く。札の一語にしない。
+  const names = new Map((await c.env.DB.prepare("SELECT project_id, title FROM projects WHERE ward_id = ?").bind(ward.wardId).all<{ project_id: string; title: string }>()).results.map((row) => [row.project_id, row.title]));
+  const whereText = (job: (typeof jobs)[number]) => {
+    const name = job.project_id ? names.get(job.project_id) : undefined;
+    if (job.status === "received" || job.status === "reading") return "AIが読んでいます。";
+    if (job.status === "read" || job.status === "connecting") return `読み終わりました。${name ? `${name}の中身に入れています。` : "どの準備の資料かを分けています。"}`;
+    // 通しの道具は「どれの資料か分けました」を見て読み終わりを待つので、この言葉は残す。
+    if (job.status === "done") return name ? `読み終わり、どれの資料か分けました。${name}の資料に入れています。` : "読み終わりました。どの準備の資料かは、まだ決まっていません。";
+    if (job.status === "attention") return "読み取りが遅れています。送ったものは預かっているので、送り直さなくてかまいません。";
+    if (job.status === "failed") return "読めませんでした。もう一度読むか、このまま進められます。";
+    return STATUS_LABEL[job.status];
+  };
   return c.html(<Layout title="受け取りました" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>受け取りました</h1>
-    <p><a class="button secondary" href={adminPath(ward, talkPath(await talkMark(ward.wardId, "", "admin", "")))}>送った写真と言葉を見る・直す</a></p>
+    <h1>送った資料を受け取りました</h1>
     {c.req.query("n") === "retry" ? <div class="notice done" role="status"><strong>もう一度読みます</strong><p>読み終わると、やることと下書きに入ります。</p></div> : null}
     {project ? <><div class="notice done"><strong>{project.title}に資料を預かりました</strong><p>画面を閉じてもかまいません。AIが読み続けます。読み終わると、やることと下書きに入ります。</p></div>{slow ? <div class="notice warn"><strong>読み取りが遅れています</strong><p>送った資料は預かっています。こちらで対応しているので、送り直す必要はありません。下書きを自分で書いて住民に知らせることもできます。</p><a class="quiet" href={adminPath(ward, `/projects/${project.projectId}/draft/announcement`)}>案内の下書きを書く</a></div> : null}<section class="next"><strong>次は</strong><p>読み終わるのを待たずに、やることを見られます。</p><a class="button" href={adminPath(ward, `/projects/${project.projectId}/map`)}>やることへ</a></section></> : slow ? <>
       <div class="notice warn"><strong>読み取りが遅れています</strong><p>送った資料は預かっています。こちらで対応しているので、送り直す必要はありません。下書きを自分で書いて住民に知らせることもできます。</p></div>
@@ -153,20 +164,20 @@ intakeAdmin.get("/intake/received", async (c) => {
         {slow.project_id ? <a class="button" href={adminPath(ward, `/projects/${slow.project_id}/draft/announcement`)}>案内の下書きを書く</a>
           : <form method="post" action={adminPath(ward, `/intake/${slow.job_id}/continue`)}><button>案内の下書きを書く</button></form>}
       </section>
-    </> : <><p class="lead">画面を閉じてもかまいません。AIが読み続けます。</p>
-      <section class="next"><strong>次は</strong><p>読み終わった分から、やることを作れます。</p><a class="button" href={readHref}>読み終わったものを見る</a></section></>}
+    </> : <><p class="lead">画面を閉じてもかまいません。AIが読んで、どの準備の資料かを分けて入れます。</p>
+      <section class="next"><strong>次は</strong><p>どの準備の資料か決まらなかったものは、「読み終わったもの」から、今の準備に入れるか、新しく準備を始められます。</p><a class="button" href={readHref}>読み終わったものを見る</a></section></>}
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     <h2>送ったもの</h2><ul class="rows">{await Promise.all(jobs.map(async (job) => <li class="panel">
-      <b>{await jobTitle(c.env.DB, ward.wardId, job)}</b><p class="muted">{STATUS_LABEL[job.status]}</p>
+      <p>「<b>{await jobTitle(c.env.DB, ward.wardId, job)}</b>」は、{whereText(job)}</p>
       <PhotoCheckNotice checks={await photoChecks(c.env.DB, ward.wardId, job.job_id)} retakeHref={sendHref} continueHref={readHref} />
-      {job.project_id ? <a href={adminPath(ward, `/projects/${job.project_id}/map`)}>やることを見る</a> : null}
+      {job.project_id ? <a href={adminPath(ward, `/projects/${job.project_id}/map`)}>{names.get(job.project_id) ?? ""}のやることを見る</a> : null}
       {job.status === "failed" ? <><form method="post" action={adminPath(ward, `/intake/${job.job_id}/retry`)}><button class="quiet">もう一度読む</button></form>
         <form method="post" action={adminPath(ward, `/intake/${job.job_id}/continue`)}><button class="quiet">このまま進める</button></form></> : null}
-      {["received", "reading", "read", "failed"].includes(job.status) ? <form method="post" action={adminPath(ward, `/intake/${job.job_id}/withdraw`)}><p>送った資料と読み取った内容を消します。元に戻せないので、送り直すには手元の写真やファイルが必要です。</p><button class="quiet">この資料を消す</button></form> : null}
+      {["received", "reading", "read", "failed"].includes(job.status) ? <details class="fold"><summary>間違えて送ったときは</summary><div><form method="post" action={adminPath(ward, `/intake/${job.job_id}/withdraw`)} onsubmit="return confirm('送った資料と、読み取った内容を消します。元に戻せません。続けますか？')"><p>送った資料と読み取った内容を消します。元に戻せないので、送り直すには手元の写真やファイルが必要です。</p><button class="secondary danger">この資料を消す</button></form></div></details> : null}
     </li>))}</ul>
     {jobs.length === 0 ? <p>{projectId ? "送ったものはありません。" : "この1時間に送ったものはありません。"}</p> : null}
     <div class="action-links"><a class="button secondary" href={sendHref}>続けて送る</a></div>
-    {jobs.some((job) => ["received", "reading", "read", "failed"].includes(job.status)) ? <><h2>間違えて送ったときは</h2><p>上に「この資料を消す」がある資料は消せます。</p></> : null}
+    <p><a class="quiet" href={adminPath(ward, talkPath(await talkMark(ward.wardId, "", "admin", "")))}>役員の画面から送ったものを、送った順に見て直す</a></p>
   </Layout>);
 });
 

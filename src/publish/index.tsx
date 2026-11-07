@@ -171,12 +171,12 @@ admin.get("/publish/:projectId", async (c) => {
         <div class={failed ? "notice warn" : "notice done"} role="status"><strong>{failed ? "自治会のLINEには送れませんでした" : "住民向けのページに載せました"}</strong>
           <p>{failed ? "住民向けのページには載っています。紙も配れます。LINEは送らないままでもかまいません。" : record.line_status === "sent" ? `自治会のLINE${record.line_recipients === null ? "に" : `の友だち${record.line_recipients}人に`}送りました。` : record.line_status === "pending" ? "自治会のLINEの送信結果はまだ分かりません。" : "今回は自治会のLINEに送りませんでした。"}{task ? `やることの「${task.name}」を済みにしました。` : ""}</p>
         </div>}
-      <section class="next"><strong>次は</strong>{lowered ? <><p>内容を直して、知らせ直せます。</p><a class="button" href={editHref}>直して知らせ直す</a></> : rain ? <p>班長に電話して伝えてください。掲示も張り替えてください。ここは画面では済みません。</p> : <><p>{paperLabel}{withAnswer ? "、班長への一枚" : ""}を印刷して、{withAnswer ? "班長に渡してください。" : "配ってください。"}</p><a class="button" href={printHref}>{paperLabel}を印刷する</a>{withAnswer ? <a class="quiet" href={`${printBase}/leader`}>班長への一枚を印刷する</a> : null}</>}</section>
+      <section class="next"><strong>次は</strong>{lowered ? <><p>内容を直して、知らせ直せます。知らせ直す時に、下書きの画面で「今回はLINEで送らない」を選ぶと、自治会のLINEに同じ知らせが二度届きません。</p><a class="button" href={editHref}>直して知らせ直す</a></> : rain ? <p>班長に電話して伝えてください。掲示も張り替えてください。ここは画面では済みません。</p> : <><p>{paperLabel}{withAnswer ? "、班長への一枚" : ""}を印刷して、{withAnswer ? "班長に渡してください。" : "配ってください。"}</p><a class="button" href={printHref}>{paperLabel}を印刷する</a>{withAnswer ? <a class="quiet" href={`${printBase}/leader`}>班長への一枚を印刷する</a> : null}</>}</section>
       {!rain && !lowered ? <DistributionFacts raw={record.distribution} /> : null}
       {!lowered ? <div class="action-links"><a class="button secondary" href={`/${ward.slug}/p/${encodeURIComponent(projectId)}`}>住民向けのページで見る</a></div> : null}
       <h2>間違えたときは</h2><p>{rain ? "直して知らせ直すと、住民向けのページは新しい内容に変わります。LINEで送った知らせは取り消せません。" : `直して知らせ直すと、住民向けのページは新しい${DOCUMENT_KIND_LABEL[kind]}に変わります。`}</p>
-      <div class="action-links"><a class="button secondary" href={editHref}>直して知らせ直す</a>{!rain && !record.unpublished_at ? <form method="post" action={adminPath(ward, `/publish/${projectId}/lower/${record.publication_id}`)}><button class="secondary" type="submit">住民向けのページから取り下げる</button></form> : null}</div>
-      {!rain ? <p class="muted">取り下げても、知らせた記録は残ります。LINEで送った知らせは取り消せません。</p> : null}
+      <div class="action-links"><a class="button secondary" href={editHref}>直して知らせ直す</a></div>
+      {!rain && !record.unpublished_at ? <LowerFold action={adminPath(ward, `/publish/${projectId}/lower/${record.publication_id}`)} label={DOCUMENT_KIND_LABEL[kind as DocumentKind]} /> : null}
       <a class="quiet" href={adminPath(ward, `/publish/${projectId}`)}>知らせる画面へ</a>
     </AdminPage>);
   }
@@ -215,7 +215,7 @@ admin.get("/publish/:projectId", async (c) => {
       {drafts.some((row) => row.document_id === record.document_id) ? <b>{paperHeading(project.title, drafts.find((row) => row.document_id === record.document_id)!.title)}</b> : null}
       <p>{formatJst(record.published_at)}に知らせました。</p>{record.scope === "space" ? <p>実行委員と班長のページに載せました。</p> : <>
         <p>紙の配布先: {paperTargetLabel(record.distribution)}</p><p>自治会のLINE: {record.line_status === "sent" ? `${record.line_recipients ?? ""}人に送りました` : record.line_status === "failed" || record.line_status === "not_configured" ? "送れませんでした。住民向けのページには載っています。紙も配れます。" : record.line_status === "pending" ? "送信結果はまだ分かりません" : "今回は送っていません"}</p>
-        {record.unpublished_at ? <p>住民向けのページから取り下げています。</p> : <form method="post" action={adminPath(ward, `/publish/${projectId}/lower/${record.publication_id}`)}><button class="secondary" type="submit">住民向けのページから取り下げる</button></form>}
+        {record.unpublished_at ? <p>住民向けのページから取り下げています。</p> : <LowerFold action={adminPath(ward, `/publish/${projectId}/lower/${record.publication_id}`)} label={DOCUMENT_KIND_LABEL[(drafts.find((row) => row.document_id === record.document_id)?.kind ?? "announcement") as DocumentKind]} />}
       </>}<a class="quiet" href={adminPath(ward, `/print/${projectId}/${record.document_id}/${record.version_no}`)}>印刷用ページを開く</a>
     </section>)}
   </AdminPage>);
@@ -510,6 +510,14 @@ export function ArticleBody({ body, title, kind, hide }: { body: string; title?:
 
 interface DistributionTarget { district: string; copies: number; household?: string; }
 interface PaperDistribution { mode: "district" | "household"; targets: DistributionTarget[]; }
+
+/** 取り下げは、押すとすぐ住民向けのページから消える。何が起きるかを書いた畳みに入れ、確かめの窓を出す。 */
+function LowerFold({ action, label }: { action: string; label: string }) {
+  return <details class="fold"><summary>住民向けのページから取り下げる</summary><div>
+    <p>取り下げると、住民向けのページからこの{label}が見えなくなります。知らせた記録は残ります。自治会のLINEで送ったものと、配った紙は取り消せません。もう一度載せる時は、直して知らせ直します。</p>
+    <form method="post" action={action} onsubmit={`return confirm(${JSON.stringify(`住民向けのページからこの${label}を取り下げます。LINEで送ったものは取り消せません。続けますか？`)})`}><button class="secondary danger" type="submit">取り下げる</button></form>
+  </div></details>;
+}
 
 function distributionFromForm(form: FormData, roster: Array<{ district: string; household: string }>, allHouseholds: boolean): PaperDistribution | null {
   if (!roster.length) return allHouseholds && form.get("allCopies")

@@ -223,15 +223,24 @@ memoAdmin.get("/projects/:projectId/ledger", async (c) => {
     {row.reference && typeof row.reference.data.amount === "number" ? <span>{row.reference.refYear ? `${row.reference.refYear}年` : "過去"}の額: {yen(row.reference.data.amount)}</span> : null}
     {row.reference?.data.note ? <span>{row.reference.refYear ? `${row.reference.refYear}年` : "過去"}のメモ: {shortNote(String(row.reference.data.note))}</span> : null}
   </a></li>)}</ul>;
+  // 書いていない項目を「まだ書いていません」の行で並べず、書いたもの、去年の記録があるもの、まだ書いていないものを文で分ける（トップと同じ決まり）。
+  const costRows = active.filter((row) => !row.sponsor);
+  const written = costRows.filter((row) => row.current || row.data.counterpart || typeof row.data.amount === "number" || row.data.note);
+  const lastYear = costRows.filter((row) => !written.includes(row) && row.reference);
+  const blank = costRows.filter((row) => !written.includes(row) && !row.reference);
+  const fromPhotos = written.some((row) => row.current?.source.kind === "original");
+  const title = state.project.title;
   return c.html(<Layout title="運営メモ" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {state.project.title}のやることへ</a><h1>{state.project.title}の運営メモ</h1>
-    <p class="lead">よく要るものを並べました。写真から読めた分が入っています。まだ書いていない項目は、そのままでかまいません。来年の担当の方が見ます。</p>
-    <Notice><strong>来年のためのメモです</strong><p>会計の帳簿や決算、領収書の代わりにはなりません。税金や法律の判断もしません。領収書の紙は、これまでどおり会計の方で保管してください。</p></Notice>
+    <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {title}のやることへ</a><h1>{title}の運営メモ</h1>
+    <p class="lead">{written.length ? `${title}の運営メモには、${written.map((row) => row.name).join("、")}のことを書いています。${fromPhotos ? "送った写真から読んだものも入っています。" : ""}` : `${title}の運営メモは、まだ何も書いていません。`}{costs || sumOf(sponsors) ? `分かっている費用は${yen(costs)}、協賛は${yen(sumOf(sponsors))}です${unknownSponsors.length ? `（${unknownSponsors.join("、")}の額は分かっていません）` : ""}。` : ""}来年の担当の方が、何に、どこに、いくらかけたかを見るためのメモです。</p>
     {result ? <><div class="notice done" role="status"><strong>{result}</strong><p>元の資料は変わりません。ほかの項目は、そのままでかまいません。</p></div><section class="next"><strong>次は</strong><p>思い出したときに書き直せます。</p><a class="button" href={changedRow ? adminPath(ward, rowPath(id, changedRow.key)) : root}>メモを開く</a></section><p><a class="quiet" href={adminPath(ward, `/projects/${id}/map`)}>やることに戻る</a></p></> : null}
-    {costs || sumOf(sponsors) ? <p>分かっている費用は{yen(costs)}、協賛は{yen(sumOf(sponsors))}です{unknownSponsors.length ? `（${unknownSponsors.join("、")}の額は分かっていません）` : ""}。</p> : null}
-    {!state.project.closedAt ? <div class="action-links"><a class="button" href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>写真を送る</a></div> : <Notice>{state.project.title}は終わりにしました。メモは読めます。<p><a class="quiet" href={adminPath(ward, `/close/${id}`)}>終わりを取り消す画面へ</a></p></Notice>}
-    <h2>よく要るもの</h2>{renderRows(active.filter((row) => !row.sponsor))}
-    {!state.project.closedAt ? <p><a class="button secondary" href={adminPath(ward, `${rootPath(id)}/new`)}>項目を足す</a></p> : null}
+    {!state.project.closedAt ? !result ? <section class="next"><p>領収書、見積り、借りたものの控えなどの写真を送ると、AIが読んで、この運営メモに入れます。手で書くときは、下の項目を押します。</p><a class="button" href={adminPath(ward, `/intake?project=${encodeURIComponent(id)}#send-form`)}>領収書や控えの写真を送る</a></section> : null
+      : <Notice>{title}は終わりにしました。メモは読めます。<p><a class="quiet" href={adminPath(ward, `/close/${id}`)}>終わりを取り消す画面へ</a></p></Notice>}
+    {written.length ? <><h2>書いてあること</h2>{renderRows(written)}</> : null}
+    {lastYear.length ? <><h2>去年の記録があるもの</h2><p>今年はまだ書いていません。押すと、去年の記録を見ながら書けます。</p>{renderRows(lastYear)}</> : null}
+    {blank.length ? <p>{blank.map((row, index) => <>{index ? "、" : ""}<a href={adminPath(ward, rowPath(id, row.key))}>{row.name}</a></>)}は、まだ書いていません。押すと書けます。書かなくても進められます。</p> : null}
+    {!state.project.closedAt ? <p><a class="quiet" href={adminPath(ward, `${rootPath(id)}/new`)}>項目を足す</a></p> : null}
     {active.some((row) => row.sponsor) ? <><h2>協賛</h2>{renderRows(active.filter((row) => row.sponsor))}</> : null}
+    <p class="muted">来年のためのメモです。会計の帳簿や決算、領収書の代わりにはなりません。税金や法律の判断もしません。領収書の紙は、これまでどおり会計の方で保管してください。</p>
   </Layout>);
 });
