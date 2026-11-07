@@ -57,6 +57,8 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
         VALUES (?, ?, ?, 1, 'photo', ?, 'image/png', ?, 'originals/fictional.jpg', '2026-11-06')`).bind(w, w, w, sourceHash, sourceBytes.length),
       env.DB.prepare(`INSERT INTO readings (ward_id, reading_id, job_id, source, pack_version, body, created_at)
         VALUES (?, ?, ?, 'direct', 'fixture@1', '{"text_blocks":[]}', '2026-11-06')`).bind(w, w, w),
+      env.DB.prepare("INSERT INTO ward_know_items (ward_id, item_id, body) VALUES (?, 'meeting', '架空の総会の決まり')").bind(w),
+      env.DB.prepare("INSERT INTO ward_material_links (ward_id, link_id, original_id, target_kind, target_id, linked_by) VALUES (?, ?, ?, 'know_item', 'meeting', 'person')").bind(w, w, w),
       env.DB.prepare(`INSERT INTO paper_reading_slices (ward_id, job_id, source_job_id, body, created_at)
         VALUES (?, ?, ?, '{}', '2026-11-06')`).bind(w, w, w),
       env.DB.prepare(`INSERT INTO intake_photo_checks (ward_id, original_id, job_id, readability, paper_kind, reason)

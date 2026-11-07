@@ -17,7 +17,7 @@ describe("各置き場の差し込み口", () => {
   it("束の表の置き場が全部そろっている", () => {
     expect(Object.keys(bundles).sort()).toEqual(
       [
-        "ai", "answers", "archive", "check", "close", "draft", "intake", "line", "map", "printPages",
+        "ai", "answers", "archive", "check", "close", "draft", "intake", "know", "line", "map", "printPages",
         "photos", "project", "publish", "settings", "space", "wardPages",
       ].sort(),
     );

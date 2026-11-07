@@ -103,7 +103,7 @@ pub.get("/privacy", async (c) => {
     <h2>だれが預かるか</h2><p>この区のページの仕組みを自治会に提供している事業者が、自治会から頼まれて、答えや資料を預かります。個人情報を守る決まりが守られているかは、この事業者が確かめます。</p>
     <h2>文章の読み取り</h2><p>紙や写真の文章の読み取りは、AI事業者のAnthropicに委託します。</p>
     <p>Anthropic社に送った内容は、通常、受け取ったときか文章を作ったときから30日以内に消されます。利用ポリシーへの対応、法令、契約の条件により、もっと長く残る場合があります。</p>
-    <h2>消してほしいとき</h2><p>消してほしいときや、個人情報について聞きたいときは、下の連絡先へお知らせください。</p><p>役員が対象を確かめて、元の資料、読み取った内容、それらを探すための一覧を、いっしょに消します。</p>
+    <h2>消してほしいとき</h2><p>消してほしいときや、個人情報について聞きたいときは、{contact ? "下の連絡先" : "班長か役員"}へお知らせください。</p><p>役員が対象を確かめて、元の資料、読み取った内容、それらを探すための一覧を、いっしょに消します。</p>
     <h2>この仕組みをやめるとき</h2><p>自治会がこの仕組みの利用をやめるときは、元の資料、配ったもの、記録を、自治会にお渡しします。そのあと、預かっているものと、Anthropic社での処理を消します。読み取りの設定を止めて、保管場所も消します。</p>
     {purpose && purpose !== PUBLIC_PRIVACY_NOTICE ? <><h2>この区からのお知らせ</h2><p class="preserve-lines">{purpose}</p></> : null}
     <h2>連絡先</h2><ResidentContact contact={contact} />
@@ -157,7 +157,7 @@ pub.get("/", async (c) => {
     {past.length ? <><h2>これまでのお知らせと報告</h2><ul class="rows two">{past.map(row)}</ul></> : null}
     {descriptions.length ? <><h2>自治会の説明をご覧ください</h2><ul class="rows">{descriptions.map((item) => <li key={item.project_id}><a class="row-link" href={`/${c.var.ward.slug}/work/${encodeURIComponent(item.project_id)}`}><b>{item.title}と自治会の説明を読む</b><span>{item.topics.join("、")}</span></a></li>)}</ul></> : null}
     <h2>分からないときは</h2><ResidentContact contact={contact} />
-    <details class="hint"><summary>個人情報の扱いについて</summary><div><p>答えは行事の準備と運営のために使います。消してほしいときは、上の連絡先へお知らせください。</p><p><a class="quiet" href={`/${c.var.ward.slug}/privacy`}>個人情報の扱いを読む</a></p></div></details>
+    <details class="hint"><summary>個人情報の扱いについて</summary><div><p>答えは行事の準備と運営のために使います。消してほしいときは、{contact ? "上の連絡先" : "班長か役員"}へお知らせください。</p><p><a class="quiet" href={`/${c.var.ward.slug}/privacy`}>個人情報の扱いを読む</a></p></div></details>
   </Layout>);
 });
 
@@ -270,7 +270,7 @@ pub.get("/p/:projectId", async (c) => {
     {ordered.filter(({ latest }) => latest.kind === "notice").map(renderDocument)}
     {activeAnnouncement ? <>
       {!newerNotice ? <EventDetails item={context.item} due={deadline} /> : deadline ? <p>答えの締切 {formatJstDate(deadline)}まで</p> : null}
-      {closed ? <ReceptionClosed closed={!!items[0]!.closed_at} due={deadline} /> : <><p><a class="button" href={`/${c.var.ward.slug}/answer/${encodeURIComponent(projectId)}${suffix}`}>出欠を答える</a></p><p>{items[0]!.project_kind === "general_meeting" ? "出席、委任、欠席のどれかを答えてください。" : "参加しないときも、答えてください。答えがないときは、欠席として数えます。"}紙の回答票を班長に渡しても答えられます。</p></>}
+      {closed ? <ReceptionClosed closed={!!items[0]!.closed_at} due={deadline} /> : <><p><a class="button" href={`/${c.var.ward.slug}/answer/${encodeURIComponent(projectId)}${suffix}`}>出欠を答える</a></p><p>{items[0]!.project_kind === "general_meeting" ? "出席、委任、欠席のどれかを答えてください。" : "参加しないときも、答えてください。答えがないときは、欠席として数えます。"}代表者のお名前、班、人数を聞きます。紙の回答票を班長に渡しても答えられます。</p></>}
     </> : null}
     {ordered.filter(({ latest }) => latest.kind !== "notice").map(renderDocument)}
     {context.documents.some((document) => document.kind === "recruitment") && !closed ? <section><h2>手伝える方へ</h2><p>自治会に入っていない方も手伝えます。</p><a href={`/${c.var.ward.slug}/help/${encodeURIComponent(projectId)}`}>手伝いを申し込む</a></section> : null}

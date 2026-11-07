@@ -226,12 +226,13 @@ intakeAdmin.get("/intake/started/:projectId", async (c) => {
   const tasks = state.mapTasks.length;
   const draftKind = initialDraftKind(state.project.kind);
   const draftTitle = documentTitle(state.project.kind, draftKind);
+  const people = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM accounts WHERE ward_id = ? AND removed_at IS NULL").bind(ward.wardId).first<{ n: number }>();
   return c.html(<Layout title={state.project.title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>{state.project.title}</h1><p class="lead">{count?.n ? `${count.n}件の資料を読んで、${tasks}${tasks > 0 && tasks < 10 ? "つ" : "件"}の仕事の段取りを用意しました` : `ふつうの${tasks}${tasks > 0 && tasks < 10 ? "つ" : "件"}の仕事の段取りを用意しました`}</p>
     <section class="next"><strong>次は</strong><p>{questions ? "分かるものから答えてください。あとでもかまいません。" : `${draftTitle}の下書きを見て、直せます。`}</p>
       <a class="button" href={adminPath(ward, questions ? `/projects/${id}/questions` : `/projects/${id}/draft/${draftKind}`)}>{questions ? "質問に答える" : `${draftTitle}の下書きを見る`}</a></section>
     <p>仕事を押して直せます。</p><a class="button secondary" href={adminPath(ward, `/projects/${id}/map`)}>段取りを見る</a>
-    <p class="link-line"><a href={adminPath(ward, "/inbox")}>届いたものを見る</a></p><a class="quiet" href={adminPath(ward, "/")}>最初の画面へ</a>
+    {(people?.n ?? 0) < 2 ? <p class="link-line"><a href={adminPath(ward, "/settings/people#add")}>ほかの役員にも入ってもらい、手元の資料を送ってもらう</a></p> : null}<p class="link-line"><a href={adminPath(ward, "/inbox")}>届いたものを見る</a></p><a class="quiet" href={adminPath(ward, "/")}>最初の画面へ</a>
   </Layout>);
 });
 
