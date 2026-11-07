@@ -16,6 +16,8 @@ import type { Waitable } from "./types";
 import { lookupPrintQr } from "../print/qr";
 import { getProjectState } from "../project/api";
 import { formatDateText } from "../core/time";
+import { WhichProject } from "./which-project";
+import { PROJECT_KINDS } from "../project/model";
 import { pendingMaterialGroups, startMaterialGroup } from "./groups";
 import { initialDraftKind } from "../map/template";
 import { documentTitle } from "../project/heading";
@@ -170,6 +172,7 @@ intakeAdmin.get("/intake/read", async (c) => {
   const { ward } = c.var;
   const groups = await pendingMaterialGroups(c.env.DB, ward.wardId);
   const projects = await projectDirectory().listOpen(c.env.DB, ward.wardId);
+  const open = projects.map((project) => ({ project_id: project.projectId, name: project.title }));
   return c.html(<Layout title="読み終わったもの" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/intake/received")}>← 送ったものへ</a>
     <h1>{groups.length ? "読み終わりました" : "読み終わったものはまだありません"}</h1><p class="lead">{groups.length > 1 ? "行事ごとに分けました。違っていても、あとで直せます。" : groups.length ? "資料をまとめました。違っていても、あとで直せます。" : "読み終わると、ここに出ます。画面を閉じてもかまいません。"}</p>
@@ -183,12 +186,9 @@ intakeAdmin.get("/intake/read", async (c) => {
       const oneValue = (values: (string | undefined)[]) => { const distinct = [...new Set(values.filter(Boolean))]; return distinct.length === 1 ? distinct[0] : undefined; };
       const date = oneValue([...fields.filter((f) => f.name === "日時").map((f) => f.value), ...suggestions.map((s) => s.date_text)]);
       const place = oneValue([...fields.filter((f) => f.name === "場所").map((f) => f.value), ...suggestions.map((s) => s.place)]);
-      return <section class="panel"><h2>{group.title}の資料のようです</h2>
+      return <section class="panel"><h2>{group.joins?.title ?? group.title}の資料のようです</h2>
         <dl class="facts"><dt>資料</dt><dd>{group.materials.length}件</dd>{date ? <><dt>資料の日付</dt><dd>{formatDateText(date)}</dd></> : null}{place ? <><dt>場所</dt><dd>{place}</dd></> : null}</dl>
-        <form method="post" action={adminPath(ward, "/intake/start")}><input type="hidden" name="group" value={group.key} />
-          <div class="field"><label for={`day-${index}`}>今年の行事の日（分かれば。あとでも直せます）</label><input id={`day-${index}`} name="eventDay" type="date" /></div>
-          <div class="action-links"><button class={index === 0 ? undefined : "secondary"}>{group.title}を始める</button></div>
-        </form>
+        <WhichProject id={`group-${index}`} question="この資料は、次の行事のものですか？" projects={open} suggested={group.joins?.projectId} suggestedName={group.joins ? "" : group.title} suggestedKind={group.kind} action={adminPath(ward, "/intake/start")} hidden={{ group: group.key }} withDay />
       </section>;
     })}
     {groups.length === 0 ? <><p>まだ読み終わっていない資料は、送ったものから見られます。</p>
@@ -204,7 +204,14 @@ intakeAdmin.post("/intake/start", async (c) => {
   const form = await c.req.formData();
   const eventDay = String(form.get("eventDay") ?? "");
   if (eventDay && (!/^\d{4}-\d{2}-\d{2}$/.test(eventDay) || Number(eventDay.slice(0, 4)) < 1900 || Number(eventDay.slice(0, 4)) > 2200 || !Number.isFinite(Date.parse(eventDay)) || new Date(eventDay).toISOString().slice(0, 10) !== eventDay)) return c.redirect(`${adminPath(ward, "/intake/read")}?error=day`, 303);
-  const project = await startMaterialGroup(c.env, waitableContext(c), ward.wardId, account.accountId, String(form.get("group") ?? ""), eventDay);
+  const kind = String(form.get("kind") ?? "");
+  const projectName = String(form.get("projectName") ?? "").trim();
+  if (projectName.length > 100) return c.redirect(`${adminPath(ward, "/inbox")}?error=input`, 303);
+  const project = await startMaterialGroup(c.env, waitableContext(c), ward.wardId, account.accountId, String(form.get("group") ?? ""), eventDay, {
+    projectId: String(form.get("projectId") ?? "") || undefined, projectName: form.get("operation") === "new-project" ? projectName : undefined,
+    kind: PROJECT_KINDS.find((value) => value === kind),
+  });
+  if (project?.joined) return c.redirect(`${adminPath(ward, "/inbox")}?n=assigned&project=${project.projectId}`, 303);
   return c.redirect(adminPath(ward, project ? `/intake/started/${project.projectId}` : "/intake/read"), 303);
 });
 
@@ -224,7 +231,7 @@ intakeAdmin.get("/intake/started/:projectId", async (c) => {
     <section class="next"><strong>次は</strong><p>{questions ? "分かるものから答えてください。あとでもかまいません。" : `${draftTitle}の下書きを見て、直せます。`}</p>
       <a class="button" href={adminPath(ward, questions ? `/projects/${id}/questions` : `/projects/${id}/draft/${draftKind}`)}>{questions ? "質問に答える" : `${draftTitle}の下書きを見る`}</a></section>
     <p>仕事を押して直せます。</p><a class="button secondary" href={adminPath(ward, `/projects/${id}/map`)}>段取りを見る</a>
-    <p class="link-line"><a href={adminPath(ward, "/inbox")}>別の行事に入れる</a></p><a class="quiet" href={adminPath(ward, "/")}>最初の画面へ</a>
+    <p class="link-line"><a href={adminPath(ward, "/inbox")}>届いたものを見る</a></p><a class="quiet" href={adminPath(ward, "/")}>最初の画面へ</a>
   </Layout>);
 });
 

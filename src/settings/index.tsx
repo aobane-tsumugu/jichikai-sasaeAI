@@ -6,12 +6,13 @@ import { adminPath, clearDeviceCookie } from "../core/auth";
 import type { Bundle } from "../core/bundle";
 import type { AdminEnv } from "../env";
 import { getProjectState, listOpenProjects } from "../project/api";
-import { dateWords } from "../project/followup";
+import { dateWords, daysRemaining } from "../project/followup";
 import { countWord } from "../project/model";
-import { listInboxItems } from "../line";
+import { inboxDecided, listInboxItems } from "../line";
+import { mapTaskPath, nextMapTask } from "../map/next";
 import { nearInquiryDates } from "../line/digest";
 import { info } from "./info";
-import { formatJstDate } from "../core/time";
+import { formatJstDate, shortDate } from "../core/time";
 import { people } from "./people";
 import { mySignInPath } from "./sign-in";
 import { templates } from "./templates";
@@ -46,57 +47,71 @@ admin.get("/", async (c) => {
   const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
   const digest = await getDigestSettings(c.env.DB, ward.wardId);
   const near = nearInquiryDates(projects, today, digest);
-  const places = <><h2>ほかの場所</h2><ul class="links">
-    {projects.length ? <><li class="link-line"><a href={adminPath(ward, "/projects/today")}>今やること</a></li><li class="link-line"><a href={adminPath(ward, "/answers")}>答えを見る</a></li></> : null}
-    <li class="link-line"><a href={adminPath(ward, "/archive")}>記録を読む</a></li>
-    {projects.length ? <><li class="link-line"><a href={adminPath(ward, "/archive/map")}>一年の予定</a></li><li class="link-line"><a href={adminPath(ward, "/answers/roster")}>名簿</a></li></> : null}
-    <li class="link-line"><a href={adminPath(ward, "/settings")}>区の設定</a></li>
-    {projects.length ? <><li class="link-line"><a href={adminPath(ward, "/requests/city")}>行政の依頼</a></li><li class="link-line"><a href={adminPath(ward, "/inquiries")}>問い合わせと要望</a></li></> : null}
-    <li><form method="post" action={adminPath(ward, "/logout")}><button class="quiet">このスマホやパソコンから出る</button></form></li>
-  </ul></>;
+  const undecided = lineInbox.filter((item) => !inboxDecided(item)).length;
+  const photos = lineInbox.filter((item) => item.original_kind === "image" && item.job_id).slice(0, 3);
+  const received = receivedCount ? <><h2>届いたもの</h2>
+    {photos.length ? <div class="photo-strip">{photos.map((item) => <a href={adminPath(ward, `/inbox/${item.item_id}/pick`)}><img class="photo" src={adminPath(ward, `/inbox/${item.item_id}/original`)} alt="届いた写真" loading="lazy" /></a>)}</div> : null}
+    <p>{lineInbox.length ? `公式LINEに${lineInbox.length}件届いています。` : ""}{undecided ? `${undecided}件は、どの行事か確かめてください。` : lineInbox.length ? "AIが行事に入れました。" : ""}{inquiryCount ? `問い合わせが${countWord(inquiryCount)}あります。${inquiryWord ? `${countWord(inquiryWords.filter((words) => words.includes(inquiryWord)).length)}に「${inquiryWord}」と書かれています。` : ""}` : ""}</p>
+    {undecided && projects.length ? null : <div class="action-links"><a class="button secondary" href={adminPath(ward, "/inbox")}>届いたものを見る</a></div>}</> : null;
+  const about = <><h1>{ward.name}の自治会の仕事を進める画面です</h1>
+    <p class="lead">SasaeAIは、自治会の役員の仕事を支えるサービスです。手元の紙や写真を送ると、AIが読んで、段取りと案内の下書きを用意します。案内を配り、答えを集め、記録を残すまで、ここで進められます。役員だけが見られる画面です。</p></>;
+  const place = (path: string, name: string, note: string) => <li><a class="row-link" href={adminPath(ward, path)}><b>{name}</b><span>{note}</span></a></li>;
+  const places = <><h2>ほかにできること</h2><ul class="rows two">
+    {projects.length ? <>{place("/projects/today", "今やること", "締切のある仕事を近い順に見ます")}{place("/answers", "答えを見る", "住民から届いた出欠と手伝いを見ます")}</> : null}
+    {place("/archive", "記録を読む", "閉じた行事の段取り、配ったもの、報告を読みます")}
+    {projects.length ? <>{place("/archive/map", "一年の予定", "区の仕事を月ごとに見ます")}{place("/answers/roster", "名簿", "代表者の名前と班を入れます")}</> : null}
+    {projects.length ? <>{place("/requests/city", "行政の依頼", "市から届いた依頼と締切を見ます")}{place("/inquiries", "問い合わせと要望", "住民からの問い合わせに返事をします")}</> : null}
+    {place("/settings", "区の設定", "役員、連絡先、知らせの文を直します")}
+    <li><a class="row-link" href={`/${ward.slug}/`}><b>区のページ</b><span>住民が読むページを見ます</span></a></li>
+  </ul><form method="post" action={adminPath(ward, "/logout")}><button class="quiet">このスマホやパソコンから出る</button></form></>;
+  const nearest = projects.flatMap((project, index) => {
+    const task = states[index] ? nextMapTask(states[index]!.mapTasks, today) : undefined;
+    return task ? [{ project, task }] : [];
+  }).sort((a, b) => (a.task.periodEnd ?? "9999").localeCompare(b.task.periodEnd ?? "9999"))[0];
+  const next = undecided ? { title: `届いたもの${undecided}件の行事を決める`, body: "どの行事のものか、AIが決められなかったものです。中身を見て、入れる行事を選べます。", href: "/inbox", label: "届いたものを見る" }
+    : nearest ? { title: `${nearest.project.title}　${nearest.task.name}`, body: `${nearest.task.periodEnd ? `${shortDate(nearest.task.periodEnd)}まで。${daysRemaining(nearest.task.periodEnd)}。` : ""}押すと、この仕事の画面が開きます。`, href: mapTaskPath(nearest.project.projectId, nearest.project.kind, nearest.task), label: "この仕事を開く" }
+    : { title: "手元の紙や資料を送る", body: "案内の紙も、Wordも、写真も、そのまま送れます。AIが読んで、行事に入れます。", href: "/intake", label: "紙や資料を送る" };
   return c.html(<AdminPage ward={ward} account={account} title="最初の画面" home>
     {projects.length === 0 ? sent === 0 ? closed ? <>
-      <h1>去年の記録から始められます</h1>
-      <p class="lead">残っている段取りや報告を読んで、今年の準備を始められます。</p>
+      {about}<h2>去年の記録から始められます</h2>
+      <p>残っている段取りや報告を読んで、今年の準備を始められます。</p>
       <div class="action-links"><a class="button" href={adminPath(ward, "/archive")}>記録を読む</a></div>
       <div class="action-links"><a class="button secondary" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>新しく始める</a></div>
-      {places}
+      {received}{places}
     </> : <>
-      <h1>去年の資料を送ってください</h1>
-      <p class="lead">案内の紙でも、Wordでも、写真でも、そのまま送れます。整理はいりません。</p>
+      {about}<h2>まず、去年の資料を送ってください</h2>
+      <p>案内の紙でも、Wordでも、写真でも、そのまま送れます。整理はいりません。</p>
       <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>去年の資料を送る</a></div>
       <h2>送ると、こうなります</h2><ul>
         <li>AIが読んで、日時、場所、協賛先などを取り出します。</li><li>資料から、今年の段取りができます。</li><li>案内の下書きができます。直して配るのは役員です。</li>
       </ul>
       <details class="hint"><summary>資料がどこにあるか分からないとき</summary><div><p>見つかったものから一枚だけでも送れます。何もないときは、下のボタンから始められます。</p></div></details>
       <div class="action-links"><a class="button secondary" href={adminPath(ward, "/projects")}>資料がないので、種類を選んで始める</a></div>
+      {received}
     </> : <>
-      <h1>送った資料</h1><p class="lead">{sent}件を預かっています。読み終わった分から、段取りを作れます。</p>
+      {about}<h2>送った資料</h2><p>{sent}回分を預かっています。読み終わった分から、段取りを作れます。</p>
       <p class="muted">{read ? `読み終わりました${read}件。` : ""}{reading ? `読んでいます${reading}件。` : ""}{delayed ? `読み取りが遅れています${delayed}件。送り直す必要はありません。` : ""}{failed ? `読めませんでした${failed}件。もう一度読むか、このまま進められます。` : ""}</p>
       <section class="next"><strong>次は</strong><p>読み終わったものを見てください。</p><a class="button" href={adminPath(ward, "/intake/read")}>読み終わったものを見る</a></section>
       <div class="action-links"><a class="button secondary" href={adminPath(ward, "/intake")}>続けて送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>資料がないので、種類を選んで始める</a></div>
-      <p class="link-line"><a href={adminPath(ward, "/intake/received")}>送ったものを見る</a></p>{places}
+      <p class="link-line"><a href={adminPath(ward, "/intake/received")}>送ったものを見る</a></p>{received}{places}
     </> : <>
-      <h1>いま進めていること</h1>
+      {about}<h2>次にすること</h2>
+      <section class="next"><strong>{next.title}</strong><p>{next.body}</p><a class="button" href={adminPath(ward, next.href)}>{next.label}</a></section>
       {near.length ? <div class="notice"><strong>{near[0]}</strong><p>{inquiryNotice(digest)}</p><a class="quiet" href={adminPath(ward, "/inquiries")}>問い合わせを見る</a></div> : null}
-      <p class="lead">押すと段取りが開きます。手元に紙や資料があれば、先に送ってかまいません。</p>
-      <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a></div>
+      {received}
+      <h2>進めている行事</h2><p class="muted">押すと、その行事の段取りが開きます。</p>
       <ul class="rows two">{projects.map((p, index) => {
         const state = states[index];
-        const tasks = state?.mapTasks.filter((task) => task.progress !== "done" && (task.periodStart || task.periodEnd) && (!task.periodStart || task.periodStart <= today) && (!task.periodEnd || task.periodEnd >= today)) ?? [];
-        const questions = state?.questions.length ?? 0;
+        const task = state ? nextMapTask(state.mapTasks, today) : undefined;
         const due = p.deadlines.event_day ?? p.deadlines.submit_due;
         const days = due ? Math.ceil((Date.parse(due) - Date.parse(today)) / 86400_000) : null;
         return <li><a class="row-link" href={adminPath(ward, `/projects/${p.projectId}/map`)}><b>{p.title}</b>
           {due ? <span>{formatJstDate(due)}{p.deadlines.submit_due && !p.deadlines.event_day ? "までに提出" : days !== null && days >= 0 ? `まで、あと${days}日` : ""}</span> : null}
-          <span>{tasks.length ? `今の時期の仕事: ${tasks.map((t) => t.name).join("、")}` : state?.mapTasks.length ? "今の時期の仕事はありません" : "仕事はまだありません。段取りから足せます"}</span>
-          {questions ? <span>質問 {countWord(questions)}</span> : null}
+          <span>{task ? `次は ${task.name}` : state?.mapTasks.length ? "段取りの仕事は全部済みました" : "仕事はまだありません。段取りから足せます"}</span>
         </a></li>;
       })}</ul>
-      <div class="action-links"><a class="button secondary" href={adminPath(ward, "/projects")}>新しく始める</a></div>
-      <h2>届いたもの</h2><ul class="rows"><li><a class="row-link" href={adminPath(ward, "/inbox")}><b>公式LINEに届いた写真と文 {receivedCount}件</b>
-        {receivedCount ? <span>{lineInbox.some((i) => i.disposition === "matched") ? "AIが行事に入れました。" : ""}{lineInbox.some((i) => i.disposition === "unmatched") ? `${lineInbox.filter((i) => i.disposition === "unmatched").length}件はどの行事か分かりませんでした` : ""}{inquiryCount ? `問い合わせが${countWord(inquiryCount)}あります。${inquiryWord ? `${countWord(inquiryWords.filter((words) => words.includes(inquiryWord)).length)}に「${inquiryWord}」と書かれています` : ""}` : ""}</span> : <span>まだ届いていません</span>}
-      </a></li>{sent ? <li><a class="row-link" href={adminPath(ward, "/intake/read")}><b>送った資料{sent}件</b><span>読み終わったものを見る</span></a></li> : null}</ul>
+      <div class="action-links"><a class="button secondary" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>新しい行事を始める</a></div>
+      {sent ? <p class="link-line"><a href={adminPath(ward, "/intake/read")}>送った資料{sent}件を見る</a></p> : null}
       {places}
     </>}
   </AdminPage>);

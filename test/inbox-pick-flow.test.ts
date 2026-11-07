@@ -33,7 +33,8 @@ it("分からないものは行事を選ぶ画面へ進み、選び直しと外�
   const pick = await (await get(realApp, `${root}/inbox/item-1/pick`, cookie)).text();
   expect(pick).toContain("どの行事に入れますか");
   expect(pick).toContain("架空の行事");
-  expect(pick).toContain("新しく始めて入れる");
+  expect(pick).toContain("この中にない");
+  expect(pick).toContain("この名前で新しい行事にする");
   expect(pick).not.toContain("関係のないものとして外す");
   expect((await postForm(realApp, `${root}/inbox/item-1`, { operation: "assign", projectId: "" }, cookie)).headers.get("location")).toContain("error=input");
   expect((await postForm(realApp, `${root}/inbox/item-1`, { operation: "new-project", projectName: "", kind: "event", year: "2026" }, cookie)).headers.get("location")).toContain("error=input");

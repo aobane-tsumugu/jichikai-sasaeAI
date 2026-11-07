@@ -170,6 +170,21 @@ details.fold > div { padding: 0 var(--space-3) var(--space-3); }
 .row-link span { display: block; color: var(--muted); font-size: var(--text-note); }
 
 /* 短いリンクの一覧と、配る前に読む面 */
+.photo { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel); }
+.photo-full { display: block; width: 100%; height: auto; max-height: 75vh; object-fit: contain; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel); }
+.photo-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin: 0 0 var(--space-3); }
+.photo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4) var(--space-3); margin: var(--space-3) 0; padding: 0; list-style: none; }
+.photo-grid a { display: block; color: var(--fg); text-decoration: none; }
+.photo-grid b { display: block; margin-top: var(--space-1); line-height: 1.4; overflow-wrap: anywhere; }
+.photo-grid span { display: block; color: var(--muted); font-size: var(--text-note); line-height: 1.4; overflow-wrap: anywhere; }
+.photo-grid .photo-none { display: flex; align-items: center; min-height: 6rem; padding: var(--space-2); border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel); color: var(--fg); }
+.which-project fieldset { margin: var(--space-3) 0 0; padding: 0; border: 0; }
+.which-project legend { padding: 0; font-weight: 700; }
+.which-project .action-links { margin: var(--space-2) 0; }
+details.none-of-these { margin: var(--space-2) 0; }
+details.none-of-these > summary { display: flex; align-items: center; justify-content: center; min-height: var(--tap); padding: var(--space-2) var(--space-3); border: 2px solid var(--accent); border-radius: var(--radius); background: var(--panel); color: var(--accent); font-weight: 700; cursor: pointer; }
+details.none-of-these > div { padding: var(--space-3) 0 0; }
+.question-block + .question-block { margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--line); }
 .links { margin: var(--space-3) 0; padding: 0; list-style: none; }
 .links li { border-bottom: 1px solid var(--line); }
 .links a { display: flex; align-items: center; min-height: var(--tap); font-weight: 600; }
