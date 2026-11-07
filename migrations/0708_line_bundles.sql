@@ -2,11 +2,10 @@
 ALTER TABLE line_webhook_receipts ADD COLUMN bundle_id TEXT;
 ALTER TABLE line_webhook_receipts ADD COLUMN destination TEXT;
 ALTER TABLE line_webhook_receipts ADD COLUMN source_type TEXT;
-ALTER TABLE line_webhook_receipts ADD COLUMN source_id TEXT;
-ALTER TABLE line_webhook_receipts ADD COLUMN sender_id TEXT;
+ALTER TABLE line_webhook_receipts ADD COLUMN source_hash TEXT;
 ALTER TABLE line_webhook_receipts ADD COLUMN received_at TEXT;
 ALTER TABLE line_webhook_receipts ADD COLUMN bundle_reply_claimed_at TEXT;
-CREATE INDEX line_receipt_sender ON line_webhook_receipts (ward_id, destination, source_type, source_id, sender_id, received_at);
+CREATE INDEX line_receipt_sender ON line_webhook_receipts (ward_id, destination, source_type, source_hash, sender_hash, received_at);
 CREATE INDEX line_receipt_bundle ON line_webhook_receipts (ward_id, bundle_id);
 ALTER TABLE line_inbox_items ADD COLUMN bundle_id TEXT;
 ALTER TABLE line_inbox_items ADD COLUMN line_destination TEXT;

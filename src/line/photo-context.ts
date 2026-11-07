@@ -1,5 +1,6 @@
 import type { MatchInput } from "../ai/match";
 import { getReadings } from "../intake/store";
+import { sha256Hex } from "../intake/media";
 import type { PhotoSource } from "./clarifications";
 
 // 買い出しや設営で撮って送り直す間をつなぐ仮の幅。別の作業まで長く持ち越さない。
@@ -32,13 +33,16 @@ export const PHOTO_TEXT_TTL_MS = 24 * 60 * 60_000;
 
 /** 送信者とトークが同じ直前の投稿を、D1の一つの更新で結ぶ。本文はここに保存しない。 */
 export async function joinLineBundle(db: D1Database, wardId: string, destination: string, eventId: string, source: PhotoSource, receivedAt: string): Promise<string> {
-  await db.prepare(`UPDATE line_webhook_receipts SET destination = ?, source_type = ?, source_id = ?, sender_id = ?, received_at = ?,
+  // 送信元と送信者のIDは残さず、回数制限と同じSHA-256で同じ人かだけを比べる。
+  const sourceHash = await sha256Hex(source.id);
+  const senderHash = await sha256Hex(source.senderId || source.id);
+  await db.prepare(`UPDATE line_webhook_receipts SET destination = ?, source_type = ?, source_hash = ?, sender_hash = ?, received_at = ?,
     bundle_id = COALESCE((SELECT r.bundle_id FROM line_webhook_receipts r WHERE r.ward_id = ?
-      AND r.destination = ? AND r.source_type = ? AND r.source_id = ? AND r.sender_id = ? AND r.event_id <> ? AND ? <> ''
+      AND r.destination = ? AND r.source_type = ? AND r.source_hash = ? AND r.sender_hash = ? AND r.event_id <> ? AND ? <> ''
       AND r.received_at >= ? AND r.received_at <= ? AND r.bundle_id IS NOT NULL
       ORDER BY r.received_at DESC, r.event_id DESC LIMIT 1), ?)
     WHERE ward_id = ? AND event_id = ? AND bundle_id IS NULL`)
-    .bind(destination, source.type, source.id, source.senderId, receivedAt, wardId, destination, source.type, source.id, source.senderId, eventId, source.senderId,
+    .bind(destination, source.type, sourceHash, senderHash, receivedAt, wardId, destination, source.type, sourceHash, senderHash, eventId, source.senderId ? senderHash : "",
       new Date(Date.parse(receivedAt) - PHOTO_AFTER_MS).toISOString(), receivedAt, eventId, wardId, eventId).run();
   const row = await db.prepare("SELECT bundle_id FROM line_webhook_receipts WHERE ward_id = ? AND event_id = ?")
     .bind(wardId, eventId).first<{ bundle_id: string }>();
@@ -145,17 +149,18 @@ export async function photoContextProject(db: D1Database, wardId: string, batch:
   const start = new Date(Date.parse(batch.created_at) - PHOTO_CONTEXT_GAP_MS).toISOString();
   const end = new Date(Math.min(now.getTime(), Date.parse(batch.last_received_at) + PHOTO_AFTER_MS)).toISOString();
   const sender = batch.sender_id ?? "";
+  const senderHash = await sha256Hex(sender || batch.source_id);
   const texts = await db.prepare(`SELECT t.received_at AS at, t.text AS summary FROM line_photo_context_texts t
     WHERE t.ward_id = ? AND t.destination = ? AND t.source_type = ? AND t.source_id = ? AND t.event_id NOT LIKE 'retake:%'
     AND t.received_at >= ? AND t.received_at <= ? AND t.expires_at > ?
-    AND (t.source_type = 'user' OR EXISTS (SELECT 1 FROM line_webhook_receipts r WHERE r.ward_id = t.ward_id AND r.event_id = t.event_id AND r.sender_id = ?))
+    AND (t.source_type = 'user' OR EXISTS (SELECT 1 FROM line_webhook_receipts r WHERE r.ward_id = t.ward_id AND r.event_id = t.event_id AND r.sender_hash = ?))
     AND NOT EXISTS (SELECT 1 FROM line_inbox_items i WHERE i.ward_id = t.ward_id AND i.event_id = t.event_id AND i.bundle_id IS NOT NULL)
     UNION ALL SELECT i.received_at AS at, i.original_text AS summary FROM line_inbox_items i
     WHERE i.ward_id = ? AND i.line_destination = ? AND i.source_type = ? AND i.source_id = ? AND i.sender_id = ? AND i.original_kind = 'text'
       AND i.bundle_id IS NOT NULL AND i.received_at >= ? AND i.received_at <= ?
       AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.ward_id = i.ward_id AND j.job_id = i.job_id AND j.withdrawn_at IS NOT NULL)
     ORDER BY at`)
-    .bind(wardId, batch.destination, batch.source_type, batch.source_id, start, end, now.toISOString(), sender,
+    .bind(wardId, batch.destination, batch.source_type, batch.source_id, start, end, now.toISOString(), senderHash,
       wardId, batch.destination, batch.source_type, batch.source_id, sender, start, end).all<{ at: string; summary: string }>();
   const before = await db.prepare(`SELECT b.created_at AS at, 'photo' AS kind, NULL AS summary, i.job_id FROM line_photo_batches b
     JOIN line_photo_items i ON i.ward_id = b.ward_id AND i.batch_id = b.batch_id
