@@ -99,7 +99,11 @@ it("資料なしで答えを入れ、一度で閉じ、紹介と記録から翌�
   }, cookie);
   expect(published.status).toBe(303);
   expect(await read(published.headers.get("location")!)).toContain("住民向けのページで見る");
-  expect(await read(`${record}?view=seed`)).toContain('name="eventDay" type="date" required');
+  const seedPage = await read(`${record}?view=seed`);
+  const eventDayInput = seedPage.match(/<input\b[^>]*\bname="eventDay"[^>]*>/)?.[0];
+  expect(eventDayInput).toBeDefined();
+  expect(eventDayInput).toContain('type="date"');
+  expect(eventDayInput).not.toMatch(/\srequired(?:\s|=|\/?>)/);
   const started = await postForm(realApp, `${record}/seed`, {
     title: fixture.nextYearTitle, year: String(fixture.nextYear), eventDay: fixture.eventDay,
   }, cookie);

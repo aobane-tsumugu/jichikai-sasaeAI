@@ -1,3 +1,4 @@
+import { projectFeatures, taskFeatures } from "../project/task-features";
 import { getRoster, normalizeHousehold, type RosterEntry } from "../answers/api";
 import { newId, nowIso } from "../core/ids";
 import { getProjectState, getProjectSummary } from "../project/api";
@@ -75,7 +76,7 @@ export async function lastPreparation(db: D1Database, wardId: string, projectId:
 /** 元の資料は読み直さず、去年の同じ当番の記録か、この仕事に届いた去年の表を使う。 */
 export async function compareRota(db: D1Database, wardId: string, projectId: string, weekday?: number): Promise<{ comparison: Comparison; roster: RosterEntry[] } | null> {
   const state = await getProjectState(db, wardId, projectId);
-  if (!state || state.project.kind !== "duty") return null;
+  if (!state || !taskFeatures(state.mapTasks).has("assign")) return null;
   const project = state.project;
   const schedule = await rotaSchedule(db, wardId, projectId);
   const day = weekday ?? schedule?.weekday;
@@ -171,7 +172,7 @@ export async function compareRota(db: D1Database, wardId: string, projectId: str
 /** 下書きを表の行に入れる。役員が直した行は保ち、配った内容には触れない。 */
 export async function prepareRota(db: D1Database, wardId: string, projectId: string, accountId: string, weekday?: number): Promise<boolean> {
   const project = await getProjectSummary(db, wardId, projectId);
-  if (!project || project.closedAt || project.kind !== "duty") return false;
+  if (!project || project.closedAt || !(await projectFeatures(db, wardId, projectId)).has("assign")) return false;
   const proposal = await compareRota(db, wardId, projectId, weekday);
   if (!proposal) return false;
   const previous = await lastPreparation(db, wardId, projectId);

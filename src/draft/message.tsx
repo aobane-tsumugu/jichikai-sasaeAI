@@ -4,11 +4,13 @@ import { AdminPage } from "../core/admin-ui";
 import { adminPath } from "../core/auth";
 import { Choices } from "../core/choice";
 import { formatJstDate, eventPeriodText } from "../core/time";
+import { nextMapTask } from "../map/next";
+import { getProjectState } from "../project/api";
 import { Notice } from "../core/ui";
 import { listOpenProjects } from "../project/api";
 import { getOrCreateWardNotices } from "../project/state";
 import { getEditableDocument } from "../project/actions";
-import { PROJECT_KIND_LABEL, type DocumentKind } from "../project/model";
+import { type DocumentKind } from "../project/model";
 import type { ProjectSummary } from "../project/types";
 import { getDraftPack } from "./packs";
 import { requestDraft } from "./request";
@@ -26,9 +28,11 @@ export const MESSAGE_KINDS: { kind: DocumentKind; title: string; note: string }[
 const isMessageKind = (value: string): value is DocumentKind => MESSAGE_KINDS.some((entry) => entry.kind === value);
 const WITHOUT_PROJECT = "ward-notices";
 
-const projectNote = (project: ProjectSummary) => {
+const projectNote = async (db: D1Database, wardId: string, project: ProjectSummary) => {
   const day = project.deadlines.event_day;
-  return `${PROJECT_KIND_LABEL[project.kind]}です。${day ? `当日は${eventPeriodText(day, project.deadlines.event_end ?? day)}です。` : "当日はまだ決まっていません。"}`;
+  const state = await getProjectState(db, wardId, project.projectId);
+  const next = state ? nextMapTask(state.mapTasks, new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10)) : undefined;
+  return `${day ? `当日は${eventPeriodText(day, project.deadlines.event_end ?? day)}です。` : "当日はまだ決まっていません。"}${next ? `次は「${next.name}」です。` : ""}`;
 };
 
 /** 住民向けにならない組み合わせ（役員会の文書、当番の連絡など）は、ここでは作らない。 */
@@ -37,6 +41,7 @@ const forResidents = (project: ProjectSummary, kind: DocumentKind) => getDraftPa
 async function picker(c: Context<AdminEnv>, error?: string, chosen: { kind?: string; projectId?: string } = {}) {
   const { ward, account } = c.var;
   const projects = (await listOpenProjects(c.env.DB, ward.wardId)).filter((project) => MESSAGE_KINDS.some((entry) => forResidents(project, entry.kind)));
+  const notes = new Map(await Promise.all(projects.map(async (project) => [project.projectId, await projectNote(c.env.DB, ward.wardId, project)] as const)));
   const kind = chosen.kind ?? c.req.query("kind") ?? "";
   const projectId = chosen.projectId ?? c.req.query("project") ?? (!projects.length ? WITHOUT_PROJECT : projects.length === 1 ? projects[0]!.projectId : "");
   const fixed = projects.find((project) => project.projectId === c.req.query("project"));
@@ -58,7 +63,7 @@ async function picker(c: Context<AdminEnv>, error?: string, chosen: { kind?: str
       <Choices name="kind" legend="何を伝えますか" items={MESSAGE_KINDS.map((entry) => ({ value: entry.kind, title: entry.title, note: entry.note, checked: entry.kind === kind }))} />
       {fixed ? <input type="hidden" name="projectId" value={fixed.projectId} />
         : <Choices name="projectId" legend="どの準備のことですか" items={[
-          ...projects.map((project) => ({ value: project.projectId, title: project.title, note: projectNote(project), checked: project.projectId === projectId })),
+          ...projects.map((project) => ({ value: project.projectId, title: project.title, note: notes.get(project.projectId)!, checked: project.projectId === projectId })),
           { value: WITHOUT_PROJECT, title: "どの準備でもない", note: "ごみの出し方の変更など、自治会全体への連絡事項を作ります。", checked: projectId === WITHOUT_PROJECT },
         ]} />}
       <div class="action-bar page-action"><button>作る</button></div>

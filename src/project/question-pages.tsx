@@ -1,3 +1,4 @@
+import { taskFeatures } from "./task-features";
 import { Hono } from "hono";
 import { adminPath } from "../core/auth";
 import { ErrorNotice, Layout, Notice } from "../core/ui";
@@ -86,7 +87,7 @@ questionPages.get("/projects/:projectId/questions", async (c) => {
   const photoIds = [...new Set(questions.flatMap((question) => question.source?.kind === "original" && question.source.ref ? [question.source.ref] : []))];
   const photos = new Set((await Promise.all(photoIds.map((photoId) => c.env.DB.prepare("SELECT original_id FROM originals WHERE ward_id = ? AND original_id = ? AND media_type LIKE 'image/%'").bind(ward.wardId, photoId).first<{ original_id: string }>()))).flatMap((row) => row ? [row.original_id] : []));
   let shownPhoto = "";
-  const duty = state.project.kind === "duty";
+  const duty = taskFeatures(state.mapTasks).has("assign");
   const draftHref = adminPath(ward, `/projects/${id}/draft/${duty ? "duty_roster" : "announcement"}`);
   const draftLabel = duty ? "当番表の下書きを見る" : "案内の下書きを見る";
   const answered = c.req.query("notice") === "answered";

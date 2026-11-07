@@ -86,6 +86,8 @@ it("空の下書きを項目から整え、行事の日を直し、名簿なし�
   const done = tasks.find((task) => task.taskKey === "committee");
   const manual = tasks.find((task) => task.taskKey === "venue");
   if (!done || !manual) throw new Error("架空のやることがありません");
+  // 案内を知らせても、会場を押さえる仕事まで済みにしない。
+  expect(manual.progress).toBe("open");
   expect(await setMapTask(env.DB, ward.wardId, id, done.taskId, {
     name: done.name, start: fixture.eventDay, end: fixture.eventDay, progress: "done", seatId: null,
   })).toBe(true);

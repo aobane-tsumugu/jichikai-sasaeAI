@@ -92,14 +92,10 @@ export const ITEM_SCREEN_LABEL: Record<ItemKey, string> = {
 /** 画面で数を読む言葉。10 以上は「件」にする。 */
 export const countWord = (count: number) => `${count}${count > 0 && count < 10 ? "つ" : "件"}`;
 
-/** プロジェクトの種類ごとに使う項目。画面に空の項目を並べる時と、AI に空の項目を見せる時の範囲。 */
+/** 古い呼び出しの互換。資料の読み書きでは種類で項目を落とさず、画面の欄はやることで選ぶ。 */
 export const ITEMS_BY_KIND: Record<ProjectKind, readonly ItemKey[]> = {
-  event: ITEM_KEYS,
-  general_meeting: ["date_time", "place", "content", "due", "public_contact"],
-  city_request: ["content", "due", "public_contact"],
-  board_meeting: ["date_time", "place", "content"],
-  duty: ["date_time", "place", "content", "helper_slots", "due"],
-  request: ["content", "due", "public_contact"],
+  event: ITEM_KEYS, general_meeting: ITEM_KEYS, city_request: ITEM_KEYS,
+  board_meeting: ITEM_KEYS, duty: ITEM_KEYS, request: ITEM_KEYS,
 };
 
 export function isItemKey(value: unknown): value is ItemKey {

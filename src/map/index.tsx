@@ -1,3 +1,4 @@
+import { taskFeatures, taskDocumentKind } from "../project/task-features";
 import { Hono, type Context } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
@@ -11,7 +12,7 @@ import { documentTitle } from "../project/heading";
 import { materialChangeText } from "./material-change";
 import { nextMapTask, mapCalendar, mapTaskPath, taskPeriodText } from "./next";
 import { jobSummaries } from "../intake/store";
-import { guideOf, opensOf, taskDraftKind, type MapOpens } from "./template";
+import { guideOf, opensOf, taskDraftKind, taskKeyOf, type MapOpens } from "./template";
 export { taskDraftKind } from "./template";
 
 const ERROR_MESSAGES = { invalid_input: "入力を確認してください" };
@@ -46,7 +47,8 @@ admin.get("/projects/:projectId/map", async (c) => {
   const endDay = project.deadlines.event_end ?? day;
   const daysLeft = day ? Math.ceil((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000) : null;
   const readCount = materials.results.filter((material) => material.status === "done").length;
-  const canRain = project.kind === "event" && state.documents.some((document) => document.kind === "announcement" && document.publishedVersionNo !== null);
+  const features = taskFeatures(tasks);
+  const canRain = features.attendance && state.documents.some((document) => document.kind === "announcement" && document.publishedVersionNo !== null);
   const notice = c.req.query("notice");
   const live = tasks.filter((task) => task.periodStart || task.periodEnd);
   const prepStart = live.map((task) => task.periodStart ?? task.periodEnd!).sort()[0];
@@ -97,7 +99,7 @@ admin.get("/projects/:projectId/map", async (c) => {
         <h2>{project.title}でできること</h2>
         <ul class="rows">
           {!project.closedAt ? <li><a class="row-link" href={`${adminPath(ward, "/messages/new")}?project=${encodeURIComponent(id)}`}><b>住民へのメッセージを作る</b><span>{project.title}の案内や宣伝、手伝いの募集、連絡事項、終わった報告を作り、住民向けのページと自治会のLINEと紙で送ります</span></a></li> : null}
-          {[[`/print/${id}`, "紙を印刷する", "案内、回答票、掲示、班長への一枚を印刷します"], [`/answers/${id}`, "出欠の返事を見る", "紙、電話、スマホの返事を見ます"], [`/projects/${id}/draft`, "文書を書く", "案内、募集、当番表などの下書きを書きます"], [`/space/${id}`, "実行委員と班長のページ", "実行委員と班長に渡す入口を作ります"], [`/projects/${id}/ledger`, "運営メモ", "何に、どこに、いくらかけたかを残します"], [`/projects/${id}`, "届いた資料と今年の内容", "届いた資料と、そこから読み取った内容を見ます"]].map(([path, name, note]) => <li><a class="row-link" href={adminPath(ward, path!)}><b>{name}</b><span>{note}</span></a></li>)}
+          {[[`/print/${id}`, "紙を印刷する", "案内、回答票、掲示、班長への一枚を印刷します"], [`/answers/${id}`, "出欠の返事を見る", "紙、電話、スマホの返事を見ます"], [`/projects/${id}/draft`, "文書を書く", "案内、募集、当番表などの下書きを書きます"], [`/space/${id}`, "実行委員と班長のページ", "実行委員と班長に渡す入口を作ります"], [`/projects/${id}/ledger`, "運営メモ", "何に、どこに、いくらかけたかを残します"], [`/projects/${id}`, "届いた資料と今年の内容", "届いた資料と、そこから読み取った内容を見ます"]].filter(([path]) => path !== `/answers/${id}` || features.attendance).map(([path, name, note]) => <li><a class="row-link" href={adminPath(ward, path!)}><b>{name}</b><span>{note}</span></a></li>)}
           {canRain && !project.closedAt ? <li><a class="row-link" href={adminPath(ward, `/projects/${id}/draft/notice`)}><b>雨の変更を知らせる</b><span>雨のときの変更を住民に知らせます</span></a></li> : null}
           <li><a class="row-link" href={adminPath(ward, `/close/${id}`)}><b>報告を書いて終わりにする</b><span>終わったら、報告と来年への一言を残します</span></a></li>
         </ul>
@@ -135,11 +137,13 @@ async function taskPage(c: Context<AdminEnv>, retry?: { values: Record<string, s
   const { project } = state;
   const values = retry?.values ?? { name: task.name, start: task.periodStart ?? "", end: task.periodEnd ?? "", progress: task.progress, seat_id: task.seatId ?? "" };
   const owner = seats.results.find((seat) => seat.seat_id === task.seatId)?.title;
-  const destinations = opensOf(project.kind, task.taskKey);
-  const draftKind = taskDraftKind(task.taskKey, project.kind);
+  const taskKey = taskKeyOf(task.taskKey, task.name);
+  const family = taskDocumentKind(state.mapTasks, taskDraftKind(taskKey));
+  const destinations = opensOf(family, taskKey);
+  const draftKind = taskDraftKind(taskKey);
   const draft = state.documents.find((document) => document.kind === draftKind);
-  const guide = guideOf(project.kind, task.taskKey);
-  const labels: Record<MapOpens, string> = { materials: "写真やファイルを送る", draft: `${documentTitle(project.kind, draftKind)}の下書きを直す`, answers: "出欠の返事を見る", ledger: task.taskKey === "venue" ? "会場のことを運営メモに残す" : "運営メモを見る", committee: "実行委員名簿を入れる", sponsors: "協賛先の一覧を印刷する" };
+  const guide = guideOf(family, taskKey);
+  const labels: Record<MapOpens, string> = { materials: "写真やファイルを送る", draft: `${documentTitle(family, draftKind)}の下書きを直す`, answers: "出欠の返事を見る", ledger: task.taskKey === "venue" ? "会場のことを運営メモに残す" : "運営メモを見る", committee: "実行委員名簿を入れる", sponsors: "協賛先の一覧を印刷する" };
   return c.html(<Layout title={task.name} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {project.title}のやることへ</a>
     <h1>{task.name}</h1><p class="lead">{task.periodStart && task.periodEnd && task.periodStart !== task.periodEnd ? `${formatJstDate(task.periodStart)}から${formatJstDate(task.periodEnd)}まで。` : task.periodEnd ? `${formatJstDate(task.periodEnd)}まで。` : task.periodStart ? `${formatJstDate(task.periodStart)}から。` : "時期はまだ決まっていません。"}{owner ? `担当は${owner}です。` : "担当はあとから直せます。"}</p>
@@ -150,7 +154,7 @@ async function taskPage(c: Context<AdminEnv>, retry?: { values: Record<string, s
       {entry.requested_by ? <><dt>頼んだ人</dt><dd>{entry.requested_by}</dd></> : null}{entry.difficulty ? <><dt>困ったこと</dt><dd>{entry.difficulty}</dd></> : null}{entry.next_year ? <><dt>来年は</dt><dd>{entry.next_year}</dd></> : null}
     </dl></>)}
     {draft && destinations[0] === "draft" ? <div class="notice" role="status"><strong>下書きができています</strong><p>{state.questions.length ? `AIからの質問が${countWord(state.questions.length)}残っていますが、このまま知らせられます。` : "直して保存しても、まだ知らせません。"}</p></div> : null}
-    <div class="action-links">{destinations.map((destination, index) => <a class={index ? "button secondary" : "button"} href={adminPath(ward, targetPath[destination](id, task.taskKey, project.kind))}>{labels[destination]}</a>)}</div>
+    <div class="action-links">{destinations.map((destination, index) => <a class={index ? "button secondary" : "button"} href={adminPath(ward, taskKey === "submit" && destination === "draft" ? `/requests/city/${id}` : targetPath[destination](id, taskKey, family))}>{taskKey === "submit" && destination === "draft" ? "提出したことを記録する" : labels[destination]}</a>)}{taskKey === "submit" ? <a class="button secondary" href={adminPath(ward, targetPath.draft(id, taskKey, family))}>{labels.draft}</a> : null}</div>
     {!project.closedAt ? task.progress === "done" ? <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}/reopen`)}><p>この仕事は済んでいます。</p><button class="secondary">済みを取り消す</button></form>
       : <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}/done`)}><p class="muted">終わったら押してください。やることに戻り、次の仕事が出ます。あとで取り消せます。</p><button class="secondary">この仕事を済みにする</button></form> : null}
     <p class="link-line"><a href={adminPath(ward, `/projects/${id}#materials`)}>{project.title}の資料を見る</a></p>
@@ -180,7 +184,15 @@ admin.use("/projects/:projectId/map/*", async (c, next) => {
 });
 admin.post("/projects/:projectId/map/add", async (c) => {
   const form = await c.req.formData(); const id = c.req.param("projectId");
-  const ok = await addMapTask(c.env.DB, c.var.ward.wardId, id, String(form.get("name") ?? ""));
+  const name = String(form.get("name") ?? "").trim();
+  const ok = await addMapTask(c.env.DB, c.var.ward.wardId, id, name);
+  const key = taskKeyOf(null, name);
+  if (ok && key) await c.env.DB.prepare(`UPDATE project_map_tasks SET task_key = ?
+    WHERE ward_id = ? AND project_id = ? AND task_key IS NULL AND task_id = (
+      SELECT task_id FROM project_map_tasks WHERE ward_id = ? AND project_id = ? AND name = ?
+      ORDER BY sort_order DESC, rowid DESC LIMIT 1)
+      AND NOT EXISTS (SELECT 1 FROM project_map_tasks WHERE ward_id = ? AND project_id = ? AND task_key = ?)`)
+    .bind(key, c.var.ward.wardId, id, c.var.ward.wardId, id, name, c.var.ward.wardId, id, key).run();
   return c.redirect(`${adminPath(c.var.ward, `/projects/${id}/map`)}?${ok ? "notice=added" : "error=invalid_input"}`, 303);
 });
 admin.post("/projects/:projectId/map/event-day", async (c) => {

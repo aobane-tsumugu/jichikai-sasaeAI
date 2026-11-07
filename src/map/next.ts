@@ -1,3 +1,4 @@
+import { taskKeyOf } from "./template";
 import type { MapTaskView } from "../project/types";
 import { eventPeriodText, formatJstDate, seasonText, shortDate } from "../core/time";
 
@@ -30,9 +31,10 @@ export function nextMapTask(tasks: readonly MapTaskView[], today: string): MapTa
 }
 
 /** 仕事を押した時に開く画面。段取りと最初の画面で同じにする。 */
-export function mapTaskPath(projectId: string, kind: string, task: Pick<MapTaskView, "taskId" | "taskKey">): string {
-  if (task.taskKey === "answers") return `/answers/${projectId}`;
-  if (task.taskKey === "report" && kind === "event") return `/close/${projectId}`;
+export function mapTaskPath(projectId: string, _kind: string, task: Pick<MapTaskView, "taskId" | "taskKey"> & { name?: string }): string {
+  const key = taskKeyOf(task.taskKey, task.name);
+  if (key === "answers" || key === "delegation") return `/answers/${projectId}`;
+  if (key === "report") return `/close/${projectId}`;
   return `/projects/${projectId}/map/${task.taskId}`;
 }
 

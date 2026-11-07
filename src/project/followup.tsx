@@ -1,3 +1,4 @@
+import { projectFeatures, SUBMIT_TASK_SQL } from "./task-features";
 import { officerGroupId } from "../line/api";
 import { inquirySubject, inquiryTarget, sameInquiry, sendInquiry, type InquiryRow } from "./inquiry-send";
 import { getDigestSettings, inquiryNotice } from "../settings/digest";
@@ -230,7 +231,9 @@ followupAdmin.get("/inquiries/:inquiryId/request", async (c) => {
     .bind(ward.wardId, c.req.param("inquiryId")).first<{ subject: string; request_project_id: string | null }>();
   if (!record) return c.notFound();
   const linked = record.request_project_id ? await getProjectSummary(c.env.DB, ward.wardId, record.request_project_id) : null;
-  const projects = (await listProjects(c.env.DB, ward.wardId)).filter((p) => p.kind === "request");
+  const candidates = await listProjects(c.env.DB, ward.wardId);
+  const eligibility = await Promise.all(candidates.map((p) => projectFeatures(c.env.DB, ward.wardId, p.projectId)));
+  const projects = candidates.filter((_p, index) => eligibility[index]!.submit);
   const path = adminPath(ward, inquiryPath(c.req.param("inquiryId")));
   return c.html(<Layout title="要望の仕事を進める" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={path}>← 要望の記録へ</a><h1>要望の仕事を進める</h1>
@@ -257,7 +260,7 @@ followupAdmin.post("/inquiries/:inquiryId/request", async (c) => {
   // 新しく始める操作が重なったときは、すでにつないだ仕事を開く。
   const reused = record.request_project_id && record.request_project_id !== String(form.get("previousProjectId") ?? "") ? record.request_project_id : "";
   let project = selected || reused ? await getProjectSummary(c.env.DB, ward.wardId, selected || reused) : null;
-  if (selected && (!project || project.kind !== "request" || project.closedAt)) return adminResult(c, "その要望の仕事にはつなげません。", 400,
+  if (selected && (!project || !(await projectFeatures(c.env.DB, ward.wardId, project.projectId)).submit || project.closedAt)) return adminResult(c, "その要望の仕事にはつなげません。", 400,
     { href: adminPath(ward, `${inquiryPath(inquiryId)}/request`), label: "要望の仕事を選び直す" }, "開いている要望の仕事を選んでください。");
   if (!selected && (!project || project.closedAt)) {
     project = await createProject(c.env.DB, ward.wardId, { kind: "request", title: inquirySubject(record.subject).slice(0, 100), year: Number(today().slice(0, 4)), accountId: account.accountId });
@@ -369,7 +372,7 @@ followupAdmin.get("/requests/city", async (c) => {
   const { ward } = c.var;
   const projects = await c.env.DB.prepare(`SELECT p.project_id, p.title, p.year, d.due_on, d.submitted_on
     FROM projects p LEFT JOIN city_request_details d ON d.ward_id = p.ward_id AND d.project_id = p.project_id
-    WHERE p.ward_id = ? AND p.kind = 'city_request' ORDER BY COALESCE(d.due_on, '9999-12-31'), p.year DESC, p.created_at DESC`)
+    WHERE p.ward_id = ? AND ${SUBMIT_TASK_SQL} ORDER BY COALESCE(d.due_on, '9999-12-31'), p.year DESC, p.created_at DESC`)
     .bind(ward.wardId).all<CityRequestRow>();
   const rows = await Promise.all(projects.results.map(async (project) => {
     const state = await getProjectState(c.env.DB, ward.wardId, project.project_id);
@@ -388,10 +391,12 @@ followupAdmin.get("/requests/city/:projectId", async (c) => {
   const { ward } = c.var;
   const projectId = c.req.param("projectId");
   const project = await getProjectSummary(c.env.DB, ward.wardId, projectId);
-  if (!project || !["city_request", "request"].includes(project.kind)) return c.notFound();
+  if (!project) return c.notFound();
+  const features = await projectFeatures(c.env.DB, ward.wardId, projectId);
+  if (!features.submit) return c.notFound();
   if (project.closedAt) return c.redirect(adminPath(ward, `/archive/${projectId}`), 303);
   const answer = await getEditableDocument(c.env.DB, ward.wardId, projectId, "report");
-  const answerTitle = project.kind === "request" ? "要望書" : "提出する回答";
+  const answerTitle = features.request ? "要望書" : "提出する回答";
   const state = await getProjectState(c.env.DB, ward.wardId, projectId);
   const readDue = state?.items.find((item) => item.key === "due")?.current?.content ?? "";
   const details = await c.env.DB.prepare(`SELECT due_on, answer_draft, submitted_what, submitted_to, submitted_on, notice_body
@@ -412,7 +417,7 @@ followupAdmin.get("/requests/city/:projectId", async (c) => {
   </Layout>);
   const originals = await c.env.DB.prepare(`SELECT o.original_id, o.filename FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id WHERE o.ward_id = ? AND j.project_id = ? AND o.withdrawn_at IS NULL`).bind(ward.wardId, projectId).all<{ original_id: string; filename: string }>();
   return c.html(<Layout title={project.title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <h1>{project.title}</h1><p class="lead">{project.kind === "request" ? "受けた要望をもとに要望書を書き、出したことを残せます。" : "届いた通知を読み、締切や提出先、出したことを残せます。"}</p>
+    <h1>{project.title}</h1><p class="lead">{features.request ? "受けた要望をもとに要望書を書き、出したことを残せます。" : "届いた通知を読み、締切や提出先、出したことを残せます。"}</p>
     <div class="action-links"><a class="button secondary" href={adminPath(ward, `/projects/${projectId}/map`)}>やることを開く</a><a class="button" href={adminPath(ward, `/projects/${projectId}/draft/report`)}>{answerTitle}の下書きを開く</a></div>
     {inquiries.results.map((r) => <section class="panel"><h2>受けた要望</h2><p class="preserve-lines">{inquirySubject(r.subject)}</p><a class="quiet" href={adminPath(ward, inquiryPath(r.inquiry_id))}>要望の記録へ戻る</a></section>)}
     {answer ? <details class="fold"><summary>今の{answerTitle}を読む</summary><div><ArticleBody body={answer.body} kind="report" /></div></details> : <p>{answerTitle}は、まだ書いていません。</p>}
@@ -440,7 +445,9 @@ followupAdmin.post("/requests/city/:projectId", async (c) => {
   const { ward, account } = c.var;
   const projectId = c.req.param("projectId");
   const project = await getProjectSummary(c.env.DB, ward.wardId, projectId);
-  if (!project || !["city_request", "request"].includes(project.kind)) return c.notFound();
+  if (!project) return c.notFound();
+  const features = await projectFeatures(c.env.DB, ward.wardId, projectId);
+  if (!features.submit) return c.notFound();
   if (project.closedAt) return adminResult(c, "終わったものはここでは直せません。", 409, { href: adminPath(ward, `/archive/${projectId}`), label: "終わったものを見る" }, "直すときは、終わりを取り消してください。");
   const form = await c.req.formData();
   const operation = String(form.get("operation") ?? "save");
@@ -459,7 +466,7 @@ followupAdmin.post("/requests/city/:projectId", async (c) => {
   let answer = await getEditableDocument(c.env.DB, ward.wardId, projectId, "report");
   // 以前の画面から来た本文も、共通の下書きへ一度だけ引き継ぐ。
   if (answerDraft && !answer) {
-    const saved = await saveDocument(c.env.DB, ward.wardId, projectId, account.accountId, { kind: "report", title: project.kind === "request" ? "要望書" : "提出する回答", scope: "staff",
+    const saved = await saveDocument(c.env.DB, ward.wardId, projectId, account.accountId, { kind: "report", title: features.request ? "要望書" : "提出する回答", scope: "staff",
       body: JSON.stringify({ text: answerDraft, items: [] }), basedOn: project.stateVersion });
     if (!saved) return adminResult(c, "下書きを保存できませんでした。", 409, { href: adminPath(ward, `/projects/${projectId}/draft/report`), label: "下書きを開く" }, "下書きの内容を確かめてください。");
     answer = await getEditableDocument(c.env.DB, ward.wardId, projectId, "report");

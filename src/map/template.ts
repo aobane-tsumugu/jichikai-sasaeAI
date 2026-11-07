@@ -61,31 +61,32 @@ export const MAP_TEMPLATES: Record<string, readonly TemplateTask[]> = {
   ],
 };
 
-/** 行事の対応は保ち、ほかの種類は仕事ごとに選ぶ。 */
-export function taskDraftKind(taskKey: string | null, kind: ProjectKind = "event"): DocumentKind {
-  return MAP_TEMPLATES[kind]?.find((task) => task.key === taskKey)?.draftKind
-    ?? (taskKey === "duty_roster" ? "duty_roster" : taskKey === "report" || taskKey === "minutes" ? "report" : "announcement");
+/** 仕事を手で足した時も、既存の仕事の名前と鍵を対応させる。自由な名前を推測で分類しない。 */
+export function taskKeyOf(key: string | null, name = ""): string | null {
+  return key ?? ({ "担当を決める": "assign", "提出する": "submit", "出欠を集める": "answers", "委任と出欠を集める": "delegation" } as Record<string, string>)[name.trim()]
+    ?? Object.values(MAP_TEMPLATES).flat().find((task) => task.name === name.trim())?.key ?? null;
 }
-
-/** 資料から始めるときは、その種類で最初に用意する文書へ進む。 */
+function definition(taskKey: string | null, family = "event"): TemplateTask | undefined {
+  if (taskKey === "delegation") return MAP_TEMPLATES.general_meeting?.find((task) => task.key === "answers");
+  return MAP_TEMPLATES[family]?.find((task) => task.key === taskKey)
+    ?? Object.values(MAP_TEMPLATES).flat().find((task) => task.key === taskKey);
+}
+/** 文書の仕事は種類によらず同じ鍵から開く。kindは古い呼び出しとの互換。 */
+export function taskDraftKind(taskKey: string | null, _kind: ProjectKind = "event"): DocumentKind {
+  return ({ assign: "duty_roster", duty_roster: "duty_roster", agenda: "procedure", reply: "procedure", content: "procedure",
+    submit: "report", report: "report", minutes: "report", notify: "notice", notice: "announcement" } as Partial<Record<string, DocumentKind>>)[taskKey ?? ""] ?? "announcement";
+}
 export function initialDraftKind(kind: ProjectKind): DocumentKind {
-  return taskDraftKind(MAP_TEMPLATES[kind]?.find((task) => task.draftKind)?.key ?? null, kind);
+  return taskDraftKind(MAP_TEMPLATES[kind]?.find((task) => task.draftKind)?.key ?? null);
 }
-
-/** 文書が決まっている仕事だけを逆引きする。会場などの下書きへの近道は含めない。 */
 export function draftTaskKeys(kind: ProjectKind, documentKind: DocumentKind): string[] {
-  return (MAP_TEMPLATES[kind] ?? []).filter((task) => task.draftKind && taskDraftKind(task.key, kind) === documentKind).map((task) => task.key);
+  return (MAP_TEMPLATES[kind] ?? []).filter((task) => task.draftKind && taskDraftKind(task.key) === documentKind).map((task) => task.key);
 }
-
-/** 何をする仕事かの一言。役員が足した仕事には無い。 */
-export function guideOf(kind: string, taskKey: string | null): string {
-  return MAP_TEMPLATES[kind]?.find((t) => t.key === taskKey)?.guide ?? "";
+export function guideOf(family: string, taskKey: string | null): string {
+  return definition(taskKey, family)?.guide ?? "";
 }
-
-/** 仕事を押した時に開く物。型にない仕事（役員が足した物）は材料だけ。 */
-export function opensOf(kind: string, taskKey: string | null): readonly MapOpens[] {
-  const task = MAP_TEMPLATES[kind]?.find((t) => t.key === taskKey);
-  return task?.opens ?? ["materials"];
+export function opensOf(family: string, taskKey: string | null): readonly MapOpens[] {
+  return definition(taskKey, family)?.opens ?? ["materials"];
 }
 
 /** YYYY-MM-DD に日数を足す（UTC の暦で計算する。時刻を持たないので時差の影響を受けない）。 */

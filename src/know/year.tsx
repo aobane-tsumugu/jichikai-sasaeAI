@@ -1,3 +1,4 @@
+import { taskFeatures } from "../project/task-features";
 // 区の一年の地図。一般の自治会の一年を仮に置き、行事と届いた資料でこの区の内容に変えていく。
 import { adminPath } from "../core/auth";
 import { newId } from "../core/ids";
@@ -12,6 +13,7 @@ import { Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { createProject, getProjectState, listOpenProjects } from "../project/api";
 import { getKnowItem, KNOW_LIMITS, saveKnowItem } from "./store";
+import { MAP_TEMPLATES } from "../map/template";
 import { WEEKDAYS } from "../rota/schedule";
 
 /** 予定ごとの、今年の準備を始める時のやることの並び（決定ログ L-312、L-313）。kind は中の種類の列に入れる値で、役員には見せない。tasks が無い時は、その種類の型の全部。 */
@@ -33,7 +35,7 @@ export const YEAR_BASE: readonly YearBase[] = [
   { key: "year-end", title: "年末の役員会", kind: "board_meeting", from: 12, to: 12, template: { kind: "board_meeting" } },
   { key: "new-year", title: "新年の集まり", kind: "", from: 1, to: 1, template: { kind: "event", tasks: ["announcement", "answers", "day", "report"] } },
   { key: "officers", title: "役員を決める", kind: "", from: 2, to: 2, template: SHORT_TEMPLATE },
-  { key: "settlement", title: "決算と総会の準備", kind: "", from: 3, to: 3, template: SHORT_TEMPLATE },
+  { key: "settlement", title: "決算と総会の準備", kind: "", from: 3, to: 3, template: { kind: "general_meeting" } },
   { key: "garbage-duty", title: "ごみ当番", kind: "duty", from: 4, to: 3, recurrence: "毎週月曜", knowKey: "duties", template: { kind: "duty" } },
   { key: "bulletin-delivery", title: "市報や回覧の配布", kind: "", from: 4, to: 3, recurrence: "毎月", knowKey: "delivery", template: SHORT_TEMPLATE },
   { key: "hall-care", title: "集会所の管理", kind: "", from: 4, to: 3, recurrence: "随時", knowKey: "safety", template: SHORT_TEMPLATE },
@@ -87,10 +89,14 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
   const used = new Set<string>();
   const similar = (a: string, b: string) => Array.from({ length: Math.max(a.length - 1, 0) }, (_, index) => a.slice(index, index + 2)).some((part) => b.includes(part));
   const rows: YearRow[] = [];
-  // 名前の似た仮の行を先に置き換える。無ければ同じ種類の行。どちらも無ければ足すだけにする。
-  const claim = (kind: string, month: number, title: string) => {
+  // 名前の似た仮の行を置き換える。無ければ新しい予定として足す。
+  const claim = (month: number, title: string, tasks?: ProjectState["mapTasks"]) => {
     const open = YEAR_BASE.filter((entry) => !used.has(entry.key) && (entry.recurrence || inRange(month, entry)));
-    const base = open.find((entry) => similar(entry.title, title)) ?? (kind ? open.find((entry) => entry.kind === kind) : undefined);
+    const features = tasks ? taskFeatures(tasks) : null;
+    const base = open.find((entry) => similar(entry.title, title)) ?? (features ? open.map((entry) => ({
+      entry, keys: entry.template.tasks ?? (MAP_TEMPLATES[entry.template.kind] ?? []).map((task) => task.key),
+    })).filter(({ keys }) => keys.length && keys.every((key) => features.has(key)))
+      .sort((a, b) => b.keys.length - a.keys.length)[0]?.entry : undefined);
     if (base) used.add(base.key);
   };
   projects.forEach((project, index) => {
@@ -100,16 +106,16 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
     const schedule = schedules.results.find((row) => row.project_id === project.projectId);
     const recurring = overrides.results.find((row) => row.recurrence_text && !row.removed_at && row.title === project.title);
     if (schedule || recurring) {
-      claim(project.kind, 4, project.title);
+      claim(4, project.title, state?.mapTasks);
       rows.push({ key: project.projectId, title: project.title, note: `${schedule ? `毎週${WEEKDAYS[schedule.weekday]}曜` : recurring!.recurrence_text}。${activityNote(materialsOf(project.projectId), answersOf(project.projectId))}`,
         state: "fact", level: levelOf(materialsOf(project.projectId) + answersOf(project.projectId)), from: 0, to: 100, eventFrom: 0, eventTo: 100,
-        href: adminPath(ward, `/projects/${project.projectId}/${project.kind === "duty" ? "draft/duty_roster" : "map"}`), order: 0 });
+        href: adminPath(ward, `/projects/${project.projectId}/${state && taskFeatures(state.mapTasks).rota ? "draft/duty_roster" : "map"}`), order: 0 });
       return;
     }
     if (!day) {
       // 名前の似た行があれば重ねる。種類だけでは重ねない（種類は役員に聞かず、短い型の物も行事として持つため。L-312）。
       // 一年の予定に足した時期があればそこに、無ければ今の時期に置く。進めている準備は必ず表に出す。
-      const base = YEAR_BASE.find((entry) => !used.has(entry.key) && similar(entry.title, project.title)) ?? (project.kind === "event" ? undefined : YEAR_BASE.find((entry) => !used.has(entry.key) && entry.kind === project.kind));
+      const base = YEAR_BASE.find((entry) => !used.has(entry.key) && similar(entry.title, project.title));
       if (base) used.add(base.key);
       const added = overrides.results.find((row) => row.added && !row.removed_at && row.month && row.title === project.title);
       const from = base ? position(base.from) : added ? position(added.month!) : position(monthOf(today), dayOf(today));
@@ -119,7 +125,7 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
     }
     const month = monthOf(day);
     const firstTask = state?.mapTasks.map((task) => task.periodStart).filter((value): value is string => Boolean(value)).sort()[0];
-    claim(project.kind, month, project.title);
+    claim(month, project.title, state?.mapTasks);
     const start = firstTask && firstTask < day ? position(monthOf(firstTask), dayOf(firstTask)) : position(month, dayOf(day));
     const eventFrom = position(month, dayOf(day));
     const eventTo = position(monthOf(endDay!), dayOf(endDay!)) + 100 / 360;
@@ -131,7 +137,7 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
   for (const record of records.results) {
     if (!record.event_day || rows.some((row) => row.title === record.title)) continue;
     const month = monthOf(record.event_day);
-    claim(record.kind, month, record.title);
+    claim(month, record.title);
     const at = position(month, dayOf(record.event_day));
     rows.push({ key: record.project_id, title: record.title, note: `${record.year}年${eventPeriodText(record.event_day, record.event_end ?? record.event_day)}。終わりにしました。${activityNote(materialsOf(record.project_id), answersOf(record.project_id))}`, state: "fact", level: levelOf(materialsOf(record.project_id) + answersOf(record.project_id)), from: at, to: position(monthOf(record.event_end ?? record.event_day), dayOf(record.event_end ?? record.event_day)) + 100 / 360, href: adminPath(ward, `/archive/${record.project_id}`), order: at });
   }
@@ -146,7 +152,7 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
     // 今年の準備を始めた予定は、準備の行が同じ予定を表すので、二つ出さない。
     if (projects.some((project) => project.title === row.title)) continue;
     const at = position(row.month!);
-    if (row.source_original_id) claim("", row.month!, row.title);
+    if (row.source_original_id) claim(row.month!, row.title);
     rows.push({ key: row.item_id, title: row.title, note: row.date_text || (row.source_original_id ? "届いた資料から読み取りました" : ""), state: "fact", level: levelOf(row.source_original_id ? 1 : 0), from: at, to: at + 4, href: adminPath(ward, `/year/${row.item_id}`), order: at });
   }
   for (const base of YEAR_BASE) {
@@ -255,7 +261,7 @@ async function recurringItem(db: D1Database, wardId: string, key: string) {
   if (!base && !row?.recurrence_text) return null;
   const title = row?.title || base?.title || "";
   return { key, title, recurrence: row?.recurrence_text || base?.recurrence || "", example: !row?.recurrence_text,
-    duty: base?.kind === "duty" || dutyTitle(title), knowKey: base?.knowKey ?? knowKeyOf(title), removed: Boolean(row?.removed_at), originalId: row?.source_original_id };
+    duty: Boolean(base && taskFeatures((base.template.tasks ?? MAP_TEMPLATES[base.template.kind]?.map((task) => task.key) ?? []).map((taskKey) => ({ taskKey }))).rota) || dutyTitle(title), knowKey: base?.knowKey ?? knowKeyOf(title), removed: Boolean(row?.removed_at), originalId: row?.source_original_id };
 }
 
 yearRecurringAdmin.get("/year/:key", async (c, next) => {
@@ -305,7 +311,7 @@ yearRecurringAdmin.post("/year/:key/prepare", async (c) => {
   const item = await recurringItem(c.env.DB, ward.wardId, c.req.param("key"));
   if (!item || !item.duty || item.removed) return c.notFound();
   const year = Number(todayJst().slice(0, 4));
-  const existing = await c.env.DB.prepare("SELECT project_id, closed_at FROM projects WHERE ward_id = ? AND kind = 'duty' AND title = ? AND year = ? ORDER BY created_at DESC LIMIT 1")
+  const existing = await c.env.DB.prepare("SELECT project_id, closed_at FROM projects WHERE ward_id = ? AND title = ? AND year = ? ORDER BY created_at DESC LIMIT 1")
     .bind(ward.wardId, item.title, year).first<{ project_id: string; closed_at: string | null }>();
   if (existing?.closed_at) return c.redirect(adminPath(ward, `/archive/${existing.project_id}`), 303);
   const projectId = existing?.project_id ?? (await createProject(c.env.DB, ward.wardId, { kind: "duty", title: item.title, year, accountId: account.accountId })).projectId;

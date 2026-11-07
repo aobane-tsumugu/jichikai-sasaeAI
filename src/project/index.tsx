@@ -1,3 +1,4 @@
+import { taskFeatures, taskItemKeys } from "./task-features";
 import { formatJstDate, shortDate } from "../core/time";
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
@@ -124,7 +125,7 @@ admin.get("/projects/today", async (c) => {
   for (const project of projects) {
     for (const [kind, date] of Object.entries(project.deadlines)) {
       if (kind === "event_day" && date < today) continue;
-      entries.push({ date, projectId: project.projectId, project: project.title, label: DEADLINE_LABEL[kind as keyof typeof DEADLINE_LABEL], detail: "", href: kind === "submit_due" && project.kind === "city_request" ? `/requests/city/${project.projectId}` : kind === "answer_due" ? `/answers/${project.projectId}` : `/projects/${project.projectId}/map` });
+      entries.push({ date, projectId: project.projectId, project: project.title, label: DEADLINE_LABEL[kind as keyof typeof DEADLINE_LABEL], detail: "", href: kind === "submit_due" ? `/requests/city/${project.projectId}` : kind === "answer_due" ? `/answers/${project.projectId}` : `/projects/${project.projectId}/map` });
     }
     for (const task of tasksByProject.get(project.projectId) ?? []) {
       entries.push({ date: task.period_end, until: true, taskId: task.task_id, projectId: project.projectId, project: project.title, label: task.name, detail: "", href: `/projects/${project.projectId}/map/${task.task_id}` });
@@ -190,6 +191,8 @@ admin.get("/projects/:projectId", async (c) => {
   const { ward } = c.var; const projectId = c.req.param("projectId");
   const [project, state, jobs, changes] = await Promise.all([getProjectSummary(c.env.DB, ward.wardId, projectId), getProjectState(c.env.DB, ward.wardId, projectId), listJobs(c.env.DB, ward.wardId, { projectId, limit: 40 }), c.env.DB.prepare("SELECT kind, target, status, reason, source_locator, source_kind FROM project_changes WHERE ward_id = ? AND project_id = ? AND pack_version <> 'close-map-edit@1' ORDER BY created_at DESC LIMIT 30").bind(ward.wardId, projectId).all<{ kind: string; target: string; status: string; reason: string | null; source_locator: string | null; source_kind: string | null }>()]);
   if (!project || !state) return c.notFound();
+  const features = taskFeatures(state.mapTasks);
+  const visibleItems = new Set(taskItemKeys(state.mapTasks));
   const unknown = unknownYearContents(state);
   const unknownOriginalIds = new Set([...unknown.items, ...unknown.rows].map((value) => value.source.ref));
   return c.html(<Layout title="今年の内容" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
@@ -199,7 +202,7 @@ admin.get("/projects/:projectId", async (c) => {
       {state?.questions.length ? <a class="button" href={adminPath(ward, `/projects/${projectId}/questions`)}>AIからの質問に答える</a> : null}
       <a class={state?.questions.length ? "button secondary" : "button"} href={adminPath(ward, `/intake?project=${encodeURIComponent(projectId)}`)}>資料を送る</a>
     </nav>
-    <p class="muted">{PROJECT_KIND_LABEL[project.kind]}　{project.year}年</p>
+    <p class="muted">{project.title}　{project.year}年</p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     <details class="fold"><summary>名前を直す</summary><form method="post" action={adminPath(ward, `/projects/${projectId}/title`)}><label for="title">名前</label><input id="title" name="title" value={project.title} maxlength={100} required /> <button class="secondary">名前を保存する</button></form></details>
     <ul class="rows"><li><a class="row-link" href={adminPath(ward, `/projects/${projectId}/questions`)}><b>質問{state.questions.length ? `が${countWord(state.questions.length)}あります` : "はありません"}</b><span>答えなくても知らせられます。</span></a></li></ul>
@@ -227,8 +230,8 @@ admin.get("/projects/:projectId", async (c) => {
     {changes.results.length === 0 ? <p>まだ変わったところはありません。</p> : null}
     <h2>今年の内容</h2>
     <p class="lead">今年の内容がない項目には、去年までの資料を参考として並べます。</p>
-    <dl class="facts">{state.items.map((item) => <><dt>{ITEM_SCREEN_LABEL[item.key]}</dt><dd>{item.current?.content ?? "まだ書かれていません"}{item.references.map((v) => <span class="muted block">参考（{v.refYear === null ? "年不明" : `${v.refYear}年`}）: {v.content}</span>)}</dd></>)}</dl>
-    <h2>実行委員名簿</h2><ul class="links"><li><a href={adminPath(ward, `/projects/${projectId}/committee`)}>実行委員名簿を見て直す</a></li></ul>
+    <dl class="facts">{state.items.filter((item) => visibleItems.has(item.key) || item.current || item.references.length).map((item) => <><dt>{ITEM_SCREEN_LABEL[item.key]}</dt><dd>{item.current?.content ?? "まだ書かれていません"}{item.references.map((v) => <span class="muted block">参考（{v.refYear === null ? "年不明" : `${v.refYear}年`}）: {v.content}</span>)}</dd></>)}</dl>
+    {features.committee ? <><h2>実行委員名簿</h2><ul class="links"><li><a href={adminPath(ward, `/projects/${projectId}/committee`)}>実行委員名簿を見て直す</a></li></ul></> : null}
     <h2 id="ledger">運営メモ</h2>
     <p>何に、どこに、いくらかけたか、来年のためのメモです。領収書や見積りの写真からも入ります。</p>
     <ul class="links"><li><a href={adminPath(ward, `/projects/${projectId}/ledger`)}>運営メモを開く</a></li></ul>

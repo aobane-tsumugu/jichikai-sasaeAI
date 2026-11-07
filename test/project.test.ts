@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { newId } from "../src/core/ids";
 import { seedAccount, seedWard } from "../src/core/testing";
+import { taskItemKeys } from "../src/project/task-features";
 import {
   addQuestion,
   applyChange,
@@ -85,13 +86,16 @@ describe("行事を開く", () => {
     expect(result).toEqual({ status: "rejected", reason: "no_project" });
   });
 
-  it("行事にない項目しか持たない種類では、その項目の差分を捨てる", async () => {
+  it("画面で使わない項目も種類だけで捨てずに保存し、画面の欄はやることで選ぶ", async () => {
     const { ward, account, project } = await setup("board_meeting");
     const result = await applyChange(
       db, ward.wardId, project.projectId,
       { kind: "item", itemKey: "belongings", value: "筆記用具", source: person(account.accountId), confidence: "high", packVersion: "p1" },
     );
-    expectStatus(result, "dropped");
+    expectStatus(result, "applied");
+    const state = await getProjectState(db, ward.wardId, project.projectId);
+    expect(state?.items.find((item) => item.key === "belongings")?.current?.content).toBe("筆記用具");
+    expect(taskItemKeys(state!.mapTasks)).not.toContain("belongings");
   });
 });
 

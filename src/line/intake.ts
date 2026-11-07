@@ -1,3 +1,4 @@
+import { projectFeatures } from "../project/task-features";
 import type { KnowTopic } from "../ai/schema";
 import { createAnthropic } from "../ai/anthropic";
 import { MATCH_NEW, MATCH_UNRELATED, matchProject, type MatchResult } from "../ai/match";
@@ -189,7 +190,9 @@ async function saveLineAnswer(db: D1Database, wardId: string, projectId: string,
   const project = await db.prepare("SELECT kind FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL")
     .bind(wardId, projectId).first<{ kind: string }>();
   if (!project) return;
-  const meeting = project.kind === "general_meeting";
+  const features = await projectFeatures(db, wardId, projectId);
+  if (!features.attendance) return;
+  const meeting = features.delegation;
   const meetingAnswer = meeting ? meetingAnswerFromLine(text) : null;
   if (meeting && !meetingAnswer) return;
   const statedName = (meeting

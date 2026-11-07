@@ -1,3 +1,4 @@
+import { projectFeatures } from "../project/task-features";
 import { getRoster, normalizeHousehold, type RosterEntry } from "../answers/api";
 import { nowIso } from "../core/ids";
 import type { NewQuestion } from "../project/apply";
@@ -85,7 +86,7 @@ export async function answerMaterialExemption(
       yes || action === EXEMPTION_NO ? action : null, now, accountId, wardId, projectId, questionId, wardId, projectId));
   const saved = await db.batch(statements);
   if (saved.at(-1)?.meta.changes !== 1) return "failed";
-  if (yes && row.kind === "duty") {
+  if (yes && (await projectFeatures(db, wardId, projectId)).rota) {
     try {
       if (!(await prepareRota(db, wardId, projectId, accountId))) return "draft_failed";
     } catch { return "draft_failed"; }

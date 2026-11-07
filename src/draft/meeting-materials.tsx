@@ -1,3 +1,4 @@
+import { taskFeatures, projectFeatures, MEETING_TASK_SQL, DELEGATION_TASK_SQL, REPORT_TASK_SQL } from "../project/task-features";
 import { adminPath } from "../core/auth";
 import { formatJstDate } from "../core/time";
 import type { WardInfo } from "../env";
@@ -60,7 +61,7 @@ export async function meetingRecord(db: D1Database, wardId: string, projectId: s
   const closedMinutes = state.project.closedAt ? await db.prepare("SELECT body FROM project_close_reports WHERE ward_id = ? AND project_id = ? AND scope = 'staff'")
     .bind(wardId, projectId).first<{ body: string }>() : null;
   const text = closedMinutes?.body || (document ? documentText(document.body) : "");
-  const agenda = state.project.kind === "general_meeting" ? await getEditableDocument(db, wardId, projectId, "procedure") : null;
+  const agenda = taskFeatures(state.mapTasks).meeting ? await getEditableDocument(db, wardId, projectId, "procedure") : null;
   return {
     projectId, title: state.project.title, year: state.project.year,
     decisions: state.tables.decisions.filter((row) => row.scope === "current").map((row) => ({
@@ -73,7 +74,7 @@ export async function meetingRecord(db: D1Database, wardId: string, projectId: s
 }
 
 /** 日付が無い会議は閉じた日の順。未来の会議や、別の区の記録は使わない。 */
-async function previousMeeting(db: D1Database, wardId: string, project: ProjectSummary, kind: "board_meeting" | "general_meeting") {
+async function previousMeeting(db: D1Database, wardId: string, project: ProjectSummary, delegation: boolean) {
   const current = await db.prepare("SELECT created_at FROM projects WHERE ward_id = ? AND project_id = ?")
     .bind(wardId, project.projectId).first<{ created_at: string }>();
   const day = project.deadlines.board_meeting_day ?? project.deadlines.event_day ??
@@ -83,27 +84,28 @@ async function previousMeeting(db: D1Database, wardId: string, project: ProjectS
     FROM projects p
     LEFT JOIN project_deadlines b ON b.ward_id = p.ward_id AND b.project_id = p.project_id AND b.kind = 'board_meeting_day'
     LEFT JOIN project_deadlines e ON e.ward_id = p.ward_id AND e.project_id = p.project_id AND e.kind = 'event_day'
-    WHERE p.ward_id = ? AND p.kind = ? AND p.project_id <> ? AND p.closed_at IS NOT NULL AND p.year <= ?
+    WHERE p.ward_id = ? AND ${MEETING_TASK_SQL} AND ${delegation ? "" : "NOT "}${DELEGATION_TASK_SQL} AND p.project_id <> ? AND p.closed_at IS NOT NULL AND p.year <= ?
       AND COALESCE(b.due_on, e.due_on, date(p.closed_at, '+9 hours')) <= ?
     ORDER BY meeting_day DESC, p.closed_at DESC, p.created_at DESC, p.project_id LIMIT 1`)
-    .bind(wardId, kind, project.projectId, kind === "general_meeting" ? project.year - 1 : project.year, day)
+    .bind(wardId, project.projectId, delegation ? project.year - 1 : project.year, day)
     .first<{ project_id: string }>();
   return previous ? meetingRecord(db, wardId, previous.project_id) : null;
 }
 
 /** 議題と議案の資料だけを区内の保存済み記録から組み立てる。AIは呼ばない。 */
 export async function getMeetingMaterials(db: D1Database, wardId: string, project: ProjectSummary): Promise<MeetingMaterials | null> {
-  if (project.kind !== "board_meeting" && project.kind !== "general_meeting") return null;
+  const features = await projectFeatures(db, wardId, project.projectId);
+  if (!features.meeting) return null;
   const result: MeetingMaterials = { previous: null, previousGeneral: null, year: project.year, decisions: [], ledger: null, reports: [] };
-  if (project.kind === "board_meeting") {
-    result.previous = await previousMeeting(db, wardId, project, "board_meeting");
+  if (!features.delegation) {
+    result.previous = await previousMeeting(db, wardId, project, false);
     return result;
   }
-  result.previousGeneral = await previousMeeting(db, wardId, project, "general_meeting");
+  result.previousGeneral = await previousMeeting(db, wardId, project, true);
   // 去年の決定は今年の決定と混ぜず、年を保って次年度にも渡す。
   const decisions = await db.prepare(`SELECT p.project_id, p.title, p.year, r.data, r.source_kind FROM project_rows r
     JOIN projects p ON p.ward_id = r.ward_id AND p.project_id = r.project_id
-    WHERE r.ward_id = ? AND p.kind IN ('board_meeting', 'general_meeting') AND p.year IN (?, ?)
+    WHERE r.ward_id = ? AND ${MEETING_TASK_SQL} AND p.year IN (?, ?)
       AND p.project_id <> ? AND r.table_key = 'decisions' AND r.scope = 'current' AND r.removed_at IS NULL
     ORDER BY p.year DESC, p.created_at, r.created_at, r.row_id`)
     .bind(wardId, project.year, project.year - 1, project.projectId)
@@ -128,7 +130,7 @@ export async function getMeetingMaterials(db: D1Database, wardId: string, projec
   const reports = await db.prepare(`SELECT p.project_id, p.title, v.body, v.origin FROM projects p
     JOIN documents d ON d.ward_id = p.ward_id AND d.project_id = p.project_id AND d.kind = 'report'
     JOIN document_versions v ON v.ward_id = d.ward_id AND v.project_id = d.project_id AND v.document_id = d.document_id
-    WHERE p.ward_id = ? AND p.year = ? AND p.kind = 'event' AND p.closed_at IS NOT NULL
+    WHERE p.ward_id = ? AND p.year = ? AND ${REPORT_TASK_SQL} AND p.closed_at IS NOT NULL
       AND v.version_no = (SELECT MAX(v2.version_no) FROM document_versions v2 WHERE v2.ward_id = d.ward_id AND v2.document_id = d.document_id)
     ORDER BY p.created_at, p.project_id`)
     .bind(wardId, project.year).all<{ project_id: string; title: string; body: string; origin: string }>();
