@@ -72,7 +72,7 @@ export async function issueDevice(
   return deviceId;
 }
 
-function setDeviceCookie(c: Context<WardEnv>, ward: WardInfo, token: string) {
+function setDeviceCookie(c: Context<WardEnv> | Context<AdminEnv>, ward: WardInfo, token: string) {
   setCookie(c, DEVICE_COOKIE, token, {
     path: adminPath(ward),
     httpOnly: true,
@@ -120,6 +120,7 @@ export const requireAdmin: MiddlewareHandler<AdminEnv> = async (c, next) => {
     await c.env.DB.prepare("UPDATE devices SET last_seen_at = ? WHERE ward_id = ? AND device_id = ?")
       .bind(nowIso(), ward.wardId, found.device_id)
       .run();
+    setDeviceCookie(c, ward, token!);
   }
   c.set("account", { accountId: found.account_id, name: found.name, seatId: found.seat_id });
   c.set("deviceId", found.device_id);

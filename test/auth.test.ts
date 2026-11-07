@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DEVICE_COOKIE } from "../src/core/auth";
 import { seedAccount, seedAdmin, seedDeviceCookie, seedSeat, seedWard, uniqueSlug } from "../src/core/testing";
 import { cookieFrom, get, postForm, realApp } from "./helpers";
@@ -113,6 +113,27 @@ describe("役員画面の入口", () => {
     const old = new Date(Date.now() - 181 * 24 * 60 * 60 * 1000).toISOString();
     await env.DB.prepare("UPDATE devices SET last_seen_at = ? WHERE ward_id = ?").bind(old, ward.wardId).run();
     expect((await get(realApp, `/${ward.slug}/admin/`, cookie)).status).toBe(303);
+  });
+
+  it("使い続けている架空の端末はブラウザの記憶も更新し、初回から180日を超えても入れる", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+      const { ward, cookie } = await seedAdmin(env.DB);
+      const path = `/${ward.slug}/admin/`;
+      vi.setSystemTime(new Date("2026-06-01T00:00:00Z"));
+      const response = await get(realApp, path, cookie);
+      expect(response.status).toBe(200);
+      const renewed = cookieFrom(response, DEVICE_COOKIE);
+      expect(renewed !== null).toBe(true);
+      expect(renewed === cookie).toBe(true);
+      expect(response.headers.get("set-cookie")).toContain("Max-Age=15552000");
+
+      vi.setSystemTime(new Date("2026-11-01T00:00:00Z"));
+      expect((await get(realApp, path, renewed!)).status).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("他の区の入るや端末の記憶では入れない", async () => {
