@@ -302,7 +302,7 @@ async function matchUnassignedAdminJob(env: Env, wardId: string, jobId: string, 
     // 印字符号がある紙は AI の候補選びに回さない。欄ごとの読みをプロジェクト別に渡す。
     if (routes.every(Boolean) && routedProjects.length === 1) {
       const selectedId = routedProjects[0] as string;
-      await assignReadJob(env, wardId, jobId, selectedId, "紙に書かれた行事に入れました。");
+      await assignReadJob(env, wardId, jobId, selectedId, "書かれていた行事に入れました。");
     } else if (routes.every(Boolean) && routedProjects.length > 1 && readings.length === 1 && "fields" in readings[0]!.body) {
       await createPaperRouteJobs(env, current, readings[0]!.body, paperCodes, routes.map((route) => route?.projectId ?? ""));
     } else if (routes.some(Boolean)) {
@@ -482,7 +482,7 @@ async function routeByPaperCode(db: D1Database, wardId: string, jobId: string) {
   if (!(await setJobProject(db, wardId, jobId, projectId))) return null;
   await db.prepare(`UPDATE line_inbox_items SET disposition = 'matched', matched_project_id = ?,
     matched_project_name = (SELECT title FROM projects WHERE ward_id = ? AND project_id = ?),
-    match_reason = '紙に書かれた行事に入れました。' WHERE ward_id = ? AND job_id = ?`)
+    match_reason = '書かれていた行事に入れました。' WHERE ward_id = ? AND job_id = ?`)
     .bind(projectId, wardId, projectId, wardId, jobId).run();
   return getJob(db, wardId, jobId);
 }

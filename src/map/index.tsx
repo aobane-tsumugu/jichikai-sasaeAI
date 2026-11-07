@@ -125,7 +125,7 @@ async function taskPage(c: Context<AdminEnv>, retry?: { values: Record<string, s
   const draftKind = taskDraftKind(task.taskKey, project.kind);
   const draft = state.documents.find((document) => document.kind === draftKind);
   const guide = guideOf(project.kind, task.taskKey);
-  const labels: Record<MapOpens, string> = { materials: "紙や資料を送る", draft: `${documentTitle(project.kind, draftKind)}の下書きを直す`, answers: "答えを見る", ledger: task.taskKey === "venue" ? "会場のことを運営メモに残す" : "運営メモを見る", committee: "実行委員名簿を入れる", sponsors: "協賛先の一覧を印刷する" };
+  const labels: Record<MapOpens, string> = { materials: "写真やファイルを送る", draft: `${documentTitle(project.kind, draftKind)}の下書きを直す`, answers: "答えを見る", ledger: task.taskKey === "venue" ? "会場のことを運営メモに残す" : "運営メモを見る", committee: "実行委員名簿を入れる", sponsors: "協賛先の一覧を印刷する" };
   return c.html(<Layout title={task.name} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {project.title}の段取りへ</a>
     <h1>{task.name}</h1><p class="lead">{task.periodStart && task.periodEnd && task.periodStart !== task.periodEnd ? `${formatJstDate(task.periodStart)}から${formatJstDate(task.periodEnd)}まで。` : task.periodEnd ? `${formatJstDate(task.periodEnd)}まで。` : task.periodStart ? `${formatJstDate(task.periodStart)}から。` : "時期はまだ決まっていません。"}{owner ? `担当は${owner}です。` : "担当はあとから直せます。"}</p>

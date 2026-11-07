@@ -97,13 +97,13 @@ intakeAdmin.get("/intake", async (c) => {
   const projectId = c.req.query("project") ?? "";
   const choices = await projectDirectory().listOpen(c.env.DB, ward.wardId);
   const project = choices.find((p) => p.projectId === projectId);
-  const title = project ? `${project.title}に資料を送る` : "手元の紙や資料を送る";
+  const title = project ? `${project.title}に資料を送る` : "写真やファイルを送る";
   const back = returnPath(c, c.req.query("back") ?? c.req.header("referer"), adminPath(ward, project ? `/projects/${project.projectId}/map` : "/"));
   const query = new URLSearchParams({ back, ...(project ? { project: project.projectId } : {}) }).toString();
   return c.html(<Layout title={title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={back}>← {project && back === adminPath(ward, `/projects/${project.projectId}/map`) ? `${project.title}の段取りへ` : back === adminPath(ward, "/") ? "最初の画面へ" : "前の画面へ"}</a>
     <h1>{title}</h1>
-    <p class="lead">{project ? "" : "去年の資料も今年の紙も送れます。"}何枚でも一度に送れます。分類も名前付けもいりません。</p>
+    <p class="lead">{project ? "" : "去年の資料も、今年のものも送れます。"}いくつでも一度に送れます。分類も名前付けもいりません。</p>
     {c.req.query("n") === "withdrawn" ? <Notice>資料を消しました。</Notice> : null}
     {c.req.query("n") === "retry" ? <Notice>もう一度読みます。</Notice> : null}
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />

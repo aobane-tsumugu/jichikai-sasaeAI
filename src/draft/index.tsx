@@ -183,7 +183,7 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
     </div></details>
     {!project.closedAt ? <>
       {project.kind === "duty" && kindRaw === "duty_roster" ? null : <details class="fold" id="redo"><summary>AIに言葉で頼む</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/start`)}>
-        <div class="field"><label for="instruction">頼むこと</label><input id="instruction" name="instruction" type="text" maxlength={800} /><p class="help-text">{project.kind === "event" ? "例: 雨のときの場所の変更を入れてください" : minutes ? "例: 送った紙から決めたことをまとめてください" : "例: 送った資料の内容を入れてください"}</p></div><button class="secondary">AIに頼む</button>
+        <div class="field"><label for="instruction">頼むこと</label><input id="instruction" name="instruction" type="text" maxlength={800} /><p class="help-text">{project.kind === "event" ? "例: 雨のときの場所の変更を入れてください" : minutes ? "例: 送った資料から決めたことをまとめてください" : "例: 送った資料の内容を入れてください"}</p></div><button class="secondary">AIに頼む</button>
       </form></div></details>}
       <p class="muted">下のボタンを押しても、まだ配られません。次の画面で内容を確かめてから配ります。</p>
       <div class="action-bar page-action"><button type="submit" form="draft-form" name="after" value={paperFirst ? "paper" : "confirm"}>{paperFirst ? "保存して紙の見え方を見る" : "保存して配る内容を見る"}</button><button class="secondary" type="submit" form="draft-form">保存だけする</button></div>

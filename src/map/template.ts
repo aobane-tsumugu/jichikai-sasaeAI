@@ -41,7 +41,7 @@ export const MAP_TEMPLATES: Record<string, readonly TemplateTask[]> = {
     { key: "minutes", name: "議事録をまとめる", start: 1, end: 14, opens: ["draft", "materials"], draftKind: "report", guide: "決まったことを議事録にまとめます。" },
   ],
   city_request: [
-    { key: "read", name: "通知を読む", start: -30, end: -25, opens: ["materials"], guide: "市から届いた通知を読みます。撮って送ると、元の紙がここに残ります。" },
+    { key: "read", name: "通知を読む", start: -30, end: -25, opens: ["materials"], guide: "市から届いた通知を読みます。撮って送ると、その写真がここに残ります。" },
     { key: "reply", name: "答えや配るものを用意する", start: -25, end: -7, opens: ["materials", "draft"], draftKind: "procedure", guide: "市への答えや、住民に配るものを用意します。" },
     { key: "submit", name: "提出する", start: -7, end: 0, opens: ["draft"], draftKind: "report", guide: "市に提出します。出したら、この仕事を済みにしてください。" },
   ],

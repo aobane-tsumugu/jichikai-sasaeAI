@@ -95,12 +95,12 @@ function InboxPick({ ward, title, noun, facts, photos, files, summary, reason, q
     {reason ? <p class="muted">行事に入れた理由: {reason}</p> : null}
     {questions.length ? <><h2>読めなかったところ</h2><p class="lead">分かるものだけ答えてください。答えなくてもかまいません。</p>
       {questions.map((question) => <section class="panel"><p>{question.text}</p><ClarificationForm ward={ward} question={question} back={back} /></section>)}</> : null}
-    {current ? null : <p class="muted">この紙は区の資料に入っています。行事につなげるときは選んでください。</p>}
+    {current ? null : <p class="muted">これは「区の資料」に入っています。行事につなげるときは選んでください。</p>}
     <h2>{current ? "別の行事に入れ直す" : "どの行事に入れますか"}</h2>
     <WhichProject id="pick" question={current ? `この${noun}は、次の行事のものですか？` : `この${noun}は、次の行事のものですか？`} projects={others} suggested={current ? null : suggested} suggestedName={current ? "" : suggestedName} suggestedKind={suggestedKind} action={action} />
-    {current ? <details class="fold"><summary>この行事から外す</summary><div><p>外しても、紙は区の資料に残ります。行事に入った内容は消えないので、違うところは下書きで直してください。</p>
+    {current ? <details class="fold"><summary>この行事から外す</summary><div><p>外しても、「区の資料」に残ります。行事に入った内容は消えないので、違うところは下書きで直してください。</p>
       <form method="post" action={action}><button class="secondary" name="operation" value="detach">この行事から外す</button></form></div></details> : null}
-    {originalId ? <details class="fold"><summary>役員が知っておくことにつなげる</summary><div><p>規約や役員の一覧のように、行事に入らない紙に使います。</p>
+    {originalId ? <details class="fold"><summary>役員が知っておくことにつなげる</summary><div><p>規約や役員の一覧のように、行事に入らないものに使います。</p>
       <div class="action-links">{know.map((item) => <form method="post" action={adminPath(ward, `/know/${encodeURIComponent(item.id)}/links`)}><input type="hidden" name="originalId" value={originalId} /><button class="secondary">{item.title}</button></form>)}</div>
     </div></details> : null}
     {removable ? <details class="fold"><summary>関係のないものとして外す</summary><div>
@@ -162,15 +162,15 @@ admin.get("/inbox", async (c) => {
     <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a>
     {c.req.query("error") === "input" ? <Notice error>入れる行事を選び直してください。</Notice> : null}
     <h1>届いたもの</h1>
-    {c.req.query("n") === "assigned" ? <Notice>{assignedTo ?? "行事"}に入れました。違うときは、下の写真を押すと入れ直せます。{movedFrom ? `${movedFrom}の下書きに、この紙から入った内容が残っていることがあります。配る前に見て直してください。` : ""}</Notice> : null}
-    {c.req.query("n") === "detached" ? <Notice>{movedFrom ? `${movedFrom}から外しました。` : "行事から外しました。"}紙は区の資料に残っています。{movedFrom ? `${movedFrom}の下書きに、この紙から入った内容が残っていることがあります。配る前に見て直してください。` : ""}</Notice> : null}
+    {c.req.query("n") === "assigned" ? <Notice>{assignedTo ?? "行事"}に入れました。違うときは、下の写真を押すと入れ直せます。{movedFrom ? `${movedFrom}の下書きに、ここから入った内容が残っていることがあります。配る前に見て直してください。` : ""}</Notice> : null}
+    {c.req.query("n") === "detached" ? <Notice>{movedFrom ? `${movedFrom}から外しました。` : "行事から外しました。"}「区の資料」に残っています。{movedFrom ? `${movedFrom}の下書きに、ここから入った内容が残っていることがあります。配る前に見て直してください。` : ""}</Notice> : null}
     {c.req.query("n") === "assigned" && assignedTo && !toDecide ? <section class="next"><strong>次は</strong><p>{assignedTo}の段取りから続きを進められます。</p><a class="button" href={adminPath(ward, `/projects/${c.req.query("project")}/map`)}>{assignedTo}の段取りを見る</a></section> : null}
     {c.req.query("n") === "removed" ? <Notice>関係のないものとして外しました。数だけが残ります。</Notice> : null}
-    {c.req.query("n") === "roster" ? <Notice>名簿には入れませんでした。紙は区の資料に残っています。</Notice> : null}
+    {c.req.query("n") === "roster" ? <Notice>名簿には入れませんでした。「区の資料」に残っています。</Notice> : null}
     {c.req.query("error") === "busy" ? <Notice error>資料を行事に入れているところです。少ししてから、もう一度開いてください。</Notice> : null}
-    {nothing ? <><div class="notice" role="status"><strong>届いたものはありません</strong><p>公式LINEや、QRコードのない紙で届いたものが、ここに入ります。</p></div><section class="next"><strong>次は</strong><p>手元の資料を送れます。</p><a class="button" href={adminPath(ward, "/intake")}>資料を送る</a></section></> : <>
+    {nothing ? <><div class="notice" role="status"><strong>届いたものはありません</strong><p>公式LINEに届いたものや、行事を選ばずに送った写真やファイルが、ここに入ります。</p></div><section class="next"><strong>次は</strong><p>手元の資料を送れます。</p><a class="button" href={adminPath(ward, "/intake")}>資料を送る</a></section></> : <>
     {toDecide ? null : <p class="lead">公式LINEに届いた写真や文と、この画面から送った資料です。AIが読んで、行事に入れます。</p>}
-    {toDecide ? <><h2 class="tight">質問があります（{toDecide}件）</h2><p class="muted">答えなくても、紙は区の資料に残ります。</p>
+    {toDecide ? <><h2 class="tight">質問があります（{toDecide}件）</h2><p class="muted">答えなくても、「区の資料」に残ります。</p>
       <ul class="rows">
         {titled.map((group, index) => { const images = group.materials.filter((m) => m.original.media_type.startsWith("image/")).slice(0, 3); const count = group.materials.length; return <li class="panel">
           <div class="received-head">{images.length ? <a href={detail(images[0]!.jobId)}><img class="photo" src={`${adminPath(ward, `/intake/originals/${images[0]!.original.original_id}`)}?raw=1`} alt={`${group.title}の写真`} loading="lazy" /></a> : null}
@@ -181,7 +181,7 @@ admin.get("/inbox", async (c) => {
         {rosterAsk.map((row) => <li class="panel">
           <div class="received-head">{row.photo ? <a href={row.href}><img class="photo" src={row.photo} alt={`${row.title}の写真`} loading="lazy" /></a> : null}
             <div><p><b>{row.title}</b></p><p class="muted">{formatJst(row.at)}　{row.note}</p></div></div>
-          <p><b>この紙で、世帯の名簿を入れ直しますか？</b></p>
+          <p><b>この資料で、世帯の名簿を入れ直しますか？</b></p>
           <div class="action-links"><a class="button secondary" href={`${adminPath(ward, "/answers/roster")}?job=${encodeURIComponent(row.job)}`}>入れ直す</a></div>
           <form method="post" action={adminPath(ward, `/inbox/roster/${encodeURIComponent(row.job)}/skip`)}><button class="quiet">入れ直さない</button></form>
         </li>)}
