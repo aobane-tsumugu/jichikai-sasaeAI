@@ -24,6 +24,7 @@ const TABLE_PARENTS = {
   provider_contact_messages: ["provider_contacts"],
   ward_settings: ["accounts"], projects: ["accounts"], jobs: ["accounts"],
   originals: ["jobs"], readings: ["jobs", "projects"], job_runs: ["jobs"], job_tool_calls: ["jobs"],
+  original_comparisons: ["projects", "originals"],
   ward_material_links: ["originals"],
   paper_reading_slices: ["jobs"], intake_photo_checks: ["originals", "jobs"],
   project_deadlines: ["projects", "accounts"], project_changes: ["projects", "accounts"],
