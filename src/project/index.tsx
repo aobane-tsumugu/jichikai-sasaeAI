@@ -12,7 +12,8 @@ import { PROJECT_KINDS, PROJECT_KIND_LABEL, TABLE_KEYS, type TableKey, isItemKey
 import { setProjectApi } from "../ai/project-binding";
 import { agentApi } from "./agent-api";
 import { MAP_TEMPLATES } from "../map/template";
-import { daysRemaining, followupAdmin } from "./followup";
+import { daysRemaining, followupAdmin, dateWords, openInquiries } from "./followup";
+import { inquirySubject } from "./inquiry-send";
 import { questionPages, questionShort } from "./question-pages";
 import type { ProjectState } from "./types";
 import { markMaterialThisYear, unknownYearContents } from "./material-year";
@@ -80,7 +81,7 @@ admin.get("/projects/today", async (c) => {
   const { ward } = c.var;
   const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const projects = await listProjects(c.env.DB, ward.wardId);
-  const entries: Array<{ date: string | null; until?: boolean; projectId: string; project: string; label: string; detail: string; href: string }> = [];
+  const entries: Array<{ date: string | null; until?: boolean; taskId?: string; projectId: string; project: string; label: string; detail: string; href: string }> = [];
   for (const project of projects) {
     for (const [kind, date] of Object.entries(project.deadlines)) {
       if (kind === "event_day" && date < today) continue;
@@ -89,17 +90,31 @@ admin.get("/projects/today", async (c) => {
     const state = await getProjectState(c.env.DB, ward.wardId, project.projectId);
     if (!state) continue;
     for (const task of state.mapTasks.filter((t) => t.progress !== "done" && t.periodEnd && t.taskKey !== "day")) {
-      entries.push({ date: task.periodEnd, until: true, projectId: project.projectId, project: project.title, label: task.name, detail: "", href: `/projects/${project.projectId}/map/${task.taskId}` });
+      entries.push({ date: task.periodEnd, until: true, taskId: task.taskId, projectId: project.projectId, project: project.title, label: task.name, detail: "", href: `/projects/${project.projectId}/map/${task.taskId}` });
     }
     for (const question of state.questions.filter((q) => q.state === "open" || q.state === "later")) {
       entries.push({ date: null, projectId: project.projectId, project: project.title, label: "質問", detail: questionShort(question), href: `/projects/${project.projectId}/questions#question-${question.questionId}` });
     }
   }
   entries.sort((a, b) => (a.date ?? "9999-99-99").localeCompare(b.date ?? "9999-99-99") || a.project.localeCompare(b.project, "ja"));
+  const undecided = (await c.env.DB.prepare("SELECT COUNT(*) AS n FROM line_inbox_items i LEFT JOIN jobs j ON j.ward_id = i.ward_id AND j.job_id = i.job_id WHERE i.ward_id = ? AND i.disposition = 'unmatched' AND j.project_id IS NULL").bind(ward.wardId).first<{ n: number }>())?.n ?? 0;
+  const inquiries = (await openInquiries(c.env.DB, ward.wardId)).filter(({ group }) => group[0]!.kind === "inquiry");
+  const dated = entries.filter((entry) => entry.date);
+  const late = dated.filter((entry) => entry.date! < today && entry.taskId);
+  const coming = dated.filter((entry) => !late.includes(entry));
+  const questions = entries.filter((entry) => !entry.date);
+  const row = (entry: (typeof entries)[number]) => <li><a class="row-link" href={adminPath(ward, entry.href)}><b>{entry.project}　{entry.label}</b><span>{`${entry.until ? `${shortDate(entry.date!)}まで` : formatJstDate(entry.date!)}　${daysRemaining(entry.date!)}`}</span></a>
+    {entry.taskId ? <form method="post" action={adminPath(ward, `/projects/${entry.projectId}/map/${entry.taskId}/done`)}><input type="hidden" name="back" value="today" /><button class="quiet">済みにする</button></form> : null}</li>;
   return c.html(<Layout title="今やること" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, "/")}>← 最初の画面へ</a><h1>今やること</h1>
+    {c.req.query("notice") === "done" ? <Notice>済みにしました。戻すときは、段取りでその仕事を開きます。</Notice> : null}
+    {undecided ? <section class="next"><strong>届いたもの{undecided}件の行事を決める</strong><p>どの行事のものか、AIが決められなかったものです。</p><a class="button" href={adminPath(ward, "/inbox")}>届いたものを見る</a></section> : null}
+    {inquiries.length ? <ul class="rows">{inquiries.slice(0, 3).map(({ group }) => <li><a class="row-link" href={adminPath(ward, `/inquiries/${encodeURIComponent(group[0]!.inquiry_id)}`)}><b>問い合わせ「{inquirySubject(group[0]!.subject)}」</b><span>{dateWords(group[0]!.subject).map((word) => `「${word}」と書かれています。`).join("") || `${formatJstDate(group[0]!.received_at)}に届きました`}</span></a></li>)}</ul> : null}
     {entries.length === 0 ? <><div class="notice" role="status"><strong>今やることはありません</strong><p>締切が近づくと、ここに並びます。</p></div><section class="next"><strong>次は</strong><p>手元に資料があれば、送っておけます。</p><a class="button" href={adminPath(ward, "/intake")}>資料を送る</a></section></> : <><p class="lead">締切の近い順に並べています。どれから始めてもかまいません。押すと、その仕事の画面が開きます。</p>
-    {[true, false].map((dated) => <section><h2>{dated ? "締切のあるもの" : "締切のないもの"}</h2><ul class="rows">{entries.filter((entry) => Boolean(entry.date) === dated).map((entry) => <li><a class="row-link" href={adminPath(ward, entry.href)}><b>{entry.project}　{entry.label}</b><span>{entry.date ? `${entry.until ? `${shortDate(entry.date)}まで` : formatJstDate(entry.date)}　${daysRemaining(entry.date)}` : entry.detail}</span></a></li>)}</ul>{!entries.some((entry) => Boolean(entry.date) === dated) ? <p>{dated ? "締切のあるものはありません。" : "締切のないものはありません。"}</p> : null}</section>)}</>}
+    {coming.length ? <><h2>これからの仕事</h2><ul class="rows">{coming.map(row)}</ul></> : null}
+    {late.length ? <><h2>時期を過ぎた仕事</h2><p class="muted">終わっているものは「済みにする」を押してください。まだのものは、開くと時期を直せます。</p><ul class="rows">{late.map(row)}</ul></> : null}
+    {questions.length ? <p class="link-line"><a href={adminPath(ward, questions[0]!.href.split("#")[0]!)}>分かれば答える質問（{questions.length}件）を見る</a></p> : null}
+    {questions.length ? <p class="muted">質問は、分かるものだけ答えてください。答えなくても進められます。</p> : null}</>}
   </Layout>);
 });
 
@@ -126,7 +141,7 @@ admin.get("/projects/:projectId", async (c) => {
   const unknownOriginalIds = new Set([...unknown.items, ...unknown.rows].map((value) => value.source.ref));
   return c.html(<Layout title="今年の内容" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, `/projects/${projectId}/map`)}>← {project.title}の段取りへ</a>
-    <h1>届いた資料を見る</h1><p class="lead">{project.title}に届いた資料と、そこから読み取った今年の内容が見られます。分かる質問があれば答えてください。</p>
+    <h1>{project.title}の届いた資料と今年の内容</h1><p class="lead">届いた資料と、そこから読み取った今年の内容が見られます。</p>
     <nav class="action-links">
       <a class="button" href={adminPath(ward, `/projects/${projectId}/questions`)}>質問に答える</a>
       <a class="button secondary" href={adminPath(ward, `/intake?project=${encodeURIComponent(projectId)}`)}>資料を送る</a>

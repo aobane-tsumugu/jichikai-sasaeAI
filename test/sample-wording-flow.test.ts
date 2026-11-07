@@ -15,7 +15,7 @@ it("資料のない一年目に案内を手で保存し、出欠の入口と当�
   const materialsResponse = await get(realApp, `${root}/projects/${id}`, cookie);
   expect(materialsResponse.status).toBe(200);
   const materials = await materialsResponse.text();
-  expect(materials).toContain("届いた資料を見る");
+  expect(materials).toContain("の届いた資料と今年の内容");
   expect(materials).toContain("まだ資料は入っていません。");
   expect(materials).toContain("質問はありません");
   expect(materials).toContain("下書きの一覧を開く");

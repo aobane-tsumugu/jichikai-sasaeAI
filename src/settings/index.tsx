@@ -1,5 +1,6 @@
 import { getDigestSettings, inquiryNotice } from "./digest";
 import { Hono } from "hono";
+import { getCookie, setCookie } from "hono/cookie";
 import { AdminPage } from "../core/admin-ui";
 import { Hint } from "../core/ui";
 import { adminPath, clearDeviceCookie } from "../core/auth";
@@ -31,9 +32,14 @@ admin.get("/", async (c) => {
       AND via = 'admin' AND withdrawn_at IS NULL GROUP BY status`).bind(ward.wardId).all<{ status: string; count: number }>(),
     c.env.DB.prepare("SELECT subject FROM inquiry_records WHERE ward_id = ? AND kind = 'inquiry' AND line_source_type IS NOT NULL")
       .bind(ward.wardId).all<{ subject: string }>(),
-    c.env.DB.prepare("SELECT project_id FROM projects WHERE ward_id = ? AND closed_at IS NOT NULL LIMIT 1")
-      .bind(ward.wardId).first<{ project_id: string }>(),
+    c.env.DB.prepare(`SELECT p.project_id, p.title, p.year, EXISTS (SELECT 1 FROM projects n WHERE n.ward_id = p.ward_id AND n.seed_project_id = p.project_id) AS continued
+      FROM projects p WHERE p.ward_id = ? AND p.closed_at IS NOT NULL ORDER BY p.closed_at DESC LIMIT 3`)
+      .bind(ward.wardId).all<{ project_id: string; title: string; year: number; continued: number }>(),
   ]);
+  const records = closed.results;
+  // 開いた人が初めてかは、この端末で最初の画面を開いたかで見る。説明は二回目から畳む。
+  const firstVisit = !getCookie(c, "seen_home");
+  if (firstVisit) setCookie(c, "seen_home", "1", { path: adminPath(ward, "/"), maxAge: 365 * 86400, httpOnly: true, sameSite: "Lax", secure: true });
   const inquiryCount = inquiries.results.length;
   const inquiryWords = inquiries.results.map((row) => dateWords(row.subject));
   const inquiryWord = inquiryWords.flat()[0];
@@ -53,8 +59,22 @@ admin.get("/", async (c) => {
     {photos.length ? <div class="photo-strip">{photos.map((item) => <a href={adminPath(ward, `/inbox/${item.item_id}/pick`)}><img class="photo" src={adminPath(ward, `/inbox/${item.item_id}/original`)} alt="届いた写真" loading="lazy" /></a>)}</div> : null}
     <p>{lineInbox.length ? `公式LINEに${lineInbox.length}件届いています。` : ""}{undecided ? `${undecided}件は、どの行事か確かめてください。` : lineInbox.length ? "AIが行事に入れました。" : ""}{inquiryCount ? `問い合わせが${countWord(inquiryCount)}あります。${inquiryWord ? `${countWord(inquiryWords.filter((words) => words.includes(inquiryWord)).length)}に「${inquiryWord}」と書かれています。` : ""}` : ""}</p>
     {undecided && projects.length ? null : <div class="action-links"><a class="button secondary" href={adminPath(ward, "/inbox")}>届いたものを見る</a></div>}</> : null;
-  const about = <><h1>{ward.name}の自治会の仕事を進める画面です</h1>
-    <p class="lead">SasaeAIは、自治会の役員の仕事を支えるサービスです。手元の紙や写真を送ると、AIが読んで、段取りと案内の下書きを用意します。案内を配り、答えを集め、記録を残すまで、ここで進められます。役員だけが見られる画面です。</p></>;
+  const explain = "SasaeAIは、自治会の役員の仕事を支えるサービスです。手元の紙や写真を送ると、AIが読んで、段取りと案内の下書きを用意します。案内を配り、答えを集め、記録を残すまで、ここで進められます。役員だけが見られる画面です。";
+  const about = firstVisit ? <><h1>{ward.name}の自治会の仕事を進める画面です</h1><p class="lead">{explain}</p></> : null;
+  const aboutFold = firstVisit ? null : <details class="hint"><summary>この画面について</summary><div><p>{explain}</p></div></details>;
+  const heading = (text: string) => firstVisit ? <h2>{text}</h2> : <h1>{text}</h1>;
+  const lastYearDay = new Date(Date.now() + 9 * 3600_000 - 365 * 86400_000).toISOString().slice(0, 10);
+  const lastYearSoon = new Date(Date.now() + 9 * 3600_000 - 351 * 86400_000).toISOString().slice(0, 10);
+  const lastYearTasks = records.length ? (await c.env.DB.prepare(`SELECT t.task_id, t.name, t.period_start, t.period_end, p.project_id, p.title
+    FROM project_map_tasks t JOIN projects p ON p.ward_id = t.ward_id AND p.project_id = t.project_id
+    WHERE t.ward_id = ? AND t.removed_at IS NULL AND p.closed_at IS NOT NULL AND t.period_start IS NOT NULL
+      AND t.period_start <= ? AND COALESCE(t.period_end, t.period_start) >= ? ORDER BY t.period_start LIMIT 3`)
+    .bind(ward.wardId, lastYearSoon, lastYearDay).all<{ task_id: string; name: string; period_start: string; period_end: string | null; project_id: string; title: string }>()).results : [];
+  const memory = records.length ? <>
+    {lastYearTasks.length ? <><h2>去年の今ごろ</h2><ul class="rows">{lastYearTasks.map((task) => <li><a class="row-link" href={adminPath(ward, `/archive/${task.project_id}`)}><b>{task.title}　{task.name}</b><span>{shortDate(task.period_start)}{task.period_end ? `から${shortDate(task.period_end)}まで` : ""}</span></a></li>)}</ul></> : null}
+    <h2>記録</h2><p class="muted">閉じた行事の段取り、配ったもの、報告です。次の役員もここを読みます。</p>
+    <ul class="rows">{records.map((record) => <li><a class="row-link" href={adminPath(ward, `/archive/${record.project_id}`)}><b>{record.year}年 {record.title}</b><span>押すと、記録を読めます</span></a>
+      {record.continued ? null : <p class="link-line"><a href={`${adminPath(ward, `/archive/${record.project_id}`)}?view=seed`}>これをもとに今年を始める</a></p>}</li>)}</ul></> : null;
   const place = (path: string, name: string, note: string) => <li><a class="row-link" href={adminPath(ward, path)}><b>{name}</b><span>{note}</span></a></li>;
   const places = <><h2>ほかにできること</h2><ul class="rows two">
     {projects.length ? <>{place("/projects/today", "今やること", "締切のある仕事を近い順に見ます")}{place("/answers", "答えを見る", "住民から届いた出欠と手伝いを見ます")}</> : null}
@@ -68,35 +88,40 @@ admin.get("/", async (c) => {
     const task = states[index] ? nextMapTask(states[index]!.mapTasks, today) : undefined;
     return task ? [{ project, task }] : [];
   }).sort((a, b) => (a.task.periodEnd ?? "9999").localeCompare(b.task.periodEnd ?? "9999"))[0];
+  const mine = account.seatId ? projects.flatMap((project, index) => (states[index]?.mapTasks ?? []).filter((task) => task.seatId === account.seatId && task.progress !== "done").map((task) => ({ project, task })))
+    .sort((a, b) => (a.task.periodEnd ?? "9999").localeCompare(b.task.periodEnd ?? "9999"))[0] : undefined;
+  const chosen = mine ?? nearest;
+  const unseeded = records.find((record) => !record.continued);
   const next = undecided ? { title: `届いたもの${undecided}件の行事を決める`, body: "どの行事のものか、AIが決められなかったものです。中身を見て、入れる行事を選べます。", href: "/inbox", label: "届いたものを見る" }
-    : nearest ? { title: `${nearest.project.title}　${nearest.task.name}`, body: `${nearest.task.periodEnd ? `${shortDate(nearest.task.periodEnd)}まで。${daysRemaining(nearest.task.periodEnd)}。` : ""}押すと、この仕事の画面が開きます。`, href: mapTaskPath(nearest.project.projectId, nearest.project.kind, nearest.task), label: "この仕事を開く" }
+    : chosen ? { title: `${chosen.project.title}　${chosen.task.name}`, body: `${mine ? "あなたの担当の仕事です。" : ""}${chosen.task.periodEnd ? `${shortDate(chosen.task.periodEnd)}まで。${daysRemaining(chosen.task.periodEnd)}。` : ""}押すと、この仕事の画面が開きます。`, href: mapTaskPath(chosen.project.projectId, chosen.project.kind, chosen.task), label: "この仕事を開く" }
+    : unseeded ? { title: `${unseeded.year}年の${unseeded.title}をもとに今年を始める`, body: "去年の段取りを、新しい日に合わせて置き直します。全部を見直す必要はありません。", href: `/archive/${unseeded.project_id}?view=seed`, label: "今年を始める" }
     : { title: "手元の紙や資料を送る", body: "案内の紙も、Wordも、写真も、そのまま送れます。AIが読んで、行事に入れます。", href: "/intake", label: "紙や資料を送る" };
   return c.html(<AdminPage ward={ward} account={account} title="最初の画面" home>
-    {projects.length === 0 ? sent === 0 ? closed ? <>
-      {about}<h2>去年の記録から始められます</h2>
-      <p>残っている段取りや報告を読んで、今年の準備を始められます。</p>
-      <div class="action-links"><a class="button" href={adminPath(ward, "/archive")}>記録を読む</a></div>
-      <div class="action-links"><a class="button secondary" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>新しく始める</a></div>
-      {received}{places}
+    {projects.length === 0 ? sent === 0 ? records.length ? <>
+      {about}{heading("次にすること")}
+      <section class="next"><strong>{next.title}</strong><p>{next.body}</p><a class="button" href={adminPath(ward, next.href)}>{next.label}</a></section>
+      {memory}
+      <div class="action-links"><a class="button secondary" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>新しい行事を始める</a></div>
+      {received}{places}{aboutFold}
     </> : <>
-      {about}<h2>まず、去年の資料を送ってください</h2>
+      {about}{heading("手元に去年の案内や資料はありますか")}
       <p>案内の紙でも、Wordでも、写真でも、そのまま送れます。整理はいりません。</p>
-      <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>去年の資料を送る</a></div>
+      <div class="action-links"><a class="button" href={adminPath(ward, "/intake")}>ある。そのまま送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>ない。何の準備かを選ぶ</a></div>
       <h2>送ると、こうなります</h2><ul>
         <li>AIが読んで、日時、場所、協賛先などを取り出します。</li><li>資料から、今年の段取りができます。</li><li>案内の下書きができます。直して配るのは役員です。</li>
       </ul>
-      <details class="hint"><summary>資料がどこにあるか分からないとき</summary><div><p>見つかったものから一枚だけでも送れます。何もないときは、下のボタンから始められます。</p></div></details>
-      <div class="action-links"><a class="button secondary" href={adminPath(ward, "/projects")}>資料がないので、種類を選んで始める</a></div>
-      {received}
+      <details class="hint"><summary>資料がどこにあるか分からないとき</summary><div><p>見つかったものから一枚だけでも送れます。何もないときは「ない。何の準備かを選ぶ」から始められます。ふつうの段取りが出て、あとで直せます。</p></div></details>
+      {received}{aboutFold}
     </> : <>
-      {about}<h2>送った資料</h2><p>{sent}回分を預かっています。読み終わった分から、段取りを作れます。</p>
+      {about}{heading("送った資料")}<p>{sent}回分を預かっています。読み終わった分から、段取りを作れます。</p>
       <p class="muted">{read ? `読み終わりました${read}件。` : ""}{reading ? `読んでいます${reading}件。` : ""}{delayed ? `読み取りが遅れています${delayed}件。送り直す必要はありません。` : ""}{failed ? `読めませんでした${failed}件。もう一度読むか、このまま進められます。` : ""}</p>
       <section class="next"><strong>次は</strong><p>読み終わったものを見てください。</p><a class="button" href={adminPath(ward, "/intake/read")}>読み終わったものを見る</a></section>
       <div class="action-links"><a class="button secondary" href={adminPath(ward, "/intake")}>続けて送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>資料がないので、種類を選んで始める</a></div>
-      <p class="link-line"><a href={adminPath(ward, "/intake/received")}>送ったものを見る</a></p>{received}{places}
+      <p class="link-line"><a href={adminPath(ward, "/intake/received")}>送ったものを見る</a></p>{received}{places}{aboutFold}
     </> : <>
-      {about}<h2>次にすること</h2>
+      {about}{heading("次にすること")}
       <section class="next"><strong>{next.title}</strong><p>{next.body}</p><a class="button" href={adminPath(ward, next.href)}>{next.label}</a></section>
+      {memory}
       {near.length ? <div class="notice"><strong>{near[0]}</strong><p>{inquiryNotice(digest)}</p><a class="quiet" href={adminPath(ward, "/inquiries")}>問い合わせを見る</a></div> : null}
       {received}
       <h2>進めている行事</h2><p class="muted">押すと、その行事の段取りが開きます。</p>
@@ -108,11 +133,12 @@ admin.get("/", async (c) => {
         return <li><a class="row-link" href={adminPath(ward, `/projects/${p.projectId}/map`)}><b>{p.title}</b>
           {due ? <span>{formatJstDate(due)}{p.deadlines.submit_due && !p.deadlines.event_day ? "までに提出" : days !== null && days >= 0 ? `まで、あと${days}日` : ""}</span> : null}
           <span>{task ? `次は ${task.name}` : state?.mapTasks.length ? "段取りの仕事は全部済みました" : "仕事はまだありません。段取りから足せます"}</span>
+          {state?.mapTasks.length ? <span>仕事{state.mapTasks.length}つのうち{state.mapTasks.filter((entry) => entry.progress === "done").length}つ済み</span> : null}
         </a></li>;
       })}</ul>
       <div class="action-links"><a class="button secondary" href={adminPath(ward, "/intake")}>手元の紙や資料を送る</a><a class="button secondary" href={adminPath(ward, "/projects")}>新しい行事を始める</a></div>
       {sent ? <p class="link-line"><a href={adminPath(ward, "/intake/read")}>送った資料{sent}件を見る</a></p> : null}
-      {places}
+      {places}{aboutFold}
     </>}
   </AdminPage>);
 });

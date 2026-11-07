@@ -23,7 +23,7 @@ it("資料のない一年目に運営メモを書き、情報なしのまま残�
   };
   const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM project_rows WHERE ward_id = ? AND project_id = ?").bind(ward.wardId, project.projectId).first<{ n: number }>();
   expect(count?.n).toBe(0);
-  expect(await read(`${root}/projects/${project.projectId}/map`)).toContain(`href="${memo}">運営メモ`);
+  expect(await read(`${root}/projects/${project.projectId}/map`)).toContain(`href="${memo}"><b>運営メモ`);
   const empty = await read(memo);
   expect(empty).toContain("警備"); expect(empty).toContain("情報なし"); expect(empty).toContain("参考の記録です");
   expect(empty).not.toContain("未入力"); expect(empty).not.toContain("確かめ中");

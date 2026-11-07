@@ -9,8 +9,9 @@ import { addMapTask, removeMapTask, restoreMapTask, setEventDay, setMapTask } fr
 import { MAP_PROGRESS_LABEL, countWord, type ProjectKind } from "../project/model";
 import { documentTitle } from "../project/heading";
 import { materialChangeText } from "./material-change";
-import { nextMapTask, mapCalendar } from "./next";
-import { opensOf, taskDraftKind, type MapOpens } from "./template";
+import { nextMapTask, mapCalendar, mapTaskPath } from "./next";
+import { jobSummaries } from "../intake/store";
+import { guideOf, opensOf, taskDraftKind, type MapOpens } from "./template";
 export { taskDraftKind } from "./template";
 
 const ERROR_MESSAGES = { invalid_input: "入力を確認してください" };
@@ -19,17 +20,20 @@ const targetPath: Record<MapOpens, (id: string, taskKey: string | null, kind: Pr
   materials: (id) => `/intake?project=${encodeURIComponent(id)}#send-form`,
   draft: (id, key, kind) => `/projects/${id}/draft/${taskDraftKind(key, kind)}`,
   answers: (id) => `/answers/${encodeURIComponent(id)}`,
-  ledger: (id) => `/projects/${id}/ledger`,
+  ledger: (id, key) => key === "venue" ? `/projects/${id}/ledger/template%3Avenue` : `/projects/${id}/ledger`,
+  committee: (id) => `/projects/${id}/committee`,
+  sponsors: (id) => `/print/${id}/paper/sponsors`,
 };
 
 admin.get("/projects/:projectId/map", async (c) => {
   const { ward } = c.var; const id = c.req.param("projectId");
-  const [state, seats, removed, materials] = await Promise.all([
+  const [state, seats, removed, materials, summaries] = await Promise.all([
     getProjectState(c.env.DB, ward.wardId, id),
     c.env.DB.prepare("SELECT seat_id, title FROM seats WHERE ward_id = ? AND removed_at IS NULL ORDER BY sort_order, created_at").bind(ward.wardId).all<{ seat_id: string; title: string }>(),
     c.env.DB.prepare("SELECT task_id, name FROM project_map_tasks WHERE ward_id = ? AND project_id = ? AND removed_at IS NOT NULL ORDER BY sort_order").bind(ward.wardId, id).all<{ task_id: string; name: string }>(),
-    c.env.DB.prepare(`SELECT o.original_id, o.filename, o.received_at AS created_at, j.status FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
-      WHERE o.ward_id = ? AND j.project_id = ? AND o.withdrawn_at IS NULL ORDER BY o.received_at DESC`).bind(ward.wardId, id).all<{ original_id: string; filename: string; created_at: string; status: string }>(),
+    c.env.DB.prepare(`SELECT o.original_id, o.job_id, o.filename, o.media_type, o.received_at AS created_at, j.status FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
+      WHERE o.ward_id = ? AND j.project_id = ? AND o.withdrawn_at IS NULL ORDER BY o.received_at DESC`).bind(ward.wardId, id).all<{ original_id: string; job_id: string; filename: string; media_type: string; created_at: string; status: string }>(),
+    jobSummaries(c.env.DB, ward.wardId),
   ]);
   if (!state) return c.notFound();
   const { project, mapTasks: tasks, questions } = state;
@@ -37,7 +41,7 @@ admin.get("/projects/:projectId/map", async (c) => {
   const first = !tasks.some((task) => task.progress !== "open") && !state.documents.some((document) => document.publishedVersionNo !== null);
   const calendar = mapCalendar(tasks, project.year);
   const next = nextMapTask(tasks, today);
-  const taskUrl = (task: (typeof tasks)[number]) => task.taskKey === "answers" ? targetPath.answers(id, task.taskKey, project.kind) : task.taskKey === "report" && project.kind === "event" ? `/close/${id}` : `/projects/${id}/map/${task.taskId}`;
+  const taskUrl = (task: (typeof tasks)[number]) => mapTaskPath(id, project.kind, task);
   const day = project.deadlines.event_day;
   const daysLeft = day ? Math.ceil((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000) : null;
   const readCount = materials.results.filter((material) => material.status === "done").length;
@@ -49,11 +53,12 @@ admin.get("/projects/:projectId/map", async (c) => {
       <p class="lead">{first ? materials.results.length ? `${readCount}件の資料を読んで、${tasks.length}つの仕事の段取りを用意しました。違うところは、仕事を押して直せます。` : `ふつうの${tasks.length}つの仕事の段取りを用意しました。違うところは、仕事を押して直せます。` : `${day && daysLeft !== null && daysLeft >= 0 ? `${formatJstDate(day)}まで、あと${daysLeft}日です。` : ""}仕事を押すと開きます。`}</p>
       <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
       {notice === "event_day" ? <Notice><p>行事の日を変えました。済んでいない仕事の時期を置き直しました。案内の文は変わりません。</p><p>段取りの仕事を押して、時期を確かめてください。戻すときは、下の「行事の日を直す」からもう一度入れ直せます。</p><a class="quiet" href="#event-day">行事の日を直す</a></Notice> : null}
+      {notice === "done" ? <Notice>「{tasks.find((task) => task.taskId === c.req.query("changed"))?.name}」を済みにしました。戻すときは、その仕事を開いて「済みを取り消す」を押してください。</Notice> : notice === "reopen" ? <Notice>「{tasks.find((task) => task.taskId === c.req.query("changed"))?.name}」の済みを取り消しました。</Notice> : null}
       {notice === "removed" ? <Notice>仕事を外しました。下の「外した仕事」から戻せます。</Notice> : notice === "restored" ? <Notice>仕事を戻しました。仕事を押すと直せます。</Notice> : notice === "added" ? <Notice>仕事を足しました。仕事を押すと直せます。</Notice> : null}
       {project.closedAt ? <Notice>この行事は閉じました。直すときは「報告を書いて閉じる」から「もう一度開く」を押してください。</Notice> : <>
         <section class="next"><strong>次は</strong>
-          <p>{first && questions.length ? `質問が${countWord(questions.length)}あります。答えると、案内の下書きが整います。答えなくても進められます。` : next ? next.periodEnd ? `${shortDate(next.periodEnd)}までの仕事です。` : "時期はあとから直せます。" : "段取りの仕事は全部済みました。"}</p>
-          <a class="button" href={adminPath(ward, first && questions.length ? `/projects/${id}/questions` : next ? taskUrl(next) : `/close/${id}`)}>{first && questions.length ? "質問に答える" : next?.name ?? "報告を書いて閉じる"}</a>
+          <p>{next ? next.periodEnd ? `${shortDate(next.periodEnd)}までの仕事です。` : "時期はあとから直せます。" : "段取りの仕事は全部済みました。"}</p>
+          <a class="button" href={adminPath(ward, next ? taskUrl(next) : `/close/${id}`)}>{next?.name ?? "報告を書いて閉じる"}</a>
           {tasks.some((task) => task.taskId === c.req.query("changed") && task.taskKey === "announcement" && task.progress === "done") ? <a class="quiet" href={adminPath(ward, `/print/${id}`)}>案内の紙を印刷する</a> : null}
         </section>
         <div class="action-links">
@@ -77,7 +82,16 @@ admin.get("/projects/:projectId/map", async (c) => {
       </section><aside>
         <ul class="rows"><li><a class="row-link" href={adminPath(ward, `/projects/${id}/questions`)}><b>{questions.length ? `質問が${countWord(questions.length)}あります` : "質問はありません"}</b><span>{tasks.some((task) => task.taskKey === "announcement" && task.progress === "done") ? "答えなくても進められます。" : "答えなくても配れます。"}</span></a></li></ul>
         <h2>最近届いた資料</h2>
-        {materials.results.length ? <ul class="rows">{materials.results.slice(0, 3).map((material) => <li><a class="row-link" href={adminPath(ward, `/intake/originals/${material.original_id}`)}><b>{material.filename || "書いたこと"}</b><span>{materialChangeText(state, material.original_id) || (material.status === "done" ? "読み終わりました。届いた資料で内容を見られます" : material.status === "failed" ? "読めませんでした。届いた資料から読み直せます" : "読み取りを進めています")}</span></a></li>)}</ul> : <p>資料はまだ届いていません。</p>}
+        {materials.results.length ? <ul class="photo-grid">{materials.results.slice(0, 4).map((material) => { const name = summaries.get(material.job_id)?.split("\n")[0]?.slice(0, 36) || material.filename || "書いたこと"; const href = adminPath(ward, `/intake/originals/${material.original_id}`); return <li><a href={href}>
+          {material.media_type.startsWith("image/") ? <img class="photo" src={`${href}?raw=1`} alt={name} loading="lazy" /> : <span class="photo-none">{material.filename || "書いたこと"}</span>}
+          <b>{name}</b><span>{materialChangeText(state, material.original_id) || (material.status === "done" ? "読み終わりました。届いた資料で内容を見られます" : "読み取りを進めています")}</span>
+        </a></li>; })}</ul> : <p>まだ届いていません。</p>}
+        <h2>この行事でできること</h2>
+        <ul class="rows">
+          {[[`/print/${id}`, "紙を印刷する", "案内、回答票、掲示、班長への一枚を印刷します"], [`/answers/${id}`, "答えを見る", "紙、電話、スマホの答えを見ます"], [`/projects/${id}/draft`, "文書を書く", "案内、募集、当番表などの下書きを書きます"], [`/space/${id}`, "実行委員と班長のページ", "実行委員と班長に渡す入口を作ります"], [`/projects/${id}/ledger`, "運営メモ", "何に、どこに、いくらかけたかを残します"], [`/projects/${id}`, "届いた資料と今年の内容", "届いた資料と、そこから読み取った内容を見ます"]].map(([path, name, note]) => <li><a class="row-link" href={adminPath(ward, path!)}><b>{name}</b><span>{note}</span></a></li>)}
+          {canRain && !project.closedAt ? <li><a class="row-link" href={adminPath(ward, `/projects/${id}/draft/notice`)}><b>雨の変更を知らせる</b><span>雨のときの変更を住民に知らせます</span></a></li> : null}
+          <li><a class="row-link" href={adminPath(ward, `/close/${id}`)}><b>報告を書いて閉じる</b><span>行事が終わったら、報告と来年への一言を残します</span></a></li>
+        </ul>
         {!project.closedAt ? <details class="fold"><summary>仕事を足す、外した仕事を戻す</summary><div>
           <form method="post" action={adminPath(ward, `/projects/${id}/map/add`)}><div class="field"><label for="new-task">足す仕事の名前</label><input id="new-task" name="name" maxlength={100} required /></div><button class="secondary">足す</button></form>
           {removed.results.length ? <><p><b>外した仕事</b></p>{removed.results.map((task) => <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.task_id}/restore`)}><p>{task.name}</p><button class="secondary">この仕事を戻す</button></form>)}</> : null}
@@ -86,13 +100,6 @@ admin.get("/projects/:projectId/map", async (c) => {
           <div class="field"><label for="event-day-input">行事の日</label><input id="event-day-input" name="event_day" type="date" value={day ?? ""} required /></div>
           <p>済んでいない仕事の時期も動きます。案内の文は変わりません。</p><button class="secondary">行事の日を保存する</button>
         </form></div></details> : null}
-        <p><a class="quiet" href={adminPath(ward, `/projects/${id}`)}>届いた資料と今年の内容</a></p>
-        <p><a class="quiet" href={adminPath(ward, `/print/${id}`)}>紙を印刷する</a></p>
-        <p><a class="quiet" href={adminPath(ward, `/answers/${id}`)}>答えを見る</a></p>
-        <p><a class="quiet" href={adminPath(ward, `/space/${id}`)}>実行委員と班長のページ</a></p>
-        {canRain && !project.closedAt ? <p><a class="quiet" href={adminPath(ward, `/projects/${id}/draft/notice`)}>雨の変更を知らせる</a></p> : null}
-        <p><a class="quiet" href={adminPath(ward, `/projects/${id}/ledger`)}>運営メモ</a></p>
-        <p><a class="quiet" href={adminPath(ward, `/close/${id}`)}>報告を書いて閉じる</a></p>
       </aside></div>
     </div>
   </Layout>);
@@ -117,18 +124,22 @@ async function taskPage(c: Context<AdminEnv>, retry?: { values: Record<string, s
   const destinations = opensOf(project.kind, task.taskKey);
   const draftKind = taskDraftKind(task.taskKey, project.kind);
   const draft = state.documents.find((document) => document.kind === draftKind);
-  const labels: Record<MapOpens, string> = { materials: "資料を送る", draft: `${documentTitle(project.kind, draftKind)}の下書きを直す`, answers: "答えを見る", ledger: "運営メモを見る" };
+  const guide = guideOf(project.kind, task.taskKey);
+  const labels: Record<MapOpens, string> = { materials: "紙や資料を送る", draft: `${documentTitle(project.kind, draftKind)}の下書きを直す`, answers: "答えを見る", ledger: task.taskKey === "venue" ? "会場のことを運営メモに残す" : "運営メモを見る", committee: "実行委員名簿を入れる", sponsors: "協賛先の一覧を印刷する" };
   return c.html(<Layout title={task.name} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {project.title}の段取りへ</a>
     <h1>{task.name}</h1><p class="lead">{task.periodStart && task.periodEnd && task.periodStart !== task.periodEnd ? `${formatJstDate(task.periodStart)}から${formatJstDate(task.periodEnd)}まで。` : task.periodEnd ? `${formatJstDate(task.periodEnd)}まで。` : task.periodStart ? `${formatJstDate(task.periodStart)}から。` : "時期はまだ決まっていません。"}{owner ? `担当は${owner}です。` : "担当はあとから直せます。"}</p>
     {retry ? <Notice error>{retry.message} 入れた内容は残っています。</Notice> : <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />}
     {!retry && c.req.query("notice") === "saved" ? <section class="next"><strong>直した内容を保存しました</strong><p>段取りに入りました。時期や担当はあとから直せます。</p><a class="button" href={adminPath(ward, `/projects/${id}/map`)}>段取りへ</a></section> : null}
-    {draft && destinations[0] === "draft" ? <div class="notice" role="status"><strong>下書きができています</strong><p>{state.questions.length ? `質問が${countWord(state.questions.length)}残っていますが、このまま配れます。` : "直して保存しても、まだ配られません。"}</p></div> : null}
-    <div class="action-links">{destinations.map((destination, index) => <a class={index ? "button secondary" : "button"} href={adminPath(ward, targetPath[destination](id, task.taskKey, project.kind))}>{labels[destination]}</a>)}</div>
-    <h2>届いた資料</h2><p><a class="quiet" href={adminPath(ward, `/projects/${id}#materials`)}>この行事に届いた資料を見る</a></p>
+    {guide ? <p>{guide}</p> : null}
     {history.results.filter((entry) => entry.task_key === task.taskKey && [entry.requested_by, entry.difficulty, entry.next_year].some((value) => value.trim())).map((entry) => <><h2>去年の記録</h2><dl class="facts">
       {entry.requested_by ? <><dt>頼んだ人</dt><dd>{entry.requested_by}</dd></> : null}{entry.difficulty ? <><dt>困ったこと</dt><dd>{entry.difficulty}</dd></> : null}{entry.next_year ? <><dt>来年は</dt><dd>{entry.next_year}</dd></> : null}
     </dl></>)}
+    {draft && destinations[0] === "draft" ? <div class="notice" role="status"><strong>下書きができています</strong><p>{state.questions.length ? `質問が${countWord(state.questions.length)}残っていますが、このまま配れます。` : "直して保存しても、まだ配られません。"}</p></div> : null}
+    <div class="action-links">{destinations.map((destination, index) => <a class={index ? "button secondary" : "button"} href={adminPath(ward, targetPath[destination](id, task.taskKey, project.kind))}>{labels[destination]}</a>)}</div>
+    {!project.closedAt ? task.progress === "done" ? <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}/reopen`)}><p>この仕事は済んでいます。</p><button class="secondary">済みを取り消す</button></form>
+      : <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}/done`)}><p class="muted">終わったら押してください。段取りに戻り、次の仕事が出ます。あとで取り消せます。</p><button class="secondary">この仕事を済みにする</button></form> : null}
+    <p class="link-line"><a href={adminPath(ward, `/projects/${id}#materials`)}>この行事に届いた資料を見る</a></p>
     {!project.closedAt ? <>
       <details class="fold" open={!!retry}><summary>時期や担当を直す</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}`)}>
         <div class="field"><label for="name">仕事</label><input id="name" name="name" value={values.name} maxlength={100} required /></div>
@@ -169,6 +180,15 @@ admin.post("/projects/:projectId/map/:taskId", async (c) => {
   const ok = ["open", "started", "done"].includes(values.progress) && await setMapTask(c.env.DB, c.var.ward.wardId, id, taskId, { ...values, progress: values.progress as "open" | "started" | "done", seatId: values.seat_id || null });
   if (!ok) return taskPage(c, { values, message: values.start && values.end && values.start > values.end ? "始める日が終わる日より後になっています。日付を直してください。" : "仕事の名前、日付、担当を確認してください。" });
   return c.redirect(`${adminPath(c.var.ward, `/projects/${id}/map/${taskId}`)}?notice=saved`, 303);
+});
+for (const [operation, progress] of [["done", "done"], ["reopen", "open"]] as const) admin.post(`/projects/:projectId/map/:taskId/${operation}`, async (c) => {
+  const id = c.req.param("projectId"); const taskId = c.req.param("taskId");
+  const state = await getProjectState(c.env.DB, c.var.ward.wardId, id);
+  const task = state?.mapTasks.find((entry) => entry.taskId === taskId);
+  const ok = task && await setMapTask(c.env.DB, c.var.ward.wardId, id, taskId, { name: task.name, start: task.periodStart ?? "", end: task.periodEnd ?? "", progress, seatId: task.seatId });
+  if (!ok) return c.redirect(`${adminPath(c.var.ward, `/projects/${id}/map`)}?error=invalid_input`, 303);
+  if ((await c.req.formData()).get("back") === "today") return c.redirect(`${adminPath(c.var.ward, "/projects/today")}?notice=done`, 303);
+  return c.redirect(`${adminPath(c.var.ward, `/projects/${id}/map`)}?notice=${operation}&changed=${taskId}`, 303);
 });
 for (const operation of ["remove", "restore"] as const) admin.post(`/projects/:projectId/map/:taskId/${operation}`, async (c) => {
   const id = c.req.param("projectId");

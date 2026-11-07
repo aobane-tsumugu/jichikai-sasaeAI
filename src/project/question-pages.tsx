@@ -83,6 +83,9 @@ questionPages.get("/projects/:projectId/questions", async (c) => {
       WHERE ward_id = ? AND project_id = ? AND target LIKE 'rota_exemption:%' AND state IN ('open', 'later')`)
       .bind(ward.wardId, id).all<{ question_id: string; detail: string | null }>() : null;
   const exemptions = new Map(stored?.results.map((row) => [row.question_id, readMaterialExemption(row.detail)]));
+  const photoIds = [...new Set(questions.flatMap((question) => question.source?.kind === "original" && question.source.ref ? [question.source.ref] : []))];
+  const photos = new Set((await Promise.all(photoIds.map((photoId) => c.env.DB.prepare("SELECT original_id FROM originals WHERE ward_id = ? AND original_id = ? AND media_type LIKE 'image/%'").bind(ward.wardId, photoId).first<{ original_id: string }>()))).flatMap((row) => row ? [row.original_id] : []));
+  let shownPhoto = "";
   const duty = state.project.kind === "duty";
   const draftHref = adminPath(ward, `/projects/${id}/draft/${duty ? "duty_roster" : "announcement"}`);
   const draftLabel = duty ? "当番表の下書きを見る" : "案内の下書きを見る";
@@ -101,7 +104,11 @@ questionPages.get("/projects/:projectId/questions", async (c) => {
     {state.project.closedAt ? <Notice>この行事は閉じました。もう一度開くと答えを入れられます。</Notice> : null}
     {questions.map((question) => {
       const exemption = exemptions.get(question.questionId);
+      const photo = question.source?.kind === "original" && question.source.ref && photos.has(question.source.ref) ? question.source.ref : "";
+      const showPhoto = photo && photo !== shownPhoto;
+      if (photo) shownPhoto = photo;
       return <section class="panel" id={`question-${question.questionId}`}>
+      {showPhoto ? <a href={adminPath(ward, `/intake/originals/${encodeURIComponent(photo)}`)}><img class="photo-full" src={`${adminPath(ward, `/intake/originals/${encodeURIComponent(photo)}`)}?raw=1`} alt="質問のある写真" loading="lazy" /></a> : null}
       <h2>{questionTitle(question).heading}</h2>
       {questionTitle(question).body ? <p>{questionTitle(question).body}</p> : null}
       {question.source?.locator && question.source.locator !== "写真の確認" ? <p class="muted">{question.source.locator}</p> : null}
@@ -117,7 +124,7 @@ questionPages.get("/projects/:projectId/questions", async (c) => {
           <div class="field"><label for={`answer-${question.questionId}`}>{isItemKey(question.target) ? ITEM_SCREEN_LABEL[question.target] : question.text.includes("金額") ? "金額" : "答え"}</label><input id={`answer-${question.questionId}`} name="answer" maxlength={2000} inputmode={question.text.includes("金額") ? "numeric" : undefined} /></div>
           <div class="action-links"><button class="secondary" name="action" value="answer">{question.text.includes("金額") ? "この金額を入れる" : "答える"}</button></div>
         </>}
-        <div class="question-actions">{question.source?.kind === "original" && question.source.ref ? <a class="quiet" href={adminPath(ward, `/intake/originals/${encodeURIComponent(question.source.ref)}`)}>元の資料を見る</a> : null}
+        <div class="question-actions">{question.source?.kind === "original" && question.source.ref && !photo ? <a class="quiet" href={adminPath(ward, `/intake/originals/${encodeURIComponent(question.source.ref)}`)}>元の資料を見る</a> : null}
           <button class="quiet" name="action" value="unknown">分からない</button><button class="quiet" name="action" value="later">あとで</button>
         </div>
       </form> : null}

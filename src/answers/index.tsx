@@ -76,8 +76,6 @@ admin.get("/answers", async (c) => {
         <h2>{row.title}（{row.year}年）</h2>
         <ul class="rows two">
           <li><a class="row-link" href={adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(row.project_id)}`)}><b>答えを見る</b><span>{row.answers}世帯が{row.closed_at ? "答えました" : "答えています"}</span></a></li>
-          <li><a class="row-link" href={adminPath(c.var.ward.slug, `/space/${encodeURIComponent(row.project_id)}`)}><b>実行委員と班長のページ</b><span>{row.closed_at ? "閉じています" : "班長に渡す入口です"}</span></a></li>
-          <li><a class="row-link" href={`/${encodeURIComponent(c.var.ward.slug)}/answer/${encodeURIComponent(row.project_id)}`}><b>住民が答えるページ</b><span>{row.closed_at ? "受け付けは終わっています" : "紙のQRコードの行き先です"}</span></a></li>
         </ul>
       </section>)}
       <div class="action-links"><a class="button secondary" href={adminPath(c.var.ward.slug, "/answers/roster")}>名簿を入れる</a></div>

@@ -8,7 +8,7 @@ import { receiveOriginal, ReceiveError, retryJob, withdrawJob } from "./api";
 import { SEND_SCRIPT } from "./browser-script";
 import { photoSourceHash } from "./photo";
 import { projectDirectory } from "./project-port";
-import { getJob, getOriginal, getReadings, listJobs, type JobListItem } from "./store";
+import { getJob, getOriginal, getReadings, listJobs, type JobListItem, jobSummaries } from "./store";
 import type { JobStatus, OriginalKind } from "./types";
 import { WardBucket } from "../core/storage";
 import type { ReceivePart } from "./receive";
@@ -364,10 +364,13 @@ intakeAdmin.get("/intake/originals/:originalId", async (c) => {
   if (back.startsWith(adminPath(ward, `/intake/originals/${original.original_id}`))) back = fallback;
   const title = original.media_type === "text/plain" ? "元の文" : project?.kind === "city_request" ? "元の通知" : "元の資料";
   const raw = `${adminPath(ward, `/intake/originals/${original.original_id}`)}?raw=1`;
+  const summary = (await jobSummaries(c.env.DB, ward.wardId)).get(original.job_id);
+  const line = await c.env.DB.prepare("SELECT sender_display_name FROM line_inbox_items WHERE ward_id = ? AND job_id = ? LIMIT 1").bind(ward.wardId, original.job_id).first<{ sender_display_name: string | null }>();
+  const sender = line?.sender_display_name || job?.sender_label;
   return c.html(<Layout title={title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={back}>← 前の画面へ</a><h1>{title}</h1>
+    <a class="back" href={back}>← 前の画面へ</a><h1>{summary?.split("\n")[0]?.slice(0, 36) || title}</h1>
     <p class="lead">{original.media_type.startsWith("image/") ? object.customMetadata?.photoResizeFailed === "1" ? "写真の大きさを整えられなかったため、届いたまま保管しています。" : "紙の文字や行事の様子が分かる大きさで保管した写真です。" : original.media_type === "text/plain" && job?.via.startsWith("line") ? "公式LINEに届いたときのままの文です。" : "送ったときのままの資料です。"}この画面では直せません。</p>
-    <dl class="facts"><dt>名前</dt><dd>{original.filename || (original.kind === "text" ? "届いた文" : "撮った写真")}</dd><dt>届いた日</dt><dd>{formatDateText(original.received_at.slice(0, 10))}</dd>{job?.via.startsWith("line") ? <><dt>届き方</dt><dd>公式LINE（{job.via === "line_direct" ? "一対一" : "グループ"}）</dd><dt>送った人</dt><dd>{job.sender_label || "名前は分かりません"}</dd></> : null}{project ? <><dt>{project.kind === "city_request" ? "依頼" : "行事"}</dt><dd>{project.title}</dd></> : null}</dl>
+    <dl class="facts">{summary ? null : <><dt>名前</dt><dd>{original.filename || (original.kind === "text" ? "届いた文" : "撮った写真")}</dd></>}<dt>届いた日</dt><dd>{formatDateText(original.received_at.slice(0, 10))}</dd>{job?.via.startsWith("line") ? <><dt>届き方</dt><dd>公式LINE（{job.via === "line_direct" ? "一対一" : "グループ"}）</dd><dt>送った人</dt><dd>{sender || "名前は分かりません"}</dd></> : null}{project ? <><dt>{project.kind === "city_request" ? "依頼" : "行事"}</dt><dd>{project.title}</dd></> : null}</dl>
     {original.media_type === "text/plain" ? <div class="panel preserve-lines">{await object.text()}</div>
       : ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(original.media_type) ? <div class="sheet-preview"><img class="original-image" src={raw} alt={original.filename || "届いた資料の写真"} /></div>
       : original.media_type === "application/pdf" ? <iframe class="original-document" src={raw} title="元の資料のPDF" /> : <p>このファイルは、下のボタンから開いて読めます。</p>}

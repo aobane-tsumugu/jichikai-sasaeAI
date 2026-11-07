@@ -143,7 +143,7 @@ async function discoverPrint() {
 }
 
 const shots: Shot[] = [
-  { stage: 0, name: "最初の画面", path: `${admin}/`, heading: "の自治会の仕事を進める画面です" },
+  { stage: 0, name: "最初の画面", path: `${admin}/`, heading: "" },
   { stage: 0, name: "名簿", path: `${admin}/answers/roster`, heading: "名簿" },
   { stage: 0, name: "今やること", path: `${admin}/projects/today`, heading: "今やること" },
   { stage: 0, name: "問い合わせと要望", path: `${admin}/inquiries`, heading: "問い合わせと要望" },
@@ -151,7 +151,7 @@ const shots: Shot[] = [
   { stage: 0, name: "役員の一覧", path: `${admin}/settings/people`, heading: "役員の一覧" },
   { stage: 0, name: "区の設定", path: `${admin}/settings`, heading: "区の設定" },
   { stage: 1, name: "段取り", path: "project/map", heading: "段取り" },
-  { stage: 1, name: "資料", path: "project", heading: "資料とその影響" },
+  { stage: 1, name: "資料", path: "project", heading: "の届いた資料と今年の内容" },
   { stage: 1, name: "質問", path: "project/questions", heading: "分かるものだけ答えてください" },
   { stage: 1, name: "送る", path: `${admin}/intake`, heading: "手元の紙や資料を送る" },
   { stage: 1, name: "行事に資料を送る", path: "project/intake", heading: "に資料を送る" },

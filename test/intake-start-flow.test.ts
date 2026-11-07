@@ -33,8 +33,8 @@ it("新任の役員が題は案内・年不明の実際のフォームから送�
   setClientFactory(() => { throw new Error("試験から実際のAIへは接続しません"); });
   try {
     const main = await (await get(realApp, `${root}/`, cookie)).text();
-    expect(main).toContain("去年の資料を送ってください");
-    expect(main).toContain("資料がないので、種類を選んで始める");
+    expect(main).toContain("手元に去年の案内や資料はありますか");
+    expect(main).toContain("ない。何の準備かを選ぶ");
     const formPage = await (await get(realApp, `${root}/intake`, cookie)).text();
     expect(formPage).toContain('name="project_id" value=""');
     expect(formPage).not.toContain('<select id="project_id"');
