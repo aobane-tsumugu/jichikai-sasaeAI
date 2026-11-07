@@ -18,11 +18,12 @@ deletion.get("/", async (c) => {
   const jobs = await c.env.DB.prepare(`SELECT j.job_id, j.created_at, j.via, o.filename, o.kind, p.title
     FROM jobs j JOIN originals o ON o.ward_id = j.ward_id AND o.job_id = j.job_id
     LEFT JOIN projects p ON p.ward_id = j.ward_id AND p.project_id = j.project_id
-    WHERE j.ward_id = ? AND j.withdrawn_at IS NULL AND o.withdrawn_at IS NULL
+    WHERE j.ward_id = ? AND ((j.withdrawn_at IS NULL AND o.withdrawn_at IS NULL)
+      OR EXISTS (SELECT 1 FROM ops_deletion_queue q WHERE q.ward_id = j.ward_id AND q.target_type = 'job' AND q.target_id = j.job_id))
     GROUP BY j.job_id ORDER BY j.created_at DESC LIMIT 100`).bind(ward.wardId)
     .all<{ job_id: string; created_at: string; via: string; filename: string; kind: string; title: string | null }>();
   const queue = await c.env.DB.prepare(`SELECT state, COUNT(*) AS count FROM ops_deletion_queue
-    WHERE ward_id = ? AND target_type IN ('job', 'answer', 'project') GROUP BY state`).bind(ward.wardId)
+    WHERE ward_id = ? AND target_type IN ('job', 'answer', 'project', 'inquiry', 'help_offer') GROUP BY state`).bind(ward.wardId)
     .all<{ state: string; count: number }>();
   const counts = new Map(queue.results.map((row) => [row.state, row.count]));
   const projects = await c.env.DB.prepare("SELECT project_id, title FROM projects WHERE ward_id = ? ORDER BY created_at DESC")

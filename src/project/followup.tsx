@@ -301,6 +301,7 @@ followupAdmin.post("/inquiries/:inquiryId", async (c) => {
 });
 
 followupAdmin.post("/inquiries/:inquiryId/remove", async (c) => {
+  // この削除と同じ書き込みのDB連動処理で、毎日の写しの消去も引き受ける。
   await c.env.DB.prepare("DELETE FROM inquiry_records WHERE ward_id = ? AND inquiry_id = ?").bind(c.var.ward.wardId, c.req.param("inquiryId")).run();
   return adminResult(c, "問い合わせの記録を消しました。", 200, { href: adminPath(c.var.ward, "/inquiries"), label: "問い合わせの一覧を開く" }, "ほかに届いている問い合わせを見られます。間違えて消したときは、受けたことを書く画面からもう一度残してください。");
 });

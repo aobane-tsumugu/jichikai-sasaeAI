@@ -3,11 +3,13 @@ import type { RowData } from "../project/model";
 export interface PublishedTableRow {
   kind: "duties" | "layout" | "sponsors" | "committee";
   data: RowData;
+  rowId?: string;
+  sourceRef?: string | null;
 }
 
 /** 配布の記録を作る SQL の中で使う。区とプロジェクトをこの順に bind する。 */
-export const publicationTablesSql = `(SELECT json_group_array(json_object('kind', table_key, 'data', json(data)))
-  FROM (SELECT table_key, data FROM project_rows
+export const publicationTablesSql = `(SELECT json_group_array(json_object('kind', table_key, 'data', json(data), 'rowId', row_id, 'sourceRef', source_ref))
+  FROM (SELECT table_key, data, row_id, source_ref FROM project_rows
     WHERE ward_id = ? AND project_id = ? AND scope = 'current' AND removed_at IS NULL
       AND table_key IN ('duties', 'layout', 'sponsors', 'committee') ORDER BY table_key, created_at, row_id))`;
 

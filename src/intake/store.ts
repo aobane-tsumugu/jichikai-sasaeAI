@@ -167,7 +167,7 @@ export async function failJob(
     .run();
 }
 
-/** 取り下げられるのは、繋げる前（セッションを開く前）まで。実体と読み取りを消し、行は残す。 */
+/** 取り下げは現在の実体をすぐ消す。同じ更新のDB連動処理が、過去の写しの消去も引き受ける。 */
 export async function withdrawJob(env: Pick<Env, "DB" | "ORIGINALS">, wardId: string, jobId: string): Promise<boolean> {
   const now = nowIso();
   const res = await env.DB.prepare(
@@ -209,7 +209,7 @@ export async function resetForRetry(
   const res = await db
     .prepare(
       `UPDATE jobs SET status = ?, attempt = CASE WHEN ? = 'received' THEN 0 ELSE attempt END, connect_attempt = 0,
-              failure = '', finished_at = NULL, lease_until = NULL, ticket_hash = NULL, updated_at = ?
+              failure = '', finished_at = NULL, lease_until = NULL, ticket_hash = NULL, session_id = NULL, session_deleted_at = NULL, updated_at = ?
         WHERE ward_id = ? AND job_id = ? AND status = 'failed'`,
     )
     .bind(next, next, nowIso(), wardId, jobId)
@@ -229,6 +229,7 @@ export async function setJobProject(
       `UPDATE jobs SET project_id = ?, updated_at = ?,
           status = CASE WHEN status IN ('done', 'attention') THEN 'read' ELSE status END,
           session_id = CASE WHEN status IN ('done', 'attention') THEN NULL ELSE session_id END,
+          session_deleted_at = CASE WHEN status IN ('done', 'attention') THEN NULL ELSE session_deleted_at END,
           ticket_hash = CASE WHEN status IN ('done', 'attention') THEN NULL ELSE ticket_hash END,
           finished_at = CASE WHEN status IN ('done', 'attention') THEN NULL ELSE finished_at END,
           connect_attempt = 0

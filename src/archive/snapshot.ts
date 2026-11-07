@@ -86,17 +86,37 @@ export const WARD_TABLE_POLICY: readonly WardTablePolicy[] = [
 
 export const SNAPSHOT_TABLES = WARD_TABLE_POLICY.filter((entry) => entry.snapshot === true).map((entry) => entry.table);
 
+/** 提供側の処理が区を列挙する入口。本文の読み書きは呼び出し側で一つの区に絞る。 */
+export async function listRecordWardIds(db: D1Database): Promise<Array<{ ward_id: string }>> {
+  return (await db.prepare("SELECT ward_id FROM wards WHERE ward_id IS NOT NULL ORDER BY ward_id").all<{ ward_id: string }>()).results;
+}
+
 export async function writeDailyWardSnapshots(env: Env, now = new Date()): Promise<number> {
-  const wards = await env.DB.prepare("SELECT ward_id FROM wards WHERE ward_id IS NOT NULL ORDER BY ward_id").all<{ ward_id: string }>();
+  const wards = await listRecordWardIds(env.DB);
   const day = now.toISOString().slice(0, 10);
   let saved = 0;
-  for (const ward of wards.results) {
+  for (const ward of wards) {
+    if (!(await env.DB.prepare("SELECT ward_id FROM wards WHERE ward_id = ? AND is_active = 1").bind(ward.ward_id).first())) continue;
     const tables: Record<string, unknown[]> = {};
     for (const table of SNAPSHOT_TABLES) {
       const rows = await env.DB.prepare(`SELECT * FROM ${table} WHERE ward_id = ?`).bind(ward.ward_id).all<Record<string, unknown>>();
       tables[table] = rows.results;
     }
-    const snapshot = JSON.stringify({ format: 1, wardId: ward.ward_id, capturedAt: now.toISOString(), tables });
+    // 読み取り中に消去が始まっても、古い中身を新しい写しへ戻さない。
+    const removals = await env.DB.prepare(`SELECT target_type, target_id FROM ops_deletion_queue WHERE ward_id = ?
+      UNION SELECT target_type, target_id FROM ops_deletion_marks WHERE ward_id = ? AND target_type IS NOT NULL`)
+      .bind(ward.ward_id, ward.ward_id).all<{ target_type: string; target_id: string | null }>();
+    if (removals.results.some((row) => row.target_type === "ward")) continue;
+    let snapshot = JSON.stringify({ format: 1, wardId: ward.ward_id, capturedAt: now.toISOString(), tables });
+    for (const removal of removals.results) {
+      if (!removal.target_id) continue;
+      // 取消直後に本人が「元に戻す」を押した申し込みは、新しい写しには残せる。
+      if (removal.target_type === "help_offer" && await env.DB.prepare("SELECT offer_id FROM project_help_offers WHERE ward_id = ? AND offer_id = ?")
+        .bind(ward.ward_id, removal.target_id).first()) continue;
+      const rewritten = eraseSnapshotRecord(JSON.parse(snapshot) as unknown, ward.ward_id, removal.target_type, removal.target_id);
+      if (rewritten === null) throw new Error("消去を反映した写しを作れませんでした");
+      snapshot = rewritten;
+    }
     await new WardBucket(env.ORIGINALS, ward.ward_id).put(`snapshots/daily/${day}.json`, snapshot, {
       httpMetadata: { contentType: "application/json; charset=utf-8" },
     });
@@ -121,3 +141,138 @@ export async function runSnapshotCron(event: ScheduledController, env: Env): Pro
   const result = await writeDailyWardSnapshots(env);
   console.log("日次の写しを保存しました", result);
 }
+
+export function eraseSnapshotJob(snapshot: unknown, wardId: string, jobId: string, knownOriginalIds = new Set<string>(), knownReadingBodies = new Set<string>()): string | null {
+  if (typeof snapshot !== "object" || snapshot === null || Array.isArray(snapshot)) return null;
+  const doc = snapshot as { format?: unknown; wardId?: unknown; tables?: unknown };
+  if (doc.format !== 1 || doc.wardId !== wardId || typeof doc.tables !== "object" || doc.tables === null || Array.isArray(doc.tables)) return null;
+  const tables = doc.tables as Record<string, unknown>;
+  const originalIds = new Set(knownOriginalIds);
+  const readingBodies = new Set(knownReadingBodies);
+  for (const row of snapshotRows(tables, "originals")) {
+    if (row.job_id === jobId && typeof row.original_id === "string") originalIds.add(row.original_id);
+  }
+  for (const row of snapshotRows(tables, "readings")) {
+    if (row.job_id === jobId && typeof row.body === "string") readingBodies.add(row.body);
+  }
+  eraseCopiedContent(tables, originalIds);
+  const remove = (table: string, match: (row: Record<string, unknown>) => boolean) => {
+    const rows = tables[table];
+    if (Array.isArray(rows)) tables[table] = rows.filter((row) =>
+      typeof row !== "object" || row === null || Array.isArray(row) || !match(row as Record<string, unknown>));
+  };
+  const changeIds = new Set<string>();
+  if (Array.isArray(tables.project_changes)) {
+    for (const value of tables.project_changes) {
+      if (typeof value !== "object" || value === null) continue;
+      const row = value as Record<string, unknown>;
+      if (typeof row.source_ref === "string" && originalIds.has(row.source_ref) && typeof row.change_id === "string") changeIds.add(row.change_id);
+    }
+  }
+  remove("project_questions", (row) =>
+    (typeof row.source_ref === "string" && originalIds.has(row.source_ref)) ||
+    (typeof row.change_id === "string" && changeIds.has(row.change_id)));
+  if (Array.isArray(tables.project_map_tasks)) {
+    for (const value of tables.project_map_tasks) {
+      if (typeof value !== "object" || value === null) continue;
+      const row = value as Record<string, unknown>;
+      if ((typeof row.progress_source_ref === "string" && originalIds.has(row.progress_source_ref)) ||
+          (typeof row.progress_change_id === "string" && changeIds.has(row.progress_change_id))) {
+        Object.assign(row, { progress: "open", progress_source_kind: null, progress_source_ref: null,
+          progress_source_locator: null, progress_confidence: null, progress_change_id: null });
+      }
+    }
+  }
+  remove("jobs", (row) => row.job_id === jobId);
+  remove("originals", (row) => row.job_id === jobId || (typeof row.original_id === "string" && originalIds.has(row.original_id)));
+  for (const table of ["readings", "job_runs", "job_tool_calls", "intake_photo_checks", "line_photo_items", "line_clarifications", "line_clarification_answers"]) remove(table, (row) => row.job_id === jobId);
+  remove("paper_reading_slices", (row) => row.job_id === jobId || row.source_job_id === jobId);
+  for (const table of ["project_item_values", "project_rows", "project_changes"]) {
+    remove(table, (row) => typeof row.source_ref === "string" && originalIds.has(row.source_ref));
+  }
+  remove("project_answers", (row) => typeof row.original_id === "string" && originalIds.has(row.original_id));
+  remove("line_inbox_items", (row) => row.job_id === jobId);
+  remove("archive_search_entries", (row) =>
+    (typeof row.source_id === "string" && originalIds.has(row.source_id)) ||
+    (row.record_type === "reading" && typeof row.content === "string" && readingBodies.has(row.content)));
+  return JSON.stringify(doc);
+}
+
+type SnapshotRow = Record<string, unknown>;
+
+function snapshotRows(tables: Record<string, unknown>, table: string): SnapshotRow[] {
+  const rows = tables[table];
+  return Array.isArray(rows) ? rows.filter((row): row is SnapshotRow => typeof row === "object" && row !== null && !Array.isArray(row)) : [];
+}
+
+/** 配った本文は保ち、消す資料との対応が分かる表の行と検索記録だけを外す。 */
+export function eraseCopiedContent(tables: Record<string, unknown>, originalIds: Set<string>): void {
+  const rowSources = new Map<string, Array<string | null>>();
+  const rowKey = (project: unknown, kind: unknown, data: unknown) => {
+    if (typeof data !== "object" || data === null || Array.isArray(data)) return "";
+    return JSON.stringify([project, kind, Object.entries(data).sort(([a], [b]) => a.localeCompare(b))]);
+  };
+  for (const row of snapshotRows(tables, "project_rows")) {
+    if (typeof row.data !== "string" || typeof row.row_id !== "string") continue;
+    const key = rowKey(row.project_id, row.table_key, JSON.parse(row.data) as unknown);
+    rowSources.set(key, [...(rowSources.get(key) ?? []), typeof row.source_ref === "string" ? row.source_ref : null]);
+  }
+  // 直したあとの表だけで、過去に配った中身の出どころを決めない。
+  for (const row of snapshotRows(tables, "project_changes")) {
+    if (row.kind !== "row" || typeof row.payload !== "string" || typeof row.change_id !== "string") continue;
+    const change = JSON.parse(row.payload) as { table?: unknown; data?: unknown };
+    const key = rowKey(row.project_id, change.table, change.data);
+    rowSources.set(key, [...(rowSources.get(key) ?? []), typeof row.source_ref === "string" ? row.source_ref : null]);
+  }
+  for (const row of snapshotRows(tables, "document_versions")) {
+    if (typeof row.tables_snapshot === "string") {
+      const entries: unknown = JSON.parse(row.tables_snapshot);
+      if (!Array.isArray(entries)) throw new Error("配った表を読み取れませんでした");
+      row.tables_snapshot = JSON.stringify(entries.flatMap((entry: unknown) => {
+        if (typeof entry !== "object" || entry === null) return [entry];
+        const tableRow = entry as SnapshotRow;
+        if (typeof tableRow.sourceRef === "string" && originalIds.has(tableRow.sourceRef)) return [];
+        if (tableRow.sourceRef === undefined) {
+          const sources = rowSources.get(rowKey(row.project_id, tableRow.kind, tableRow.data));
+          // 古い行は、同じ行事・種類・中身から出どころを確かめられたときだけ外す。
+          if (sources?.length && sources.every((source) => source !== null && originalIds.has(source))) return [];
+        }
+        return [tableRow];
+      }));
+    }
+  }
+  const search = tables.archive_search_entries;
+  if (Array.isArray(search)) tables.archive_search_entries = search.filter((value: unknown) => {
+    if (typeof value !== "object" || value === null) return true;
+    const row = value as SnapshotRow;
+    return !(typeof row.source_id === "string" && originalIds.has(row.source_id));
+  });
+}
+
+export function eraseSnapshotRecord(snapshot: unknown, wardId: string, type: string, id: string): string | null {
+  if (type === "job") return eraseSnapshotJob(snapshot, wardId, id);
+  if (typeof snapshot !== "object" || snapshot === null || Array.isArray(snapshot)) return null;
+  const doc = snapshot as { wardId?: unknown; tables?: Record<string, unknown> };
+  if (doc.wardId !== wardId || typeof doc.tables !== "object" || doc.tables === null || Array.isArray(doc.tables)) return null;
+  if (type === "project") {
+    for (const job of snapshotRows(doc.tables, "jobs")) {
+      if (job.project_id === id && typeof job.job_id === "string") {
+        const rewritten = eraseSnapshotJob(doc, wardId, job.job_id);
+        if (rewritten === null) return null;
+        doc.tables = (JSON.parse(rewritten) as { tables: Record<string, unknown> }).tables;
+      }
+    }
+    for (const [table, rows] of Object.entries(doc.tables)) {
+      if (!Array.isArray(rows)) continue;
+      doc.tables[table] = snapshotRows(doc.tables, table).filter((row) => row.project_id !== id).map((row) =>
+        table === "projects" && row.seed_project_id === id ? { ...row, seed_project_id: null } : row);
+    }
+  } else {
+    const target = type === "answer" ? ["project_answers", "answer_id"] : type === "inquiry" ? ["inquiry_records", "inquiry_id"] : type === "help_offer" ? ["project_help_offers", "offer_id"] : null;
+    if (!target) return null;
+    const [table, column] = target as [string, string];
+    if (doc.tables[table]) doc.tables[table] = snapshotRows(doc.tables, table).filter((row) => row[column] !== id);
+  }
+  return JSON.stringify(doc);
+}
+

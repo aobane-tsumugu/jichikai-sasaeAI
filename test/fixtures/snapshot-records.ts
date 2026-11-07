@@ -20,6 +20,10 @@ export function snapshotRecords(wardId: string, projectId: string, accountId: st
     row("jobs", { job_id: id("job"), project_id: projectId, via: "admin", account_id: accountId, status: "done", created_at: stamp, updated_at: stamp, read_at: stamp }),
     row("originals", { original_id: id("original"), job_id: id("job"), position: 1, kind: "text", content_hash: id("content-hash"), media_type: "text/plain", byte_size: 39,
       filename: "架空の復元確認.txt", r2_path: `originals/${id("original")}`, received_at: stamp }),
+    // 閲覧を確かめる資料とは別に、写しから除く消去待ちの資料を持たせる。
+    row("jobs", { job_id: id("deleted-job"), project_id: null, via: "admin", account_id: accountId, status: "done", created_at: stamp, updated_at: stamp, read_at: stamp }),
+    row("originals", { original_id: id("deleted-original"), job_id: id("deleted-job"), position: 1, kind: "text", content_hash: id("deleted-content-hash"), media_type: "text/plain", byte_size: 0,
+      filename: "架空の消去待ち.txt", r2_path: `originals/${id("deleted-original")}`, received_at: stamp }),
     row("readings", { reading_id: id("reading"), job_id: id("job"), source: "direct", pack_version: "fixture-restore@1", body: reading, created_at: stamp }),
     row("job_runs", { run_id: id("run"), job_id: id("job"), kind: "read", started_at: stamp, status: "ok" }),
     row("job_tool_calls", { call_id: id("call"), job_id: id("job"), tool: "get_reading", outcome: "ok", created_at: stamp }),
@@ -69,7 +73,7 @@ export function snapshotRecords(wardId: string, projectId: string, accountId: st
     row("line_photo_sources", { destination: id("destination"), source_type: "group", source_id: id("group"), project_id: projectId }),
     row("project_close_map", { project_id: projectId, task_id: id("task"), name: "架空の会場を予約する", progress: "done", updated_at: stamp, updated_by_account_id: accountId }),
     row("project_close_reports", { project_id: projectId, scope: "public", body: "架空の報告", updated_at: stamp, updated_by_account_id: accountId }),
-    row("ops_deletion_queue", { queue_id: id("queue"), target_type: "job", target_id: id("job"), requested_at: stamp }),
+    row("ops_deletion_queue", { queue_id: id("queue"), target_type: "job", target_id: id("deleted-job"), requested_at: stamp }),
     row("ops_deletion_marks", { mark_id: id("mark"), scope: "record", deleted_at: stamp }),
   ];
 }

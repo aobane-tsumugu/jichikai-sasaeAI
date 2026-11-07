@@ -29,6 +29,47 @@ async function fixture() {
   return { ward, account, cookie, project, base, admin, draft, publish };
 }
 
+it.each(["public", "space"] as const)("%sに配り、古い下書きと二重の配布を防ぐ", async (scope) => {
+  const f = await fixture();
+  const kind = scope === "public" ? "announcement" : "duty_roster";
+  const first = await f.draft(kind, "配布物（架空）", scope, { text: "架空の古い本文です。", items: [] });
+  const latest = await f.draft(kind, "配布物（架空）", scope, { text: "架空の新しい本文です。", items: [] });
+  const distribute = (row: typeof first) => postForm(realApp,
+    `${f.admin}/publish/${f.project.projectId}/${scope === "public" ? "send" : "space"}`, {
+      documentId: row.document_id, versionId: row.version_id, versionNo: String(row.version_no), lineDelivery: "skip",
+    }, f.cookie);
+  const readVersion = (versionId: string) => env.DB.prepare(`SELECT body, published_at FROM document_versions
+    WHERE ward_id = ? AND version_id = ?`).bind(f.ward.wardId, versionId)
+    .first<{ body: string; published_at: string | null }>();
+  const records = () => env.DB.prepare("SELECT COUNT(*) AS n FROM publication_records WHERE ward_id = ? AND project_id = ?")
+    .bind(f.ward.wardId, f.project.projectId).first<number>("n");
+
+  expect((await distribute(first)).status).toBe(409);
+  expect((await readVersion(first.version_id))?.published_at).toBeNull();
+  expect(await records()).toBe(0);
+  expect((await distribute(latest)).status).toBe(303);
+  const published = await readVersion(latest.version_id);
+  expect(published?.published_at).toEqual(expect.any(String));
+  expect(await records()).toBe(scope === "public" ? 1 : 0);
+  expect((await distribute(latest)).status).toBe(scope === "public" ? 404 : 303);
+  expect(await readVersion(latest.version_id)).toEqual(published);
+  expect(await records()).toBe(scope === "public" ? 1 : 0);
+
+  if (scope === "space") {
+    expect((await applyChange(env.DB, f.ward.wardId, f.project.projectId, {
+      kind: "row", table: "duties", data: { slot: "架空の午前", assignee: "架空の担当" },
+      source: { kind: "person", accountId: f.account.accountId }, confidence: "high", packVersion: "fictional-consistency@1",
+    })).status).toBe("applied");
+    expect((await distribute(latest)).status).toBe(303);
+    const republished = await env.DB.prepare(`SELECT version_no, published_at FROM document_versions
+      WHERE ward_id = ? AND document_id = ? ORDER BY version_no DESC LIMIT 1`)
+      .bind(f.ward.wardId, latest.document_id).first<{ version_no: number; published_at: string | null }>();
+    expect(republished?.version_no).toBe(latest.version_no + 1);
+    expect(republished?.published_at).toEqual(expect.any(String));
+    expect(await readVersion(latest.version_id)).toEqual(published);
+  }
+});
+
 it.each(["public", "space"] as const)("行事名を直しても%sに配った紙の題を保ち、下書きと次に配る紙には新しい題を使う", async (scope) => {
   const f = await fixture();
   const kind = scope === "public" ? "announcement" : "duty_roster";
