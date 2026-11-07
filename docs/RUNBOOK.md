@@ -209,19 +209,34 @@ READMEのローカル起動には、空のローカルD1/R2と、その区の役
 
 ## 日次の写しから戻す
 
-写しはDAILYのCronで毎日作られます。区ごとに`snapshots/daily/YYYY-MM-DD.json`へ保存されます。元の資料の所在、読み取った内容、実行記録、実行委員名簿を含む表、配布記録、紙の番号、記録を探すための情報も含みます。全文索引の本体と、写真を当てる間だけ使う前後の文は含みません。元の資料ファイル本体はJSONではなく、同じ区のR2にある元の資料のままです。
+写しはDAILYのCronで毎日作られます。区ごとに`snapshots/daily/YYYY-MM-DD.json`へ保存されます。元の資料の所在、読み取った内容、実行記録、実行委員名簿を含む表、配布記録、紙の番号、記録を探すための情報も含みます。全文索引の本体と、写真を当てる間だけ使う前後の文は含みません。元の資料ファイル本体はJSONには入りません。
+
+提供側が`jichikai-sasae-staging-backup`を作り、`ORIGINALS_BACKUP`を接続します。接続していない環境では別の場所への複写をしません。接続後は、日次の処理のあとに区ごとの`originals/`、`snapshots/daily/`と提供側の`contacts/`を同じキーで複写します。続きは5分ごとの処理で進みます。一回に5点まで照合し、本体を読むのは新しいものと変わったものです。途中位置を保存するため、停止後も続けられます。消去や写しの書き直しは、両方の保管先へ反映します。同じ区の複写と消去が重ならないようにし、途中で止まった処理は16分後から引き継げます。
+
+運用の画面の「提供側で見る知らせ」の下に、別の場所へ最後に複写した日時と失敗した処理の件数が出ます。この日時は最後の一点を複写した日時で、全点の完了日時ではありません。続きが終わったかは、対象の区IDに絞って次の形で確認します。`<ward-id>`は実値へ置き換えます。提供側の受付は`provider-contacts`です。
+
+```powershell
+npx wrangler d1 execute DB --remote --command "SELECT requested_day, completed_day, phase, failures FROM archive_backup_state WHERE ward_id = '<ward-id>'"
+npx wrangler d1 execute DB --remote --command "SELECT state, COUNT(*) AS count FROM ops_deletion_queue WHERE ward_id = '<ward-id>' GROUP BY state"
+```
+
+`completed_day`が`requested_day`と同じで`phase`が`idle`、`failures`が0なら、その日の複写の照合は終わっています。消去の処理待ちが残る間は、その区の写しを復旧に使いません。元のR2の障害で消えたファイルを消去と取り違えないため、DBに所在が残る原本と日次の写しは、元のR2に見つからなくても別の場所から消しません。
 
 提供側への問い合わせは、区の一覧とは別に`provider-contacts/snapshots/daily/YYYY-MM-DD.json`へ保存されます。受付・本文・連続送信の記録が入ります。区のJSONと同じ道具でSQLに変換できます。問い合わせを戻すときはこちらのJSONを使います。
 
-運用の画面で消した受付も、削除前の日次の写しには残っています。戻す前に、提供側への問い合わせの消去対応を必ず照合します。消した受付を含む写しをそのまま戻してはいけません。下の「提供側への問い合わせを消す」の対応が終わるまで、その写しは復旧に使いません。
+運用の画面で消した受付は、以前の日次の写しからも5分ごとの処理で消します。別の場所だけに残った写しも対象です。下の「提供側への問い合わせを消す」の消去が終わるまで、その写しは復旧に使いません。作業用に以前取得したJSONやSQLは書き直されないため使わず、消去反映後に取り直します。
 
 以下の実機操作と適用はPMが担当します。保存対象の全表に架空の記録を持つ写しをローカルSQLiteへ戻し、行と参照が保たれることを確認しています。ローカルD1でも、日次の写しから役員画面、実行委員名簿、答え、元の資料、問い合わせ、紙の番号を読み、全文索引を作り直す試験を通しています。本物のD1への適用とR2からの復旧は未確認です。
 
-1. 戻し先のD1とR2を用意し、現在の `migrations/` を適用します。区のデータが空であることを確かめます。既存データへそのまま流すと重複や衝突になります。
-2. 使う区のIDと日付を選び、次の形でR2からJSONを取得します。`<ward-id>` と日付は実値に置き換えます。
+### DBだけを戻すとき
+
+元のR2が残っていて、原本のキーを引き続き使える場合です。以下はPMが行います。復旧中は対象の受付とCronを止め、消去の処理待ちがないことを照合してから、書き直し済みのJSONを取得します。処理待ちを確かめられない障害では、消去の対応記録と突き合わせ、対象が含まれる写しをそのまま戻しません。
+
+1. 戻し先のD1を用意し、現在の`migrations/`を適用します。区のデータが空であることを確かめます。既存データへそのまま流すと重複や衝突になります。
+2. 使う区のIDと日付を選び、別の保管先からJSONを取得します。`<ward-id>`と日付は実値に置き換えます。
 
    ```powershell
-   npx wrangler r2 object get jichikai-sasae-staging/<ward-id>/snapshots/daily/YYYY-MM-DD.json --remote --file .\ward-snapshot.json
+   npx wrangler r2 object get jichikai-sasae-staging-backup/<ward-id>/snapshots/daily/YYYY-MM-DD.json --remote --file .\ward-snapshot.json
    ```
 
 3. 取得したJSONを確認してSQLにします。
@@ -238,8 +253,53 @@ READMEのローカル起動には、空のローカルD1/R2と、その区の役
    ```
 
    `<restore-database>`は手順1で用意した空の戻し先のD1名へ置き換えます。
-5. 元の資料R2を、同じ区IDのキーを保って戻します。`originals`表の`r2_path`を参照し、対象キーを同じ区内に戻します。提供側の問い合わせの添付写真は`provider_contact_messages.photo_key`を参照し、`provider-contacts`の区画に戻します。SQLにファイル本体は入っていません。
-6. 戻した役員の入り方で入り、行事、名簿、答え、元の資料、配った記録を開きます。既に配った紙の番号の指す先を確かめます。提供側の受付を戻した場合は、やりとりの画面で本文を読めることも確認します。パスワードや専用の入口は確認記録へ写しません。
+5. 残っている元のR2を戻し先のWorkersへ接続します。DBの`originals.r2_path`、`line_inbox_items.original_object_key`、提供側の`provider_contact_messages.photo_key`が指すファイルを開けるか確かめます。SQLにファイル本体は入っていません。
+6. 下の「戻したあとの確認」を行います。
+
+### 原本ファイルも戻すとき
+
+元のR2を失った場合は、上のDBの手順1〜4に加えて、別の保管先から原本ファイルを取得して、空の戻し先のR2へ置きます。先にCronと受付を止め、戻し先のD1とR2を運用中のものに接続しないまま進めます。使うJSONは消去反映後に取り直したものです。
+
+次のPowerShellはJSON内の原本と添付写真のキーを取り出し、同じ区IDとキーを保って一点ずつ取得・保存します。`<restore-bucket>`はPMが用意した空のR2名へ置き換えます。提供側の受付を戻す場合も同じ処理で、JSONの区IDが`provider-contacts`になります。秘密の値や本文は表示しません。取得または保存が失敗したら止まり、成功と扱いません。
+
+```powershell
+$restoreDoc = Get-Content -LiteralPath .\ward-snapshot.json -Raw -Encoding UTF8 | ConvertFrom-Json
+$restoreWardId = $restoreDoc.wardId
+$restoreBucket = '<restore-bucket>'
+$restoreTypes = @{}
+foreach ($restoreOriginal in $restoreDoc.tables.originals) {
+  if ($restoreOriginal.r2_path) { $restoreTypes[$restoreOriginal.r2_path] = $restoreOriginal.media_type }
+}
+foreach ($restoreMessage in $restoreDoc.tables.provider_contact_messages) {
+  if ($restoreMessage.photo_key) { $restoreTypes[$restoreMessage.photo_key] = $restoreMessage.photo_type }
+}
+$restoreKeys = @(
+  $restoreDoc.tables.originals | ForEach-Object { $_.r2_path }
+  $restoreDoc.tables.line_inbox_items | ForEach-Object { $_.original_object_key }
+  $restoreDoc.tables.provider_contact_messages | ForEach-Object { $_.photo_key }
+) | Where-Object { $_ } | Sort-Object -Unique
+foreach ($restoreKey in $restoreKeys) {
+  $restorePath = "$restoreWardId/$restoreKey"
+  npx wrangler r2 object get "jichikai-sasae-staging-backup/$restorePath" --remote --file .\restore-object.bin
+  if ($LASTEXITCODE -ne 0) { throw '原本の取得に失敗しました。復旧を止めます。' }
+  $restoreType = $restoreTypes[$restoreKey]
+  if (-not $restoreType) { $restoreType = 'application/octet-stream' }
+  npx wrangler r2 object put "$restoreBucket/$restorePath" --remote --file .\restore-object.bin --content-type $restoreType
+  if ($LASTEXITCODE -ne 0) { throw '原本の保存に失敗しました。復旧を止めます。' }
+  npx wrangler r2 object get "$restoreBucket/$restorePath" --remote --file .\restore-check.bin
+  if ($LASTEXITCODE -ne 0) { throw '戻した原本を読み直せませんでした。' }
+  if ((Get-FileHash -LiteralPath .\restore-object.bin -Algorithm SHA256).Hash -ne
+      (Get-FileHash -LiteralPath .\restore-check.bin -Algorithm SHA256).Hash) {
+    throw '戻した原本の内容が一致しません。'
+  }
+}
+```
+
+ファイルの種類はDBにも保存されています。戻したあとに、写真、PDF、文書を実際に開けることを確かめます。複写が終わる前に失った原本は、この保管先から戻せるとは言えません。必要なファイルが一つでも取得できなければ、原本まで復旧済みとは報告しません。使用したWranglerの`get`と`put`の引数は[公式のR2コマンド](https://developers.cloudflare.com/workers/wrangler/commands/r2/)を参照してください。
+
+### 戻したあとの確認
+
+戻した役員の入り方で入り、行事、名簿、答え、元の資料、配った記録を開きます。既に配った紙の番号の指す先を確かめます。提供側の受付を戻した場合は、やりとりの画面で本文と添付を読めることも確認します。パスワードや専用の入口は確認記録へ写しません。消去した資料や受付が戻っていないことを確認してから、受付とCronを再開します。作業用のJSON、SQL、`restore-object.bin`、`restore-check.bin`は、作業後に安全に消します。
 
 読み取った内容や実行記録も戻ります。全文索引は、戻した`archive_search_entries`から自動で作られます。あとから索引を作り直す必要があるときは、`<ward-id>`を戻した区IDに置き換え、戻し先のD1で次を実行します。ほかの区の索引は消しません。
 
@@ -296,7 +356,7 @@ SELECT entry_id, content FROM archive_search_entries WHERE ward_id = '<ward-id>'
 
 今の受付の名前、メールアドレス、本文、本人を確かめた内容、添付写真を消します。使っていない入るためのリンクは使えなくなります。役員アカウントと、すでに入れたスマホやパソコンは残ります。受付を閉じる操作とは別です。写真を消せないときは受付を残して失敗を表示するため、提供側がR2とD1の状態を確かめてから同じ入口で続けます。入るためのリンクを作っている途中なら、終わってから続けます。
 
-この入口は、以前の日次の写しを書き換えません。`provider-contacts/snapshots/daily/`の受付と本文には削除前の情報が残ります。提供側が対象の`contact_id`を含む写しを調べ、`tables.provider_contacts`と`tables.provider_contact_messages`からその受付の行だけを除いて保存し直す必要があります。ほかの受付と`ward_id`を保ち、保存し直したJSONを読み直して対象がないことを確かめます。作業用のJSONやSQLにも本文と本人情報が含まれるので、安全に扱い、対応後に消します。鍵や本文を作業記録へ転記しません。
+この入口で現在の受付と添付を消すのと同じDBの書き込みで、過去の日次の写しの消去を受け付けます。5分ごとの処理が`provider-contacts/snapshots/daily/`を5点ずつ書き直し、`tables.provider_contacts`と`tables.provider_contact_messages`からその受付だけを除きます。別の場所の同じ写しと添付も消去・書き直しの対象です。元の場所に無い写しも別の場所を一巡して処理します。途中で失敗しても処理待ちと途中位置が残り、次に続けます。運用の画面の「消去の状況」で終わったことを確認し、その後に写しを取り直してから復旧に使います。ほかの受付と区は残します。鍵や本文を作業記録へ転記しません。
 
 この写しの処理は自動ではなく、今回の実機確認もしていません。写しと別途保管した控えへの対応を提供側が終えるまでは、すべて消したとは案内せず、その写しを復旧に使いません。連続送信を抑える要約は受付単位で対応付けられないため、この入口では消しません。
 

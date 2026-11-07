@@ -31,6 +31,10 @@ migrations_dir = "migrations"
 binding = "ORIGINALS"
 bucket_name = "jichikai-sasae-staging"
 
+[[r2_buckets]]
+binding = "ORIGINALS_BACKUP"
+bucket_name = "jichikai-sasae-staging-backup"
+
 # ブラウザで写しを作れなかった写真を、非公開のまま読み取り用に縮める。
 [images]
 binding = "IMAGES"

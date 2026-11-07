@@ -2,6 +2,7 @@ import { CRON } from "../core/cron";
 import { WardBucket } from "../core/storage";
 import type { Env } from "../env";
 import { CONTACT_WARD } from "../contact/store";
+import { putRecordSnapshot, withRecordLock } from "./backup";
 
 /** 区の記録の扱い。文字列は一覧から外す理由。並びは外部キーの親から子。 */
 export interface WardTablePolicy {
@@ -82,6 +83,7 @@ export const WARD_TABLE_POLICY: readonly WardTablePolicy[] = [
   { table: "archive_search_entries", snapshot: true, export: true, deletion: true },
   { table: "ops_deletion_queue", snapshot: true, export: "提供側で続ける消去の処理待ちなので区へ渡さない。", deletion: true },
   { table: "ops_deletion_marks", snapshot: true, export: true, deletion: "消去の記録なので残す。" },
+  { table: "archive_backup_state", snapshot: "復旧後は複写を最初から照合する。", export: "提供側の複写の途中位置。", deletion: true },
 ];
 
 export const SNAPSHOT_TABLES = WARD_TABLE_POLICY.filter((entry) => entry.snapshot === true).map((entry) => entry.table);
@@ -96,42 +98,42 @@ export async function writeDailyWardSnapshots(env: Env, now = new Date()): Promi
   const day = now.toISOString().slice(0, 10);
   let saved = 0;
   for (const ward of wards) {
-    if (!(await env.DB.prepare("SELECT ward_id FROM wards WHERE ward_id = ? AND is_active = 1").bind(ward.ward_id).first())) continue;
-    const tables: Record<string, unknown[]> = {};
-    for (const table of SNAPSHOT_TABLES) {
-      const rows = await env.DB.prepare(`SELECT * FROM ${table} WHERE ward_id = ?`).bind(ward.ward_id).all<Record<string, unknown>>();
-      tables[table] = rows.results;
-    }
-    // 読み取り中に消去が始まっても、古い中身を新しい写しへ戻さない。
-    const removals = await env.DB.prepare(`SELECT target_type, target_id FROM ops_deletion_queue WHERE ward_id = ?
-      UNION SELECT target_type, target_id FROM ops_deletion_marks WHERE ward_id = ? AND target_type IS NOT NULL`)
-      .bind(ward.ward_id, ward.ward_id).all<{ target_type: string; target_id: string | null }>();
-    if (removals.results.some((row) => row.target_type === "ward")) continue;
-    let snapshot = JSON.stringify({ format: 1, wardId: ward.ward_id, capturedAt: now.toISOString(), tables });
-    for (const removal of removals.results) {
-      if (!removal.target_id) continue;
-      // 取消直後に本人が「元に戻す」を押した申し込みは、新しい写しには残せる。
-      if (removal.target_type === "help_offer" && await env.DB.prepare("SELECT offer_id FROM project_help_offers WHERE ward_id = ? AND offer_id = ?")
-        .bind(ward.ward_id, removal.target_id).first()) continue;
-      const rewritten = eraseSnapshotRecord(JSON.parse(snapshot) as unknown, ward.ward_id, removal.target_type, removal.target_id);
-      if (rewritten === null) throw new Error("消去を反映した写しを作れませんでした");
-      snapshot = rewritten;
-    }
-    await new WardBucket(env.ORIGINALS, ward.ward_id).put(`snapshots/daily/${day}.json`, snapshot, {
-      httpMetadata: { contentType: "application/json; charset=utf-8" },
+    await withRecordLock(env, ward.ward_id, async () => {
+      if (!(await env.DB.prepare("SELECT ward_id FROM wards WHERE ward_id = ? AND is_active = 1").bind(ward.ward_id).first())) return;
+      const tables: Record<string, unknown[]> = {};
+      for (const table of SNAPSHOT_TABLES) {
+        const rows = await env.DB.prepare(`SELECT * FROM ${table} WHERE ward_id = ?`).bind(ward.ward_id).all<Record<string, unknown>>();
+        tables[table] = rows.results;
+      }
+      // 読み取り中に消去が始まっても、古い中身を新しい写しへ戻さない。
+      const removals = await env.DB.prepare(`SELECT target_type, target_id FROM ops_deletion_queue WHERE ward_id = ?
+        UNION SELECT target_type, target_id FROM ops_deletion_marks WHERE ward_id = ? AND target_type IS NOT NULL`)
+        .bind(ward.ward_id, ward.ward_id).all<{ target_type: string; target_id: string | null }>();
+      if (removals.results.some((row) => row.target_type === "ward")) return;
+      let snapshot = JSON.stringify({ format: 1, wardId: ward.ward_id, capturedAt: now.toISOString(), tables });
+      for (const removal of removals.results) {
+        if (!removal.target_id) continue;
+        // 取消直後に本人が「元に戻す」を押した申し込みは、新しい写しには残せる。
+        if (removal.target_type === "help_offer" && await env.DB.prepare("SELECT offer_id FROM project_help_offers WHERE ward_id = ? AND offer_id = ?")
+          .bind(ward.ward_id, removal.target_id).first()) continue;
+        const rewritten = eraseSnapshotRecord(JSON.parse(snapshot) as unknown, ward.ward_id, removal.target_type, removal.target_id);
+        if (rewritten === null) throw new Error("消去を反映した写しを作れませんでした");
+        snapshot = rewritten;
+      }
+      await putRecordSnapshot(env, ward.ward_id, `snapshots/daily/${day}.json`, snapshot);
+      saved += 1;
     });
-    saved += 1;
   }
   // 提供側の受付は実在する区に属さないため、区の一覧とは別に写す。
-  const tables: Record<string, unknown[]> = {};
-  for (const table of ["provider_contacts", "provider_contact_messages", "provider_contact_throttle"]) {
-    const rows = await env.DB.prepare(`SELECT * FROM ${table} WHERE ward_id = ?`).bind(CONTACT_WARD).all<Record<string, unknown>>();
-    tables[table] = rows.results;
-  }
-  await new WardBucket(env.ORIGINALS, CONTACT_WARD).put(`snapshots/daily/${day}.json`,
-    JSON.stringify({ format: 1, wardId: CONTACT_WARD, capturedAt: now.toISOString(), tables }), {
-      httpMetadata: { contentType: "application/json; charset=utf-8" },
-    });
+  await withRecordLock(env, CONTACT_WARD, async () => {
+    const tables: Record<string, unknown[]> = {};
+    for (const table of ["provider_contacts", "provider_contact_messages", "provider_contact_throttle"]) {
+      const rows = await env.DB.prepare(`SELECT * FROM ${table} WHERE ward_id = ?`).bind(CONTACT_WARD).all<Record<string, unknown>>();
+      tables[table] = rows.results;
+    }
+    await putRecordSnapshot(env, CONTACT_WARD, `snapshots/daily/${day}.json`,
+      JSON.stringify({ format: 1, wardId: CONTACT_WARD, capturedAt: now.toISOString(), tables }));
+  });
   saved += 1;
   return saved;
 }
@@ -268,6 +270,12 @@ export function eraseSnapshotRecord(snapshot: unknown, wardId: string, type: str
         table === "projects" && row.seed_project_id === id ? { ...row, seed_project_id: null } : row);
     }
   } else {
+    if (type === "provider_contact") {
+      for (const table of ["provider_contacts", "provider_contact_messages"]) {
+        if (doc.tables[table]) doc.tables[table] = snapshotRows(doc.tables, table).filter((row) => row.contact_id !== id);
+      }
+      return JSON.stringify(doc);
+    }
     const target = type === "answer" ? ["project_answers", "answer_id"] : type === "inquiry" ? ["inquiry_records", "inquiry_id"] : type === "help_offer" ? ["project_help_offers", "offer_id"] : null;
     if (!target) return null;
     const [table, column] = target as [string, string];

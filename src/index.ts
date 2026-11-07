@@ -47,6 +47,10 @@ const app = createApp(Object.values(bundles));
 export default {
   fetch: app.fetch,
   scheduled(event, env, ctx) {
-    ctx.waitUntil(runScheduled(bundles, event, env, ctx));
+    ctx.waitUntil((async () => {
+      await runScheduled(bundles, event, env, ctx);
+      const { runBackupCron } = await import("./archive/backup");
+      await runBackupCron(event, env);
+    })());
   },
 } satisfies ExportedHandler<Env>;
