@@ -41,19 +41,19 @@ async function picker(c: Context<AdminEnv>, error?: string, chosen: { kind?: str
   const projectId = chosen.projectId ?? c.req.query("project") ?? (!projects.length ? WITHOUT_PROJECT : projects.length === 1 ? projects[0]!.projectId : "");
   const fixed = projects.find((project) => project.projectId === c.req.query("project"));
   // 同じ準備で、まだ住民に送っていない下書きがあれば先に出す。同じものを二つ作らないため。
-  const unsent = await c.env.DB.prepare(`SELECT d.project_id, d.kind, COALESCE(v.title, d.title) AS title, v.created_at FROM documents d
+  const unsent = await c.env.DB.prepare(`SELECT d.project_id, d.kind, COALESCE(v.title, d.title) AS title, p.title AS project_title, v.created_at FROM documents d
     JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
     JOIN projects p ON p.ward_id = d.ward_id AND p.project_id = d.project_id
     WHERE d.ward_id = ? AND p.closed_at IS NULL AND d.scope = 'public' AND d.kind IN ('announcement', 'recruitment', 'notice', 'report')
       AND v.published_at IS NULL AND v.version_no = (SELECT MAX(v2.version_no) FROM document_versions v2 WHERE v2.ward_id = v.ward_id AND v2.document_id = v.document_id)
-    ORDER BY v.created_at DESC LIMIT 5`).bind(ward.wardId).all<{ project_id: string; kind: DocumentKind; title: string; created_at: string }>();
+    ORDER BY v.created_at DESC LIMIT 5`).bind(ward.wardId).all<{ project_id: string; kind: DocumentKind; title: string; project_title: string; created_at: string }>();
   const shown = unsent.results.filter((row) => !fixed || row.project_id === fixed.projectId);
   const back = fixed ? { href: adminPath(ward, `/projects/${fixed.projectId}/map`), label: `${fixed.title}のやることへ` } : { href: adminPath(ward, "/"), label: "最初の画面へ" };
   return c.html(<AdminPage ward={ward} account={account} title="住民へのメッセージを作る" back={back}>
     <h1>住民へのメッセージを作る</h1>
     <p class="lead">何を伝えるかと、どの準備のことかを選んでください。連絡事項は、準備に結び付けずに作れます。</p>
     {error ? <Notice error>{error}</Notice> : null}
-    {shown.length ? <><p>まだ住民に送っていない下書きがあります。続きから直して送れます。</p><ul class="links">{shown.map((row) => <li><a href={adminPath(ward, `/projects/${row.project_id}/draft/${row.kind}?edit=1`)}>{row.title}（{formatJstDate(row.created_at)}に保存）</a></li>)}</ul></> : null}
+    {shown.length ? <><p>まだ住民に送っていない下書きがあります。続きから直して送れます。</p><ul class="links">{shown.map((row) => <li><a href={adminPath(ward, `/projects/${row.project_id}/draft/${row.kind}?edit=1`)}>{row.project_title}の下書き「{row.title}」（{formatJstDate(row.created_at)}に保存）</a></li>)}</ul></> : null}
     <form method="post" action={adminPath(ward, "/messages")}>
       <Choices name="kind" legend="何を伝えますか" items={MESSAGE_KINDS.map((entry) => ({ value: entry.kind, title: entry.title, note: entry.note, checked: entry.kind === kind }))} />
       {fixed ? <input type="hidden" name="projectId" value={fixed.projectId} />
