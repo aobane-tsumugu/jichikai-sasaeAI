@@ -1,4 +1,5 @@
 import { newId, nowIso } from "../core/ids";
+import { normalizeHousehold } from "../answers/api";
 import { DOCUMENT_KIND_LABEL, type DocumentKind } from "../project/model";
 import { latestSpaceTables, readPublicationTables } from "./publication-tables";
 
@@ -166,12 +167,13 @@ export async function enterWithPassphrase(db: D1Database, wardId: string, projec
 }
 
 export async function getSpaceMaterials(db: D1Database, wardId: string, projectId: string, district: string | null) {
+  const districtKey = district === null ? null : normalizeHousehold(district);
   const [project, publication, answers, docs, originals] = await Promise.all([
     db.prepare("SELECT title FROM projects WHERE ward_id = ? AND project_id = ?").bind(wardId, projectId).first<{ title: string }>(),
     latestSpaceTables(db, wardId, projectId),
-    district === null
-      ? db.prepare("SELECT district, household, people_count, children_count, adults_count, seniors_count FROM project_answers WHERE ward_id = ? AND project_id = ? ORDER BY district, household").bind(wardId, projectId).all<{ district: string; household: string; people_count: number; children_count: number | null; adults_count: number | null; seniors_count: number | null }>()
-      : db.prepare("SELECT district, household, people_count, children_count, adults_count, seniors_count FROM project_answers WHERE ward_id = ? AND project_id = ? AND district = ? ORDER BY household").bind(wardId, projectId, district).all<{ district: string; household: string; people_count: number; children_count: number | null; adults_count: number | null; seniors_count: number | null }>(),
+    db.prepare(`SELECT district, household, people_count, children_count, adults_count, seniors_count FROM project_answers
+      WHERE ward_id = ? AND project_id = ? ORDER BY ${district === null ? "district, household" : "household"}`)
+      .bind(wardId, projectId).all<{ district: string; household: string; people_count: number; children_count: number | null; adults_count: number | null; seniors_count: number | null }>(),
     db.prepare(
       `SELECT d.document_id, d.kind, v.body FROM documents d JOIN document_versions v
        ON v.ward_id = d.ward_id AND v.project_id = d.project_id AND v.document_id = d.document_id AND v.version_no =
@@ -199,5 +201,6 @@ export async function getSpaceMaterials(db: D1Database, wardId: string, projectI
   // 題は文書ごとの現在の値しか保存されていないため、作業中の題を出さず種類を見出しにする。
   const documents = docs.results.map((doc) => ({ document_id: doc.document_id, title: DOCUMENT_KIND_LABEL[doc.kind], body: doc.body }));
   return { title: project?.title ?? "", items, tablesPublished: publication !== null,
-    tablesRecorded: tables !== null, attendance: answers.results, documents, originals: district === null ? originals.results : [] };
+    tablesRecorded: tables !== null, attendance: answers.results.filter((answer) => districtKey === null || normalizeHousehold(answer.district) === districtKey),
+    documents, originals: district === null ? originals.results : [] };
 }
