@@ -10,7 +10,7 @@ import { writeDailyWardSnapshots } from "../src/archive/snapshot";
 import { exportWard, requestWardDeletion, runDeletionCron } from "../src/ops/lifecycle";
 import { applyChange, createProject, getProjectState } from "../src/project/api";
 import { createInvite } from "../src/space/api";
-import { compareRota } from "../src/rota/store";
+import { addExemption, compareRota } from "../src/rota/store";
 import { cookieFrom, get, postForm, realApp } from "./helpers";
 
 it("架空の去年の表と変わった名簿から免除を外した下書きを直して配り、世帯の履歴と役員だけの免除を残して渡し、消せる", async () => {
@@ -119,4 +119,35 @@ it("架空の去年の表と変わった名簿から免除を外した下書き�
     expect(await env.DB.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE ward_id = ?`).bind(ward.wardId).first<number>("count")).toBe(0);
   }
   expect(await env.DB.prepare("SELECT ward_id FROM wards WHERE ward_id = ?").bind(other.ward.wardId).first()).not.toBeNull();
+});
+
+it("架空の名簿にある世帯は名前に各や班を含んでも免除を反映し、去年からの担当として扱う", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  // 名前も班も架空。名簿にない「各世帯」「1班」は団体の担当として残す。
+  const roster = [{ household: "架空の各務", district: "1班" }, { household: "架空の班目", district: "1班" }];
+  await replaceRoster(env.DB, ward.wardId, roster, { household: 0, district: 1 });
+  const project = await createProject(env.DB, ward.wardId, {
+    kind: "duty", title: "架空の清掃当番", year: 2026, eventDay: "2026-11-08", accountId: account.accountId,
+  });
+  const assignees = { 午前: roster[0]!.household, 午後: roster[1]!.household, 共同: "各世帯", 全体: "1班" };
+  for (const [slot, assignee] of Object.entries(assignees)) {
+    expect((await applyChange(env.DB, ward.wardId, project.projectId, {
+      kind: "row", table: "duties", data: { slot, task: "架空の清掃", assignee },
+      source: { kind: "original", ref: "fictional-name-rota", locator: slot, year: 2025 },
+      confidence: "high", packVersion: "rota-flow-fictional@1",
+    })).status).toBe("applied");
+  }
+  expect(await addExemption(env.DB, ward.wardId, account.accountId, {
+    ...roster[0]!, reason: "架空の免除理由", startsOn: "2026-01-01", endsOn: "2026-12-31",
+  })).toBe(true);
+
+  const proposal = await compareRota(env.DB, ward.wardId, project.projectId);
+  const expected = { ...assignees, 午前: "" };
+  expect(Object.fromEntries(proposal?.comparison.entries.map((entry) => [entry.data.slot, entry.data.assignee]) ?? [])).toEqual(expected);
+  expect(proposal?.comparison.added).toEqual([]);
+  const root = `/${ward.slug}/admin/projects/${project.projectId}/draft/duty_roster`;
+  expect((await postForm(realApp, `${root}/start`, {}, cookie)).headers.get("location")).toContain("notice=saved");
+  const state = await getProjectState(env.DB, ward.wardId, project.projectId);
+  expect(Object.fromEntries(state?.tables.duties.filter((row) => row.scope === "current")
+    .map((row) => [row.data.slot, row.data.assignee]) ?? [])).toEqual(expected);
 });

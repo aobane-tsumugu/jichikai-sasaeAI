@@ -120,7 +120,10 @@ export async function compareRota(db: D1Database, wardId: string, projectId: str
   const [roster, records] = await Promise.all([getRoster(db, wardId), exemptions(db, wardId)]);
   const hasPreviousTable = rows.length > 0;
   if (!hasPreviousTable && !roster.length) return null;
-  const oldAssignees = rows.flatMap((data) => splitAssignees(String(data.assignee ?? ""))).filter(isPersonalAssignee);
+  // 名簿で分かる世帯は、名前に含まれる字だけで班や団体とみなさない。
+  const knownNames = new Set([...roster, ...(oldRoster ?? [])].map((entry) => normalizeHousehold(entry.household)));
+  const isHouseholdAssignee = (name: string) => knownNames.has(normalizeHousehold(name)) || isPersonalAssignee(name);
+  const oldAssignees = rows.flatMap((data) => splitAssignees(String(data.assignee ?? ""))).filter(isHouseholdAssignee);
   const oldNames = new Set(oldAssignees.map(normalizeHousehold));
   if (!hasPreviousTable) rows = roster.map((entry, index) => ({ slot: `${index + 1}番目`, task: entry.district, assignee: entry.household }));
   const oldKeys = new Set(oldRoster?.map(householdKey));
@@ -142,7 +145,7 @@ export async function compareRota(db: D1Database, wardId: string, projectId: str
     const explanations: string[] = [];
     const names = splitAssignees(String(row.assignee ?? ""));
     const kept = names.filter((name) => {
-      if (hasPreviousTable && !isPersonalAssignee(name)) return true;
+      if (hasPreviousTable && !isHouseholdAssignee(name)) return true;
       const matches = hasPreviousTable ? roster.filter((entry) => normalizeHousehold(entry.household) === normalizeHousehold(name)) : [roster[index]!];
       if (matches.length !== 1) {
         explanations.push(matches.length === 0 ? `去年の担当「${name}」は今の名簿にいないため、担当から外しました。`
