@@ -185,7 +185,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
       return c.html(<AdminPage ward={ward} account={c.var.account} title="班長への一枚" back={{ href: back, label: "印刷用ページへ戻る" }}>
         <h1>班長への一枚</h1>
         <p class="lead">班長が自分の班の返事を見たり、回答票を撮って送ったりできる専用のQRを印刷します。その班長にだけ渡してください。</p>
-        {!space || space.closed_at ? <p class="link-line"><a href={adminPath(ward, `/space/${projectId}`)}>実行委員と班長のページを見せ始めてから印刷する</a></p>
+        {!space || space.closed_at ? <p class="link-line"><a href={adminPath(ward, `/space/${projectId}`)}>実行委員と班長のページを開けるようにしてから印刷する</a></p>
           : <form method="post"><button>班長の専用QRを作って印刷する</button></form>}
       </AdminPage>);
     }

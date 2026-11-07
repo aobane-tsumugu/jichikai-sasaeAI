@@ -70,7 +70,7 @@ it("資料も質問も仕事もない一年目に、案内を確認して配り�
   const spaceAdmin = await postForm(realApp, `${root}/space/${id}/open`, { passphrase: FIRST_SLICE.passphrase }, cookie);
   expect(spaceAdmin.status).toBe(200);
   const opened = await spaceAdmin.text();
-  expect(opened).toContain("見せています");
+  expect(opened).toContain("合言葉を知っている人が開けるようにしています");
   expect(opened).toContain(FIRST_SLICE.passphrase);
   expect(opened).toContain(`/print/${id}/${draft.document_id}/${draft.version_no}/leader`);
   const leaderToken = await createInvite(env.DB, ward.wardId, id, "leader", FIRST_SLICE.district, account.accountId, true);

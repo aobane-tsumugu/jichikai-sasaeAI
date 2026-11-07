@@ -24,7 +24,7 @@ it("行事を閉じると実行委員と班長のページと元の資料を開�
   expect((await postForm(realApp, `${admin}/close/${project.projectId}/finalize`, {}, cookie)).status).toBe(303);
   const closed = await get(realApp, space, member!);
   expect(closed.status).toBe(403);
-  expect(await closed.text()).toContain("役員が見せるのをやめました。役員に聞いてください");
+  expect(await closed.text()).toContain("役員が開けないようにしました。役員に聞いてください");
   expect((await get(realApp, file, member!)).status).toBe(403);
 
   await env.DB.prepare("UPDATE projects SET closed_at = NULL, closed_by_account_id = NULL WHERE ward_id = ? AND project_id = ?")
