@@ -55,9 +55,10 @@ it("U62: 一対一の出欠を先に数え、再送で増やさず、雑談を�
     officialAddressed: original.officialAddressed,
   }));
   let eventNo = 0;
+  let questionTime = now.getTime();
   const send = async (text: string, group = false, eventId = `fictional-u62-${++eventNo}`) => {
     const body = JSON.stringify({ destination, events: [{ type: "message", webhookEventId: eventId,
-      timestamp: now.getTime(), replyToken: `${eventId}-reply`,
+      timestamp: questionTime, replyToken: `${eventId}-reply`,
       source: group ? { type: "group", groupId: "fictional-u62-group", userId: "fictional-u62-member" } : { type: "user", userId: "fictional-u62-person" },
       message: { type: "text", id: eventId, text } }] });
     const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(runtime.LINE_CHANNEL_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -117,6 +118,8 @@ it("U62: 一対一の出欠を先に数え、再送で増やさず、雑談を�
 
     result = { choice: project.projectId, intent: "inquiry", attendanceAnswer: false };
     for (const question of fixture.questions) {
+      // ここは独立した問い合わせ10件。続けて送る場合はU78の試験で確かめる。
+      questionTime += 11 * 60_000;
       const id = await send(question.text, question.group);
       expect(await inbox(id)).toBeNull();
       expect((await inquiries()).results).toEqual(expect.arrayContaining([

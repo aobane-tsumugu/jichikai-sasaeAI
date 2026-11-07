@@ -1,15 +1,14 @@
 import { applyLineFact } from "../know/apply";
-import { nowIso } from "../core/ids";
+import { newId, nowIso } from "../core/ids";
 import type { Env } from "../env";
-import { createLineIntakePorts, lineAiLimitReason, type InboxMatch, type LineIntakePorts, type LineOriginal } from "./intake";
+import { createLineIntakePorts, lineAiLimitReason, saveLineBundleInquiry, refreshLineBundleInquiry, type InboxMatch, type LineIntakePorts, type LineOriginal } from "./intake";
 import { getWardAiLimits } from "../ops/metrics";
 import type { Waitable } from "../intake/types";
 import { getLineMemberDisplayName, lineChannelCredentials, replyLineText } from "./api";
 import { getClient } from "../ai/deps";
 import { matchClarificationAnswer } from "../ai/clarification";
-import { recordLineInquiry } from "../project/followup";
 import { isUnknownAnswer, replyAfterClarification, PHOTO_GROUP_GAP_MS, processPhotoBatches, registerLinePhoto, replyPhotoReceipt, replyQuickPhotoChecks, saveClarificationAnswers, sentQuestionsForSource, type ClarificationRow, type PhotoSource } from "./clarifications";
-import { rememberPhotoSource, rememberPhotoText, purgePhotoTexts, rememberPhotoRetake, selectedPhotoRetake, forgetPhotoRetake } from "./photo-context";
+import { rememberPhotoSource, rememberPhotoText, purgePhotoTexts, rememberPhotoRetake, selectedPhotoRetake, forgetPhotoRetake, joinLineBundle, claimLineBundleReply, lineBundleContents, lineBundlePhotoSummaries } from "./photo-context";
 
 const RECEIPT_RETENTION_DAYS = 30;
 
@@ -81,7 +80,7 @@ export interface WebhookDependencies {
   matchAnswer?: typeof matchClarificationAnswer;
 }
 
-const looksLikeInquiry = (text: string) => /[?？]|(?:です|ます|でしょう|なの|ません)か[。\s]*$|教えて|知りたい|お願い(?:します|したい)|相談|要望/.test(text);
+const looksLikeInquiry = (text: string) => /[?？]|(?:です|ます|でしょう|なの|ません)か[。\s]*$|教えて|知りたい|お願い(?:します|したい)|相談|要望|シェアしたい|(?:知らせて|載せて)(?:ほしい|欲しい|ください)/.test(text);
 
 /** 一時の失敗だけ当て直す。止まり続けても役員に仕分けを求めず、受付へ進む。 */
 async function matchLineText(ports: LineIntakePorts, wardId: string, original: LineOriginal): Promise<InboxMatch> {
@@ -215,6 +214,11 @@ export async function acceptLineWebhook(
         ...(event.message.type === "text" ? { text: event.message.text ?? "" } : {}),
         officialAddressed: event.source.type === "user" || event.message.mention?.mentionees?.some((mention) => mention.isSelf === true) || /^公式へ/.test(event.message.text ?? ""),
       };
+      const bundleId = await joinLineBundle(db, wardId, payload.destination!, eventId, source, original.receivedAt);
+      original.bundleId = bundleId;
+      const bundle = await lineBundleContents(db, wardId, bundleId);
+      const bundleInquiry = await db.prepare("SELECT inquiry_id FROM inquiry_records WHERE ward_id = ? AND line_bundle_id = ?")
+        .bind(wardId, bundleId).first();
       if (event.message.type === "image") {
         const content = await getImageContent(event.message.id, accessToken, fetcher);
         original.bytes = content.bytes;
@@ -239,6 +243,8 @@ export async function acceptLineWebhook(
       }
       if (original.kind === "text" && !original.aiLimitReason) {
         receivedText = true;
+        original.photoSummaries = await lineBundlePhotoSummaries(db, wardId, bundleId);
+        const matchOriginal = { ...original, accompanyingText: bundle.text };
         await rememberPhotoText(db, wardId, { destination: payload.destination!, sourceType: source.type, sourceId: source.id,
           eventId, receivedAt: original.receivedAt, text: original.text ?? "" }, now);
         // 写真の当ての資料として一時に持つほか、文そのものも普段どおり受ける。
@@ -273,10 +279,10 @@ export async function acceptLineWebhook(
           match = projectIds.length === 1 ? { disposition: "matched", projectId: projectIds[0] } : { disposition: "unmatched" };
           if (!projectIds.length && answers.some((answer) => answer.question.topic === "project")) {
             if (namedProjectId) match = { disposition: "matched", projectId: namedProjectId };
-            else try { match = await matchLineText(ports, wardId, { ...original, officialAddressed: false }); } catch { /* 行事が分からなくても受ける。 */ }
+            else try { match = await matchLineText(ports, wardId, { ...matchOriginal, officialAddressed: false }); } catch { /* 行事が分からなくても受ける。 */ }
           }
         } else try {
-          match = await matchLineText(ports, wardId, original);
+          match = await matchLineText(ports, wardId, matchOriginal);
         } catch (error) {
           console.error("LINEの当て先を確認できませんでした", wardId, eventId, error instanceof Error ? error.name : "");
           match = { disposition: "unmatched", reason: "当て先を確認できませんでした" };
@@ -284,25 +290,31 @@ export async function acceptLineWebhook(
         // 出欠と無関係の判定を先に使う。文の形による問い合わせ判定は、判定が得られないときだけ。
         if (original.officialAddressed && match?.attendanceAnswer !== true && match?.disposition !== "unrelated" &&
           (match?.inquiry ?? (!answers.length && looksLikeInquiry(original.text ?? "")))) {
-          await recordLineInquiry(db, wardId, { eventId, receivedAt: original.receivedAt, text: original.text ?? "", sourceType: source.type, sourceId: source.id, userId: event.source.userId ?? null, senderLabel: original.senderDisplayName ?? null });
-          if (event.replyToken) try {
-            await replyLineText(accessToken, event.replyToken, "役員に伝えて、内容を確認します。", fetcher);
-            await db.prepare("UPDATE inquiry_records SET line_replied_at = ? WHERE ward_id = ? AND line_event_id = ?")
-              .bind(now.toISOString(), wardId, eventId).run();
-          } catch { /* 届いた問い合わせは消さず、返事を約束しない。 */ }
-          continue;
+          original.inquiry = true;
         }
       }
       if (match?.disposition === "unrelated") {
         const day = original.receivedAt.slice(0, 10);
         await db.prepare(`INSERT INTO line_unrelated_daily_counts (ward_id, day, item_count)
           VALUES (?, ?, 1) ON CONFLICT (ward_id, day) DO UPDATE SET item_count = item_count + 1`).bind(wardId, day).run();
+        await db.prepare("DELETE FROM line_photo_context_texts WHERE ward_id = ? AND event_id = ?").bind(wardId, eventId).run();
         continue;
       }
-      const itemId = await ports.receiveOriginal(wardId, original);
-      if (itemId && match?.knowTopic && original.kind === "text") await applyLineFact(db, wardId, itemId, match.knowTopic, original.text ?? "").catch(() => undefined);
+      if (bundleInquiry) original.inquiry = true;
+      if (original.kind === "text" && original.inquiry) {
+        await saveLineBundleInquiry(db, wardId, bundleId, original, source.id);
+        if (event.replyToken && await claimLineBundleReply(db, wardId, bundleId, eventId, now)) try {
+          await replyLineText(accessToken, event.replyToken, "役員に伝えて、内容を確認します。", fetcher);
+          await db.prepare("UPDATE inquiry_records SET line_replied_at = ? WHERE ward_id = ? AND line_bundle_id = ?")
+            .bind(now.toISOString(), wardId, bundleId).run();
+        } catch { /* 到達不明でも重ねて送らない。問い合わせは残す。 */ }
+        continue;
+      }
+      const jobId = await ports.receiveOriginal(wardId, original);
+      const itemId = jobId ?? (original.kind === "text" ? newId() : null);
+      if (jobId && match?.knowTopic && original.kind === "text") await applyLineFact(db, wardId, jobId, match.knowTopic, original.text ?? "").catch(() => undefined);
       if (!itemId) {
-        if (original.kind === "image" && source.type === "user" && event.replyToken) {
+        if (original.kind === "image" && source.type === "user" && event.replyToken && await claimLineBundleReply(db, wardId, bundleId, eventId, now)) {
           await replyLineText(accessToken, event.replyToken, "同じ写真を受け取っています。", fetcher);
         }
         if (original.kind === "image" && event.message.imageSet?.id) {
@@ -317,18 +329,26 @@ export async function acceptLineWebhook(
         INSERT INTO line_inbox_items (
           ward_id, item_id, event_id, sender_id, original_kind, original_text,
           original_object_key, received_at, sender_display_name, sender_label, matched_project_id, matched_project_name,
-          match_reason, disposition, job_id, source_type, source_id
-        ) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, NULL, NULL, NULL, 'unmatched', ?, ?, ?)
+          match_reason, disposition, job_id, source_type, source_id, bundle_id, official_addressed, line_destination
+        ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, NULL, NULL, 'unmatched', ?, ?, ?, ?, ?, ?)
       `).bind(
-        wardId, itemId, eventId, original.senderId, original.kind, original.receivedAt,
+        wardId, itemId, eventId, original.senderId, original.kind, original.text ?? null, original.receivedAt,
         original.senderDisplayName, original.sourceType === "group" ? "LINEグループ" : original.sourceType === "room" ? "LINE複数人トーク" : "LINE個別",
-        itemId, source.type, source.id,
+        jobId, source.type, source.id, bundleId, original.officialAddressed ? 1 : 0, payload.destination!,
       ).run();
+      if (original.kind === "text" && !original.aiLimitReason) await db.prepare(`UPDATE line_inbox_items SET bundle_checked_photos =
+        (SELECT COUNT(*) FROM line_inbox_items p JOIN jobs j ON j.ward_id = p.ward_id AND j.job_id = p.job_id
+          WHERE p.ward_id = ? AND p.bundle_id = ? AND p.original_kind = 'image' AND j.read_at IS NOT NULL AND j.withdrawn_at IS NULL)
+        WHERE ward_id = ? AND item_id = ?`).bind(wardId, bundleId, wardId, itemId).run();
+      if (original.inquiry) {
+        await saveLineBundleInquiry(db, wardId, bundleId, original, source.id);
+      }
       if (original.aiLimitReason) await db.prepare("UPDATE line_inbox_items SET official_addressed = ? WHERE ward_id = ? AND item_id = ?")
         .bind(original.officialAddressed ? 1 : 0, wardId, itemId).run();
       if (original.kind === "image") {
         await registerLinePhoto(db, wardId, { destination: payload.destination!, source, jobId: itemId, messageId: event.message.id,
           imageSet: event.message.imageSet, quoteToken: event.message.quoteToken, replyToken: event.replyToken, now });
+        if (original.inquiry) await saveLineBundleInquiry(db, wardId, bundleId, original, source.id);
         // 保存できた一対一の写真には、AIの確認や当て先への接続より先に受領を返す。
         await replyPhotoReceipt(env, wardId, itemId, { fetch: fetcher, now });
         if (original.aiLimitReason) {
@@ -353,6 +373,8 @@ export async function acceptLineWebhook(
         if (ports.checkPhoto) photoChecksPending.push(ports.checkPhoto(wardId, original, itemId).catch(() => undefined));
       }
       if (original.aiLimitReason) continue;
+      if (original.inquiry) continue;
+      if (!jobId) continue;
       if (answers.length) {
         await saveClarificationAnswers(db, wardId, eventId, itemId, original.senderDisplayName || "LINEで答えた人", answers, now);
         await replyAfterClarification(env, wardId, answers[0]!.question.batch_id, event.replyToken, { fetch: fetcher, now });
@@ -405,6 +427,20 @@ export async function acceptLineWebhook(
     for (const jobId of photoJobs) {
       try { await ports.readPhoto?.(wardId, jobId); }
       catch { console.error("写真の読み取りを始められませんでした", wardId, jobId); }
+      const item = await db.prepare(`SELECT i.bundle_id, i.event_id, p.receipt_reply_token, p.receipt_claimed_at FROM line_inbox_items i
+        JOIN line_photo_items p ON p.ward_id = i.ward_id AND p.job_id = i.job_id WHERE i.ward_id = ? AND i.job_id = ?`)
+        .bind(wardId, jobId).first<{ bundle_id: string | null; event_id: string; receipt_reply_token: string | null; receipt_claimed_at: string | null }>();
+      if (item?.bundle_id) try {
+        await refreshLineBundleInquiry(db, wardId, item.bundle_id, ports);
+        const inquiry = await db.prepare("SELECT inquiry_id FROM inquiry_records WHERE ward_id = ? AND line_bundle_id = ?")
+          .bind(wardId, item.bundle_id).first();
+        // グループで言葉が先に来た場合も、写真を読んで問い合わせと分かったら一言返す。
+        if (inquiry && item.receipt_reply_token && !item.receipt_claimed_at && await claimLineBundleReply(db, wardId, item.bundle_id, item.event_id, now)) {
+          await replyLineText(accessToken, item.receipt_reply_token, "役員に伝えて、内容を確認します。", fetcher);
+          await db.prepare("UPDATE inquiry_records SET line_replied_at = ? WHERE ward_id = ? AND line_bundle_id = ?")
+            .bind(now.toISOString(), wardId, item.bundle_id).run();
+        }
+      } catch { console.error("写真と一緒に届いた言葉を確認できませんでした", wardId); }
     }
   }
   if (receivedText && !(await getWardAiLimits(db, wardId, now)).monthlyBlocked) await processPhotoBatches(env, wardId, { fetch: fetcher, now }).catch(() => {

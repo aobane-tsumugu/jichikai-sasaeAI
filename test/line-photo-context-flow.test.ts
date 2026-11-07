@@ -156,7 +156,7 @@ it("L-258: 写真をまとめて前後で当て、迷えば待ち、AIが止ま�
     expect(prompts[0]).not.toContain(other.ward.wardId);
     for (const photo of received) {
       expect(await getJob(env.DB, ward.wardId, jobId(photo))).toMatchObject({ project_id: first.projectId, status: "done", connect_attempt: 0, withdrawn_at: null });
-      expect(messages.filter((message) => message.replyToken === photo.event.replyToken)).toHaveLength(1);
+      expect(messages.filter((message) => message.replyToken === photo.event.replyToken)).toHaveLength(photo === received[0] ? 1 : 0);
       const original = (await listOriginals(env.DB, ward.wardId, jobId(photo)))[0];
       if (!original?.r2_path) throw new Error("写真の保存場所がありません");
       expect(await new WardBucket(env.ORIGINALS, ward.wardId).get(original.r2_path)).not.toBeNull();
@@ -165,7 +165,7 @@ it("L-258: 写真をまとめて前後で当て、迷えば待ち、AIが止ま�
     const duplicate = (await send([1], "fictional-person", new Date(now.getTime() + 1000)))[0]!;
     expect(duplicate.item).toBeNull();
     expect(readCalls).toBe(3);
-    expect(messages.find((m) => m.replyToken === duplicate.event.replyToken)?.messages[0]?.text).toBe("同じ写真を受け取っています。");
+    expect(messages.find((m) => m.replyToken === duplicate.event.replyToken)).toBeUndefined();
 
     // 場所と直前の写真が最初の行事でも、AIは二つ目を選べる。
     const group = "fictional-event-group";
@@ -175,7 +175,7 @@ it("L-258: 写真をまとめて前後で当て、迷えば待ち、AIが止ま�
     const different = await send([5], "fictional-another-photographer", new Date(now.getTime() + 3000), group);
     expect((await getJob(env.DB, ward.wardId, jobId(different[0])))?.project_id).toBe(second.projectId);
     expect(prompts.at(-1)).toContain(`"placeProjectId":"${first.projectId}"`);
-    expect(prompts.at(-1)).toContain(`"previousPhotoProjectId":"${first.projectId}"`);
+    expect(prompts.at(-1)).toContain('"previousPhotoProjectId":null');
 
     // 別の一対一とグループは混ぜず、前30分の20件までを読む。
     const sender = "fictional-waiting-person";
@@ -210,7 +210,8 @@ it("L-258: 写真をまとめて前後で当て、迷えば待ち、AIが止ま�
     expect(laterContext.after).toEqual([expect.objectContaining({ summary: fixture.previousMaterial })]);
     for (const photo of waiting) expect((await getJob(env.DB, ward.wardId, jobId(photo)))?.project_id).toBe(second.projectId);
     expect((await listClarifications(env.DB, ward.wardId)).some((q) => q.topic === "project" && q.job_id === jobId(waiting[0]))).toBe(false);
-    expect(await env.DB.prepare("SELECT 1 FROM line_photo_context_texts WHERE ward_id = ? AND event_id = ?").bind(ward.wardId, followEvent).first()).toBeNull();
+    expect(await env.DB.prepare("SELECT text FROM line_photo_context_texts WHERE ward_id = ? AND event_id = ?").bind(ward.wardId, followEvent).first("text")).toBe(fixture.previousMaterial);
+    expect(await env.DB.prepare("SELECT original_text FROM line_inbox_items WHERE ward_id = ? AND event_id = ?").bind(ward.wardId, followEvent).first("original_text")).toBe(fixture.previousMaterial);
 
     // AIの失敗でも両方で受付と原本を残し、10分後に一問ずつ聞く。
     failMatch = true;
