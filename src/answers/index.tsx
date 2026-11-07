@@ -289,6 +289,8 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
   // 案内をまだ住民に知らせていない時は、返事はまだ来ない。まだ無い回答票を撮れとは言わない。
   const announced = !!(await c.env.DB.prepare("SELECT 1 AS found FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id WHERE d.ward_id = ? AND d.project_id = ? AND d.kind = 'announcement' AND v.published_at IS NOT NULL LIMIT 1").bind(c.var.ward.wardId, projectId).first());
   const view = retry ? "hand" : c.req.query("view") ?? "summary";
+  // 手伝いの募集を受け付けていない時は、押すと「受付は終わりました」になる入口を出さない。
+  const helpOpen = view === "hand" && (await listHelpOpportunities(c.env.DB, c.var.ward.wardId, projectId)).length > 0;
   const closed = !!project.closed_at;
   const back = { href: root, label: `← ${project.title}の出欠の返事へ` };
   const roster = await getRoster(c.env.DB, c.var.ward.wardId);
@@ -299,6 +301,19 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
   const attending = answers.filter((answer) => answer.peopleCount > 0).length;
   const unread = answers.filter(countUnread).length;
   const notAttending = answers.filter((answer) => answer.peopleCount === 0).length - unread;
+  const daysLeft = deadline ? Math.round((Date.parse(`${deadline}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400_000) : null;
+  const breakdown = labels.map((label, index) => [label, answers.reduce((sum, answer) => sum + ([answer.childrenCount, answer.adultsCount, answer.seniorsCount][index] ?? 0), 0)] as const).filter(([, n]) => n > 0);
+  const summaryText = [
+    closed ? "" : !deadline ? "返事の締切はまだ決まっていません。" : deadlinePassed ? `返事の締切（${formatJstDate(deadline)}）は過ぎました。` : daysLeft === 0 ? `今日（${formatJstDate(deadline)}）が返事の締切です。` : `${formatJstDate(deadline)}の締切まで、あと${daysLeft}日です。`,
+    answers.length ? `今日までに${answers.length}世帯から返事が届いています。` : "まだ返事はありません。",
+    attending ? `参加は${attending}世帯で、合わせて${totals.people}人${breakdown.length ? `（${breakdown.map(([label, n]) => `${label}${n}人`).join("、")}）` : ""}です。` : "",
+    notAttending > 0 ? `参加しないは${notAttending}世帯です。` : "",
+    answers.length ? helperCount ? `手伝いの申し出は${helperCount}人です。` : "手伝いの申し出はまだありません。" : "",
+  ].join("");
+  const byDistrict = [...answers.reduce((map, answer) => map.set(answer.district || "班の分からない世帯", (map.get(answer.district || "班の分からない世帯") ?? 0) + 1), new Map<string, number>())];
+  const namesText = answers.length <= 10
+    ? `返事が届いた世帯は、${answers.map((answer) => `${answer.household}さん（${answer.district ? `${answer.district}、` : ""}${answer.peopleCount > 0 ? `${answer.peopleCount}人` : countUnread(answer) ? "人数は読めませんでした" : "参加しない"}）`).join("、")}です。`
+    : `返事が届いた世帯は、${byDistrict.map(([district, n]) => `${district}が${n}世帯`).join("、")}です。名前は「返事を一覧で見て直す」から見られます。`;
   if (view === "unanswered" && c.req.query("print") === "1") return c.html(<PrintDocument title={`${project.title} まだ返事のない世帯`} back={`${root}?view=unanswered`}>
     <Sheet footer={<span>{c.var.ward.name}</span>}><h1>{project.title} まだ返事のない世帯</h1>
       <p>{deadlinePassed ? "締切を過ぎたので、返事のない世帯は欠席として数えています。" : "返事がないときは、締切のあとに欠席として数えます。"}</p>
@@ -322,30 +337,29 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
     <h1 class={view === "summary" || view === "list" || view === "helpers" ? "answers-wide" : undefined}>{title}</h1>
     {closed ? <Notice>{project.title}は終わりにしました。返事を直すときは<a class="quiet" href={adminPath(c.var.ward.slug, `/close/${projectId}`)}>終わりにした画面で、終わりを取り消してください</a>。</Notice> : null}
     {view === "summary" ? <>
-      <p class="lead">{answers.length ? "紙、電話、スマホの返事を合わせた数です。" : ""}{deadline ? `返事の締切は${formatJstDate(deadline)}です。` : "返事の締切はまだ決まっていません。"}</p>
-      {!answers.length ? <div class="notice"><strong>まだ返事はありません</strong><p>紙、電話、スマホの返事が、ここに集まります。</p></div> : null}
-      <div class="counts"><div class="count"><b>{answers.length}<small>世帯</small></b><span>{roster.length ? `${roster.length}世帯のうち` : "返事のあった世帯"}</span></div><div class="count"><b>{totals.people}<small>人</small></b><span>参加する</span></div><div class="count"><b>{helperCount}<small>人</small></b><span>手伝い</span></div></div>
+      {/* 数の札とリンクの要約に縮めず、締切と届いた返事を文で書く（管理の決定ログ L-300 のトップと同じ決まり）。 */}
+      <p class="lead">{summaryText}</p>
       {unread ? <div class="notice warn"><strong>人数が読めなかった返事が{unread}件あります</strong><p>参加しないには数えていません。写真を見て入れてください。</p><a class="quiet" href={`${root}?view=read`}>読み取った出欠の返事を見る</a></div> : null}
       {!answers.length ? <>
         {!closed ? announced ? <><section class="next"><strong>次は</strong><p>回答票が手元にあれば、撮って送れます。</p><a class="button" href={`${root}?view=send`}>回答票を撮って送る</a></section><a class="quiet" href={`${root}?view=hand`}>電話で聞いた返事を入れる</a></>
           : <><section class="next"><p>{project.title}は、まだ住民に案内を知らせていません。出欠の返事は、案内を知らせたあとに、ここに集まります。</p><a class="button" href={adminPath(c.var.ward.slug, `/projects/${projectId}/map`)}>{project.title}のやることを開く</a></section><p>先に電話で返事を聞いたときは、ここから入れられます。<a href={`${root}?view=hand`}>電話で聞いた返事を入れる</a></p></> : null}
-        {!roster.length ? <p><a class="quiet" href={adminPath(c.var.ward.slug, "/answers/roster")}>名簿を入れる</a></p> : null}
+        {!roster.length ? <p><a class="quiet" href={adminPath(c.var.ward.slug, "/answers/roster")}>世帯の名簿を入れる</a></p> : null}
         {deadlinePassed && remaining ? <p>返事のない{remaining}世帯は欠席として数えています。</p> : null}
-        <p><a class="button secondary" href={`${root}?view=helpers`}>手伝いの一覧 {helperCount}人</a></p>
+        {helperCount ? <p><a href={`${root}?view=helpers`}>手伝いの申し出を見る（{helperCount}人）</a></p> : null}
       </> : <>
-      <p>{answers.length ? `返事のあった${answers.length}世帯のうち、参加する世帯は${attending}、参加しない世帯は${notAttending}です。${unread ? `人数が読めなかった世帯は${unread}です。` : ""}` : ""}{closed ? "" : !deadlinePassed ? "返事がないときは、締切のあとに欠席として数えます。" : remaining ? `返事のない${remaining}世帯も欠席として数えています。欠席は合わせて${notAttending + remaining}世帯です。` : ""}</p>
-      {answers.some((answer) => answer.childrenCount != null || answer.adultsCount != null || answer.seniorsCount != null) ? <p class="muted">参加する人の内わけは、{labels.map((label, index) => `${label}${answers.reduce((sum, answer) => sum + ([answer.childrenCount, answer.adultsCount, answer.seniorsCount][index] ?? 0), 0)}人`).join("、")}です。{answers.some((answer) => answer.childrenCount == null && answer.adultsCount == null && answer.seniorsCount == null) ? "内わけのない返事は合計だけに含めています。" : ""}</p> : null}
-      {!closed ? <div class="action-links"><a class="button" href={`${root}?view=send`}>回答票を撮って送る</a></div> : null}
-      <ul class="rows two">
-        <li><a class="row-link" href={`${root}?view=unanswered`}><b>{roster.length ? `まだ返事のない世帯 ${remaining}世帯` : "まだ返事のない世帯"}</b><span>班ごとに見られます</span></a></li>
-        {!closed ? <li><a class="row-link" href={`${root}?view=hand`}><b>電話や紙の返事を手で入れる</b><span>世帯の代表者（ふつうは世帯主）のお名前、班、人数を入れます</span></a></li> : null}
-        <li><a class="row-link" href={`${root}?view=list`}><b>返事の一覧</b><span>読み違いは、ここで直せます</span></a></li>
-        <li><a class="row-link" href={`${root}?view=read`}><b>回答票の読み取り</b><span>撮って送った回答票の読みを見られます</span></a></li>
-        <li><a class="row-link" href={adminPath(c.var.ward.slug, "/answers/roster")}><b>世帯の名簿</b><span>まだ返事のない世帯を出すために使います</span></a></li>
-        <li><a class="row-link" href={`${root}?view=helpers`}><b>手伝いの一覧 {helperCount}人</b><span>当番表の下書きを作れます</span></a></li>
-      </ul>
+        <p>{namesText}</p>
+        {!closed ? <section class="next"><a class="button" href={`${root}?view=send`}>預かった回答票を撮って送る</a><p>撮って送ると、AIが読んで、上の数に入れます。電話で聞いた返事は、下の「電話で聞いた返事を入れる」から入れます。</p></section> : null}
+        <p>{roster.length ? closed ? "" : deadlinePassed ? (remaining ? `締切が過ぎたので、返事のない${remaining}世帯も欠席として数えています。欠席は合わせて${notAttending + remaining}世帯です。` : "名簿の世帯から、全部返事が届きました。") : (remaining ? `まだ返事のない世帯は${remaining}世帯です。` : "名簿の世帯から、全部返事が届きました。") : "世帯の名簿がまだ無いので、まだ返事のない世帯は出せません。名簿を入れると、班ごとに出せます。"}</p>
+        <ul class="links">
+          {!closed ? <li><a href={`${root}?view=hand`}>電話で聞いた返事を入れる</a></li> : null}
+          <li><a href={`${root}?view=list`}>返事を一覧で見て直す</a></li>
+          {roster.length ? <li><a href={`${root}?view=unanswered`}>まだ返事のない世帯を班ごとに見る</a></li> : null}
+          <li><a href={`${root}?view=read`}>回答票の読み取りを見る</a></li>
+          <li><a href={`${root}?view=helpers`}>手伝いの申し出を見る（{helperCount}人）</a></li>
+          <li><a href={adminPath(c.var.ward.slug, "/answers/roster")}>{roster.length ? "世帯の名簿を見る" : "世帯の名簿を入れる"}</a></li>
+        </ul>
       </>}
-      {!closed ? <details class="fold"><summary>返事の締切を変える</summary><div><form method="post" action={`${root}/deadline`}><label for="due">返事の締切</label><input id="due" name="due_on" type="date" value={deadline ?? ""} required /><button class="secondary">締切を変える</button></form></div></details> : null}
+      {!closed ? <details class="fold"><summary>{deadline ? "返事の締切を変える" : "返事の締切を決める"}</summary><div><form method="post" action={`${root}/deadline`}><label for="due">返事の締切</label><input id="due" name="due_on" type="date" value={deadline ?? ""} required /><button class="secondary">{deadline ? "締切を変える" : "締切を決める"}</button></form></div></details> : null}
     </> : null}
     {view === "send" && !closed ? <>
       <p class="lead">預かった回答票や手元の回答票を撮ってください。一枚の写真に何枚写っていてもかまいません。</p>
@@ -353,7 +367,7 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
       <details class="hint"><summary>読みにくい字があったとき</summary><div><p>そのまま送ってください。読めないところは返事の一覧に出ます。全部を見直す必要はありません。</p></div></details>
     </> : null}
     {view === "sent" ? <><p class="lead">読み取れた分から数えに入れます。読み違いは、返事の一覧で直せます。</p><section class="next"><strong>次は</strong><p>返事の数に入ったか見てください。</p><a class="button" href={root}>出欠の返事を見る</a></section><a class="quiet" href={`${root}?view=send`}>続けて撮って送る</a><p><a class="quiet" href={`${root}?view=list`}>返事の一覧で直す</a></p><p class="muted">写真が残るので、紙は名前が読めないようにして捨ててかまいません。班長から預かった紙も同じです。</p></> : null}
-    {view === "hand" && !closed ? <><p class="lead">聞いた内容を入れてください。</p><p><a class="button secondary" href={`${root}/help`}>手伝いだけの申し込みを入れる</a></p><form method="post" action={`${root}/phone`}>
+    {view === "hand" && !closed ? <><p class="lead">聞いた内容を入れてください。</p>{helpOpen ? <p><a class="button secondary" href={`${root}/help`}>手伝いだけの申し込みを入れる</a></p> : null}<form method="post" action={`${root}/phone`}>
       {retry ? <><Notice error>{answerProblem(retry)}入れた内容は残っています。</Notice>
         <section class="next"><strong>次は</strong><p>下の内容を直して、もう一度「この返事を入れる」を押してください。前の画面には、ブラウザの戻るボタンでも戻れます。</p><a class="quiet" href={root}>返事の画面に戻る</a></section>
       </> : null}

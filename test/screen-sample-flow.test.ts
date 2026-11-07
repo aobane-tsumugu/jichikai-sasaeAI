@@ -26,7 +26,8 @@ it("回答票で人数が読めなかった世帯を参加しないに数えず�
   await addAnswer(env.DB, ward.wardId, { projectId: project.projectId, household: "架空 読めない世帯", district: "", peopleCount: 0, childrenCount: null, adultsCount: null, seniorsCount: null, helperName: "", helperTimes: "", source: "sheet" });
   const page = await (await get(realApp, `/${ward.slug}/admin/answers/${project.projectId}`, cookie)).text();
   expect(page).toContain("人数が読めなかった返事が1件あります");
-  expect(page).toContain("返事のあった1世帯のうち、参加する世帯は0、参加しない世帯は0です。人数が読めなかった世帯は1です。");
+  expect(page).toContain("今日までに1世帯から返事が届いています。");
+  expect(page).toContain("人数は読めませんでした");
 });
 
 it("手伝いの同じ申し込みは一件だけ残し、間違えた時は入れた内容を残す", async () => {
