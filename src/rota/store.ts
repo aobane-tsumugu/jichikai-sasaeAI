@@ -186,6 +186,15 @@ export async function prepareRota(db: D1Database, wardId: string, projectId: str
           now, now, wardId, projectId, project.stateVersion));
     }
   }
+  const proposedRowIds = new Set(proposal.comparison.entries.map((entry) => entry.rowId));
+  for (const row of current.results) {
+    if (proposedRowIds.has(row.row_id) || row.source_kind !== "ai_proposal" || row.source_locator !== "rota" || row.person_fields !== "[]") continue;
+    // 名簿などから外れた未編集の行だけを下書きから外す。役員の入力と配った表は保つ。
+    statements.push(db.prepare(`UPDATE project_rows SET removed_at = ?, updated_at = ?
+      WHERE ward_id = ? AND project_id = ? AND row_id = ? AND source_kind = 'ai_proposal' AND source_locator = 'rota' AND person_fields = '[]'
+        AND EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND state_version = ? AND closed_at IS NULL)`)
+      .bind(now, now, wardId, projectId, row.row_id, wardId, projectId, project.stateVersion));
+  }
   statements.push(db.prepare(`INSERT INTO rota_preparations
     (preparation_id, ward_id, project_id, roster_json, comparison_json, recorded_at, recorded_by_account_id)
     SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND state_version = ? AND closed_at IS NULL)`)
