@@ -208,9 +208,8 @@ export async function acceptLineWebhook(
         sourceType: event.source.type,
         receivedAt: new Date(event.timestamp ?? now.getTime()).toISOString(),
         kind: event.message.type,
-        senderDisplayName: event.source.type === "group" || event.source.type === "room"
-          ? await getLineMemberDisplayName(accessToken, event.source, fetcher)
-          : null,
+        // 一対一は /v2/bot/profile、グループと複数人トークはメンバーのプロフィールで名前を取る。取れない時は名前なし。
+        senderDisplayName: await getLineMemberDisplayName(accessToken, event.source, fetcher),
         ...(event.message.type === "text" ? { text: event.message.text ?? "" } : {}),
         officialAddressed: event.source.type === "user" || event.message.mention?.mentionees?.some((mention) => mention.isSelf === true) || /^公式へ/.test(event.message.text ?? ""),
       };
