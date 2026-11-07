@@ -249,14 +249,15 @@ yearRecurringAdmin.get("/year/:key", async (c, next) => {
   const root = adminPath(ward, `/year/${item.key}`);
   const year = Number(todayJst().slice(0, 4));
   return c.html(<AdminPage ward={ward} account={account} title={item.title} back={{ href: adminPath(ward, "/year"), label: "この自治会の一年へ" }}>
-    <h1>{item.title}</h1><p class="lead">くり返す時期と、この自治会での進め方を書けます。</p>
-    {item.example ? <p>一般の自治会の例を仮に置いています。この自治会ではどうしているかを書いて保存してください。</p> : <p>通年。{item.recurrence}。</p>}
+    {/* 押す物を一画面目に入れるため、説明は一つの文にまとめ、欄は短くする。 */}
+    <h1>{item.title}</h1><p class="lead">{item.example ? "一般の自治会の例です。この自治会でくり返す時期と進め方を書いてください。" : `通年。${item.recurrence}。この自治会での進め方を書き直せます。`}</p>
     {c.req.query("error") ? <p>くり返す時期と進め方の長さを確かめて、もう一度保存してください。</p> : null}
     {c.req.query("notice") === "saved" ? <Notice>予定と自治会の基本情報を保存しました。下の欄で書き直せます。</Notice> : null}
     <form method="post" action={`${root}/recurring`}>
       <div class="field"><label for="recurrence">くり返す時期</label><input id="recurrence" name="recurrence" value={item.recurrence} maxlength={200} required /></div>
-      <div class="field"><label for="body">この自治会での進め方</label><textarea id="body" name="body" rows={5} maxlength={KNOW_LIMITS.body}>{know?.body ?? ""}</textarea></div>
-      <button>予定と自治会の基本情報を保存する</button>
+      <div class="field"><label for="body">この自治会での進め方</label><textarea id="body" name="body" rows={3} maxlength={KNOW_LIMITS.body}>{know?.body ?? ""}</textarea></div>
+      <button>保存する</button>
+      <p class="muted">保存すると、一年の表と、自治会の基本情報の両方に入ります。</p>
     </form>
     <p><a class="quiet" href={adminPath(ward, `/know/${item.knowKey}`)}>自治会の基本情報で{know?.title ?? "進め方"}を読む</a></p>
     {item.originalId ? <a class="quiet" href={adminPath(ward, `/intake/originals/${item.originalId}`)}>元の資料を読む</a> : null}
