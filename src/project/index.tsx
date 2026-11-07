@@ -100,19 +100,43 @@ admin.get("/projects/today", async (c) => {
   const { ward } = c.var;
   const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const projects = await listProjects(c.env.DB, ward.wardId);
+  // 今やることに使う行だけを区の分まとめて読む。各準備の全状態は読まない。
+  const [tasks, openQuestions] = await Promise.all([
+    c.env.DB.prepare(`SELECT t.project_id, t.task_id, t.name, t.period_end FROM project_map_tasks t
+      JOIN projects p ON p.ward_id = t.ward_id AND p.project_id = t.project_id
+      WHERE t.ward_id = ? AND p.closed_at IS NULL AND t.removed_at IS NULL AND t.progress <> 'done'
+        AND t.period_end IS NOT NULL AND t.period_end <> '' AND (t.task_key IS NULL OR t.task_key <> 'day')
+      ORDER BY t.sort_order, t.created_at`).bind(ward.wardId)
+      .all<{ project_id: string; task_id: string; name: string; period_end: string }>(),
+    c.env.DB.prepare(`SELECT q.project_id, q.question_id FROM project_questions q
+      JOIN projects p ON p.ward_id = q.ward_id AND p.project_id = q.project_id
+      WHERE q.ward_id = ? AND p.closed_at IS NULL AND q.state IN ('open', 'later')
+      ORDER BY q.created_at, q.question_id`).bind(ward.wardId)
+      .all<{ project_id: string; question_id: string }>(),
+  ]);
+  const tasksByProject = new Map<string, typeof tasks.results>();
+  for (const task of tasks.results) {
+    const list = tasksByProject.get(task.project_id) ?? [];
+    list.push(task);
+    tasksByProject.set(task.project_id, list);
+  }
+  const questionsByProject = new Map<string, typeof openQuestions.results>();
+  for (const question of openQuestions.results) {
+    const list = questionsByProject.get(question.project_id) ?? [];
+    list.push(question);
+    questionsByProject.set(question.project_id, list);
+  }
   const entries: Array<{ date: string | null; until?: boolean; taskId?: string; projectId: string; project: string; label: string; detail: string; href: string }> = [];
   for (const project of projects) {
     for (const [kind, date] of Object.entries(project.deadlines)) {
       if (kind === "event_day" && date < today) continue;
       entries.push({ date, projectId: project.projectId, project: project.title, label: DEADLINE_LABEL[kind as keyof typeof DEADLINE_LABEL], detail: "", href: kind === "submit_due" && project.kind === "city_request" ? `/requests/city/${project.projectId}` : kind === "answer_due" ? `/answers/${project.projectId}` : `/projects/${project.projectId}/map` });
     }
-    const state = await getProjectState(c.env.DB, ward.wardId, project.projectId);
-    if (!state) continue;
-    for (const task of state.mapTasks.filter((t) => t.progress !== "done" && t.periodEnd && t.taskKey !== "day")) {
-      entries.push({ date: task.periodEnd, until: true, taskId: task.taskId, projectId: project.projectId, project: project.title, label: task.name, detail: "", href: `/projects/${project.projectId}/map/${task.taskId}` });
+    for (const task of tasksByProject.get(project.projectId) ?? []) {
+      entries.push({ date: task.period_end, until: true, taskId: task.task_id, projectId: project.projectId, project: project.title, label: task.name, detail: "", href: `/projects/${project.projectId}/map/${task.task_id}` });
     }
-    for (const question of state.questions.filter((q) => q.state === "open" || q.state === "later")) {
-      entries.push({ date: null, projectId: project.projectId, project: project.title, label: "質問", detail: questionShort(question), href: `/projects/${project.projectId}/questions#question-${question.questionId}` });
+    for (const question of questionsByProject.get(project.projectId) ?? []) {
+      entries.push({ date: null, projectId: project.projectId, project: project.title, label: "質問", detail: "", href: `/projects/${project.projectId}/questions#question-${question.question_id}` });
     }
   }
   entries.sort((a, b) => (a.date ?? "9999-99-99").localeCompare(b.date ?? "9999-99-99") || a.project.localeCompare(b.project, "ja"));
