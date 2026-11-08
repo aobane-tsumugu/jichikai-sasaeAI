@@ -32,6 +32,8 @@ export function questionItemKey(target: string | null | undefined): ItemKey | nu
 // 日時と締切は、日や時刻を聞く言い方がはっきりしている物だけを見る。
 const TEXT_SIGNS: [ItemKey, RegExp][] = [
   ["due", /締切|しめきり|いつまでに/],
+  // 場所は、場所を聞く言い方だけを見る（「会場を押さえる」のような仕事の名前は場所の質問ではない）。
+  ["place", /どこで|どこに|どこですか|場所は|会場は/],
   ["date_time", /何月何日|何時から何時|日時は|日時を|日にちは|開催日は/],
 ];
 
