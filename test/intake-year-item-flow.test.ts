@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { setClientFactory } from "../src/ai/deps";
 import { GENERAL_READING_SCHEMA, type ProjectSuggestion, type Reading } from "../src/ai/schema";
 import { seedAdmin } from "../src/core/testing";
@@ -93,6 +93,49 @@ it("去年終わった同じ予定の仕事を、今年の当日に合わせて�
   expect(state.mapTasks.map((task) => task.taskKey)).toEqual(["announcement", "day", "report"]);
   expect(state.mapTasks[0]).toMatchObject({ name: "去年から引き継ぐ案内", periodStart: "2026-09-03", periodEnd: "2026-09-18" });
   expect((await getProjectState(env.DB, ward.wardId, seed.projectId))?.project.deadlines.event_day).toBe("2025-10-19");
+});
+
+it.each([
+  { seedYear: 2026, text: "今年は10月25日に行い、終わりにしています。" },
+  { seedYear: 2025, text: "去年は10月25日に行いました。去年のやることを、今年の日に合わせて置き直します。" },
+  { seedYear: 2024, text: "2024年は10月25日に行いました。2024年のやることを、今年の日に合わせて置き直します。" },
+])("$seedYear年の終わった準備をもとにする説明を、資料と名前から始める画面でそろえる", async ({ seedYear, text }) => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-08T03:00:00Z"));
+  try {
+    const { ward, account, cookie } = await seedAdmin(env.DB);
+    const root = `/${ward.slug}/admin`;
+    await env.DB.prepare("INSERT INTO ward_year_items (ward_id, item_id, title) VALUES (?, 'autumn', '秋の収穫祭')").bind(ward.wardId).run();
+    const seed = await createProject(env.DB, ward.wardId, {
+      title: "秋の収穫祭", kind: "event", year: seedYear, eventDay: `${seedYear}-10-25`, accountId: account.accountId,
+    });
+    await env.DB.prepare("UPDATE projects SET closed_at = ? WHERE ward_id = ? AND project_id = ?")
+      .bind(`${seedYear}-11-01T00:00:00Z`, ward.wardId, seed.projectId).run();
+    await saveReading(ward.wardId, account.accountId, [{ title: "2025年度_秋の収穫祭のご案内", yearItem: "autumn" }]);
+    const materials = await (await get(realApp, `${root}/intake/read`, cookie)).text();
+    const byName = await (await get(realApp, `${root}/projects?title=${encodeURIComponent("秋の収穫祭")}`, cookie)).text();
+    for (const html of [materials, byName]) {
+      expect(html).toContain(text);
+      if (seedYear !== 2025) expect(html).not.toContain("去年は10月25日");
+    }
+    const reopenPath = `${root}/close/${seed.projectId}`;
+    if (seedYear === 2026) {
+      expect(materials).toContain("この資料を記録に足すなら、終わったものから開き直せます。");
+      expect(materials).toContain(`href="${reopenPath}"`);
+      const reopen = await get(realApp, reopenPath, cookie);
+      expect(reopen.status).toBe(200);
+      expect(await reopen.text()).toContain("終わりを取り消す</button>");
+      expect(materials).toContain("この名前で新しく準備を始める");
+      const again = await start(ward, cookie, "2026-12-20");
+      expect(again.project.projectId).not.toBe(seed.projectId);
+      expect(again.project.year).toBe(2026);
+      expect((await getProjectState(env.DB, ward.wardId, seed.projectId))?.project.closedAt).not.toBeNull();
+    } else {
+      expect(materials).not.toContain(`href="${reopenPath}"`);
+    }
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it("一年のどこにも当たらない資料とkindだけの古い読みは短い一般の型で始められる", async () => {

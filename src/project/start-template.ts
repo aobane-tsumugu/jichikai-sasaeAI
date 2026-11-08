@@ -5,7 +5,7 @@ import type { ProjectKind } from "./model";
 /**
  * 準備を始める時の、やることの並びの決め方（決定ログ L-312、L-313）。
  * 役員にも AI にも、六つの種類を選ばせない。六つの種類には根拠が無く、軸が混ざっているため（reviews/20261107_project_kinds.md）。
- * 去年の同じ予定の準備があれば、その並びを今年の日に合わせて置き直す。無ければ、一年の予定ごとの並び（YEAR_BASE の template）。
+ * 終わった同じ予定の準備があれば、その並びを新しい日に合わせて置き直す。無ければ、一年の予定ごとの並び（YEAR_BASE の template）。
  * どれでもなければ、知らせる、当日、まとめるの短い並び。
  * 中の種類の列（projects.kind）はすぐには消さないので、並びに合う値を入れておく。機能を出す判断は、種類からやることへ一つずつ移す。
  */
@@ -14,11 +14,13 @@ export interface StartTemplate {
   kind: ProjectKind;
   /** 型のうち、置く仕事の印。無い時は型の全部。 */
   taskKeys?: readonly string[];
-  /** 去年の同じ予定の準備。あれば、その並びを写す。 */
+  /** 終わった同じ予定の準備。あれば、その並びを写す。 */
   seedProjectId?: string;
+  /** もとにする準備の年。画面で今年、去年、それ以前を取り違えないために使う。 */
+  seedYear?: number;
   /** どこから並びを持ってきたか。画面の文に使う。 */
   from: "last_year" | "year_plan" | "short";
-  /** 去年の当日（分かる時）。 */
+  /** もとにする準備の当日（分かる時）。 */
   lastDay?: string;
   /** 一年の予定に書かれた題。資料の文書名とは分けて説明する。 */
   yearItemTitle?: string;
@@ -35,7 +37,7 @@ export const normalizeStartTitle = (title: string) => title.normalize("NFKC")
 export function startTemplate(title: string, past: ReadonlyArray<Past> = [], yearItems: readonly { key: string; title: string }[] = YEAR_BASE): StartTemplate {
   const name = normalizeStartTitle(title);
   const seed = [...past].filter((project) => name && project.closedAt && normalizeStartTitle(project.title) === name).sort((a, b) => b.year - a.year)[0];
-  if (seed) return { kind: seed.kind, seedProjectId: seed.projectId, from: "last_year", ...(seed.deadlines.event_day ? { lastDay: seed.deadlines.event_day } : {}) };
+  if (seed) return { kind: seed.kind, seedProjectId: seed.projectId, seedYear: seed.year, from: "last_year", ...(seed.deadlines.event_day ? { lastDay: seed.deadlines.event_day } : {}) };
   const item = yearItems.find((entry) => name && normalizeStartTitle(entry.title) === name);
   const base = item && YEAR_BASE.find((entry) => entry.key === item.key || normalizeStartTitle(entry.title) === name);
   const template = base?.template ?? SHORT_TEMPLATE;
@@ -44,9 +46,18 @@ export function startTemplate(title: string, past: ReadonlyArray<Past> = [], yea
 
 /** 始める前に、何が置かれるかを、名前から始める画面と資料の画面に合わせて書く。 */
 export function startTemplateText(title: string, template: StartTemplate, source: "name" | "materials" = "name"): string {
-  if (template.from === "last_year") return template.lastDay
-    ? `去年は${shortDate(template.lastDay)}に行いました。去年のやることを、今年の日に合わせて置き直します。`
-    : "去年も行いました。去年のやることを、今年の日に合わせて置き直します。";
+  if (template.from === "last_year") {
+    const year = new Date(Date.now() + 9 * 3600_000).getUTCFullYear();
+    if (template.seedYear === year) {
+      const done = template.lastDay ? `今年は${shortDate(template.lastDay)}に行い、終わりにしています。` : "今年の準備は終わりにしています。";
+      const record = source === "materials" ? "この資料を記録に足すなら、" : "記録を直すときは、";
+      return `${done}${record}終わったものから開き直せます。同じやることを使い、新しく準備を始めることもできます。`;
+    }
+    const when = template.seedYear === year - 1 ? "去年" : template.seedYear === undefined ? "以前" : `${template.seedYear}年`;
+    return template.lastDay
+      ? `${when}は${shortDate(template.lastDay)}に行いました。${when}のやることを、今年の日に合わせて置き直します。`
+      : `${when}も行いました。${when}のやることを、今年の日に合わせて置き直します。`;
+  }
   if (template.from === "year_plan") {
     const name = source === "materials" ? `一年の予定の「${template.yearItemTitle ?? title}」` : `よくある自治会の${title}`;
     return `${name}のやることを置きます。${template.taskKeys?.includes("assign") ? "当番表があるので、担当を決める仕事も置きます。" : ""}あとで足したり外したりできます。`;
