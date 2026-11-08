@@ -20,7 +20,7 @@ import { receiveOriginal, getReadings } from "../intake/api";
 import { getJob, getOriginal, markRosterAnswered } from "../intake/store";
 import { SEND_SCRIPT } from "../intake/browser-script";
 import { getSquads } from "../settings/store";
-import { addAnswerField, countFields, dayOptions, fieldSuggestions, fieldValueText, getAnswerFields, optionsFromText, readFieldValues, removeAnswerField, updateAnswerField, type AnswerField, type AnswerFieldKind } from "./fields";
+import { addAnswerField, countFields, dayOptions, fieldSuggestions, setSuggestionsOff, suggestionsOff, fieldValueText, getAnswerFields, optionsFromText, readFieldValues, removeAnswerField, updateAnswerField, type AnswerField, type AnswerFieldKind } from "./fields";
 import { FieldInputs, SuggestionNotice, askedText } from "./field-parts";
 import { getProjectSummary } from "../project/api";
 import { projectTasks, taskFeatures } from "../project/task-features";
@@ -300,6 +300,7 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
   const suggestions = !closed && (view === "summary" || view === "fields") ? await fieldSuggestions(c.env.DB, c.var.ward.wardId, projectId, answerFields, districts) : [];
   const fieldCounts = countFields(answerFields.fields, answers);
   const asked = askedText(answerFields.fields, answerFields.districtAsked);
+  const hidden = view === "fields" && !closed ? await suggestionsOff(c.env.DB, c.var.ward.wardId, projectId) : false;
   const remaining = unanswered.reduce((sum, group) => sum + group.households.length, 0);
   const helperCount = helpers.length + offers.length;
   const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
@@ -347,7 +348,7 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
       {/* 数の札とリンクの要約に縮めず、締切と届いた返事を文で書く（管理の決定ログ L-300 のトップと同じ決まり）。 */}
       <p class="lead">{summaryText}</p>
       {answers.length && answerFields.fields.length ? <section><h2>返事で足した欄</h2>{fieldCounts.map(({ field, lines, empty }) => <p>{field.label}: {lines.join("")}{empty ? `この欄が空の返事が${empty}件あります。` : ""}</p>)}</section> : null}
-      <SuggestionNotice suggestions={suggestions} action={`${root}/fields`} />
+      <SuggestionNotice suggestions={suggestions} action={`${root}/fields`} offAction={`${root}/fields/suggestions/off`} />
       {unread ? <div class="notice warn"><strong>人数が読めなかった返事が{unread}件あります</strong><p>参加しないには数えていません。写真を見て入れてください。</p><a class="quiet" href={`${root}?view=read`}>読み取った出欠の返事を見る</a></div> : null}
       {!answers.length ? <>
         {!closed ? announced ? <><section class="next"><strong>次は</strong><p>回答票が手元にあれば、撮って送れます。</p><a class="button" href={`${root}?view=send`}>回答票を撮って送る</a></section><a class="quiet" href={`${root}?view=hand`}>電話で聞いた返事を入れる</a></>
@@ -372,7 +373,7 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
       </>}
       {!closed ? <details class="fold"><summary>{deadline ? "返事の締切を変える" : "返事の締切を決める"}</summary><div><form method="post" action={`${root}/deadline`}><label for="due">返事の締切</label><input id="due" name="due_on" type="date" value={deadline ?? ""} required /><button class="secondary">{deadline ? "締切を変える" : "締切を決める"}</button></form></div></details> : null}
     </> : null}
-    {view === "fields" ? <FieldsView root={root} draftHref={adminPath(c.var.ward.slug, `/projects/${projectId}/draft/announcement`)} closed={closed} fields={answerFields.fields} districtAsked={answerFields.districtAsked} squads={districts} asked={asked} answers={answers.length} suggestions={suggestions} done={c.req.query("done")} /> : null}
+    {view === "fields" ? <FieldsView root={root} draftHref={adminPath(c.var.ward.slug, `/projects/${projectId}/draft/announcement`)} closed={closed} hidden={hidden} fields={answerFields.fields} districtAsked={answerFields.districtAsked} squads={districts} asked={asked} answers={answers.length} suggestions={suggestions} done={c.req.query("done")} /> : null}
     {view === "send" && !closed ? <>
       <p class="lead">預かった回答票や手元の回答票を撮ってください。一枚の写真に何枚写っていてもかまいません。</p>
       <form method="post" action={`${root}/sheet`} enctype="multipart/form-data"><div class="field"><label class="file-button">カメラで回答票を撮る<input name="part" type="file" accept="image/*,.pdf" capture="environment" required /></label></div><div class="action-links"><button>送る</button></div></form>
@@ -527,6 +528,14 @@ admin.post("/answers/:projectId/fields", async (c) => {
   return c.redirect(`${adminPath(ward.slug, `/answers/${encodeURIComponent(projectId)}`)}?view=fields&done=${first ? "field_added" : "field_failed"}${first ? `#field-${first}` : ""}`, 303);
 });
 
+// 候補の「足さない」と「元に戻す」。役員の操作として押した時と人だけを残す。
+admin.post("/answers/:projectId/fields/suggestions/:state", async (c) => {
+  const { ward, account } = c.var; const projectId = c.req.param("projectId"); const state = c.req.param("state");
+  if (state !== "off" && state !== "on") return c.notFound();
+  const changed = await setSuggestionsOff(c.env.DB, ward.wardId, projectId, account.accountId, state === "off");
+  return c.redirect(`${adminPath(ward.slug, `/answers/${encodeURIComponent(projectId)}`)}?view=fields&done=${changed ? `suggestions_${state}` : "field_failed"}`, 303);
+});
+
 admin.post("/answers/:projectId/fields/:fieldId/save", async (c) => {
   const { ward } = c.var; const projectId = c.req.param("projectId"); const fieldId = c.req.param("fieldId");
   const form = await c.req.parseBody();
@@ -541,8 +550,8 @@ admin.post("/answers/:projectId/fields/:fieldId/remove", async (c) => {
 });
 
 /** 返事で聞くことの画面。今聞いていること、候補、足す、直す、外すを一つの画面に置く。 */
-function FieldsView({ root, draftHref, closed, fields, districtAsked, squads, asked, answers, suggestions, done }: {
-  root: string; draftHref: string; closed: boolean; fields: readonly AnswerField[]; districtAsked: boolean; squads: readonly string[]; asked: string; answers: number;
+function FieldsView({ root, draftHref, closed, hidden, fields, districtAsked, squads, asked, answers, suggestions, done }: {
+  root: string; draftHref: string; closed: boolean; hidden: boolean; fields: readonly AnswerField[]; districtAsked: boolean; squads: readonly string[]; asked: string; answers: number;
   suggestions: Parameters<typeof SuggestionNotice>[0]["suggestions"]; done?: string;
 }) {
   const doneText: Record<string, string> = {
@@ -550,11 +559,14 @@ function FieldsView({ root, draftHref, closed, fields, districtAsked, squads, as
     field_saved: "直しました。住民のスマホの返事と紙の回答票も変わります。",
     field_removed: "外しました。今までの答えは消えていません。",
     field_failed: "変えられませんでした。終わりにした準備は、先に終わりを取り消してください。",
+    suggestions_off: "この準備では、返事で聞く欄の候補を出さないようにしました。欄は、下の「欄を足す」からいつでも足せます。",
+    suggestions_on: "候補をまた出すようにしました。",
   };
   return <>
     <p class="lead">住民のスマホの返事と紙の回答票の両方に、同じ欄が出ます。代表者のお名前、参加するかどうか、人数は、いつも聞きます。</p>
     {done && doneText[done] ? <Notice error={done === "field_failed"}>{doneText[done]}{done === "field_added" && fields.some((field) => field.kind === "days" && !field.options.length) ? "選ぶ日がまだない欄があります。下の「名前と選ぶ日を直す」から入れてください。" : ""}</Notice> : null}
-    {!closed ? <SuggestionNotice suggestions={suggestions} action={`${root}/fields`} /> : null}
+    {!closed ? <SuggestionNotice suggestions={suggestions} action={`${root}/fields`} offAction={`${root}/fields/suggestions/off`} /> : null}
+    {!closed && hidden ? <form method="post" action={`${root}/fields/suggestions/on`}><p class="muted">候補を出さないようにしました。<button class="quiet" type="submit">元に戻す</button></p></form> : null}
     <h2>今、返事で聞いていること</h2>
     <p>{asked}です。</p>
     {squads.length ? <section class="panel" id="field-district"><b>班</b>

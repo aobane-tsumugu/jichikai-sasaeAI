@@ -33,7 +33,7 @@ export function askedText(fields: readonly AnswerField[], districtAsked: boolean
 }
 
 /** 届いた資料から思い当たった欄の候補。押すまで足さない。 */
-export function SuggestionNotice({ suggestions, action }: { suggestions: readonly FieldSuggestion[]; action: string }) {
+export function SuggestionNotice({ suggestions, action, offAction }: { suggestions: readonly FieldSuggestion[]; action: string; offAction: string }) {
   if (!suggestions.length) return null;
   return <div class="notice"><strong>返事で聞く欄の候補があります</strong>
     {suggestions.map((suggestion) => <form method="post" action={action}>
@@ -41,5 +41,7 @@ export function SuggestionNotice({ suggestions, action }: { suggestions: readonl
       {suggestion.kinds.map((kind) => <input type="hidden" name="kind" value={kind} />)}
       <button class="secondary" type="submit">{suggestion.kinds.map((kind) => kind === "days" ? "日を選ぶ欄" : "班を聞く欄").join("と")}を足す</button>
     </form>)}
+    {/* 足さないと決めた役員に、同じ候補を出し続けない。押すとこの準備では候補を出さない。欄の画面から元に戻せる。 */}
+    <form method="post" action={offAction}><button class="quiet" type="submit">足さない（この準備では候補を出さない）</button></form>
   </div>;
 }

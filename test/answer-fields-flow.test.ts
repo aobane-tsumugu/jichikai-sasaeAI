@@ -161,3 +161,36 @@ it("総会の返事には欄を足さない", async () => {
   expect(await (await get(realApp, `/${ward.slug}/admin/answers/${project.projectId}?view=fields`, cookie)).text()).not.toContain("欄を足す");
   expect((await getAnswerFields(env.DB, ward.wardId, project.projectId, [])).fields).toEqual([]);
 });
+
+it("候補の「足さない」を押すと、その準備では候補を出さず、欄の画面にだけ元に戻す道を小さく残す", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "年末の見回り", year: 2026, accountId: account.accountId, eventDay: "2026-12-26" });
+  await material(ward.wardId, project.projectId, "2025年度_年末の見回りのお知らせ.docx", {
+    document_kind: "announcement", summary: "年末の見回りの案内",
+    fields: [{ name: "申し込み", value: "都合のよい日を選べます", confidence: "high", original_id: "x", locator: "表1/5行目" }],
+  });
+  await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, { kind: "announcement", title: "年末の見回りのご案内", scope: "public", basedOn: 0,
+    body: JSON.stringify({ text: "年末の見回りを行います。", items: [] }) });
+  const root = `/${ward.slug}/admin/answers/${project.projectId}`;
+  const draftPath = `/${ward.slug}/admin/projects/${project.projectId}/draft/announcement`;
+  expect(await (await get(realApp, `${root}?view=fields`, cookie)).text()).toContain("足さない（この準備では候補を出さない）");
+  expect(await (await get(realApp, draftPath, cookie)).text()).toContain("返事に日を選ぶ欄を足せます。");
+
+  const off = await postForm(realApp, `${root}/fields/suggestions/off`, {}, cookie);
+  expect(off.status).toBe(303);
+  expect(off.headers.get("location")).toContain("done=suggestions_off");
+  const fields = await (await get(realApp, `${root}?view=fields`, cookie)).text();
+  expect(fields).not.toContain("返事で聞く欄の候補があります");
+  expect(fields).toContain("候補を出さないようにしました。");
+  expect(fields).toContain("元に戻す</button>");
+  const summary = await (await get(realApp, root, cookie)).text();
+  expect(summary).not.toContain("返事で聞く欄の候補があります");
+  expect(summary).not.toContain("元に戻す</button>");
+  expect(await (await get(realApp, draftPath, cookie)).text()).not.toContain("返事に日を選ぶ欄を足せます。");
+  // 役員の操作として、押した人だけを残す。欄は足さない。
+  expect(await env.DB.prepare("SELECT answer_suggestions_off_by AS by FROM projects WHERE ward_id = ? AND project_id = ?").bind(ward.wardId, project.projectId).first()).toEqual({ by: account.accountId });
+  expect((await getAnswerFields(env.DB, ward.wardId, project.projectId, [])).fields).toEqual([]);
+
+  expect((await postForm(realApp, `${root}/fields/suggestions/on`, {}, cookie)).headers.get("location")).toContain("done=suggestions_on");
+  expect(await (await get(realApp, `${root}?view=fields`, cookie)).text()).toContain("返事で聞く欄の候補があります");
+});
