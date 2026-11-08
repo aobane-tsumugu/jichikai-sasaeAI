@@ -9,16 +9,30 @@ export function taskFeatures(tasks: readonly FeatureTask[]) {
   const meeting = has("agenda", "minutes", "delegation");
   // 総会は委任を集める仕事（answers）と議案または議事録を持つ。役員会は委任を集めない。
   const delegation = has("delegation") || meeting && has("answers");
-  return { has, meeting, delegation, attendance: has("answers", "delegation") || has("announcement") && !meeting,
+  // 出欠を聞かないと役員が選んだ準備（projectTasks が NO_ANSWERS の印を足す）では、案内に返事の入口と回答票を付けない（L-319）。
+  return { has, meeting, delegation, attendance: (has("answers", "delegation") || has("announcement") && !meeting) && !keys.has(NO_ANSWERS),
     // 名簿の順で回す当番は「担当を決める」（当番表を作る）がある時だけ。行事の「当番表と配置を決める」は手伝いの返事から AI が担当を入れる。
     rota: has("assign"), submit: has("submit"), request: has("submit") && has("content"),
     sponsors: has("sponsors"), committee: has("committee"), venue: has("venue") };
 }
+/** 出欠を聞かないと選んだ準備の印。やることの仕事ではなく、機能の判定にだけ使う。 */
+export const NO_ANSWERS = "no_answers";
+
 export async function projectTasks(db: D1Database, wardId: string, projectId: string): Promise<FeatureTask[]> {
-  const rows = await db.prepare(`SELECT task_key, name FROM project_map_tasks
-    WHERE ward_id = ? AND project_id = ? AND removed_at IS NULL ORDER BY sort_order, created_at`)
-    .bind(wardId, projectId).all<{ task_key: string | null; name: string }>();
-  return rows.results.map((row) => ({ taskKey: row.task_key, name: row.name }));
+  const [rows, project] = await Promise.all([
+    db.prepare(`SELECT task_key, name FROM project_map_tasks
+      WHERE ward_id = ? AND project_id = ? AND removed_at IS NULL ORDER BY sort_order, created_at`)
+      .bind(wardId, projectId).all<{ task_key: string | null; name: string }>(),
+    db.prepare("SELECT answers_off_at FROM projects WHERE ward_id = ? AND project_id = ?").bind(wardId, projectId).first<{ answers_off_at: string | null }>(),
+  ]);
+  return [...rows.results.map((row) => ({ taskKey: row.task_key, name: row.name })), ...(project?.answers_off_at ? [{ taskKey: NO_ANSWERS }] : [])];
+}
+
+/** 出欠を聞くかを選ぶ。聞かないと選んだ時と人は、役員の操作として残す。終わりにした準備は変えない。 */
+export async function setAnswersOff(db: D1Database, wardId: string, projectId: string, accountId: string, off: boolean): Promise<boolean> {
+  const result = await db.prepare("UPDATE projects SET answers_off_at = ?, answers_off_by = ? WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL")
+    .bind(off ? new Date().toISOString() : null, off ? accountId : null, wardId, projectId).run();
+  return (result.meta.changes ?? 0) === 1;
 }
 export async function projectFeatures(db: D1Database, wardId: string, projectId: string) {
   return taskFeatures(await projectTasks(db, wardId, projectId));

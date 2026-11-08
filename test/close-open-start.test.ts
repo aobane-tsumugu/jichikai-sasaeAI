@@ -51,7 +51,9 @@ it("終わりにする画面の来年への一言は、仕事ごとに時期と�
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭", year: 2026, accountId: account.accountId, eventDay: "2026-01-10" });
   const page = await (await get(realApp, `/${ward.slug}/admin/close/${project.projectId}`, cookie)).text();
-  expect(page).toMatch(/<summary>案内を住民に知らせる（.*、これから）<\/summary>/);
+  // 当日を過ぎた準備で、済んだかの記録が無い仕事を「これから」と書かない。
+  expect(page).toMatch(/<summary>案内を住民に知らせる（.*、済んだかの記録がありません）<\/summary>/);
+  expect(page).not.toContain("、これから）</summary>");
   expect(page).not.toContain("役員だけのメモ");
   expect(page).not.toContain('id="report-public"');
   expect(page).toContain(`href="/${ward.slug}/admin/projects/${project.projectId}/draft/report?edit=1">報告を見て送る</a>`);

@@ -24,7 +24,7 @@ import { getSquads } from "../settings/store";
 import { addAnswerField, countFields, dayOptions, fieldSuggestions, setSuggestionsOff, suggestionsOff, fieldValueText, getAnswerFields, optionsFromText, readFieldValues, withAnsweredOptions, removeAnswerField, updateAnswerField, type AnswerField, type AnswerFieldKind } from "./fields";
 import { FieldInputs, SuggestionNotice, askedText } from "./field-parts";
 import { getProjectSummary } from "../project/api";
-import { projectTasks, taskFeatures } from "../project/task-features";
+import { projectTasks, setAnswersOff, taskFeatures } from "../project/task-features";
 import { lookupPrintQr } from "../print/qr";
 import { ArticleBody } from "../publish";
 import { addHelpOffer, getHelpOfferBySubmission, helpTimeChoices, listHelpOffers, listHelpOpportunities, type HelpOpportunity } from "./help";
@@ -528,6 +528,15 @@ admin.post("/answers/:projectId/fields", async (c) => {
     if (id && !first) first = kind === "district" ? "district" : id;
   }
   return c.redirect(`${adminPath(ward.slug, `/answers/${encodeURIComponent(projectId)}`)}?view=fields&done=${first ? "field_added" : "field_failed"}${first ? `#field-${first}` : ""}`, 303);
+});
+
+// 行事の案内で、出欠を聞くか（L-319）。案内の下書きの画面から押す。役員の操作として、選んだ時と人だけを残す。
+admin.post("/answers/:projectId/attendance", async (c) => {
+  const { ward, account } = c.var; const projectId = c.req.param("projectId");
+  const state = String((await c.req.parseBody()).state ?? "");
+  if (state !== "off" && state !== "on") return c.notFound();
+  const changed = await setAnswersOff(c.env.DB, ward.wardId, projectId, account.accountId, state === "off");
+  return c.redirect(`${adminPath(ward.slug, `/projects/${encodeURIComponent(projectId)}/draft/announcement`)}?${changed ? `notice=attendance_${state}` : "error=save_failed"}`, 303);
 });
 
 // 候補の「足さない」と「元に戻す」。役員の操作として押した時と人だけを残す。
