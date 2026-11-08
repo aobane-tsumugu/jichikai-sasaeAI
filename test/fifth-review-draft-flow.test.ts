@@ -116,7 +116,7 @@ it("架空の資料の下書きを見比べて直し、雨の場所を確かめ�
   for (const kind of ["general", "restore"] as const) {
     expect(systemFor(kind)).toContain("参加する住民が持ってくる物だけ");
     expect(systemFor(kind)).toContain("運営の準備物");
-    expect(packVersionFor(kind)).toBe(kind === "general" ? "read-general@5" : "read-restore@5");
+    expect(packVersionFor(kind)).toBe(kind === "general" ? "read-general@6" : "read-restore@6");
   }
   expect(getDraftPack("announcement").instruction).toContain("運営の準備物は段取りの仕事や進め方に残し");
 });

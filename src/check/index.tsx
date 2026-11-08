@@ -3,12 +3,13 @@ import { getProjectState } from "../project/api";
 import type { DocumentKind } from "../project/model";
 import { getRoster } from "../answers/api";
 import { getPublicContact } from "../settings/store";
+import { isCalendarDay } from "../core/time";
 
-interface Finding { kind: "名簿の名前" | "協賛の額" | "個人の連絡先" | "まだ決まっていないところ"; value: string; }
+interface Finding { kind: "名簿の名前" | "協賛の額" | "個人の連絡先" | "まだ決まっていないところ" | "去年の日付のようです"; value: string; }
 interface PrivateRow { person_fields: string | null; data: string; }
 const normalizePhone = (s: string) => s.replace(/[^0-9]/g, "");
 
-export async function checkPublicDraft(db: D1Database, wardId: string, projectId: string, _kind: DocumentKind, raw: unknown): Promise<string[]> {
+export async function checkPublicDraft(db: D1Database, wardId: string, projectId: string, kind: DocumentKind, raw: unknown): Promise<string[]> {
   let body: { text?: string; items?: Array<{ key?: string; content?: string }> };
   if (typeof raw === "string") {
     try { body = JSON.parse(raw) as typeof body; } catch { return ["公開する文書の形を読めません"]; }
@@ -21,6 +22,28 @@ export async function checkPublicDraft(db: D1Database, wardId: string, projectId
   for (const entry of roster) if (entry.household.length >= 2 && text.includes(entry.household)) found.push({ kind: "名簿の名前", value: entry.household });
 
   const state = await getProjectState(db, wardId, projectId);
+  if (state && ["announcement", "recruitment", "notice"].includes(kind)) {
+    const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+    const dates = /(?:(?:(\d{4})\s*(?:年|[-/])|令和(元|\d{1,2})年|平成(元|\d{1,2})年)\s*)?(\d{1,2})\s*(?:月|[-/])\s*(\d{1,2})\s*日?/g;
+    for (const part of [body.text ?? "", ...(body.items ?? []).map((item) => item.content ?? "")]) {
+      const normalized = part.normalize("NFKC");
+      let explicitYear: number | undefined;
+      for (const match of normalized.matchAll(dates)) {
+        const year = match[1] ? Number(match[1]) : match[2] ? 2018 + (match[2] === "元" ? 1 : Number(match[2]))
+          : match[3] ? 1988 + (match[3] === "元" ? 1 : Number(match[3])) : explicitYear ?? state.project.year;
+        explicitYear = year;
+        const day = `${year}-${match[4]!.padStart(2, "0")}-${match[5]!.padStart(2, "0")}`;
+        if (!isCalendarDay(day)) continue;
+        const lineStart = normalized.lastIndexOf("\n", match.index) + 1;
+        const lineEnd = normalized.indexOf("\n", match.index);
+        const line = normalized.slice(lineStart, lineEnd < 0 ? undefined : lineEnd);
+        // 変更前や過去の実績を説明する日付は、当日や締切とは分ける。
+        const historical = /昨年|去年|前回|変更前|実施した|開催した|行いました|行われました/.test(line)
+          && !/締切|締め切|までに|集合/.test(line);
+        if (year < state.project.year || (!historical && day < today)) found.push({ kind: "去年の日付のようです", value: match[0] });
+      }
+    }
+  }
   const normalizedText = text.normalize("NFKC");
   const numbers = [...normalizedText.matchAll(/\d[\d,]*/g)];
   for (const row of state?.tables.sponsors ?? []) {

@@ -1,5 +1,5 @@
 // 受けた物の種類の見分け。ブラウザが言う種類は信じず、先頭のバイトで見る。
-// 読めない形式は受けない（原本として置いても読めないので、送った人に分かる文で返す）。
+// 対応していない形式は受けない。古いWordとExcelは読み取りに失敗しても原本を残す。
 
 export type MediaClass = "image" | "pdf" | "word" | "excel" | "text";
 
@@ -30,6 +30,16 @@ function utf16Encoding(bytes: Uint8Array): "utf-16le" | "utf-16be" | null {
 /** 受けられる形式なら種類を返し、そうでなければ null。 */
 export function classifyUpload(bytes: Uint8Array, declaredType: string, filename: string): Classified | null {
   if (bytes.length === 0) return null;
+  // 複合文書の中でも、WordとExcelだけを受ける。壊れていても原本は残す。
+  // 本文にPDFの印があっても、先頭の複合文書の印を優先する。
+  if (startsWith(bytes, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) {
+    const ext = extensionOf(filename);
+    if (ext === "doc") return { mediaType: "application/msword", mediaClass: "word" };
+    if (ext === "xls") return { mediaType: "application/vnd.ms-excel", mediaClass: "excel" };
+    if (declaredType === "application/msword") return { mediaType: declaredType, mediaClass: "word" };
+    if (declaredType === "application/vnd.ms-excel") return { mediaType: declaredType, mediaClass: "excel" };
+    return null;
+  }
   if (startsWith(bytes, [0xff, 0xd8, 0xff])) return { mediaType: "image/jpeg", mediaClass: "image" };
   if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return { mediaType: "image/png", mediaClass: "image" };
   if (startsWith(bytes, [0x47, 0x49, 0x46, 0x38])) return { mediaType: "image/gif", mediaClass: "image" };
@@ -48,8 +58,6 @@ export function classifyUpload(bytes: Uint8Array, declaredType: string, filename
     if (ext === "xlsx" || declaredType === EXCEL_TYPE) return { mediaType: EXCEL_TYPE, mediaClass: "excel" };
     return null;
   }
-  // 古い形式の Word と Excel（.doc、.xls）は読めない
-  if (startsWith(bytes, [0xd0, 0xcf, 0x11, 0xe0])) return null;
   const looksText = declaredType.startsWith("text/") || TEXT_EXTENSIONS.has(extensionOf(filename)) || declaredType === "application/json";
   // BOM のある UTF-16 は、文字を表すゼロのバイトを含んでいても文字の資料。
   if (looksText && (utf16Encoding(bytes) !== null || !bytes.subarray(0, 8192).includes(0))) {

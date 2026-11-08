@@ -75,6 +75,7 @@ interface Plan {
   /** 古い印を付ける文書の種類。 */
   staleKinds: DocumentKind[];
   conflictFields?: string[];
+  existingQuestionIds?: string[];
 }
 
 interface Ctx {
@@ -142,7 +143,19 @@ async function checkChange(
   if (!(CONFIDENCES as readonly string[]).includes(change.confidence)) return { ok: false, reason: "確かさが合いません" };
   const sourceReason = await verifySource(db, wardId, change.source, options, change.kind === "row" && change.table === "duties");
   if (sourceReason) return { ok: false, reason: sourceReason };
-  const source = await markReferenceSource(db, wardId, normalizeSource(change.source));
+  let source = await markReferenceSource(db, wardId, normalizeSource(change.source));
+  if (source.kind === "original" && change.kind === "item") {
+    const original = await db.prepare("SELECT filename FROM originals WHERE ward_id = ? AND original_id = ? AND withdrawn_at IS NULL")
+      .bind(wardId, source.ref).first<{ filename: string }>();
+    // 保存日や届いた日ではなく、資料名の年度と、日時・締切そのものに書かれた年を見る。
+    const namedYear = original?.filename.normalize("NFKC").match(/((?:19|20|21)\d{2})年度?/);
+    const datedDay = ["date_time", "due"].includes(change.itemKey) && typeof change.value === "string"
+      ? parseEventDay(change.value, project.year) : null;
+    const pastYear = [source.year, namedYear ? Number(namedYear[1]) : undefined, datedDay ? Number(datedDay.slice(0, 4)) : undefined]
+      .find((year) => year !== undefined && year < project.year);
+    // 今年配った紙（QR で今年の版と分かる物）は、年が書いていなくても今年の中身にする。
+    if (pastYear !== undefined) source = { ...source, year: pastYear, qr: false };
+  }
   if (source.reference && change.kind !== "item" && change.kind !== "row") {
     return { ok: false, reason: "参考資料から今年のやることは変えません" };
   }
@@ -516,6 +529,33 @@ async function planItemValue(ctx: Ctx, n: Normalized, change: ItemChange): Promi
     )
     .bind(ctx.wardId, ctx.projectId, change.itemKey)
     .all<ValueRow & { scope: string; ref_year: number | null }>();
+
+  // 資料の組ごとに聞き直さず、同じ年・同じ項目の問いへ違う値を足す。
+  if (n.source.kind === "original") {
+    const pending = await ctx.db.prepare(`SELECT question_id, text, detail FROM project_questions
+      WHERE ward_id = ? AND project_id = ? AND kind = 'conflict' AND target = ? AND state IN ('open', 'later')
+        AND json_extract(detail, '$.itemKey') = ? AND json_extract(detail, '$.documentKind') IS NULL`)
+      .bind(ctx.wardId, ctx.projectId, change.itemKey, change.itemKey).all<{ question_id: string; text: string; detail: string }>();
+    for (const question of pending.results) {
+      const detail = JSON.parse(question.detail) as { scope?: string; refYear?: number | null; options: string[]; sources?: Source[] };
+      const scope = detail.scope ?? "current";
+      if (scope !== placement.scope || (placement.scope === "reference" && (detail.refYear ?? null) !== placement.refYear)) continue;
+      const added = !detail.options.some((option) => sameText(option, content));
+      if (added) {
+        detail.options.push(content);
+        detail.sources = [...(detail.sources ?? detail.options.slice(0, -1).map(() => n.source)), n.source];
+      }
+      const text = added ? `${question.text}ほかの資料には「${content}」とあります。` : question.text;
+      const statements = [ctx.db.prepare(`UPDATE project_questions SET text = ?, detail = ?
+        WHERE ward_id = ? AND project_id = ? AND question_id = ? AND state IN ('open', 'later')`)
+        .bind(text, JSON.stringify(detail), ctx.wardId, ctx.projectId, question.question_id)];
+      const reread = placement.scope === "reference" ? active.results.find((row) => row.scope === "reference"
+        && row.ref_year === placement.refYear && row.source_ref === n.source.ref && !sameText(row.content, content)) : undefined;
+      if (reread) statements.push(supersedeValueStatement(ctx, reread.value_id), insertValueStatement(ctx, change.itemKey, content, placement, n));
+      return { status: "conflict", statements, questions: [], existingQuestionIds: [question.question_id], bump: !!reread,
+        staleKinds: reread && !active.results.some((row) => row.scope === "current") ? await documentsDependingOn(ctx, { item: change.itemKey }) : [] };
+    }
+  }
 
   const lowQuestions = (): NewQuestion[] =>
     ctx.confidence === "low"
@@ -1042,7 +1082,21 @@ export async function applyChange(
     ];
   }
 
-  const questionIds = plan.questions.map(() => newId());
+  // 人が選ぶまで、食い違った資料の片方を今年の中身に残さない。
+  for (const question of plan.questions) {
+    if (question.kind !== "conflict" || !isItemKey(question.target) || question.detail?.scope === "reference"
+      || question.detail?.documentKind || normalized.source.kind !== "original") continue;
+    const current = await db.prepare(`SELECT value_id FROM project_item_values WHERE ward_id = ? AND project_id = ?
+      AND item_key = ? AND scope = 'current' AND source_kind = 'original' AND superseded_at IS NULL`)
+      .bind(wardId, projectId, question.target).all<{ value_id: string }>();
+    plan.statements.push(...current.results.map((value) => supersedeValueStatement(ctx, value.value_id)));
+    if (current.results.length) {
+      plan.bump = true;
+      plan.staleKinds = [...new Set([...plan.staleKinds, ...await documentsDependingOn(ctx, { item: question.target })])];
+    }
+  }
+  const newQuestionIds = plan.questions.map(() => newId());
+  const questionIds = [...(plan.existingQuestionIds ?? []), ...newQuestionIds];
   const stored: StoredResult = {
     status: plan.status,
     changeId: ctx.changeId,
@@ -1065,7 +1119,7 @@ export async function applyChange(
   statements.push(...plan.statements);
   const packVersionRaw = asRecord(change).packVersion;
   const packVersion = typeof packVersionRaw === "string" ? packVersionRaw : "";
-  plan.questions.forEach((q, i) => statements.push(insertQuestionStatement(ctx, q, questionIds[i] as string, packVersion)));
+  plan.questions.forEach((q, i) => statements.push(insertQuestionStatement(ctx, q, newQuestionIds[i] as string, packVersion)));
   if (plan.staleKinds.length > 0) {
     const marks = plan.staleKinds.map(() => "?").join(",");
     statements.push(

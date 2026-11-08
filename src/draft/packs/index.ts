@@ -6,6 +6,7 @@ const missingItems = (kind: DocumentKind) => `分からない任意の項目は�
 
 const common = (kind: DocumentKind) => `
 行事の状態を引き、今年の中身と参考の中身を分けてください。
+${["announcement", "recruitment", "notice"].includes(kind) ? "日時と返事の締切は、今年の中身か今年の行事の日・締切だけを使います。過去の年や年不明の参考の日付は本文にもitemsにも入れず、今年の日を推測して補いません。今年の日時がない場合や、同じ項目の食い違いの質問にまだ答えていない場合は、日時を（確認中）として必要な質問を残します。締切がないだけでは質問を増やしません。この決まりは、参考から中身を使うほかの指示より優先します。" : ""}
 持ち物（belongings）は参加する住民が持ってくる物だけです。運営側が用意する食材、道具、備品を住民の持ち物に入れません。運営の準備物は段取りの仕事や進め方に残し、資料から消さないでください。
 文書に使う項目の中身は記録の今年の中身から取り、なければ参考の中身から取って、${kind === "duty_roster" ? "日時、場所、雨のときはitemsにだけ入れてください。当番の割り当てはdutiesにだけ入れ、本文やitemsには重ねません" : "本文とitemsの両方に入れてください"}。参考が複数あるときは新しい年を優先し、年不明は最後に使います。過去の資料からも、この文書に必要な内容だけを下書きに含め、勝手に今年の日付に変えません。参考から入れた項目のsourceには「参考（2025年）」のように参考の年と、分かる元の資料の箇所を示してください。年が分からなければ「参考（年不明）」とします。参考を使った下書きを、今年の正式な決定として記録に書くことはしません。
 根拠のない内容、手順、連絡先、答え方を作らないでください。${missingItems(kind)}
@@ -17,11 +18,11 @@ const common = (kind: DocumentKind) => `
 
 const packs: Record<DocumentKind, DraftPack> = {
   announcement: {
-    version: "draft-announcement@11", kind: "announcement", title: "案内", scope: "public",
+    version: "draft-announcement@12", kind: "announcement", title: "案内", scope: "public",
     instruction: `住民向けの行事案内を作ってください。いつ、どこで、連絡先を見出し付きで並べます。雨のとき、内容、持ち物は、分かるときだけ見出しを付けて並べます。出欠や申込みを集める状態がある場合だけ、何を答えるか、締切、紙での答え方とWebでの答え方を短く案内に含めます。回答票の欄は紙に付くので、本文に並べません。紙だけを受け取った人が参加や答えに移れる案内にしてください。${common("announcement")}`,
   },
   recruitment: {
-    version: "draft-recruitment@10", kind: "recruitment", title: "手伝いの募集", scope: "public",
+    version: "draft-recruitment@11", kind: "recruitment", title: "手伝いの募集", scope: "public",
     instruction: `住民向けの手伝い募集を作ってください。申し出の方法は、住民向けのページの「一回だけ手伝う」から名前と手伝える時間帯だけで申し込めること、自治会に入っていなくてよいことを書きます。手伝いの内容、時間帯、場所、申し出の締切、申し出方法、問い合わせ先を分かる範囲で含めます。状態にある募集内容だけを書き、加入を条件にしません。紙で申し出るときは班長か役員に渡すと書きます。案内本文や出欠の下書きを混ぜません。${common("recruitment")}`,
   },
   duty_roster: {
@@ -34,7 +35,7 @@ const packs: Record<DocumentKind, DraftPack> = {
     instruction: `実行委員と班長向けに、段取りの仕事に沿った準備と当日の進め方を短くまとめてください。状態にある仕事、時期、決めたことだけを書き、担当や手順は推測で補わず、準備を進めるために必要なときだけ質問にします。案内や募集の文面は混ぜません。${common("procedure")}`,
   },
   notice: {
-    version: "draft-notice@10", kind: "notice", title: "知らせ", scope: "public",
+    version: "draft-notice@11", kind: "notice", title: "知らせ", scope: "public",
     instruction: `住民向けに、今年決まった変更だけを短く知らせてください。何が変わったか、変更後の日時や場所、雨のとき、住民に必要な行動、問い合わせ先を状態から分かる範囲で含めます。紙だけを見た人にも変更後の内容が伝わるよう、変更前の案内やWebへの参照だけで済ませません。未確認の変更は本文やitemsに入れず、知らせるために必要な内容だけを質問にします。${common("notice")}`,
   },
   report: {

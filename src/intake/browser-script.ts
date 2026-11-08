@@ -340,6 +340,7 @@ export const SEND_SCRIPT = PHOTO_SCRIPT + `var SEND_LIMITS = { parts: ${MAX_PART
     var picked = pickedFiles();
     var text = form.elements['text'].value;
     if (picked.length === 0 && text.trim() === '') { say('送るものを選ぶか、一行の文を書いてください。', true); return; }
+    // 古い形式（.doc、.xls）は、そのまま送ってWorkerで読み取る。
     var tooMuch = limitError(picked);
     if (tooMuch) { say(tooMuch, true); return; }
     button.disabled = true;

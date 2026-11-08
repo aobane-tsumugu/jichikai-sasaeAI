@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "cloudflare:workers";
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { FIRST_SLICE as fixture } from "../fixtures/first-slice";
 import { setClientFactory } from "../src/ai/deps";
 import type { Reading } from "../src/ai/schema";
@@ -16,12 +16,16 @@ import { saveDocument } from "../src/project/actions";
 import { recordLineInquiry } from "../src/project/followup";
 import { get, postForm, realApp, withEnv } from "./helpers";
 
+afterEach(() => vi.useRealTimers());
+
 it("写真を引用して一問ずつ聞き、撮り直しと分からないで閉じ、役員が元のトークへ返事を送り、翌朝知らせて雨は送らず配る", async () => {
+  const now = new Date("2026-11-06T01:00:00Z");
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(now);
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, { kind: "event", title: fixture.draftTitle, year: fixture.eventYear, accountId: account.accountId });
   const root = `/${ward.slug}/admin`;
-  const now = new Date("2026-11-06T01:00:00Z");
   const secret = "fictional-u5-secret";
   const destination = crypto.randomUUID();
   const groupId = "C-fictional-u5-group";
@@ -199,14 +203,16 @@ it("写真を引用して一問ずつ聞き、撮り直しと分からないで�
     expect(await getDigestSettings(env.DB, ward.wardId)).toEqual({ cutoff: "01:00", send: "09:00", eventDays: 4, dueDays: 2 });
 
     // 配ったあとの雨の変更はAIなし。送らない選択が配布処理まで届く。
-    await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, { kind: "announcement", title: "案内", scope: "public", basedOn: project.stateVersion, body: JSON.stringify({ text: fixture.publicAnnouncement, items: [] }) });
+    // 過ぎた日の確認とは分け、試験の当日の案内から雨の変更を配る。
+    const rainDayText = "11月6日";
+    await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, { kind: "announcement", title: "案内", scope: "public", basedOn: project.stateVersion, body: JSON.stringify({ text: fixture.publicAnnouncement.replace(fixture.publicDayText, rainDayText), items: [] }) });
     const draft = await env.DB.prepare("SELECT document_id FROM documents WHERE ward_id = ? AND project_id = ? AND kind = 'announcement'").bind(ward.wardId, project.projectId).first<{ document_id: string }>();
     if (!draft) throw new Error("雨の変更の前の案内がありません");
     await env.DB.prepare("UPDATE document_versions SET published_at = '2026-11-06T01:00:00.000Z' WHERE ward_id = ? AND document_id = ?").bind(ward.wardId, draft.document_id).run();
     const rainHtml = await (await get(realApp, `${root}/projects/${project.projectId}/draft/notice`, cookie, runtime)).text();
     expect(rainHtml).toContain('name="lineDelivery"');
     const beforeRain = sent.length;
-    const rain = await postForm(realApp, `${root}/projects/${project.projectId}/draft/rain-notice`, { templateId: "rain", eventName: fixture.draftTitle, place: fixture.previousPlace, dateTime: fixture.publicDayText, lineDelivery: "skip" }, cookie, runtime);
+    const rain = await postForm(realApp, `${root}/projects/${project.projectId}/draft/rain-notice`, { templateId: "rain", eventName: fixture.draftTitle, place: fixture.previousPlace, dateTime: rainDayText, lineDelivery: "skip" }, cookie, runtime);
     expect(rain.status).toBe(303);
     expect(sent).toHaveLength(beforeRain);
     expect((await env.DB.prepare("SELECT line_status FROM publication_records WHERE ward_id = ? AND project_id = ?").bind(ward.wardId, project.projectId).all<{ line_status: string }>()).results).toEqual([{ line_status: "not_sent" }]);

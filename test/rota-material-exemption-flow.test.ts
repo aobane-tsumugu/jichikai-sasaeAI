@@ -6,7 +6,7 @@ import { replaceRoster } from "../src/answers/api";
 import { seedAdmin } from "../src/core/testing";
 import { sha256Hex } from "../src/intake/media";
 import { receive } from "../src/intake/receive";
-import { createProject, getProjectState } from "../src/project/api";
+import { applyChange, createProject, getProjectState } from "../src/project/api";
 import { exemptions } from "../src/rota/store";
 import { createInvite } from "../src/space/api";
 import { MATERIAL_EXEMPTION_FIXTURE as material, ROTA_REVIEW_FIXTURE as fixture } from "./fixtures/rota";
@@ -108,4 +108,36 @@ it("架空の免除資料から一問だけ出し、答えるまでは担当を�
     expect(page).not.toContain(material.editedReason);
     expect(page).not.toContain("免除");
   }
+});
+
+it("架空の通年の当番で今年の免除を答えると、翌年1月から3月も対象の世帯を割り当てない", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  await replaceRoster(env.DB, ward.wardId, [fixture.first, fixture.exempt]
+    .map((household) => ({ household, district: fixture.district })), { household: 0, district: 1 });
+  const project = await createProject(env.DB, ward.wardId, {
+    kind: "duty", title: "架空の通年のごみ当番", year: 2026, accountId: account.accountId,
+  });
+  const root = `/${ward.slug}/admin`;
+  expect((await postForm(realApp, `${root}/rota/${project.projectId}/weekly`, { weekday: "1" }, cookie)).status).toBe(303);
+  // 架空の資料の免除を読み取った変更から、役員への質問を作る。
+  expect((await applyChange(env.DB, ward.wardId, project.projectId, {
+    kind: "row", table: "decisions", data: { what: material.sentence },
+    source: { kind: "original", ref: "fictional-annual-exemption", locator: "架空の引き継ぎメモ", year: 2026 },
+    confidence: "high", packVersion: "rota-annual-exemption-fictional@1",
+  })).status).toBe("held");
+  const before = await getProjectState(env.DB, ward.wardId, project.projectId);
+  const question = before?.questions.find((entry) => entry.target?.startsWith("rota_exemption:"));
+  if (!question) throw new Error("架空の免除の質問がありません。");
+  expect((await postForm(realApp, `${root}/projects/${project.projectId}/questions/${question.questionId}/exemption`, {
+    action: "今年の当番から外す", reason: material.editedReason,
+  }, cookie)).headers.get("location")).toContain("notice=exempted");
+
+  const state = await getProjectState(env.DB, ward.wardId, project.projectId);
+  const duties = state?.tables.duties.filter((row) => row.scope === "current") ?? [];
+  expect(duties).toHaveLength(52);
+  expect(duties.some((row) => String(row.data.slot).startsWith("2027-"))).toBe(true);
+  expect(duties.every((row) => row.data.assignee === fixture.first)).toBe(true);
+  expect(await exemptions(env.DB, ward.wardId)).toMatchObject([{
+    household: fixture.exempt, starts_on: "2026-04-01", ends_on: "2027-03-31",
+  }]);
 });

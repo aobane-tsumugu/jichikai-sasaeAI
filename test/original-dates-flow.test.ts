@@ -126,7 +126,7 @@ it("今年の食い違いは資料の日付と中身の手がかりを示して�
   const state = await s.state();
   expect(state?.questions).toHaveLength(1);
   for (const text of ["今年", "9月20日", "抽選会", "役員会のメモ", "中身から見ると"]) expect(state!.questions[0]!.text).toContain(text);
-  expect(state?.items.find((item) => item.key === "due")?.current?.content).toBe("10月5日");
+  expect(state?.items.find((item) => item.key === "due")?.current).toBeNull();
   expect(ai.calls()).toBe(1);
 });
 
