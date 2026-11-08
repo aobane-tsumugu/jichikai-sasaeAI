@@ -155,6 +155,9 @@ async function checkChange(
       .find((year) => year !== undefined && year < project.year);
     // 今年配った紙（QR で今年の版と分かる物）は、年が書いていなくても今年の中身にする。
     if (pastYear !== undefined) source = { ...source, year: pastYear, qr: false };
+    // 資料の名前に今年の年度が書かれている物（「2026年4月_役員会のメモ」）は、年の書かれた資料として今年の中身にする。
+    // 年がどこにも書かれていない資料は、決定 L-215 のとおり年不明の参考に留め、暦や中身から年を推し量らない。
+    else if (source.year === undefined && namedYear && Number(namedYear[1]) === project.year) source = { ...source, year: project.year };
   }
   if (source.reference && change.kind !== "item" && change.kind !== "row") {
     return { ok: false, reason: "参考資料から今年のやることは変えません" };

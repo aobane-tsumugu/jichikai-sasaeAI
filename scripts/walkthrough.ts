@@ -323,11 +323,22 @@ async function runFull() {
     if (answered.status !== 303) throw new Error("今年の食い違いの質問に答えられません");
     if (!chosenDay && /\d{1,2}月\d{1,2}日|\d{1,2}\/\d{1,2}/.test(answer)) chosenDay = answer;
   }
-  if (chosenDay && (!draft.fields.item_date_time?.trim() || draft.fields.item_date_time.includes("確認中"))) {
-    // 答えると準備の中身の版が進むので、今の下書きの欄を読み直してから直す。
+  const answeredAny = /\/questions\/[0-9a-f-]{36}"/.test(questionPage);
+  if (answeredAny) {
+    // 答えた値（いつ、締切など）が入った下書きにするため、役員と同じく AI に下書きを頼み直す。
+    if ((await post(admin + "/projects/" + project + "/draft/announcement/start", {})).status !== 303) throw new Error("AIに案内を頼み直せません");
+    const again = await waitForDraft(draftPath);
+    if (!again.ready) unfinished.push("答えたあとの案内の下書き（AI依頼の完了待ちの上限）");
+    Object.assign(draft.fields, again.form.fields);
+  }
+  // 年の書かれていない今年の資料の値は、年不明の参考に留まる（決定 L-215）。下書きの「いつ」や締切が空か（確認中）の時は、
+  // 役員が下書きを直すのと同じく、選んだ日と今年の締切を入れて保存する。
+  const pending = (value?: string) => !value?.trim() || value.includes("確認中");
+  if ((chosenDay && pending(draft.fields.item_date_time)) || ("item_due" in draft.fields && pending(draft.fields.item_due))) {
     const fresh = readForm((await get(draftPath)).html, "/save");
-    fresh.fields.item_date_time = chosenDay;
-    if ((await post(fresh.action, fresh.fields)).status !== 303) throw new Error("選んだ日で案内を直せません");
+    if (chosenDay && pending(fresh.fields.item_date_time)) fresh.fields.item_date_time = chosenDay;
+    if ("item_due" in fresh.fields && pending(fresh.fields.item_due)) fresh.fields.item_due = "10月9日（金）まで";
+    if ((await post(fresh.action, fresh.fields)).status !== 303) throw new Error("今年の日と締切で案内を直せません");
     Object.assign(draft.fields, fresh.fields);
   }
   const published = await publish(project, (await get(admin + "/publish/" + project)).html, "public");
