@@ -31,7 +31,7 @@ export async function searchArchive(db: D1Database, wardId: string, input: Archi
   const query = input.query.trim();
   if (query.length < 2) return [];
   const short = query.length < 3;
-  const clauses = ["e.ward_id = ?", short ? "instr(e.content, ?) > 0" : "archive_search_fts MATCH ?"];
+  const clauses = ["e.ward_id = ?", short ? "instr(lower(e.content), lower(?)) > 0" : "archive_search_fts MATCH ?"];
   const binds: (string | number)[] = [wardId, short ? query : `"${query.replaceAll('"', '""')}"`];
   if (input.year !== undefined) {
     clauses.push("e.year = ?");
@@ -53,7 +53,7 @@ export async function searchArchive(db: D1Database, wardId: string, input: Archi
   const result = await db.prepare(`
     SELECT e.entry_id, e.project_id, p.title, p.closed_at, p.kind AS project_kind, e.year, e.record_type,
            e.counterpart, e.source_id, e.locator,
-           ${short ? "substr(e.content, max(1, instr(e.content, ?) - 30), 80)" : "snippet(archive_search_fts, 0, '「', '」', ' … ', 16)"} AS excerpt
+           ${short ? "substr(e.content, max(1, instr(lower(e.content), lower(?)) - 30), 80)" : "snippet(archive_search_fts, 0, '「', '」', ' … ', 16)"} AS excerpt
       FROM ${short ? "archive_search_entries e" : "archive_search_fts JOIN archive_search_entries e ON e.entry_id = archive_search_fts.rowid"}
       JOIN projects p ON p.ward_id = e.ward_id AND p.project_id = e.project_id
      WHERE ${clauses.join(" AND ")}
