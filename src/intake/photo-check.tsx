@@ -65,10 +65,12 @@ const PAPER_LABEL: Record<PhotoCheck["paperKind"], string> = {
   announcement: "案内", roster: "名簿", sponsors: "協賛先の一覧", receipt: "領収書", layout: "配置図", rota: "当番表", report: "報告", notice: "通知", memo: "メモ", answer_sheet: "回答票", rules: "規約", meeting_papers: "総会の資料", year_plan: "年間の予定", officers: "役員の一覧", photo: "写真", other: "紙の種類はまだ分かりません",
 };
 
-export function PhotoCheckNotice({ checks, retakeHref, continueHref }: { checks: StoredPhotoCheck[]; retakeHref: string; continueHref: string }) {
+export function PhotoCheckNotice({ checks, retakeHref, continueHref, read = false }: { checks: StoredPhotoCheck[]; retakeHref: string; continueHref: string; read?: boolean }) {
   if (!checks.length) return null;
   const needsRetake = checks.some((check) => check.readability === "unreadable" || check.readability === "partial");
-  return <section class="panel" role="status"><h2>写真を受け取りました</h2><p class="lead">読めたかどうかを先に確かめています。撮り直さなくても、読み取れた分から進みます。</p>
+  // 読み終わったあとは「確かめています」と書き続けない。読みにくい所がある時だけ、撮り直すかを聞く。
+  if (read && !needsRetake) return null;
+  return <section class="panel" role="status"><h2>{read ? "読み取りにくい写真がありました" : "写真を受け取りました"}</h2><p class="lead">{read ? "撮り直さなくても、読み取れた分から進みます。" : "読めたかどうかを先に確かめています。撮り直さなくても、読み取れた分から進みます。"}</p>
     {checks.map((check, index) => <p>{checks.length > 1 ? `${index + 1}枚目: ` : ""}{photoCheckMessage(check)}{check.paperKind !== "other" ? ` ${PAPER_LABEL[check.paperKind]}のようです。` : ""}</p>)}
     {needsRetake ? <><p>明るい場所で、紙の全体が入るように撮れますか。</p><div class="action-links"><a class="button secondary" href={retakeHref}>撮り直す</a><a class="quiet" href={continueHref}>このままにする</a></div></> : null}
   </section>;

@@ -9,7 +9,7 @@ import type { Bundle } from "../core/bundle";
 import { newId, nowIso } from "../core/ids";
 import { Notice } from "../core/ui";
 import type { Context } from "hono";
-import { formatDateText, formatJst } from "../core/time";
+import { formatDateText, formatJst, parseEventDay } from "../core/time";
 import type { AdminEnv } from "../env";
 import { broadcastLineText, getLineAllowance, lineAccessToken, LINE_NOT_CONFIGURED, sendLineTitleAndUrl } from "../line/api";
 import { getNoticeFlyer, noticeFlyerPath, noticeLineText } from "./notice-flyers";
@@ -19,7 +19,7 @@ import { answerDeadlineFromDraft, getRoster, parseDistribution } from "../answer
 import { checkPublicDraft } from "./check";
 import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, ITEM_SCREEN_LABEL, isItemKey, type DocumentKind, type ProjectKind } from "../project/model";
 import { applyChange } from "../project/apply";
-import { recordPublishedItems } from "../project/actions";
+import { recordPublishedItems, setEventDay } from "../project/actions";
 import { paperHeading, withoutTitleLine } from "../project/heading";
 import { documentBodyCheckMessage, PENDING, plainText, withoutPending, writtenInText } from "../project/document-body";
 import { MaterialsTable } from "../space/materials";
@@ -88,6 +88,26 @@ function paperTargetLabel(raw: string): string {
     }
   } catch { /* 古い記録の形式は個別表示しない */ }
   return "指定なし";
+}
+
+/**
+ * 住民に知らせた案内の「いつ」から当日と終わる日が読め、準備の当日がまだ空なら、その日を当日に入れる。
+ * 役員が案内に書いた日を、やることの画面でもう一度入れなくて済むようにする（前提 3）。
+ * 役員が入れた当日は書き換えない。過ぎた日（去年の日が残った案内など）は入れない。
+ */
+async function fillEventDay(db: D1Database, wardId: string, projectId: string, year: number, body: string, accountId: string): Promise<void> {
+  const current = await db.prepare("SELECT due_on FROM project_deadlines WHERE ward_id = ? AND project_id = ? AND kind = 'event_day'").bind(wardId, projectId).first<{ due_on: string }>();
+  if (current?.due_on) return;
+  let text = "";
+  try {
+    const parsed = JSON.parse(body) as { items?: { key?: string; content?: string }[] };
+    text = parsed.items?.find((item) => item.key === "date_time")?.content ?? "";
+  } catch { return; }
+  if (!text) return;
+  const start = parseEventDay(text, year, "start");
+  const today = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date());
+  if (!start || start < today) return;
+  await setEventDay(db, wardId, projectId, start, accountId, parseEventDay(text, year, "end") ?? start);
 }
 
 async function getProject(db: D1Database, wardId: string, projectId: string): Promise<ProjectRow | null> {
@@ -444,6 +464,7 @@ admin.post("/publish/:projectId/send", async (c) => {
     </AdminPage>, 409);
   }
   await recordPublishedItems(c.env.DB, ward.wardId, projectId, versionId, account.accountId);
+  await fillEventDay(c.env.DB, ward.wardId, projectId, project.year, publishedBody, account.accountId);
   for (const taskKey of distributedTaskKeys(tasks, row.kind)) {
     await markDistributedTask(c.env.DB, ward.wardId, projectId, account.accountId, taskKey, versionId);
   }

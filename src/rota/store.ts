@@ -61,10 +61,50 @@ export interface Comparison {
   year: number;
   hasOldRoster: boolean;
   hasPreviousTable?: boolean;
+  /** 世帯の名簿がまだ無い。去年の担当を外さずに残している。 */
+  noRoster?: boolean;
+  /** 去年の日を今年の当日に合わせてずらした。 */
+  shifted?: boolean;
   added: string[];
   removed: string[];
   entries: ProposalEntry[];
   ruleRecords: string[];
+}
+
+const WEEKDAY_TEXT = ["日", "月", "火", "水", "木", "金", "土"];
+const DAY_MS = 86_400_000;
+const isoDay = (time: number) => new Date(time).toISOString().slice(0, 10);
+/** 当番の枠の文にある日（「12月26日（金）」や「2025-12-26」）を、年を補って読む。月が戻ったら次の年と読む。 */
+function slotDates(slot: string, firstYear: number, firstMonth: number): { text: string; time: number }[] {
+  const found: { text: string; time: number }[] = [];
+  for (const match of slot.matchAll(/(\d{4})-(\d{2})-(\d{2})|(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日(?:（[日月火水木金土]）|\([日月火水木金土]\))?/g)) {
+    const year = Number(match[1] ?? match[4] ?? 0) || (Number(match[5]) < firstMonth ? firstYear + 1 : firstYear);
+    const month = Number(match[2] ?? match[5]), day = Number(match[3] ?? match[6]);
+    const time = Date.UTC(year, month - 1, day);
+    if (new Date(time).getUTCMonth() === month - 1) found.push({ text: match[0], time });
+  }
+  return found;
+}
+/**
+ * 去年の表の日を、今年の当日に合わせてずらす。最初の日を今年の当日に合わせ、ほかの日も同じ日数だけ動かし、曜日を今年の物に書き直す。
+ * 今年の当日がまだ無い時は動かさない。
+ */
+export function shiftSlots(slots: string[], eventDay: string | undefined, lastYear: number): { slots: string[]; shifted: boolean } {
+  if (!eventDay) return { slots, shifted: false };
+  const first = slots.flatMap((slot) => slotDates(slot, lastYear, 1)).map((date) => date.time);
+  if (!first.length) return { slots, shifted: false };
+  const start = Math.min(...first);
+  const firstMonth = new Date(start).getUTCMonth() + 1;
+  const offset = Date.parse(`${eventDay}T00:00:00Z`) - start;
+  const written = (time: number, iso: boolean) => {
+    const date = new Date(time + offset);
+    return iso ? isoDay(date.getTime()) : `${date.getUTCMonth() + 1}月${date.getUTCDate()}日（${WEEKDAY_TEXT[date.getUTCDay()]}）`;
+  };
+  return { slots: slots.map((slot) => {
+    let text = slot;
+    for (const date of slotDates(slot, lastYear, firstMonth)) text = text.replace(date.text, written(date.time, /^\d{4}-/.test(date.text)));
+    return text;
+  }), shifted: true };
 }
 
 export async function lastPreparation(db: D1Database, wardId: string, projectId: string) {
@@ -129,16 +169,19 @@ export async function compareRota(db: D1Database, wardId: string, projectId: str
   if (!hasPreviousTable) rows = roster.map((entry, index) => ({ slot: `${index + 1}番目`, task: entry.district, assignee: entry.household }));
   const oldKeys = new Set(oldRoster?.map(householdKey));
   const currentKeys = new Set(roster.map(householdKey));
+  // 名簿が無い時に去年の世帯を全部外すと、担当が空の表になる。名簿が入るまでは去年の担当を残す。
+  const noRoster = hasPreviousTable && roster.length === 0;
+  const shift = hasPreviousTable ? shiftSlots(rows.map((row) => String(row.slot ?? "")), project.deadlines.event_day, project.year - 1) : { slots: [], shifted: false };
   const comparison: Comparison = {
     sourceTitle: previous?.title ?? "この当番に届いた去年の表", sourceProjectId: previous?.project_id ?? null,
-    year: hasPreviousTable ? project.year - 1 : project.year, hasOldRoster: oldRoster !== null, hasPreviousTable,
+    year: hasPreviousTable ? project.year - 1 : project.year, hasOldRoster: oldRoster !== null, hasPreviousTable, noRoster, shifted: shift.shifted,
     added: hasPreviousTable ? roster.filter((entry) => oldRoster ? !oldKeys.has(householdKey(entry)) : !oldNames.has(normalizeHousehold(entry.household))).map(householdLabel) : [],
-    removed: oldRoster ? oldRoster.filter((entry) => !currentKeys.has(householdKey(entry))).map(householdLabel)
+    removed: noRoster ? [] : oldRoster ? oldRoster.filter((entry) => !currentKeys.has(householdKey(entry))).map(householdLabel)
       : [...new Set(oldAssignees.filter((name) => !roster.some((entry) => normalizeHousehold(entry.household) === normalizeHousehold(name))))],
     entries: [], ruleRecords: rules.map((data) => [data.decidedOn, data.what].filter(Boolean).join(" ")),
   };
   comparison.entries = rows.map((row, index) => {
-    const slot = String(row.slot ?? "").replace(new RegExp(`\\b${project.year - 1}(?=[年/-])`, "g"), String(project.year));
+    const slot = shift.shifted ? shift.slots[index]! : String(row.slot ?? "").replace(new RegExp(`\\b${project.year - 1}(?=[年/-])`, "g"), String(project.year));
     const dates = [...slot.matchAll(/\b\d{4}-\d{2}-\d{2}\b/g)].map((match) => match[0]).filter(dateIsValid).sort();
     const on = project.deadlines.event_day;
     const from = dates[0] ?? on ?? `${project.year}-01-01`, to = dates.at(-1) ?? on ?? `${project.year}-12-31`;
@@ -146,7 +189,7 @@ export async function compareRota(db: D1Database, wardId: string, projectId: str
     const explanations: string[] = [];
     const names = splitAssignees(String(row.assignee ?? ""));
     const kept = names.filter((name) => {
-      if (hasPreviousTable && !isHouseholdAssignee(name)) return true;
+      if (hasPreviousTable && (noRoster || !isHouseholdAssignee(name))) return true;
       const matches = hasPreviousTable ? roster.filter((entry) => normalizeHousehold(entry.household) === normalizeHousehold(name)) : [roster[index]!];
       if (matches.length !== 1) {
         explanations.push(matches.length === 0 ? `去年の担当「${name}」は今の名簿にいないため、担当から外しました。`

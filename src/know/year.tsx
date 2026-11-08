@@ -169,7 +169,8 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
   }
   for (const row of overrides.results.filter((entry) => entry.added && !entry.removed_at && !entry.recurrence_text && entry.month)) {
     // 今年の準備を始めた予定は、準備の行が同じ予定を表すので、二つ出さない。
-    if (projects.some((project) => project.title === row.title)) continue;
+    // 終わりにした準備の行も同じ予定なので、年間の予定の行と二つ並べない。
+    if (projects.some((project) => project.title === row.title) || rows.some((entry) => entry.title === row.title)) continue;
     const at = position(row.month!);
     if (row.source_original_id) claim(row.month!, row.title);
     rows.push({ key: row.item_id, title: row.title, note: row.date_text || (row.source_original_id ? "届いた資料から読み取りました" : ""), state: "fact", level: levelOf(row.source_original_id ? 1 : 0), from: at, to: at + 4, href: adminPath(ward, `/year/${row.item_id}`), order: at });

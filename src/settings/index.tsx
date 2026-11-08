@@ -188,11 +188,13 @@ admin.get("/", async (c) => {
     <li><a href={adminPath(ward, "/settings")}>自治会の設定を直す</a></li>
     <li><a href={`/${ward.slug}/`}>住民向けのページを見る</a></li>
   </ul><form method="post" action={adminPath(ward, "/logout")}><button class="quiet">ログアウトする</button></form></>;
-  const intro = firstVisit ? <p class="lead">この画面で、{ward.name}の自治会の行事や総会の準備を、役員みんなで進めます。手元の資料を送ると、AIが読んで、いつ何をするかと、住民に知らせる案内の下書きを用意します。</p> : null;
+  // 名前に「自治会」が入っている時に「〇〇自治会の自治会」と書かない。
+  const wardTitle = /自治会$/.test(ward.name) ? ward.name : `${ward.name}の自治会`;
+  const intro = firstVisit ? <p class="lead">この画面で、{wardTitle}の行事や総会の準備を、役員みんなで進めます。手元の資料を送ると、AIが読んで、いつ何をするかと、住民に知らせる案内の下書きを用意します。</p> : null;
   const readingLine = reading || delayed ? <p class="muted">{reading ? `送った資料のうち${reading}件を、今AIが読んでいます。` : ""}{delayed ? `${delayed}件は読み取りが遅れています。送り直さなくてかまいません。` : ""}</p> : null;
   return c.html(<AdminPage ward={ward} account={account} title="最初の画面" home>
     {!projects.length && !records.length ? <>
-      <h1>{ward.name}の自治会</h1>
+      <h1>{wardTitle}</h1>
       <p class="lead">この画面で、この自治会の行事や総会の準備を、役員みんなで進めます。</p>
       {/* 読み終わって準備の見当が付いた資料があれば、そこから準備を始めることを主な操作にする。 */}
       {readyTitles.length ? <><section class="next">
@@ -217,7 +219,7 @@ admin.get("/", async (c) => {
       {yearMap}
       {links}
     </> : <>
-      <h1>{ward.name}の自治会の今</h1>
+      <h1>{wardTitle}の今</h1>
       {intro}
       {main}
       {projects.length ? <div class="action-links"><a class="button secondary" href={adminPath(ward, "/messages/new")}>住民へのメッセージを作る</a></div> : null}

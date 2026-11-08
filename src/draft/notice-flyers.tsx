@@ -26,6 +26,8 @@ export async function flyerMaterials(env: Env, wardId: string, projectId: string
     LEFT JOIN projects p ON p.ward_id = j.ward_id AND p.project_id = j.project_id
     WHERE o.ward_id = ? AND o.withdrawn_at IS NULL AND o.r2_path IS NOT NULL
       AND o.media_type IN ('image/jpeg', 'image/png') AND j.withdrawn_at IS NULL
+      -- 住民に出る画像の候補。どの準備の資料にも入っていない写真（年賀状や予約票など）は出さない（前提 21）。
+      AND j.project_id IS NOT NULL
       AND (j.via = 'admin' OR EXISTS (
         SELECT 1 FROM line_inbox_items i LEFT JOIN line_bundle_decisions d
           ON d.ward_id = i.ward_id AND d.bundle_id = i.bundle_id

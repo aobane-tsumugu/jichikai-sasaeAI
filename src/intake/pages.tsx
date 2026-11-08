@@ -185,7 +185,9 @@ intakeAdmin.get("/intake/received", async (c) => {
   const whereText = (job: (typeof jobs)[number]) => {
     const name = job.project_id ? names.get(job.project_id) : undefined;
     if (job.status === "received" || job.status === "reading") return "AIが読んでいます。";
-    if (job.status === "read" || job.status === "connecting") return `読み終わりました。${name ? `${name}の中身に入れています。` : "どの準備の資料かを分けています。"}`;
+    if (job.status === "connecting") return `読み終わりました。${name ? `${name}の中身に入れています。` : "どの準備の資料かを、AIが分けています。"}`;
+    // AI が分け終わり、役員が決めるのを待っている物を「分けています」と書き続けない。
+    if (job.status === "read") return `読み終わりました。${name ? `${name}の中身に入れています。` : "どの準備の資料かは、「読み終わったもの」から決められます。"}`;
     // 通しの道具は「どれの資料か分けました」を見て読み終わりを待つので、この言葉は残す。
     if (job.status === "done") return name ? `読み終わり、どれの資料か分けました。${name}の資料に入れています。` : "読み終わりました。どの準備の資料かは、まだ決まっていません。";
     if (job.status === "attention") return "読み取りが遅れています。送ったものは預かっているので、送り直さなくてかまいません。";
@@ -208,7 +210,7 @@ intakeAdmin.get("/intake/received", async (c) => {
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     <h2>送ったもの</h2><ul class="rows">{await Promise.all(jobs.map(async (job) => <li class="panel">
       <p>「<b>{await jobTitle(c.env.DB, ward.wardId, job)}</b>」は、{whereText(job)}</p>
-      <PhotoCheckNotice checks={await photoChecks(c.env.DB, ward.wardId, job.job_id)} retakeHref={sendHref} continueHref={readHref} />
+      <PhotoCheckNotice checks={await photoChecks(c.env.DB, ward.wardId, job.job_id)} retakeHref={sendHref} continueHref={readHref} read={!["received", "reading"].includes(job.status)} />
       {job.project_id ? <a href={adminPath(ward, `/projects/${job.project_id}/map`)}>{names.get(job.project_id) ?? ""}のやることを見る</a> : null}
       {job.status === "failed" ? <><form method="post" action={adminPath(ward, `/intake/${job.job_id}/retry`)}><button class="quiet">もう一度読む</button></form>
         <form method="post" action={adminPath(ward, `/intake/${job.job_id}/continue`)}><button class="quiet">このまま進める</button></form></> : null}
@@ -232,6 +234,7 @@ intakeAdmin.get("/intake/read", async (c) => {
     yearItemsForStart(c.env.DB, ward.wardId),
   ]);
   const open = projects.map((project) => ({ project_id: project.projectId, name: project.title }));
+  const joined = c.req.query("n") === "joined" ? projects.find((project) => project.projectId === c.req.query("project")) ?? null : null;
   // 題の無い資料は、一件ずつ同じ行を並べず、何の資料かと、いつどこから届いたかを書いて一つにまとめる。
   const untitledJobs = [...new Set(groups.filter((group) => !group.title).flatMap((group) => group.materials.map((m) => m.jobId)))];
   const senders = new Map((await c.env.DB.prepare(`SELECT j.job_id, j.via, j.created_at, MAX(l.sender_display_name) AS sender FROM jobs j
@@ -261,6 +264,7 @@ intakeAdmin.get("/intake/read", async (c) => {
     <h1>{groups.length ? "読み終わりました" : "読み終わったものはまだありません"}</h1><p class="lead">{groups.length > 1 ? "どれの資料か分けました。違っていても、あとで直せます。" : groups.length ? "資料をまとめました。違っていても、あとで直せます。" : "読み終わると、ここに出ます。画面を閉じてもかまいません。"}</p>
     <ErrorNotice code={c.req.query("error")} messages={{ day: "今年の行事の日を入れ直してください。分からないときは空欄で進められます。" }} />
     {c.req.query("n") === "withdrawn" ? <div class="notice done" role="status"><strong>{Number(c.req.query("count") ?? "0")}件の資料を消しました</strong><p>読み取った内容もいっしょに消しました。</p></div> : null}
+    {joined ? <div class="notice done" role="status"><strong>「{joined.title}」の準備に資料を入れました</strong><p>やることと下書きに使います。<a href={adminPath(ward, `/projects/${joined.projectId}/map`)}>{joined.title}のやることを見る</a></p></div> : null}
     {await Promise.all(groups.filter((group) => group.title).map(async (group, index) => {
       const ids = new Set(group.materials.map((m) => m.original.original_id));
       const fields = group.materials.flatMap((m) => m.readings.flatMap((r) => "fields" in r.body ? r.body.fields.filter((f) => ids.has(f.original_id)) : []));
@@ -302,7 +306,8 @@ intakeAdmin.post("/intake/start", async (c) => {
     projectId: String(form.get("projectId") ?? "") || undefined, projectName: form.get("operation") === "new-project" ? projectName : undefined,
     kind: PROJECT_KINDS.find((value) => value === kind),
   });
-  if (project?.joined) return c.redirect(`${adminPath(ward, "/inbox")}?n=assigned&project=${project.projectId}`, 303);
+  // 入れたあとは、入れた先を書いて読み終わったものの画面に戻る。ほかのまとまりも続けて決められるように。
+  if (project?.joined) return c.redirect(`${adminPath(ward, "/intake/read")}?${new URLSearchParams({ n: "joined", project: project.projectId })}`, 303);
   return c.redirect(adminPath(ward, project ? `/intake/started/${project.projectId}` : "/intake/read"), 303);
 });
 
