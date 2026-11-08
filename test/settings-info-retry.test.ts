@@ -7,13 +7,13 @@ import { getPublicContact, getSquads } from "../src/settings/store";
 import { postForm, realApp } from "./helpers";
 
 const original = {
-  contact: "架空の元の窓口", squads: "架空の元の班",
-  answer_label_0: "架空の元の子ども", answer_label_1: "架空の元の大人", answer_label_2: "架空の元の高齢の方",
+  contact: "試しの元の窓口", squads: "試しの元の班",
+  answer_label_0: "試しの元の子ども", answer_label_1: "試しの元の大人", answer_label_2: "試しの元の高齢の方",
   digest_cutoff: "01:00", digest_send: "08:00", digest_event_days: "7", digest_due_days: "3",
 };
 const changed = {
-  contact: "架空の新しい窓口", squads: "架空の新しい班",
-  answer_label_0: "架空の新しい子ども", answer_label_1: "架空の新しい大人", answer_label_2: "架空の新しい高齢の方",
+  contact: "試しの新しい窓口", squads: "試しの新しい班",
+  answer_label_0: "試しの新しい子ども", answer_label_1: "試しの新しい大人", answer_label_2: "試しの新しい高齢の方",
   digest_cutoff: "02:00", digest_send: "10:30", digest_event_days: "10", digest_due_days: "5",
 };
 const defaults = { answer_label_0: DEFAULT_ANSWER_LABELS[0], answer_label_1: DEFAULT_ANSWER_LABELS[1], answer_label_2: DEFAULT_ANSWER_LABELS[2] };

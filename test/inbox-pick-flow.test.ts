@@ -26,8 +26,8 @@ it("届いたものが無い時は、知らせと次にすることだけを出�
 it("分からないものは行事を選ぶ画面へ進み、選び直しと外した時を正しく知らせる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
-  await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId });
-  await lineItem(ward.wardId, "item-1", "架空の連絡");
+  await createProject(env.DB, ward.wardId, { kind: "event", title: "試しの行事", year: 2026, accountId: account.accountId });
+  await lineItem(ward.wardId, "item-1", "試しの連絡");
   const inbox = await (await get(realApp, `${root}/inbox`, cookie)).text();
   expect(inbox).toContain("<b>個別に送ってきた方 1</b>");
   expect(inbox).not.toContain("名前の分からない人");
@@ -36,8 +36,8 @@ it("分からないものは行事を選ぶ画面へ進み、選び直しと外�
   const pick = await redirectedTalkPage(`${root}/inbox/item-1/pick`, cookie);
   expect(pick).toContain("何の話か");
   expect(pick).toContain("どこからどこまでか");
-  expect(pick).toContain("架空の連絡");
-  expect(pick).toContain("架空の行事");
+  expect(pick).toContain("試しの連絡");
+  expect(pick).toContain("試しの行事");
   expect(pick).toContain("新しく準備を始める");
   expect(pick).toContain("取っておかない");
   expect(pick).not.toContain("関係のないものとして捨てる");
@@ -48,7 +48,7 @@ it("分からないものは行事を選ぶ画面へ進み、選び直しと外�
 
 it("同じ人からの問い合わせは一つのトークに出し、送られた順に返事の画面へつなぐ", async () => {
   const { ward, cookie } = await seedAdmin(env.DB);
-  for (const [index, text] of ["明日の架空の集まりは何時からですか", "架空の質問その二", "架空の質問その三", "架空の質問その四"].entries()) {
+  for (const [index, text] of ["明日の試しの集まりは何時からですか", "試しの質問その二", "試しの質問その三", "試しの質問その四"].entries()) {
     await recordLineInquiry(env.DB, ward.wardId, { eventId: `inquiry-${index}`, receivedAt: `2026-09-1${index}T00:00:00.000Z`, text: text!, sourceType: "user", sourceId: "fictional-user", senderLabel: null });
   }
   const page = await (await get(realApp, `/${ward.slug}/admin/inbox`, cookie)).text();
@@ -59,8 +59,8 @@ it("同じ人からの問い合わせは一つのトークに出し、送られ�
   const talk = talks[0];
   if (!talk) throw new Error("問い合わせのトークがありません");
   const timeline = await (await get(realApp, `/${ward.slug}/admin${talkPath(talk.id)}`, cookie)).text();
-  expect(timeline).toContain("明日の架空の集まりは何時からですか");
-  expect(timeline).toContain("架空の質問その二");
+  expect(timeline).toContain("明日の試しの集まりは何時からですか");
+  expect(timeline).toContain("試しの質問その二");
   expect(timeline).toContain(`/${ward.slug}/admin/inquiries/`);
   expect(timeline).toContain("返事はまだです。");
 });

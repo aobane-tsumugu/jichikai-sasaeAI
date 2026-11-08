@@ -446,7 +446,7 @@ async function selfTest() {
   const { createServer } = await import("node:http");
   const { mkdtempSync, rmSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
-  for (const spaceOpen of [false, true]) await test(`架空の区で画面を集め、更新と別の区へ進まない（実行委員のページ${spaceOpen ? "開設済み" : "未開設"}）`, async () => {
+  for (const spaceOpen of [false, true]) await test(`試しの区で画面を集め、更新と別の区へ進まない（実行委員のページ${spaceOpen ? "開設済み" : "未開設"}）`, async () => {
     const temp = mkdtempSync(resolve(tmpdir(), "check-screens-"));
     const requests: string[] = [];
     const html = (body: string) => `<!doctype html><html lang="ja"><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="/favicon.ico"><style>body{margin:0;font-size:18px}a,button,input,summary{display:block;min-height:48px;font-size:18px}.small{font-size:12px}.wide{width:1400px}</style><script nonce="fixture" src="/fixture/app.js"></script></head><body>${body}</body></html>`;
@@ -465,7 +465,7 @@ async function selfTest() {
           request.on("data", (chunk: Buffer) => { body += chunk.toString("utf8"); });
           request.on("end", () => {
             const form = new URLSearchParams(body);
-            const valid = form.get("name") === "架空の役員" && form.get("password") === "fictional-only"
+            const valid = form.get("name") === "試しの役員" && form.get("password") === "fictional-only"
               && request.headers.origin === `http://${request.headers.host}`;
             response.writeHead(valid ? 303 : 403, valid ? { Location: "/fixture/admin/", "Set-Cookie": "device=fictional; Path=/fixture/admin; HttpOnly" } : {});
             response.end();
@@ -474,9 +474,9 @@ async function selfTest() {
       } else if (path.startsWith("/fixture/admin") && !request.headers.cookie?.includes("device=fictional")) {
         response.writeHead(403); response.end(html("役員用です"));
       } else if (path === "/fixture/admin/") {
-        response.end(html('<a href="/fixture/admin/projects/first/map">架空の行事のやること</a><a href="/fixture/admin/archive/old">去年の終わったもの</a>'));
+        response.end(html('<a href="/fixture/admin/projects/first/map">試しの行事のやること</a><a href="/fixture/admin/archive/old">去年の終わったもの</a>'));
       } else if (path === "/fixture/answer/first") {
-        response.end(html('<main><h1>架空の行事の出欠を教えてください</h1><form method="post"><label>代表者のお名前<input name="household"></label><button>この内容で送る</button></form></main>'));
+        response.end(html('<main><h1>試しの行事の出欠を教えてください</h1><form method="post"><label>代表者のお名前<input name="household"></label><button>この内容で送る</button></form></main>'));
       } else if (path === "/fixture/help/first") {
         response.end(html('<main><h1>手伝える時間帯を教えてください</h1><form method="post"><label>お名前<input name="helper_name"></label><label>時間帯<input name="helper_times"></label><button>申し込む</button></form></main>'));
       } else if (path === "/fixture/admin/space/first") {
@@ -491,27 +491,27 @@ async function selfTest() {
       } else if (path === "/fixture/admin/projects/first") {
         response.end(html('<a href="/fixture/admin/projects/first/map">やること</a><a href="/fixture/admin/answers/first">出欠の返事を見る</a><a href="/fixture/admin/projects/first/committee">実行委員名簿</a><a href="/fixture/admin/inbox/item-one/pick">LINEから届いたものを資料にする</a><a href="/fixture/admin/inbox/city/job-one/pick">送ったものを資料にれる</a><a href="/fixture/admin/projects/first/draft/notice">雨の変更</a><a href="/fixture/admin/projects/second/map">別のやること</a><a href="/fixture/admin/inbox">届いたもの</a><a href="/fixture/admin/archive">記録</a><a href="/fixture/admin/logout">出る</a><a href="/fixture/admin/projects/first/delete">消す</a><a href="/other/admin/">別の区</a><a href="/fixture/space/first/join/secret">一人用の入口</a>'));
       } else if (path === "/fixture/admin/answers/meeting") {
-        response.end(html(`<main><p${url.searchParams.get("view") === "read" ? ' class="small"' : ""}>架空の総会の返事</p><div style="height:1000px"></div><button>この返事を入れる</button><button>もう一件の答えを入れる</button><a href="?view=unanswered&amp;print=1">未回答の紙</a><a href="/fixture/admin/answers/meeting/answer-one/edit">返事を直す</a></main>`));
+        response.end(html(`<main><p${url.searchParams.get("view") === "read" ? ' class="small"' : ""}>試しの総会の返事</p><div style="height:1000px"></div><button>この返事を入れる</button><button>もう一件の答えを入れる</button><a href="?view=unanswered&amp;print=1">未回答の紙</a><a href="/fixture/admin/answers/meeting/answer-one/edit">返事を直す</a></main>`));
       } else if (/\/committee$|\/rota\//.test(path) || path.endsWith("/pick") || path === "/fixture/admin/projects/duty/draft/duty_roster") {
-        response.end(html('<main><p>架空の追加画面</p><div style="height:1000px"></div><button>一つ目の操作</button><button>二つ目の操作</button><a href="/fixture/admin/rota/exemptions/record-one/withdraw">免除を取り消す</a></main>'));
+        response.end(html('<main><p>試しの追加画面</p><div style="height:1000px"></div><button>一つ目の操作</button><button>二つ目の操作</button><a href="/fixture/admin/rota/exemptions/record-one/withdraw">免除を取り消す</a></main>'));
       } else if (path === "/fixture/admin/answers/first") {
-        response.end(html(`<main>${url.searchParams.get("view") === "hand" ? '<div style="height:1000px"></div><form method="post"><button>この返事を入れる</button></form>' : '<p>架空の返事の画面</p>'}<a href="?view=summary">集計</a><a href="?view=hand">手で入れる</a><a href="?view=list&amp;q=fixture-query-text">一覧</a><a href="?view=list&amp;q=another-query-text">同じ一覧</a><a href="?view=unanswered">まだ返事のない世帯</a></main>`));
+        response.end(html(`<main>${url.searchParams.get("view") === "hand" ? '<div style="height:1000px"></div><form method="post"><button>この返事を入れる</button></form>' : '<p>試しの返事の画面</p>'}<a href="?view=summary">集計</a><a href="?view=hand">手で入れる</a><a href="?view=list&amp;q=fixture-query-text">一覧</a><a href="?view=list&amp;q=another-query-text">同じ一覧</a><a href="?view=unanswered">まだ返事のない世帯</a></main>`));
       } else if (path === "/fixture/admin/projects/first/draft/notice") {
-        response.end(html(`<main><p${url.searchParams.get("edit") === "1" ? ' class="small"' : ""}>架空の知らせ</p><a href="?edit=1">下書きを書く</a></main>`));
+        response.end(html(`<main><p${url.searchParams.get("edit") === "1" ? ' class="small"' : ""}>試しの知らせ</p><a href="?edit=1">下書きを書く</a></main>`));
       } else if (path === "/fixture/admin/projects/first/map") {
         response.end(html('<main class="wide"><p class="small">undefined null [object NaN</p><button style="min-height:20px;height:20px;font-size:12px">小さい操作</button><button>主な操作</button><div style="height:900px"></div><a href="/fixture/admin/settings">自治会の設定</a></main><script nonce="fixture">console.error("secret must not appear");console.error("Failed to load resource: net::ERR_FAILED https://invalid.example/fictional-only");fetch("/fixture/admin/projects/first/title",{method:"POST"}).catch(()=>{});fetch("/fixture/admin/logout").catch(()=>{})</script>'));
       } else if (path === "/fixture/admin/inbox") {
         response.writeHead(500); response.end(html("読めませんでした"));
       } else if (path === "/fixture/admin/archive") {
         response.end(html('<main><div style="height:1000px"></div><button>終わったものを見る</button></main>'));
-      } else response.end(html('<main><p>架空の画面</p><div class="sheet"><small style="font-size:10px">紙の文字</small></div><svg><text font-size="10">図の文字</text></svg><details><summary>説明を読む</summary><small style="font-size:10px">閉じた説明</small><button>閉じた操作</button></details></main>'));
+      } else response.end(html('<main><p>試しの画面</p><div class="sheet"><small style="font-size:10px">紙の文字</small></div><svg><text font-size="10">図の文字</text></svg><details><summary>説明を読む</summary><small style="font-size:10px">閉じた説明</small><button>閉じた操作</button></details></main>'));
     });
     try {
       await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
       const address = server.address();
       assert.ok(address && typeof address !== "string");
       const creds = resolve(temp, "creds.txt");
-      writeFileSync(creds, "名前: 架空の役員\nパスワード: fictional-only\n", "utf8");
+      writeFileSync(creds, "名前: 試しの役員\nパスワード: fictional-only\n", "utf8");
       const options = { base: `http://127.0.0.1:${address.port}`, ward: "fixture", creds, out: temp, meetingProject: "meeting", dutyProject: "duty" };
       const result = await check(options);
       report(options, result.results, result.project, result.capped);

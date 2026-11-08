@@ -1,4 +1,4 @@
-// 架空の区専用。送るのは署名付きの受信要求だけで、LINEの送信APIは呼ばない。
+// 試しの区専用。送るのは署名付きの受信要求だけで、LINEの送信APIは呼ばない。
 import { isJudgeWard, JUDGE_WARDS } from "./judge-wards.ts";
 export type SqlRow = Record<string, unknown>;
 export type Query = (sql: string) => Promise<SqlRow[]>;
@@ -11,8 +11,8 @@ export interface Scene {
   messages: Array<{ text: string; expected: Expected }>;
 }
 export interface Scenes {
-  fictional: true;
-  notice: string;
+  sampleData: true;
+  provenance: string;
   projectTitle: string;
   roster: Array<{ household: string; district: string }>;
   scenes: Scene[];
@@ -45,14 +45,14 @@ export function validateTarget(options: SimOptions): URL {
   if (base.username || base.password || base.pathname !== "/" || base.search || base.hash) fail("--baseにはサイトの先頭のURLを指定してください。");
   const local = ["localhost", "127.0.0.1", "[::1]"].includes(base.hostname);
   if (options.remote ? base.origin !== "https://jichikai.aobane-tsumugu.com" : !local || base.protocol !== "http:") fail("ローカルのHTTPか、--remoteを付けた指定のstagingを使ってください。");
-  if (!/^U0{32}$/.test(options.destination)) fail("架空専用のLINE_SIM_DESTINATIONを指定してください。");
-  if (!options.secret || !options.accessToken.startsWith("fictional-")) fail("架空のLINE_SIM_CHANNEL_SECRETと、fictional-で始まるLINE_SIM_CHANNEL_ACCESS_TOKENを環境変数に設定してください。");
+  if (!/^U0{32}$/.test(options.destination)) fail("試験専用のLINE_SIM_DESTINATIONを指定してください。");
+  if (!options.secret || !options.accessToken.startsWith("fictional-")) fail("試しのLINE_SIM_CHANNEL_SECRETと、fictional-で始まるLINE_SIM_CHANNEL_ACCESS_TOKENを環境変数に設定してください。");
   if (!Number.isInteger(options.waitMs) || options.waitMs < 1000 || options.waitMs > 120000) fail("--wait-msは1000から120000までです。");
   return base;
 }
 
 export function parseScenes(value: unknown): Scenes {
-  if (!value || typeof value !== "object" || !("fictional" in value) || value.fictional !== true || !("notice" in value) || typeof value.notice !== "string" || !value.notice.includes("架空") || !("projectTitle" in value) || typeof value.projectTitle !== "string" || !value.projectTitle.includes("架空") || !("scenes" in value) || !Array.isArray(value.scenes) || !value.scenes.length || !("roster" in value) || !Array.isArray(value.roster) || !value.roster.length) fail("架空と明記した場面と名簿が必要です。");
+  if (!value || typeof value !== "object" || !("sampleData" in value) || value.sampleData !== true || !("provenance" in value) || typeof value.provenance !== "string" || !value.provenance.includes("実在の資料や住民の情報は使っていません") || !("projectTitle" in value) || typeof value.projectTitle !== "string" || !value.projectTitle.includes("試し") || !("scenes" in value) || !Array.isArray(value.scenes) || !value.scenes.length || !("roster" in value) || !Array.isArray(value.roster) || !value.roster.length) fail("試しの資料であることと来歴を記した場面と名簿が必要です。");
   const data = value as Scenes;
   const ids = new Set<string>();
   for (const scene of data.scenes) {
@@ -63,7 +63,7 @@ export function parseScenes(value: unknown): Scenes {
       if (message.expected.kind === "答えに数える" && (typeof message.expected.household !== "string" || typeof message.expected.district !== "string" || !Number.isInteger(message.expected.people) || message.expected.people! < 0)) fail("答えには名前、班、人数の期待を書いてください。");
     }
   }
-  for (const entry of data.roster) if (!entry || typeof entry.household !== "string" || typeof entry.district !== "string" || !entry.household.includes("架空")) fail("名簿には架空の名前と班が必要です。");
+  for (const entry of data.roster) if (!entry || typeof entry.household !== "string" || typeof entry.district !== "string" || !entry.household.trim() || !entry.district.trim()) fail("名簿には試しの名前と班が必要です。");
   return data;
 }
 
@@ -127,11 +127,11 @@ export async function runSimulation(options: SimOptions, scenes: Scenes, ports: 
   const report = () => {
     const matched = results.filter((r) => r.matches).length;
     const total = scenes.scenes.reduce((sum, scene) => sum + scene.messages.length, 0);
-    const lines = ["# 自治会のLINEの確認（架空）", "", scenes.notice, "", `実行: ${runId}`, `対象: ${base.origin}/${options.ward}/`,
+    const lines = ["# 自治会のLINEの確認", "", scenes.provenance, "", `実行: ${runId}`, `対象: ${base.origin}/${options.ward}/`,
       `合った文: ${matched}/${total}。送信を試した文: ${results.length}。送っていない文: ${total - results.length}。`,
       "HTTPの成功とD1の保存結果を分けて確認します。資料の読み取りとAIによる内容の反映完了、実LINEへの到達は、この集計の対象外です。",
       "残さない結果は受信の記録、原本・届いたもの・問い合わせとして本文が残っていないこと、日ごとの件数の増加を合わせて確認します。写真を当てるための一時的な文の保持はこの判定に含みません。写真のあとの文と写真自体の判断は未確認です。",
-      "返事を送れたかは問い合わせのrepliedで記録します。0なら送信完了は未確認です。原因が架空の鍵であることはWorkersのログでも確認してください。", "",
+      "返事を送れたかは問い合わせのrepliedで記録します。0なら送信完了は未確認です。原因が試しの鍵であることはWorkersのログでも確認してください。", "",
       interruption ? `停止: ${interruption}` : "送信と照合が終わりました。", "", "|場面|期待|結果|HTTP|送った文|確認した内容|", "|---|---|---|---|---|---|"];
     for (const r of results) lines.push(`|${r.scene}|${markdownCell(JSON.stringify(r.expected))}|${r.matches ? "一致" : "不一致・未確認"}|${r.http ?? "応答不明"}|${markdownCell(r.text)}|${markdownCell(r.note + " " + JSON.stringify(r.observed))}|`);
     lines.push("", "## 種類ごとの結果", "");
@@ -147,11 +147,11 @@ export async function runSimulation(options: SimOptions, scenes: Scenes, ports: 
   try {
     const targets = await ports.query(preflightSql(options, scenes.projectTitle));
     const target = targets[0];
-    if (targets.length !== 1 || !target || target.slug !== options.ward || typeof target.name !== "string" || !target.name.includes("架空") || target.channel_secret_binding !== "LINE_SIM_CHANNEL_SECRET" || target.access_token_binding !== "LINE_SIM_CHANNEL_ACCESS_TOKEN" || typeof target.project_id !== "string" || target.prior_answers !== 0) fail("区とチャネルの対応、架空専用の鍵の名前、開いている確認用の行事、答えが空であることをD1で確認してください。");
+    if (targets.length !== 1 || !target || target.slug !== options.ward || typeof target.name !== "string" || !/試し|試験用|通し確認/.test(target.name) || target.channel_secret_binding !== "LINE_SIM_CHANNEL_SECRET" || target.access_token_binding !== "LINE_SIM_CHANNEL_ACCESS_TOKEN" || typeof target.project_id !== "string" || target.prior_answers !== 0) fail("区とチャネルの対応、試験専用の鍵の名前、開いている確認用の行事、答えが空であることをD1で確認してください。");
     const projectId = target.project_id;
     const roster = await ports.query(`SELECT e.household, e.district FROM ward_roster_entries e JOIN ward_roster_settings s ON s.ward_id = e.ward_id AND s.active_set_id = e.roster_set_id WHERE e.ward_id = ${sqlText(options.wardId)} AND s.ward_id = ${sqlText(options.wardId)}`);
     const rosterKey = (r: SqlRow) => JSON.stringify([r.household, r.district]);
-    if (JSON.stringify(roster.map(rosterKey).sort()) !== JSON.stringify(scenes.roster.map(rosterKey).sort())) fail("確認用の区には場面の一覧と同じ架空の名簿を入れてください。");
+    if (JSON.stringify(roster.map(rosterKey).sort()) !== JSON.stringify(scenes.roster.map(rosterKey).sort())) fail("確認用の区には場面の一覧と同じ試しの名簿を入れてください。");
     for (const scene of scenes.scenes) {
       const day = new Date().toISOString().slice(0, 10);
       const before = (await ports.query(unrelatedSql(options.wardId, day)))[0]?.count;
@@ -219,7 +219,7 @@ async function main(): Promise<void> {
   const { resolve, dirname } = await import("node:path");
   const { execFile } = await import("node:child_process");
   const args = process.argv.slice(2);
-  if (args.includes("--help")) { console.log("npm run line-sim -- --base http://localhost:8787 --ward <架空の区> --ward-id <区のID> [--remote] [--wait-ms 60000]\nLINE_SIM_DESTINATION / LINE_SIM_CHANNEL_SECRET / LINE_SIM_CHANNEL_ACCESS_TOKENは環境変数。D1はwrangler.tomlのDBを読みます。結果はdocs/EVIDENCE/へ残します。"); return; }
+  if (args.includes("--help")) { console.log("npm run line-sim -- --base http://localhost:8787 --ward <試しの区> --ward-id <区のID> [--remote] [--wait-ms 60000]\nLINE_SIM_DESTINATION / LINE_SIM_CHANNEL_SECRET / LINE_SIM_CHANNEL_ACCESS_TOKENは環境変数。D1はwrangler.tomlのDBを読みます。結果はdocs/EVIDENCE/へ残します。"); return; }
   const flags = new Map<string, string>();
   let remote = false;
   for (let i = 0; i < args.length; i++) {

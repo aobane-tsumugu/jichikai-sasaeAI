@@ -7,13 +7,13 @@ import { get, postForm, realApp } from "./helpers";
 it("閉じたやることは変更せず、開き直してから仕事を直せる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空のやることの確認", year: 2026, eventDay: "2026-10-24", accountId: account.accountId,
+    kind: "event", title: "試しのやることの確認", year: 2026, eventDay: "2026-10-24", accountId: account.accountId,
   });
   const root = `/${ward.slug}/admin`;
   const path = `${root}/projects/${project.projectId}/map`;
   const before = (await getProjectState(env.DB, ward.wardId, project.projectId))!.mapTasks;
   const task = before.find((row) => row.taskKey === "venue")!;
-  const fields = { name: "架空の会場を予約する", start: "2026-10-20", end: "2026-10-21", progress: "done", seat_id: "" };
+  const fields = { name: "試しの会場を予約する", start: "2026-10-20", end: "2026-10-21", progress: "done", seat_id: "" };
   expect((await get(realApp, path, cookie)).status).toBe(200);
   expect((await get(realApp, `${root}/close/${project.projectId}`, cookie)).status).toBe(200);
   expect((await postForm(realApp, `${root}/close/${project.projectId}/finalize`, {}, cookie)).status).toBe(303);
@@ -22,7 +22,7 @@ it("閉じたやることは変更せず、開き直してから仕事を直せ�
   const responses = [
     await postForm(realApp, `${path}/${task.taskId}`, fields, cookie),
     await postForm(realApp, `${path}/${task.taskId}/remove`, {}, cookie),
-    await postForm(realApp, `${path}/add`, { name: "架空の追加の仕事" }, cookie),
+    await postForm(realApp, `${path}/add`, { name: "試しの追加の仕事" }, cookie),
   ];
   expect((await getProjectState(env.DB, ward.wardId, project.projectId))!.mapTasks).toEqual(before);
   for (const response of responses) {

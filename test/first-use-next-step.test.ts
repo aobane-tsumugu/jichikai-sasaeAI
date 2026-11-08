@@ -24,7 +24,7 @@ it("初めての役員に行事・資料・実行委員と班長のページの�
   expect(projectEntryHtml).toContain('<button type="submit">一年の予定に足して始める</button>');
 
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "最初の行事（架空）", year: 2026, accountId: account.accountId,
+    kind: "event", title: "最初の行事", year: 2026, accountId: account.accountId,
   });
   expect(await (await get(realApp, `${root}/`, cookie)).text()).not.toContain(opening);
   const emptyMap = await get(realApp, `${root}/projects/${project.projectId}/map`, cookie);
@@ -32,7 +32,7 @@ it("初めての役員に行事・資料・実行委員と班長のページの�
   expect(mapHtml).toContain(materials);
   expect(mapHtml).toContain("資料を送る");
   await receive(env, { wardId: ward.wardId, projectId: project.projectId, via: "admin", parts: [
-    { kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode("去年の会場の記録（架空）") },
+    { kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode("去年の会場の記録") },
   ] });
   expect(await (await get(realApp, `${root}/projects/${project.projectId}/map`, cookie)).text()).toContain("最近届いた資料");
   const space = await get(realApp, `${root}/space/${project.projectId}`, cookie);

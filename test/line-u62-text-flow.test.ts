@@ -41,7 +41,7 @@ it("U62: 一対一の出欠を先に数え、再送で増やさず、雑談を�
   } });
   const sent: Array<{ replyToken: string; messages: Array<{ text: string }> }> = [];
   const fakeLine: typeof fetch = async (url, init) => {
-    if (String(url).includes("/member/")) return Response.json({ displayName: "架空の質問者" });
+    if (String(url).includes("/member/")) return Response.json({ displayName: "試しの質問者" });
     if (String(url).endsWith("/message/reply")) {
       sent.push(JSON.parse(String(init?.body)) as (typeof sent)[number]);
       return Response.json({ sentMessages: [{ id: `fictional-u62-reply-${sent.length}` }] });
@@ -80,7 +80,7 @@ it("U62: 一対一の出欠を先に数え、再送で増やさず、雑談を�
     // intentが問い合わせでも、出欠の真偽を先に使う。
     const attendanceId = await send(fixture.attendance);
     const first = await listAnswers(env.DB, ward.wardId, project.projectId);
-    expect(first).toMatchObject([{ household: "架空参加一郎", district: "1班", peopleCount: 2, source: "line" }]);
+    expect(first).toMatchObject([{ household: "参加一郎", district: "1班", peopleCount: 2, source: "line" }]);
     expect(await inbox(attendanceId)).toMatchObject({ disposition: "matched" });
     const callsBeforeRetry = matchCalls;
     await send(fixture.attendance, false, attendanceId);
@@ -91,7 +91,7 @@ it("U62: 一対一の出欠を先に数え、再送で増やさず、雑談を�
     await send(fixture.decline);
     expect(await listAnswers(env.DB, ward.wardId, project.projectId)).toHaveLength(2);
     expect(await listAnswers(env.DB, ward.wardId, project.projectId)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ household: "架空欠席一郎", district: "1班", peopleCount: 0 }),
+      expect.objectContaining({ household: "欠席一郎", district: "1班", peopleCount: 0 }),
     ]));
     expect((await getAnswerTotals(env.DB, ward.wardId, project.projectId)).people).toBe(2);
     expect((await inquiries()).results).toHaveLength(0);

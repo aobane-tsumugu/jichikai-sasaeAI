@@ -18,7 +18,7 @@ async function addTask(db: D1Database, wardId: string, projectId: string, suffix
   await db.prepare(`INSERT INTO project_map_tasks
     (ward_id, project_id, task_id, name, period_end, progress, removed_at, sort_order, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(wardId, projectId, taskId, `${suffix}（架空）`, options.end === undefined ? day(2) : options.end,
+    .bind(wardId, projectId, taskId, `${suffix}`, options.end === undefined ? day(2) : options.end,
       options.progress ?? "open", options.removed ? "2026-01-01T00:00:00Z" : null,
       options.order ?? 100, options.created ?? "2026-01-01T00:00:00Z").run();
   return taskId;
@@ -28,7 +28,7 @@ async function addQuestion(db: D1Database, wardId: string, projectId: string, st
   const questionId = `${projectId}-${state}`;
   await db.prepare(`INSERT INTO project_questions
     (ward_id, project_id, question_id, kind, text, state, dedupe_key, created_at)
-    VALUES (?, ?, ?, 'decide', '会場を教えてください（架空）', ?, ?, '2026-01-01T00:00:00Z')`)
+    VALUES (?, ?, ?, 'decide', '会場を教えてください', ?, ?, '2026-01-01T00:00:00Z')`)
     .bind(wardId, projectId, questionId, state, questionId).run();
 }
 
@@ -42,7 +42,7 @@ async function legacyMain(db: D1Database, wardId: string, root: string): Promise
         href: kind === "submit_due" ? `/requests/city/${project.projectId}` : kind === "answer_due" ? `/answers/${project.projectId}` : `/projects/${project.projectId}/map` });
     }
     const state = await getProjectState(db, wardId, project.projectId);
-    if (!state) throw new Error("比較する架空の準備がありません");
+    if (!state) throw new Error("比較する試しの準備がありません");
     for (const task of state.mapTasks.filter((t) => t.progress !== "done" && t.periodEnd && t.taskKey !== "day")) {
       entries.push({ date: task.periodEnd, until: true, taskId: task.taskId, projectId: project.projectId, project: project.title,
         label: task.name, href: `/projects/${project.projectId}/map/${task.taskId}` });
@@ -69,9 +69,9 @@ async function legacyMain(db: D1Database, wardId: string, root: string): Promise
 
 it("三つの準備の締切・やること・質問が、個別取得と同じHTMLで同じ順に出る", async () => {
   const { ward, cookie } = await seedAdmin(env.DB);
-  const first = await createProject(env.DB, ward.wardId, { kind: "event", title: "あの準備（架空）", year: 2025, eventDay: day(-1) });
-  const second = await createProject(env.DB, ward.wardId, { kind: "city_request", title: "あの準備（架空）", year: 2026 });
-  const third = await createProject(env.DB, ward.wardId, { kind: "event", title: "いの準備（架空）", year: 2026, eventDay: day(2) });
+  const first = await createProject(env.DB, ward.wardId, { kind: "event", title: "あの準備", year: 2025, eventDay: day(-1) });
+  const second = await createProject(env.DB, ward.wardId, { kind: "city_request", title: "あの準備", year: 2026 });
+  const third = await createProject(env.DB, ward.wardId, { kind: "event", title: "いの準備", year: 2026, eventDay: day(2) });
   for (const project of [first, second, third]) {
     // 型の仕事を外し、下で順序と除外条件を見分けられる仕事を入れる。
     await env.DB.prepare("UPDATE project_map_tasks SET removed_at = '2026-01-01T00:00:00Z' WHERE ward_id = ? AND project_id = ?")
@@ -90,16 +90,16 @@ it("三つの準備の締切・やること・質問が、個別取得と同じH
       .bind(ward.wardId, project.projectId, dayTask).run();
     for (const state of ["open", "later", "answered", "unknown"] as const) await addQuestion(env.DB, ward.wardId, project.projectId, state);
   }
-  const closed = await createProject(env.DB, ward.wardId, { kind: "event", title: "終わった準備（架空）", year: 2026, eventDay: day(2) });
+  const closed = await createProject(env.DB, ward.wardId, { kind: "event", title: "終わった準備", year: 2026, eventDay: day(2) });
   await addTask(env.DB, ward.wardId, closed.projectId, "終わった準備の仕事");
   await addQuestion(env.DB, ward.wardId, closed.projectId, "open");
   await env.DB.prepare("UPDATE projects SET closed_at = '2026-01-01T00:00:00Z' WHERE ward_id = ? AND project_id = ?")
     .bind(ward.wardId, closed.projectId).run();
   const otherWard = await seedWard(env.DB);
-  const other = await createProject(env.DB, otherWard.wardId, { kind: "event", title: "別の自治会の準備（架空）", year: 2026, eventDay: day(2) });
+  const other = await createProject(env.DB, otherWard.wardId, { kind: "event", title: "別の自治会の準備", year: 2026, eventDay: day(2) });
   await addTask(env.DB, otherWard.wardId, other.projectId, "別の自治会の仕事");
   await addQuestion(env.DB, otherWard.wardId, other.projectId, "open");
-  await env.DB.prepare("INSERT INTO inquiry_records (ward_id, inquiry_id, kind, subject, answer, received_at, created_at) VALUES (?, ?, 'inquiry', '明日の会場について（架空）', '', ?, ?)")
+  await env.DB.prepare("INSERT INTO inquiry_records (ward_id, inquiry_id, kind, subject, answer, received_at, created_at) VALUES (?, ?, 'inquiry', '明日の会場について', '', ?, ?)")
     .bind(ward.wardId, `${ward.wardId}-inquiry`, new Date().toISOString(), new Date().toISOString()).run();
 
   const root = `/${ward.slug}/admin`;
@@ -115,12 +115,12 @@ it("三つの準備の締切・やること・質問が、個別取得と同じH
   // 同日の締切が先、同名の準備は一覧の順、仕事は並び番号・作成時刻の順を保つ。
   const labels = [...expected.matchAll(/<b>([^<]+)<\/b>/g)].map((match) => match[1]);
   expect(labels.filter((label) => label?.includes("あの準備"))).toEqual([
-    "あの準備（架空）　返事の締切", "あの準備（架空）　返事の締切", "あの準備（架空）　終わる日",
-    "あの準備（架空）　役員会の日", "あの準備（架空）　提出期限", "あの準備（架空）　先の時刻（架空）",
-    "あの準備（架空）　後の時刻（架空）", "あの準備（架空）　遅い順（架空）",
-    "あの準備（架空）　役員会の日", "あの準備（架空）　提出期限", "あの準備（架空）　先の時刻（架空）",
-    "あの準備（架空）　後の時刻（架空）", "あの準備（架空）　遅い順（架空）",
-    "あの準備（架空）　時期を過ぎた仕事（架空）", "あの準備（架空）　時期を過ぎた仕事（架空）",
+    "あの準備　返事の締切", "あの準備　返事の締切", "あの準備　終わる日",
+    "あの準備　役員会の日", "あの準備　提出期限", "あの準備　先の時刻",
+    "あの準備　後の時刻", "あの準備　遅い順",
+    "あの準備　役員会の日", "あの準備　提出期限", "あの準備　先の時刻",
+    "あの準備　後の時刻", "あの準備　遅い順",
+    "あの準備　時期を過ぎた仕事", "あの準備　時期を過ぎた仕事",
   ]);
   const taskId = `${second.projectId}-先の時刻`;
   const done = await postForm(realApp, `${root}/projects/${second.projectId}/map/${taskId}/done`, { back: "today" }, cookie);
@@ -146,7 +146,7 @@ it("準備が1件から50件に増えても、今やることのD1問い合わ�
   const bindings: typeof env = Object.create(env, { DB: { value: countedDb, enumerable: true } });
   const root = `/${ward.slug}/admin`;
   const prepare = async (number: number) => {
-    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: `準備${number}（架空）`, year: 2026, eventDay: day(2) });
+    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: `準備${number}`, year: 2026, eventDay: day(2) });
     await addTask(env.DB, ward.wardId, project.projectId, "確認する仕事");
     await addQuestion(env.DB, ward.wardId, project.projectId, "open");
   };
@@ -162,7 +162,7 @@ it("準備が1件から50件に増えても、今やることのD1問い合わ�
   expect(fifty.status).toBe(200);
   const body = await fifty.text();
   expect(body).toContain("AIからの質問（50件）を見る");
-  expect(body).toContain("準備50（架空）　確認する仕事（架空）");
+  expect(body).toContain("準備50　確認する仕事");
   expect(statements.length).toBe(oneCount);
   expect(statements.filter((sql) => /FROM project_map_tasks\b/.test(sql))).toHaveLength(1);
   expect(statements.filter((sql) => /FROM project_questions\b/.test(sql))).toHaveLength(1);

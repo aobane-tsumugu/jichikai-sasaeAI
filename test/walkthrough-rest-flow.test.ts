@@ -10,7 +10,7 @@ import { createProject } from "../src/project/api";
 import { recordLineInquiry } from "../src/project/followup";
 import { realApp, withEnv } from "./helpers";
 
-it("U72: 役員の架空の返事の結果と、資料のWorkers経路の完了を見て設定を戻す", async () => {
+it("U72: 役員の試しの返事の結果と、資料のWorkers経路の完了を見て設定を戻す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, { kind: "event", title: FIRST_SLICE.draftTitle, year: 2026, accountId: account.accountId });
@@ -42,19 +42,19 @@ it("U72: 役員の架空の返事の結果と、資料のWorkers経路の完了�
     const url = String(input);
     if (!url.includes("api.line.me") || !url.includes("/message/quota")) throw new Error("LINEの送信APIや実際の外部通信は呼びません");
     lineChecks++;
-    return Response.json({ message: "架空の鍵です" }, { status: 401 });
+    return Response.json({ message: "試しの鍵です" }, { status: 401 });
   });
   let aiCalls = 0;
   const client = new Anthropic({ apiKey: "fictional-u72-ai", maxRetries: 0, fetch: async () => {
     aiCalls++;
     return Response.json({ id: "fictional-u72-response", type: "message", role: "assistant", model: "claude-sonnet-5-5", stop_reason: "end_turn", stop_sequence: null,
-      content: [{ type: "text", text: "架空の資料を確認しました。" }], usage: { input_tokens: 10, output_tokens: 10 } });
+      content: [{ type: "text", text: "試しの資料を確認しました。" }], usage: { input_tokens: 10, output_tokens: 10 } });
   } });
   setClientFactory(() => client);
   try {
     expect(await checkInquiry(ward.slug, ports)).toMatchObject({ result: "飛ばす", reason: `${ward.slug}区に問い合わせの記録がありません` });
     await recordLineInquiry(env.DB, ward.wardId, { eventId: "line-sim-u72", receivedAt: new Date().toISOString(), text: FIRST_SLICE.draftTitle + "は何時ですか？",
-      sourceType: "user", sourceId: "U-fictional-u72", senderLabel: "架空の問い合わせ" });
+      sourceType: "user", sourceId: "U-fictional-u72", senderLabel: "試しの問い合わせ" });
     expect(await checkInquiry(ward.slug, ports)).toMatchObject({ result: "通過", status: 502 });
     expect(lineChecks).toBeGreaterThan(0);
     expect(await env.DB.prepare("SELECT line_pending_answer FROM inquiry_records WHERE ward_id = ?").bind(ward.wardId).first("line_pending_answer")).toBe(FIRST_SLICE.publicAnnouncement);
@@ -79,8 +79,8 @@ it("U72: 役員の架空の返事の結果と、資料のWorkers経路の完了�
     // 受付の応答が失われても設定を戻す。元の設定行が無い場合も元へ戻す。
     await env.DB.prepare("DELETE FROM ward_ai_route_flags WHERE ward_id = ?").bind(ward.wardId).run();
     await expect(checkWorkersRoute(ward.slug, project.projectId, FIRST_SLICE.publicAnnouncement, {
-      ...ports, request: async () => { throw new Error("架空の応答切断"); },
-    })).rejects.toThrow("架空の応答切断");
+      ...ports, request: async () => { throw new Error("試しの応答切断"); },
+    })).rejects.toThrow("試しの応答切断");
     expect(await readFlag(ward.wardId)).toBeNull();
     expect(await readFlag(other.ward.wardId)).toEqual(previous);
   } finally {

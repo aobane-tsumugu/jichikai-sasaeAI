@@ -5,10 +5,10 @@ import { getTemplates, saveTemplates } from "../src/settings/store";
 import { postForm, realApp } from "./helpers";
 
 const saved = [
-  { id: "tfictional1", name: "架空の雨の知らせ", body: "架空の保存済みの雨の知らせです。" },
-  { id: "tfictional2", name: "架空の延期の知らせ", body: "架空の保存済みの延期の知らせです。" },
+  { id: "tfictional1", name: "試しの雨の知らせ", body: "試しの保存済みの雨の知らせです。" },
+  { id: "tfictional2", name: "試しの延期の知らせ", body: "試しの保存済みの延期の知らせです。" },
 ];
-const body = "架空の雨の変更のお知らせです。\n会場は{会場}へ変わります。\n来るときは日時も確かめてください。";
+const body = "試しの雨の変更のお知らせです。\n会場は{会場}へ変わります。\n来るときは日時も確かめてください。";
 
 async function fixture() {
   const setup = await seedAdmin(env.DB);
@@ -36,10 +36,10 @@ it("追加の名前を誤っても書いた本文を追加欄に残し、直し�
   expect(invalid.headers.get("cache-control")).toBe("no-store");
   expect(await getTemplates(env.DB, f.ward.wardId)).toEqual(saved);
 
-  expect((await postForm(realApp, f.path, { name: "架空の新しい知らせ", body }, f.cookie)).status).toBe(303);
+  expect((await postForm(realApp, f.path, { name: "試しの新しい知らせ", body }, f.cookie)).status).toBe(303);
   const result = await getTemplates(env.DB, f.ward.wardId);
   expect(result).toHaveLength(saved.length + 1);
-  expect(result).toEqual([...saved, expect.objectContaining({ name: "架空の新しい知らせ", body })]);
+  expect(result).toEqual([...saved, expect.objectContaining({ name: "試しの新しい知らせ", body })]);
 });
 
 it("訂正の名前を誤ってもその文だけに入力を残し、成功するまでは元の文を変えない", async () => {
@@ -57,6 +57,6 @@ it("訂正の名前を誤ってもその文だけに入力を残し、成功す�
   expect(form(html, f.path)).not.toContain(body);
   expect(await getTemplates(env.DB, f.ward.wardId)).toEqual(saved);
 
-  expect((await postForm(realApp, path, { name: "架空の直した知らせ", body }, f.cookie)).status).toBe(303);
-  expect(await getTemplates(env.DB, f.ward.wardId)).toEqual([{ ...target, name: "架空の直した知らせ", body }, other]);
+  expect((await postForm(realApp, path, { name: "試しの直した知らせ", body }, f.cookie)).status).toBe(303);
+  expect(await getTemplates(env.DB, f.ward.wardId)).toEqual([{ ...target, name: "試しの直した知らせ", body }, other]);
 });

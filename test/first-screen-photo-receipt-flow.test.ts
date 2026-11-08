@@ -70,12 +70,12 @@ it("最初の画面から去年の記録を読み、写真はAIが止まって�
   } });
   const ports: LineIntakePorts = {
     async receiveOriginal(wardId, original) {
-      if (!original.bytes) throw new Error("架空の写真がありません");
+      if (!original.bytes) throw new Error("試しの写真がありません");
       return (await receive(runtime, { wardId, via: "line_direct", parts: [{ kind: "photo", filename: fixture.answerSheetFilename,
         mediaType: "image/jpeg", bytes: new Uint8Array(original.bytes) }] })).jobId;
     },
     async checkPhoto(wardId, original, jobId) {
-      if (!original.bytes) throw new Error("架空の写真がありません");
+      if (!original.bytes) throw new Error("試しの写真がありません");
       await quickCheckPhotos(runtime, { wardId, via: "line_direct", parts: [{ kind: "photo", filename: fixture.answerSheetFilename,
         mediaType: "image/jpeg", bytes: new Uint8Array(original.bytes) }] }, jobId);
     },

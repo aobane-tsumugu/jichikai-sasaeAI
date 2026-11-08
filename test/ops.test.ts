@@ -81,7 +81,7 @@ describe("区の開設", () => {
     const res = await postForm(
       realApp,
       "/ops/wards",
-      { name: "試験の区（架空）", slug, firstAccountName: "最初の役員", ...lineInput() },
+      { name: "試験の区", slug, firstAccountName: "最初の役員", ...lineInput() },
       cookie,
       opsEnv,
       JSON_HEADERS,
@@ -104,7 +104,7 @@ describe("区の開設", () => {
     expect(login.status).toBe(200);
     const home = await get(realApp, `/${slug}/admin/`, cookieFrom(login, "device")!);
     expect(home.status).toBe(200);
-    expect(await home.text()).toContain("試験の区（架空）");
+    expect(await home.text()).toContain("試験の区");
 
     // パスワードそのものは D1 に残らない
     const stored = await env.DB.prepare("SELECT password_hash, password_salt FROM accounts WHERE name = ?")
@@ -159,8 +159,8 @@ describe("区の開設", () => {
       const res = await postForm(realApp, "/ops/wards", { name, slug, firstAccountName: "同じ名前の役員", ...lineInput() }, cookie, opsEnv, JSON_HEADERS);
       return (await res.json()) as { slug: string; account: { name: string; invitationUrl: string } };
     };
-    const a = await open("区A（架空）");
-    const b = await open("区B（架空）");
+    const a = await open("区A");
+    const b = await open("区B");
     expect(a.account.invitationUrl).not.toBe(b.account.invitationUrl);
     const aLogin = await enterInvitation(a.account.invitationUrl);
     const bLogin = await enterInvitation(b.account.invitationUrl);
@@ -205,10 +205,10 @@ describe("役員が入れなくなったときの復旧（提供側）", () => {
   it("自治会の画面からは足さず、作り直さず、問い合わせの受付へ案内する", async () => {
     const cookie = await opsLogin();
     const slug = uniqueSlug("recover");
-    await postForm(realApp, "/ops/wards", { name: "復旧の区（架空）", slug, firstAccountName: "役員", ...lineInput() }, cookie, opsEnv, JSON_HEADERS);
+    await postForm(realApp, "/ops/wards", { name: "復旧の区", slug, firstAccountName: "役員", ...lineInput() }, cookie, opsEnv, JSON_HEADERS);
     const ward = await env.DB.prepare("SELECT ward_id FROM wards WHERE ward_id = (SELECT ward_id FROM wards WHERE slug = ?)").bind(slug).first<{ ward_id: string }>();
     const account = await env.DB.prepare("SELECT account_id FROM accounts WHERE ward_id = ? AND name = ?").bind(ward!.ward_id, "役員").first<{ account_id: string }>();
-    expect((await postForm(realApp, `/ops/wards/${slug}/accounts`, { name: "新しい役員（架空）" }, cookie, opsEnv)).status).toBe(404);
+    expect((await postForm(realApp, `/ops/wards/${slug}/accounts`, { name: "新しい役員" }, cookie, opsEnv)).status).toBe(404);
     expect((await postForm(realApp, `/ops/wards/${slug}/accounts/${account!.account_id}/reset`, {}, cookie, opsEnv)).status).toBe(404);
     const html = await (await get(realApp, `/ops/wards/${slug}`, cookie, opsEnv)).text();
     expect(html).toContain('href="/ops/contacts"');

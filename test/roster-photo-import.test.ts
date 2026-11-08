@@ -10,16 +10,16 @@ it("写真の読み取りの先に空の表があっても、選んだ表の世�
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const received = await receive(env, {
     wardId: ward.wardId, via: "system", accountId: account.accountId,
-    parts: [{ kind: "text", filename: "架空の名簿の読み取り", mediaType: "text/plain", bytes: new TextEncoder().encode("架空の名簿") }],
+    parts: [{ kind: "text", filename: "試しの名簿の読み取り", mediaType: "text/plain", bytes: new TextEncoder().encode("試しの名簿") }],
   });
   const originalId = received.received[0]!.originalId;
   const reading: Reading = {
-    document_kind: "roster", original_years: [{ original_id: originalId, year: 2026 }], summary: "架空の名簿の写真から読んだ表",
+    document_kind: "roster", original_years: [{ original_id: originalId, year: 2026 }], summary: "試しの名簿の写真から読んだ表",
     text_blocks: [], fields: [], decisions: [], unreadable: [],
     tables: [
-      { name: "架空の空の表", original_id: originalId, locator: "上", columns: ["世帯", "班"], rows: [] },
-      { name: "架空の世帯の表", original_id: originalId, locator: "下", columns: ["世帯", "班"], rows: [
-        { cells: ["架空の世帯A", "1班"], locator: "1行目", confidence: "high" },
+      { name: "試しの空の表", original_id: originalId, locator: "上", columns: ["世帯", "班"], rows: [] },
+      { name: "試しの世帯の表", original_id: originalId, locator: "下", columns: ["世帯", "班"], rows: [
+        { cells: ["試しの世帯A", "1班"], locator: "1行目", confidence: "high" },
       ] },
     ],
   };
@@ -30,11 +30,11 @@ it("写真の読み取りの先に空の表があっても、選んだ表の世�
   const page = await get(realApp, `${root}?job=${received.jobId}`, cookie);
   expect(page.status).toBe(200);
   const html = await page.text();
-  expect(html).toContain("架空の世帯A");
-  expect(html).not.toContain("架空の空の表");
+  expect(html).toContain("試しの世帯A");
+  expect(html).not.toContain("試しの空の表");
   const tableIndex = /name="tableIndex" value="(\d+)"/.exec(html)?.[1];
   expect(tableIndex).toBe("1");
   expect((await postForm(realApp, `${root}/photo/import`, { jobId: received.jobId!, tableIndex: tableIndex! }, cookie)).status).toBe(303);
   expect((await getRoster(env.DB, ward.wardId)).map(({ household, district }) => ({ household, district })))
-    .toEqual([{ household: "架空の世帯A", district: "1班" }]);
+    .toEqual([{ household: "試しの世帯A", district: "1班" }]);
 });

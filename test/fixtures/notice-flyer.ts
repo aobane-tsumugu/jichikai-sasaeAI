@@ -4,8 +4,8 @@ export function noticeFlyerJpeg(): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(atob(JPEG), (char) => char.charCodeAt(0));
 }
 export const NOTICE_FLYER = {
-  title: "架空の広場で遊ぶ日の案内",
+  title: "試しの広場で遊ぶ日の案内",
   date: "2027年11月14日10時から12時",
-  place: "架空の中央広場",
-  text: "架空の広場で遊びます。\n日時: 2027年11月14日10時から12時\n場所: 架空の中央広場\n持ち物: 帽子",
+  place: "試しの中央広場",
+  text: "試しの広場で遊びます。\n日時: 2027年11月14日10時から12時\n場所: 試しの中央広場\n持ち物: 帽子",
 };

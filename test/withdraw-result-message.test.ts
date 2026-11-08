@@ -8,11 +8,11 @@ import { get, postForm, realApp } from "./helpers";
 it("画面を開いたあとに処理が進んで取り下げられなかったときは、成功と知らせない", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,
+    kind: "event", title: "試しの行事", year: 2026, accountId: account.accountId,
   });
   const received = await receive(env, {
     wardId: ward.wardId, projectId: project.projectId, via: "admin", accountId: account.accountId,
-    parts: [{ kind: "text", filename: "架空の連絡.txt", mediaType: "text/plain", bytes: new TextEncoder().encode("架空の会場の連絡") }],
+    parts: [{ kind: "text", filename: "試しの連絡.txt", mediaType: "text/plain", bytes: new TextEncoder().encode("試しの会場の連絡") }],
   });
   const root = `/${ward.slug}/admin/intake`;
   const initialPage = await (await get(realApp, `${root}/received`, cookie)).text();

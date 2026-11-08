@@ -7,13 +7,13 @@ import { get, postForm, realApp } from "./helpers";
 it("免除の期間を間違えても入力が残り、終わりの日だけ直して保存できる", async () => {
   const { ward, cookie } = await seedAdmin(env.DB);
   const entries = [
-    { household: "最初の世帯（架空）", district: "架空1班" },
-    { household: "選んだ世帯（架空）", district: "架空2班" },
+    { household: "最初の世帯", district: "1班" },
+    { household: "選んだ世帯", district: "2班" },
   ];
   await replaceRoster(env.DB, ward.wardId, entries, { household: 0, district: 1 });
   const path = `/${ward.slug}/admin/rota/exemptions`;
   const input = {
-    household: JSON.stringify(entries[1]), reason: "架空の免除の理由",
+    household: JSON.stringify(entries[1]), reason: "試しの免除の理由",
     starts_on: "2026-11-01", ends_on: "2026-10-31",
   };
   const failed = await postForm(realApp, path, input, cookie);
@@ -22,7 +22,7 @@ it("免除の期間を間違えても入力が残り、終わりの日だけ直�
   expect(html).toContain(`value="${input.reason}"`);
   expect(html).toContain(`value="${input.starts_on}"`);
   expect(html).toContain(`value="${input.ends_on}"`);
-  expect(html).toMatch(/<option[^>]*selected[^>]*>架空2班 選んだ世帯（架空）<\/option>/);
+  expect(html).toMatch(/<option[^>]*selected[^>]*>2班 選んだ世帯<\/option>/);
   expect(html).toContain("もう一度保存してください");
   expect(failed.status).toBe(400);
   expect(failed.headers.get("location")).toBeNull();

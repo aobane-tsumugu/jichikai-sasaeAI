@@ -14,16 +14,16 @@ vi.mock("../src/ai/session", async (importOriginal) => ({
 }));
 
 it("メッセージの相手と下書きへの指示を種類によらず仕事から選び、当日と次の仕事を説明する", async () => {
-  // 準備の名前、日付と資料は全て架空。
+  // 準備の名前、日付と資料は全て。
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   const template = startTemplate("決算と総会の準備");
   const meeting = await createProject(env.DB, ward.wardId, {
-    kind: template.kind, title: "架空の決算と総会の準備", year: 2026, eventDay: "2026-12-20", accountId: account.accountId,
+    kind: template.kind, title: "試しの決算と総会の準備", year: 2026, eventDay: "2026-12-20", accountId: account.accountId,
   });
-  const board = await createProject(env.DB, ward.wardId, { kind: "board_meeting", title: "架空の議題の整理", year: 2026, accountId: account.accountId });
+  const board = await createProject(env.DB, ward.wardId, { kind: "board_meeting", title: "試しの議題の整理", year: 2026, accountId: account.accountId });
   const publicProject = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の清掃の準備", year: 2026, taskKeys: SHORT_TEMPLATE.tasks, accountId: account.accountId,
+    kind: "event", title: "試しの清掃の準備", year: 2026, taskKeys: SHORT_TEMPLATE.tasks, accountId: account.accountId,
   });
   // 中の種類だけを入れ替え、仕事が変わらなければ相手と指示も変わらないことを確かめる。
   await env.DB.prepare("UPDATE projects SET kind = 'event' WHERE ward_id = ? AND project_id IN (?, ?)")

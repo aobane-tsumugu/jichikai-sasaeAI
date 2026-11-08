@@ -7,13 +7,13 @@ import { get, postForm, realApp } from "./helpers";
 it("住民の名前で探すと、その人の返事と問い合わせだけが選ばれた形で出て、選んだ物だけが消える", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin/settings/deletion`;
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の夏祭り", year: 2026, accountId: account.accountId });
-  for (const [answerId, household] of [["answer-yamada", "架空 山田"], ["answer-yamashita", "架空 山下"], ["answer-tanaka", "架空 田中"]] as const) {
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "試しの夏祭り", year: 2026, accountId: account.accountId });
+  for (const [answerId, household] of [["answer-yamada", "山田"], ["answer-yamashita", "山下"], ["answer-tanaka", "田中"]] as const) {
     await env.DB.prepare(`INSERT INTO project_answers (answer_id, ward_id, project_id, household, district, people_count, source)
       VALUES (?, ?, ?, ?, '1班', 2, 'phone')`).bind(answerId, ward.wardId, project.projectId, household).run();
   }
   await env.DB.prepare(`INSERT INTO inquiry_records (inquiry_id, ward_id, received_at, kind, subject, answer, submitted_to_city, created_at, line_sender_label)
-    VALUES ('inquiry-yamada', ?, '2026-11-07T01:00:00.000Z', 'inquiry', '駐車場はありますか', '', 0, '2026-11-07T01:00:00.000Z', '架空 山田')`).bind(ward.wardId).run();
+    VALUES ('inquiry-yamada', ?, '2026-11-07T01:00:00.000Z', 'inquiry', '駐車場はありますか', '', 0, '2026-11-07T01:00:00.000Z', '山田')`).bind(ward.wardId).run();
 
   const first = await (await get(realApp, root, cookie)).text();
   expect(first).toContain("頼んだ方のお名前");

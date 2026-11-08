@@ -10,8 +10,8 @@ import { get, postForm, realApp } from "./helpers";
 describe("消す求め", () => {
   it("Webで受けた返事を消すと、答えの表と毎日の写しから消える", async () => {
     const { ward, account, cookie } = await seedAdmin(env.DB);
-    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
-    for (const [answerId, household] of [["answer-erase", "架空 消す世帯"], ["answer-keep", "架空 残る世帯"]] as const) {
+    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭", year: 2026, accountId: account.accountId });
+    for (const [answerId, household] of [["answer-erase", "消す世帯"], ["answer-keep", "残る世帯"]] as const) {
       await env.DB.prepare(`INSERT INTO project_answers (answer_id, ward_id, project_id, household, district, people_count, source)
         VALUES (?, ?, ?, ?, '1班', 2, 'web')`).bind(answerId, ward.wardId, project.projectId, household).run();
     }
@@ -20,7 +20,7 @@ describe("消す求め", () => {
     await bucket.put("snapshots/daily/2026-11-05.json", JSON.stringify({ format: 1, wardId: ward.wardId, capturedAt: "2026-11-05T00:00:00.000Z", tables: { project_answers: rows.results } }));
 
     const page = await (await get(realApp, `/${ward.slug}/admin/settings/deletion`, cookie)).text();
-    expect(page).toContain("架空 消す世帯");
+    expect(page).toContain("消す世帯");
     const response = await postForm(realApp, `/${ward.slug}/admin/settings/deletion/answers/answer-erase`, {}, cookie);
     expect(response.status).toBe(303);
     const left = await env.DB.prepare("SELECT answer_id FROM project_answers WHERE ward_id = ? ORDER BY answer_id").bind(ward.wardId).all<{ answer_id: string }>();
@@ -35,8 +35,8 @@ describe("消す求め", () => {
     const queue = await env.DB.prepare("SELECT COUNT(*) AS n FROM ops_deletion_queue WHERE ward_id = ?").bind(ward.wardId).first<{ n: number }>();
     expect(queue?.n).toBe(0);
     const snapshot = await (await bucket.get("snapshots/daily/2026-11-05.json"))!.text();
-    expect(snapshot).not.toContain("架空 消す世帯");
-    expect(snapshot).toContain("架空 残る世帯");
+    expect(snapshot).not.toContain("消す世帯");
+    expect(snapshot).toContain("残る世帯");
 
     expect((await postForm(realApp, `/${ward.slug}/admin/settings/deletion/answers/answer-erase`, {}, cookie)).status).toBe(404);
   });

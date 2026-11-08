@@ -10,7 +10,7 @@ import { addQuestion, applyChange, createProject, getProjectState, type Document
 import type { DocumentBody } from "../src/project/document-body";
 import { get, postForm, realApp } from "./helpers";
 
-it("架空の資料の下書きを見比べて直し、雨の場所を確かめ、協賛額を出さずに活動を紹介する", async () => {
+it("試しの資料の下書きを見比べて直し、雨の場所を確かめ、協賛額を出さずに活動を紹介する", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   const create = (kind: "event" | "board_meeting" | "general_meeting") => createProject(env.DB, ward.wardId, {
@@ -21,7 +21,7 @@ it("架空の資料の下書きを見比べて直し、雨の場所を確かめ�
       JOIN documents d ON d.ward_id = v.ward_id AND d.document_id = v.document_id
       WHERE v.ward_id = ? AND v.project_id = ? AND d.kind = ? ORDER BY v.version_no DESC LIMIT 1`)
       .bind(ward.wardId, id, kind).first<{ document_id: string; version_id: string; version_no: number; scope: string }>();
-    if (!row) throw new Error("架空の下書きがありません");
+    if (!row) throw new Error("試しの下書きがありません");
     return { documentId: row.document_id, versionId: row.version_id, versionNo: String(row.version_no), scope: row.scope };
   };
   const source = { kind: "person" as const, accountId: account.accountId };
@@ -35,7 +35,7 @@ it("架空の資料の下書きを見比べて直し、雨の場所を確かめ�
       ],
     })).toBe(true);
     const question = (await getProjectState(env.DB, ward.wardId, meeting.projectId))?.questions.find((entry) => entry.kind === "conflict");
-    if (!question) throw new Error("架空の議事録の食い違いがありません");
+    if (!question) throw new Error("試しの議事録の食い違いがありません");
     const answer = await postForm(realApp, `${root}/projects/${meeting.projectId}/questions/${question.questionId}`, { action: "answer", answer: fixture.layoutSpot }, cookie);
     expect(answer.headers.get("location")).toContain("notice=answered");
     const minutes = await getEditableDocument(env.DB, ward.wardId, meeting.projectId, "report");

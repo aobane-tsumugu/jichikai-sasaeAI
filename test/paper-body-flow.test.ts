@@ -13,16 +13,16 @@ const meeting = "総会の招集\n\n■ 話し合うことをご確認くださ�
 const summary = "議案：清掃活動の回数、遊具の更新。いずれもまだ決めていません。出席、委任、欠席を、回答票（班長か役員に渡す）またはWeb（案内のQRか住民向けのページ）で答える。";
 
 it("まだ決まっていない所は、見出しごと、文ごと外す", () => {
-  expect(withoutPending("■ 持ち物\n（確認中）\n\n■ 連絡先\n架空の窓口")).toBe("■ 連絡先\n架空の窓口");
-  expect(withoutPending("持ち物：（確認中）\n架空の文です。")).toBe("架空の文です。");
-  expect(withoutPending("架空の文です。連絡先は（確認中）です。")).toBe("架空の文です。");
+  expect(withoutPending("■ 持ち物\n（確認中）\n\n■ 連絡先\n試しの窓口")).toBe("■ 連絡先\n試しの窓口");
+  expect(withoutPending("持ち物：（確認中）\n試しの文です。")).toBe("試しの文です。");
+  expect(withoutPending("試しの文です。連絡先は（確認中）です。")).toBe("試しの文です。");
   expect(withoutPending("問い合わせはこちらへ（確認中）")).toBe("");
   expect(withoutPending("説明の文です。\n（確認中）")).toBe("説明の文です。");
   expect(withoutPending("■ 持ち物\n\n（確認中）")).toBe("");
 });
 
 it("本文の最初の行が題と同じ時だけ外す", () => {
-  expect(withoutTitleLine("総会の招集\n\n本文", "架空の総会", "総会の招集")).toBe("本文");
+  expect(withoutTitleLine("総会の招集\n\n本文", "試しの総会", "総会の招集")).toBe("本文");
   expect(withoutTitleLine("秋の収穫祭のご案内\n\n本文", "秋の収穫祭", "案内")).toBe("本文");
   expect(withoutTitleLine("■ 秋の収穫祭のご案内\n本文", "秋の収穫祭", "秋の収穫祭のご案内")).toBe("本文");
   expect(withoutTitleLine("案内を読んでください\n本文", "秋の収穫祭", "案内")).toBe("案内を読んでください\n本文");
@@ -31,8 +31,8 @@ it("本文の最初の行が題と同じ時だけ外す", () => {
 
 it("本文に書いた項目は紙にもページにも重ねて出さない", () => {
   expect(writtenInText("content", summary, meeting)).toBe(true);
-  expect(writtenInText("content", "豚汁、焼き芋、新米のおにぎり、輪投げ、抽選", "今年も架空の行事を行います。")).toBe(false);
-  expect(articleParagraphs(JSON.stringify({ text: meeting, items: [{ key: "content", content: summary }, { key: "public_contact", content: PENDING }] }), { project: "架空の総会", document: "総会の招集" }).join("\n"))
+  expect(writtenInText("content", "豚汁、焼き芋、新米のおにぎり、輪投げ、抽選", "今年も試しの行事を行います。")).toBe(false);
+  expect(articleParagraphs(JSON.stringify({ text: meeting, items: [{ key: "content", content: summary }, { key: "public_contact", content: PENDING }] }), { project: "試しの総会", document: "総会の招集" }).join("\n"))
     .toBe(articleParagraphs(JSON.stringify({ text: meeting.replace("総会の招集\n\n", ""), items: [] })).join("\n"));
 });
 
@@ -43,7 +43,7 @@ it("締切が日付の文なら一文で渡す先まで書く", () => {
 
 it("総会の招集の紙に、同じ題と同じ内容と確認中を出さない", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "general_meeting", title: "架空の総会", year: 2026, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "general_meeting", title: "試しの総会", year: 2026, accountId: account.accountId });
   await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, { kind: "announcement", title: "総会の招集", scope: "public", basedOn: 0, body: JSON.stringify({ text: meeting, items: [{ key: "content", content: summary }, { key: "public_contact", content: PENDING }] }) });
   const doc = await env.DB.prepare("SELECT document_id FROM documents WHERE ward_id = ? AND project_id = ?").bind(ward.wardId, project.projectId).first<{ document_id: string }>();
   const page = await (await get(realApp, `/${ward.slug}/admin/print/${project.projectId}/${doc!.document_id}/1/preview`, cookie)).text();
@@ -54,11 +54,11 @@ it("総会の招集の紙に、同じ題と同じ内容と確認中を出さな�
 });
 
 it("中身の無くなった見出しを残さず、日付は読める形で出す", () => {
-  expect(withoutPending("架空の文です。\n\n■ 連絡先\n連絡先：（確認中）")).toBe("架空の文です。");
+  expect(withoutPending("試しの文です。\n\n■ 連絡先\n連絡先：（確認中）")).toBe("試しの文です。");
   expect(withoutPending("【分からないことは連絡してください】\n電話：（確認中）")).toBe("");
-  expect(withoutPending("■ 連絡先\n連絡先：（確認中）\n架空の窓口")).toBe("■ 連絡先\n架空の窓口");
-  expect(articleParagraphs(JSON.stringify({ text: "架空の文です。", items: [{ key: "due", content: "2026-10-09" }] })).join("")).toContain("10月9日");
-  expect(articleParagraphs(JSON.stringify({ text: "架空の文です。", items: [{ key: "place", content: "公民館前の広場" }] }), undefined, "announcement", ["place"])).toEqual(["架空の文です。"]);
+  expect(withoutPending("■ 連絡先\n連絡先：（確認中）\n試しの窓口")).toBe("■ 連絡先\n試しの窓口");
+  expect(articleParagraphs(JSON.stringify({ text: "試しの文です。", items: [{ key: "due", content: "2026-10-09" }] })).join("")).toContain("10月9日");
+  expect(articleParagraphs(JSON.stringify({ text: "試しの文です。", items: [{ key: "place", content: "公民館前の広場" }] }), undefined, "announcement", ["place"])).toEqual(["試しの文です。"]);
 });
 
 it("AIの文に混ざった書式の記号を、読める形にする", () => {
@@ -69,16 +69,16 @@ const paperHelperSlotsCheck = () => paperHelperSlots("設営 受付 模擬店 �
 
 it("総会の案内のページは本文の見出しを行事とそろえ、文書の連絡先を下に出す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "general_meeting", title: "架空の総会", year: 2026, accountId: account.accountId });
-  await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, { kind: "announcement", title: "総会の招集", scope: "public", basedOn: 0, body: JSON.stringify({ text: "架空の総会を開きます。", items: [{ key: "date_time", content: "5月17日（日）午前10時から" }, { key: "public_contact", content: "架空の連絡先" }] }) });
+  const project = await createProject(env.DB, ward.wardId, { kind: "general_meeting", title: "試しの総会", year: 2026, accountId: account.accountId });
+  await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, { kind: "announcement", title: "総会の招集", scope: "public", basedOn: 0, body: JSON.stringify({ text: "試しの総会を開きます。", items: [{ key: "date_time", content: "5月17日（日）午前10時から" }, { key: "public_contact", content: "試しの連絡先" }] }) });
   const doc = await env.DB.prepare("SELECT d.document_id, v.version_id, v.version_no FROM documents d JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id WHERE d.ward_id = ? AND d.project_id = ?").bind(ward.wardId, project.projectId).first<{ document_id: string; version_id: string; version_no: number }>();
   const root = `/${ward.slug}/admin`;
   await postForm(realApp, `${root}/publish/${project.projectId}/send`, { documentId: doc!.document_id, versionId: doc!.version_id, versionNo: String(doc!.version_no), recipientScope: "member_households", lineDelivery: "skip" }, cookie);
   const page = await (await get(realApp, `/${ward.slug}/p/${project.projectId}`)).text();
   expect(page).toContain("<h2>くわしい案内</h2>");
   expect(page).not.toContain("<h2>総会の招集</h2>");
-  expect(page).toContain("架空の連絡先");
-  expect(page).not.toContain("連絡先: 架空の連絡先");
+  expect(page).toContain("試しの連絡先");
+  expect(page).not.toContain("連絡先: 試しの連絡先");
   const leader = await (await postForm(realApp, `${root}/print/${project.projectId}/${doc!.document_id}/${doc!.version_no}/leader`, {}, cookie)).text();
   expect(leader === "" || !leader.includes("からに行います")).toBe(true);
 });

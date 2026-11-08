@@ -28,7 +28,7 @@ it("写真をまとめて同じ場所で聞き、別の人の答えを受け、�
   await env.DB.prepare("INSERT INTO line_channels (ward_id, destination, channel_secret_binding, access_token_binding) VALUES (?, ?, 'LINE_CHANNEL_SECRET', 'LINE_CHANNEL_ACCESS_TOKEN')")
     .bind(ward.wardId, destination).run();
 
-  // 架空資料のバイトに技術上の画像見出しを付け、寸法の処理も通す。画像の中身の精度を測る試験ではない。
+  // 試しの資料のバイトに技術上の画像見出しを付け、寸法の処理も通す。画像の中身の精度を測る試験ではない。
   const image = (tag: number, short = 800) => new Uint8Array([0xff, 0xd8, 0xff, 0xc0, 0, 11, 8, short >>> 8, short & 255, 4, 0, 3, 1, 1, 0, ...FIRST_SLICE.answerSheetPhotoBytes, tag]);
   const sent: Array<{ url: string; body: { to?: string; replyToken?: string; messages: Array<{ text: string; quickReply?: { items: Array<{ action: { data: string } }> } }> } }> = [];
   let modelCalls = 0;
@@ -87,7 +87,7 @@ it("写真をまとめて同じ場所で聞き、別の人の答えを受け、�
     for (const item of items.results) {
       expect((await photoChecks(env.DB, ward.wardId, item.job_id))[0]).toMatchObject({ width: 1024, height: 800, readability: "readable", paperKind: "rota" });
       const original = await env.DB.prepare("SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?").bind(ward.wardId, item.job_id).first<{ original_id: string }>();
-      if (!original) throw new Error("架空資料が保存されていません");
+      if (!original) throw new Error("試しの資料が保存されていません");
       const reading: Reading = { document_kind: "rota", summary: FIRST_SLICE.dutyText,
         original_years: [{ original_id: original.original_id, year: item.image_index === 1 ? 2026 : null }],
         text_blocks: [{ original_id: original.original_id, locator: "全体", text: FIRST_SLICE.dutyText }],

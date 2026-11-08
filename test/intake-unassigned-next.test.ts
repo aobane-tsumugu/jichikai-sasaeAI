@@ -21,10 +21,10 @@ it.each(["txt", "doc", "xls"])("行事未定の%sをブラウザから送ると�
   };
   const status = { textContent: "", className: "" };
   const button = { disabled: false };
-  const bytes = format === "doc" ? compound(wordStreams("架空の市の通知です。\r"))
-    : format === "xls" ? compound({ Workbook: workbookStream() }) : new TextEncoder().encode("架空の市の通知です。");
+  const bytes = format === "doc" ? compound(wordStreams("試しの市の通知です。\r"))
+    : format === "xls" ? compound({ Workbook: workbookStream() }) : new TextEncoder().encode("試しの市の通知です。");
   const mediaType = format === "doc" ? "application/msword" : format === "xls" ? "application/vnd.ms-excel" : "text/plain";
-  const file = new File([bytes], `架空の通知.${format}`, { type: mediaType });
+  const file = new File([bytes], `試しの通知.${format}`, { type: mediaType });
   const elements = new Map<string, unknown>([
     ["send-form", form], ["send-status", status], ["send-button", button], ["files", { files: [file] }],
   ]);
@@ -76,5 +76,5 @@ it.each(["txt", "doc", "xls"])("行事未定の%sをブラウザから送ると�
   expect(readings).toHaveLength(1);
   expect(readings[0]?.body).toMatchObject(format === "xls"
     ? { tables: [{ name: "協賛先", rows: [{ cells: ["相手", "額"] }, { cells: ["商店A", "6000"] }, { cells: ["", "", "", "2026-10-24"] }] }], unreadable: [] }
-    : { text_blocks: [{ text: "架空の市の通知です。" }], unreadable: [] });
+    : { text_blocks: [{ text: "試しの市の通知です。" }], unreadable: [] });
 });

@@ -19,11 +19,11 @@ export function uniqueSlug(prefix = "t"): string {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
 }
 
-/** 区を作る。名前は架空と分かる物にする。 */
+/** 区を作る。試験用と分かる名前にする。 */
 export async function seedWard(
   db: D1Database,
   slug: string = uniqueSlug(),
-  name = "試験用の区（架空）",
+  name = "試験用の区",
 ): Promise<WardInfo> {
   const wardId = newId();
   await db
@@ -91,7 +91,7 @@ export async function seedDeviceCookie(
 }
 
 /** 区、アカウント、ログイン済みの Cookie を一度に作る。 */
-export async function seedAdmin(db: D1Database, slug: string = uniqueSlug(), accountName = "試験の役員（架空）") {
+export async function seedAdmin(db: D1Database, slug: string = uniqueSlug(), accountName = "試験の役員") {
   const ward = await seedWard(db, slug);
   const account = await seedAccount(db, ward.wardId, accountName);
   const cookie = await seedDeviceCookie(db, ward.wardId, account.accountId);

@@ -42,17 +42,17 @@ it("U35: 全種類の実ファイル12点を、送る画面と同じ展開・mul
   expect(Object.keys(assets).sort()).toEqual(paths.map(path => "../fixtures/kinds/" + path).sort());
   const load = async (path: string) => {
     const url = assets["../fixtures/kinds/" + path];
-    if (!url) throw new Error("架空資料の実ファイルがありません: " + path);
+    if (!url) throw new Error("試しの資料の実ファイルがありません: " + path);
     const base64 = /^data:[^,]*;base64,(.+)$/.exec(url)?.[1];
-    if (!base64) throw new Error("架空資料をバイトに戻せません");
+    if (!base64) throw new Error("試しの資料をバイトに戻せません");
     return Uint8Array.from(atob(base64), char => char.charCodeAt(0));
   };
   const pictureText: Record<string, string> = {
-    "架空_前回の総会の議事録.jpg": (m.year - 1) + "年1月6日10時、架空の集会室。\n前回の記録です。今年の決定ではありません。",
-    "架空_今年の総会の記録.jpg": m.minutes,
-    "架空_議題の紙.jpg": k.agenda,
-    "架空_掲示の当番表.jpg": k.duty,
-    "架空_市の通知.pdf": k.city,
+    "前回の総会の議事録.jpg": (m.year - 1) + "年1月6日10時、集会室。\n前回の記録です。今年の決定ではありません。",
+    "今年の総会の記録.jpg": m.minutes,
+    "議題の紙.jpg": k.agenda,
+    "掲示の当番表.jpg": k.duty,
+    "市の通知.pdf": k.city,
   };
   let reads = 0, connections = 0;
   // 接続は受付のあとまで進めるだけ。決定や下書きの正しさを証明する応答ではない。
@@ -61,7 +61,7 @@ it("U35: 全種類の実ファイル12点を、送る画面と同じ展開・mul
     return Response.json({
       id: "fixture-u35", type: "message", role: "assistant", model: "claude-sonnet-5-5",
       stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 },
-      content: [{ type: "text", text: "架空資料の受付の確認を終えました。" }],
+      content: [{ type: "text", text: "試しの資料の受付の確認を終えました。" }],
     });
   } });
   await setWorkersRoute(env.DB, ward.wardId, true);
@@ -72,15 +72,15 @@ it("U35: 全種類の実ファイル12点を、送る画面と同じ展開・mul
       reads++;
       const body = buildDirectReading(originals.map(original => {
         const text = pictureText[original.filename];
-        if (!text) throw new Error("偽AIが読む架空資料がありません: " + original.filename);
+        if (!text) throw new Error("偽AIが読む試しの資料がありません: " + original.filename);
         return { originalId: original.originalId, text };
       }));
-      body.summary = "架空の紙と通知の偽の読み取りです";
+      body.summary = "試しの紙と通知の偽の読み取りです";
       body.original_years = originals.map(original => ({
         original_id: original.originalId,
-        year: original.filename === "架空_前回の総会の議事録.jpg" ? m.year - 1 :
-          original.filename === "架空_今年の総会の記録.jpg" ? m.year :
-          original.filename === "架空_掲示の当番表.jpg" ? k.year - 1 : k.year,
+        year: original.filename === "前回の総会の議事録.jpg" ? m.year - 1 :
+          original.filename === "今年の総会の記録.jpg" ? m.year :
+          original.filename === "掲示の当番表.jpg" ? k.year - 1 : k.year,
       }));
       return { body, packVersion: "fixture-u35@1", model: "fixture-u35",
         usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0 } };
@@ -91,7 +91,7 @@ it("U35: 全種類の実ファイル12点を、送る画面と同じ展開・mul
   try {
     for (const entry of groups) {
       const project = await createProject(env.DB, ward.wardId, {
-        kind: entry.kind, year: entry.year, title: "架空資料の受付の確認",
+        kind: entry.kind, year: entry.year, title: "試しの資料の受付の確認",
       });
       const root = "/" + ward.slug + "/admin/intake";
       const page = await get(realApp, root + "?project=" + project.projectId, cookie);
@@ -101,11 +101,11 @@ it("U35: 全種類の実ファイル12点を、送る画面と同じ展開・mul
       expect(parts).toHaveLength(KIND_FILES[entry.group].length);
       // 中身は手作りの読み取りで代えず、画面の処理で得た語を確認する。
       const extracted = form.getAll("part_extracted").join("\n");
-      if (entry.group === "meetingAgenda") for (const word of [m.date, m.due, "清掃活動", "遊具", "全て架空"]) expect(extracted).toContain(word);
+      if (entry.group === "meetingAgenda") for (const word of [m.date, m.due, "清掃活動", "遊具", "ささえ台自治会"]) expect(extracted).toContain(word);
       if (entry.group === "boardMinutes") for (const word of [k.decision, k.pending]) expect(extracted).toContain(word);
       if (entry.group === "boardNextMinutes") expect(extracted).toContain(k.nextDecision);
       if (entry.group === "duty") for (const word of [...k.slots, k.task, k.names.retained, k.names.exempt, k.names.departed]) expect(extracted).toContain(word);
-      if (entry.group === "city") for (const word of ["架空の地域担当窓口", k.year + "年3月31日", "照明の数", "交換の希望の有無"]) expect(extracted).toContain(word);
+      if (entry.group === "city") for (const word of ["地域担当窓口", k.year + "年3月31日", "照明の数", "交換の希望の有無"]) expect(extracted).toContain(word);
       for (const [index, path] of KIND_FILES[entry.group].entries()) {
         const part = parts[index];
         if (typeof part === "string" || !part) throw new Error("送る元のファイルがありません");
@@ -138,7 +138,18 @@ it("U35: 全種類の実ファイル12点を、送る画面と同じ展開・mul
       expect(readings.length).toBeGreaterThan(0);
       for (const reading of readings) {
         if (!("text_blocks" in reading.body)) throw new Error("資料の読み取りの形が違います");
-        expect(reading.body.text_blocks.map(block => block.text).join("\n") + JSON.stringify(reading.body.tables)).toContain("架空");
+        const text = reading.body.text_blocks.map(block => block.text).join("\n") + JSON.stringify(reading.body.tables);
+        const expectedWords: Record<KindFileGroup, readonly string[]> = {
+          meetingAgenda: reading.source === "direct"
+            ? [m.date, m.due, "清掃活動", "遊具", "ささえ台自治会"]
+            : [(m.year - 1) + "年1月6日10時", "集会室", "今年の決定ではありません"],
+          meetingMinutes: [m.date, m.decision, "遊具"],
+          boardAgenda: [k.year + "年1月10日", "清掃用具", "遊具"],
+          boardMinutes: [k.decision, k.pending], boardNextMinutes: [k.nextDecision],
+          duty: [...k.slots, k.task, k.names.retained, k.names.exempt, k.names.departed],
+          city: ["地域担当窓口", k.year + "年3月31日", "照明の数", "交換の希望の有無"],
+        };
+        for (const word of expectedWords[entry.group]) expect(text).toContain(word);
       }
       accepted += originals.length;
     }

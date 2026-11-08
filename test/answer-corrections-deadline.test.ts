@@ -14,7 +14,7 @@ it("案内の締切を受付に使い、返事を直して消し、手で延ば�
   vi.setSystemTime(new Date("2026-10-10T03:00:00Z"));
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の秋の収穫祭", year: FIRST_SLICE.eventYear, accountId: account.accountId,
+    kind: "event", title: "試しの秋の収穫祭", year: FIRST_SLICE.eventYear, accountId: account.accountId,
   });
   await replaceRoster(env.DB, ward.wardId, [
     { household: FIRST_SLICE.firstHousehold, district: FIRST_SLICE.district },

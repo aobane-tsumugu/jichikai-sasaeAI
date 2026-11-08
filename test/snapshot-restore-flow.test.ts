@@ -12,7 +12,7 @@ import { get, realApp } from "./helpers";
 
 it("日次の写しをSQLに戻し、役員画面・紙の番号・元の資料・受付を読み、全文索引を作り直せる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の復元確認会", year: 2026, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "試しの復元確認会", year: 2026, accountId: account.accountId });
   const w = ward.wardId, p = project.projectId;
   for (const { table, data } of snapshotRecords(w, p, account.accountId)) {
     const columns = Object.keys(data);
@@ -28,9 +28,9 @@ it("日次の写しをSQLに戻し、役員画面・紙の番号・元の資料�
   expect(paperCode).toBe("P7-D11-V1");
   const bucket = new WardBucket(env.ORIGINALS, w);
   const originalKey = `originals/${w}-original`;
-  const originalBody = "架空の復旧先公民館";
+  const originalBody = "試しの復旧先公民館";
   await bucket.put(originalKey, originalBody, { httpMetadata: { contentType: "text/plain; charset=utf-8" } });
-  const contact = await receiveContact(env.DB, { kind: "access", wardName: "架空の復元確認区", name: "架空の依頼役", reach: "restore@example.invalid", body: "架空の問い合わせです。" });
+  const contact = await receiveContact(env.DB, { kind: "access", wardName: "試しの復元確認区", name: "試しの依頼役", reach: "restore@example.invalid", body: "試しの問い合わせです。" });
   await writeDailyWardSnapshots(env, new Date("2026-11-06T00:00:00Z"));
   const key = "snapshots/daily/2026-11-06.json";
   const wardSnapshot = await (await bucket.get(key))!.json();
@@ -61,10 +61,10 @@ it("日次の写しをSQLに戻し、役員画面・紙の番号・元の資料�
   expect(await env.DB.prepare("SELECT target_id FROM ops_deletion_queue WHERE ward_id = ? AND queue_id = ?")
     .bind(w, `${w}-queue`).first("target_id")).toBe(`${w}-deleted-job`);
   for (const [path, text] of [
-    [`${root}/`, "架空の復元確認会"],
-    [`${root}/projects/${p}`, "架空の復旧先公民館"],
-    [`${root}/projects/${p}/committee`, "架空の委員"],
-    [`${root}/answers/${p}?view=list`, "架空の世帯"],
+    [`${root}/`, "試しの復元確認会"],
+    [`${root}/projects/${p}`, "試しの復旧先公民館"],
+    [`${root}/projects/${p}/committee`, "試しの委員"],
+    [`${root}/answers/${p}?view=list`, "試しの世帯"],
     [`${root}/settings/people`, account.name],
     [`${root}/intake/originals/${w}-original`, originalBody],
   ]) {
@@ -73,14 +73,14 @@ it("日次の写しをSQLに戻し、役員画面・紙の番号・元の資料�
     expect((await response.text()).includes(text!)).toBe(true);
   }
   expect(await lookupPaperCode(env.DB, w, paperCode!)).toEqual({ projectId: p, documentId: `${w}-document`, version: 1 });
-  const next = await createProject(env.DB, w, { kind: "event", title: "架空の復旧後の行事", year: 2027, accountId: account.accountId });
+  const next = await createProject(env.DB, w, { kind: "event", title: "試しの復旧後の行事", year: 2027, accountId: account.accountId });
   expect(await env.DB.prepare("SELECT paper_no FROM projects WHERE ward_id = ? AND project_id = ?").bind(w, next.projectId).first("paper_no")).toBe(51);
-  await env.DB.prepare("INSERT INTO documents (document_id, ward_id, project_id, kind, title, scope) VALUES (?, ?, ?, 'notice', '架空の復旧後の知らせ', 'public')")
+  await env.DB.prepare("INSERT INTO documents (document_id, ward_id, project_id, kind, title, scope) VALUES (?, ?, ?, 'notice', '試しの復旧後の知らせ', 'public')")
     .bind(`${w}-next-document`, w, p).run();
   expect(await env.DB.prepare("SELECT paper_no FROM documents WHERE ward_id = ? AND document_id = ?").bind(w, `${w}-next-document`).first("paper_no")).toBe(61);
   const thread = await get(realApp, `/contact/${contact.token}`);
   expect(thread.status).toBe(200);
-  expect((await thread.text()).includes("架空の問い合わせです。")).toBe(true);
+  expect((await thread.text()).includes("試しの問い合わせです。")).toBe(true);
 
   const search = `${root}/archive/search?q=${encodeURIComponent("復旧先")}`;
   const searchShowsOriginal = async () => {

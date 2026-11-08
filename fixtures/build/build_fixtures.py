@@ -1,7 +1,7 @@
-"""fixtures/ の架空データを作り直す。
+"""fixtures/ の試しのデータを作り直す。
 
-全て新しく作った架空の内容で、実在の団体、人物、資料を元にしていない。人の名前には
-「架空 」を付け、連絡先は 000-0000-xxxx、メールは example.invalid にしてある。
+全てこの期間中に作った内容で、実在の団体、人物、資料を元にしていない。
+連絡先は 000-0000-xxxx、メールは example.invalid にしてある。
 
     python fixtures/build/build_fixtures.py
 
@@ -22,9 +22,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import paper as P  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]  # fixtures/
-K = "架空 "  # 人と事業所の名前の頭に付ける印
-WARD = "架空の区"
-CITY = "架空市"
+K = ""  # 人と事業所の名前はそのまま使う
+WARD = "ささえ台自治会"
+CITY = "ささえ市"
 
 LAST = dt.date(2025, 10, 25)
 THIS = dt.date(2026, 10, 24)
@@ -95,8 +95,8 @@ def household(group: str, surname: str, nth: int = 0) -> dict:
 
 
 def write_roster() -> None:
-    # Excel で開く CSV は BOM 付き
-    with out("roster/加入世帯_2026秋.csv").open("w", encoding="utf-8-sig", newline="") as f:
+    # CSVもUTF-8（BOMなし）、LFにそろえる
+    with out("roster/加入世帯_2026秋.csv").open("w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["番号", "班", "世帯名", "氏名"], lineterminator="\n")
         w.writeheader()
         w.writerows(ROSTER)
@@ -143,17 +143,16 @@ def make_docx(rel: str, title: str, blocks: list[tuple]) -> None:
                     t.cell(r, c).text = cell
             doc.add_paragraph("")
     cp = doc.core_properties
-    cp.author = "架空資料の作成用"
+    cp.author = "試しの資料の作成用"
     cp.title = title
     cp.created = cp.modified = dt.datetime(2026, 11, 5, 0, 0, 0)
-    cp.last_modified_by = "架空資料の作成用"
-    cp.comments = "全て架空の資料"
+    cp.last_modified_by = "試しの資料の作成用"
+    cp.comments = ""
     doc.save(out(rel))
 
 
 def write_secretary() -> None:
     make_docx("last-year/secretary/お知らせ_最終2.docx", "秋の収穫祭のお知らせ（下書き）", [
-        ("small", "全て架空の資料です。実在の団体や人物の資料ではありません。"),
         ("p", "作成 2025年9月12日（書記の手元に残った下書き。ファイル名は「最終2」）"),
         ("h", "日時"),
         ("p", "2025年10月25日（土）11時から14時"),
@@ -172,7 +171,6 @@ def write_secretary() -> None:
         ("small", f"協賛 {K}商店A 5000円、{K}農園B 3000円。依頼は{K}井上（000-0000-0103）。公開案からは外す。"),
     ])
     make_docx("last-year/secretary/実施報告_去年.docx", "2025年 秋の収穫祭 実施報告", [
-        ("small", "全て架空の資料です。実在の団体や人物の資料ではありません。"),
         ("p", "作成 2025年11月2日（書記）"),
         ("h", "実施"),
         ("p", "2025年10月25日（土）11時から14時。晴れ。公民館前の広場で実施しました。"),
@@ -215,9 +213,9 @@ def write_committee_xlsx() -> None:
     ws.title = "2025 実行委員"
     ws["A2"] = "2025年 秋の収穫祭 実行委員名簿"
     ws["A2"].font = Font(name="MS Gothic", size=15, bold=True)
-    ws["A3"] = "架空資料  副会長保管  2025年10月18日"
+    ws["A3"] = "副会長保管  2025年10月18日"
     ws["A4"] = "去年の名簿です。今年の就任と手伝いを確認した名簿ではありません。"
-    head = ["班", "氏名", "役", "電話（架空）", "手元のメモ"]
+    head = ["班", "氏名", "役", "電話", "手元のメモ"]
     for c, v in enumerate(head, 1):
         cell = ws.cell(row=5, column=c, value=v)
         cell.font = Font(name="MS Gothic", bold=True)
@@ -231,7 +229,7 @@ def write_committee_xlsx() -> None:
     ws.cell(row=last + 3, column=2, value=len(COMMITTEE_2025)).font = Font(name="MS Gothic")
     for col, width in zip("ABCDE", (8, 20, 16, 22, 36)):
         ws.column_dimensions[col].width = width
-    wb.properties.creator = "架空資料の作成用"
+    wb.properties.creator = "試しの資料の作成用"
     wb.properties.created = wb.properties.modified = dt.datetime(2026, 11, 5, 0, 0, 0)
     wb.save(out("last-year/vice-chair/実行委員_去年.xlsx"))
 
@@ -246,10 +244,9 @@ def write_rota_pdf() -> None:
     c = canvas.Canvas(str(out("last-year/vice-chair/当日配布.pdf")), pagesize=A4, invariant=1,
                       pageCompression=1)
     c.setTitle("2025年 秋の収穫祭 当番表")
-    c.setAuthor("架空資料の作成用")
+    c.setAuthor("試しの資料の作成用")
     w, h = A4
     c.setFont("BIZ", 9)
-    c.drawString(48, h - 40, "全て架空の資料です。実在の団体や人物の資料ではありません。")
     c.setFont("BIZ", 18)
     c.drawString(48, h - 80, "2025年 秋の収穫祭 当番表")
     c.setFont("BIZ", 11)
@@ -676,8 +673,7 @@ def write_city_notice() -> None:
     s.print((120, y + 30), "記", 30, mincho=True)
     s.print((160, y + 100), "1 回答期限  2026年9月30日", 30, mincho=True)
     s.print((160, y + 164), f"2 問い合わせ  {CITY} 地域活動担当（内線 000）", 30, mincho=True)
-    s.print((100, 1600), "全て架空の資料です。実在の自治体の通知ではありません。", 22, fill=(100, 100, 100))
-    s.seal(1050, 330, 52, "架空\n市印")
+    s.seal(1050, 330, 52, "ささえ\n市印")
     save_photo(scene_single(s, 602, "dark", crease=2), "this-year/chair/市からの通知.jpg")
 
 
@@ -685,22 +681,22 @@ def write_city_notice() -> None:
 
 def write_texts() -> None:
     write_text("this-year/meeting/電話の結果_公民館.txt",
-               "全て架空。2026年9月14日（月）書記の記録。\n"
+               "2026年9月14日（月）書記の記録。\n"
                "副会長が公民館に電話。10月24日（土）の公民館前の広場と、雨の時のホールと集会室を、\n"
                "9時から15時まで押さえられたと聞いた。使用許可の紙は後日受け取る。")
     write_text("this-year/answers/電話_木村の訂正.txt",
-               f"全て架空。2026年10月6日（火）18時10分ごろ、書記の自宅の電話を家族が受けた分を、書記が文にした。\n"
+               f"2026年10月6日（火）18時10分ごろ、書記の自宅の電話を家族が受けた分を、書記が文にした。\n"
                f"2班の{K}木村あきさんから、書記あての伝言。\n"
                "10月5日に班長へ出した紙の回答のうち、手伝いの片付けを「14時から」と書いたが、\n"
                "「14時30分から15時」に直してほしい。来場は大人2人と子ども1人のまま変わらない。\n"
                "別の世帯が増える話ではない、と本人が言っていた。（家族のメモには「14時半」とあった）")
     write_text("this-year/answers/電話_田中.txt",
-               f"全て架空。2026年10月6日（火）19時05分ごろ、書記の自宅の電話を家族が受けた分を、書記が文にした。\n"
+               f"2026年10月6日（火）19時05分ごろ、書記の自宅の電話を家族が受けた分を、書記が文にした。\n"
                f"3班の{K}田中さんから、書記あての伝言。\n"
                "来場は1人。午前の設営は出られない。受付は出られるかまだ分からない。\n"
                "下の名前と住所は聞いていない。")
     write_text("this-year/rain/10月23日_雨天の判断.txt",
-               "全て架空。2026年10月23日（金）17時、書記の記録。\n"
+               "2026年10月23日（金）17時、書記の記録。\n"
                "会長が予報を見て、明日の収穫祭は予め案内した公民館のホールと集会室で行うと決めた。\n"
                "日時は2026年10月24日11時から14時のまま。翌日へ順延しない。\n"
                "副会長が配置と中身を確認した。豚汁とおにぎりは入口と軒下、品評と抽選はホール、輪投げは集会室。\n"
@@ -711,7 +707,7 @@ def write_texts() -> None:
                "配置と当番の組み直しは実行委員と班長に。個人の連絡先と協賛の金額は外に出さない。\n"
                "紙は差し替える。班長には書記が電話で伝える。")
     write_text("this-year/day/会計メモ_今年.txt",
-               "全て架空。2026年10月26日（月）会計の記録。\n"
+               "2026年10月26日（月）会計の記録。\n"
                f"領収書は2枚（{K}商店Cの食材代14,500円、{K}文具店Eの紙コップなど3,800円）。\n"
                "ほかに、領収書の無い立て替えが2,700円（のぼりの布、ガムテープ）あり。\n"
                "支出は全部で21,000円。協賛は今年の返事のとおり、商店A 6,000円と農園B 3,000円で計9,000円。\n"
@@ -720,7 +716,7 @@ def write_texts() -> None:
 
 def write_web_and_line() -> None:
     write_json("this-year/answers/Web回答.json", {
-        "説明": "全て架空。区のページの回答の入口に入れる内容（世帯名、班、人数、手伝いは名前と時間帯の別の欄）。"
+        "説明": "区のページの回答の入口に入れる内容（世帯名、班、人数、手伝いは名前と時間帯の別の欄）。"
                 "製品の API の形ではなく、確かめる手が画面に入力する時の控え。",
         "answers": [
             {"控え": "W1", "入れる日時": "2026-10-04T19:00:00+09:00", "世帯名": K + "小林", "班": "1班",
@@ -751,7 +747,7 @@ def write_web_and_line() -> None:
         })
     write_json("this-year/answers/LINE_webhook.json", {"destination": uid(0xD0), "events": events})
     write_text("this-year/answers/LINE_返事.txt",
-               "全て架空。区の公式 LINE（検証用のアカウント）に、住民から一対一で届いた文。\n"
+               "区の公式 LINE（検証用のアカウント）に、住民から一対一で届いた文。\n"
                "LINE_webhook.json は、同じ三通を LINE の webhook の形にした物（署名は付けていない。\n"
                "ローカルで試す時は、検証用の鍵で署名を付けて送る）。本物の住民には送らない。\n\n"
                f"1. 10月6日 20:15  2班の{K}橋本。大人2人、子ども1人。受付なら手伝える。（収穫祭の答え）\n"

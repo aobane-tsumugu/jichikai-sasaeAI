@@ -10,7 +10,7 @@ import { applyChange, createProject, getProjectState } from "../src/project/api"
 import { exemptions } from "../src/rota/store";
 import { get, postForm, realApp } from "./helpers";
 
-it("架空の当番と総会で、操作の結果と次の案と戻り方を読み、役員の直しを保ってやり直せる", async () => {
+it("試しの当番と総会で、操作の結果と次の案と戻り方を読み、役員の直しを保ってやり直せる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   const read = async (path: string) => {
@@ -55,16 +55,16 @@ it("架空の当番と総会で、操作の結果と次の案と戻り方を読�
   await result(await postForm(realApp, preparePath, {}, cookie), "当番の下書きを作りました", "当番の下書きへ戻る");
   const created = await getProjectState(env.DB, ward.wardId, duty.projectId);
   const first = created?.tables.duties.find((row) => row.scope === "current" && row.data.slot === rota.slots[0]);
-  if (!first) throw new Error("架空の当番の下書きがありません。");
+  if (!first) throw new Error("試しの当番の下書きがありません。");
   // 時間帯も直す。去年の照合先が変わっても、同じ行の直しを保つ。
-  const edited = { slot: "夕方（架空）", task: fixture.helperTime, assignee: fixture.rosterName, attendance: "present" };
+  const edited = { slot: "夕方", task: fixture.helperTime, assignee: fixture.rosterName, attendance: "present" };
   expect((await postForm(realApp, `${root}/projects/${duty.projectId}/draft/duty-row/${first.rowId}`, edited, cookie)).status).toBe(303);
   const exemptPath = `${root}/rota/exemptions`;
   await result(await postForm(realApp, exemptPath, {
     household: JSON.stringify(rota.newRoster[1]), reason: rota.reason, starts_on: "2026-01-01", ends_on: "2026-12-31",
   }, cookie), "免除の記録を保存しました。", "免除の画面へ戻る");
   const exemption = (await exemptions(env.DB, ward.wardId))[0];
-  if (!exemption) throw new Error("架空の免除の記録がありません。");
+  if (!exemption) throw new Error("試しの免除の記録がありません。");
   const rebuilt = await result(await postForm(realApp, preparePath, {}, cookie), "今の名簿と免除を下書きに反映しました", "当番の下書きへ戻る");
   expect(rebuilt).toContain("担当を戻したいときも、下書きで書き直せます");
   const after = await getProjectState(env.DB, ward.wardId, duty.projectId);
@@ -78,7 +78,7 @@ it("架空の当番と総会で、操作の結果と次の案と戻り方を読�
   expect((await exemptions(env.DB, ward.wardId))[0]?.withdrawn_at).toBeNull();
 
   const meeting = await createProject(env.DB, ward.wardId, {
-    kind: "general_meeting", title: "総会（架空）", year: fixture.eventYear, accountId: account.accountId,
+    kind: "general_meeting", title: "総会", year: fixture.eventYear, accountId: account.accountId,
   });
   const answers = `${root}/answers/${meeting.projectId}`;
   const emptyMeeting = await read(answers);
@@ -87,7 +87,7 @@ it("架空の当番と総会で、操作の結果と次の案と戻り方を読�
   const hand = { household: fixture.firstHousehold, district: fixture.district, meeting_status: "attend", proxy_name: "" };
   const entered = await result(await postForm(realApp, `${answers}/phone`, hand, cookie), "電話や紙の返事を数に入れました。", "手で入れる画面へ戻る");
   const answer = (await listAnswers(env.DB, ward.wardId, meeting.projectId))[0];
-  if (!answer) throw new Error("架空の総会の返事がありません。");
+  if (!answer) throw new Error("試しの総会の返事がありません。");
   const editPath = `${answers}/${answer.answerId}/edit`;
   expect(entered).toContain(`href="${editPath}"`);
   const corrected = await result(await postForm(realApp, editPath, { ...hand, meeting_status: "proxy", proxy_name: fixture.firstOfficer }, cookie), "返事を訂正し、数え直しました。", "返事の一覧へ戻る");
@@ -105,15 +105,15 @@ it("架空の当番と総会で、操作の結果と次の案と戻り方を読�
   await result(await postForm(realApp, `${answers}/deadline`, { due_on: "2099-11-07" }, cookie), "返事の締切を11月7日", "総会の返事へ戻る");
   expect(await getAnswerDeadline(env.DB, ward.wardId, meeting.projectId)).toBe("2099-11-07");
 
-  // 読み取りは架空の応答を保存する。受付、R2、D1、画面、訂正は製品の経路を使う。
+  // 読み取りは試しの応答を保存する。受付、R2、D1、画面、訂正は製品の経路を使う。
   const received = await receive(env, {
     wardId: ward.wardId, projectId: meeting.projectId, via: "admin", readKind: "answer_sheet", accountId: account.accountId,
     parts: [{ kind: "photo", filename: fixture.answerSheetFilename, mediaType: "image/jpeg", bytes: new Uint8Array(fixture.answerSheetPhotoBytes) }],
   });
   const original = received.received[0];
-  if (!received.jobId || !original) throw new Error("架空の回答票を受け付けられません。");
+  if (!received.jobId || !original) throw new Error("試しの回答票を受け付けられません。");
   const attempt = await claimRead(env.DB, ward.wardId, received.jobId, 60_000);
-  if (attempt === null) throw new Error("架空の回答票の読み取りを始められません。");
+  if (attempt === null) throw new Error("試しの回答票の読み取りを始められません。");
   expect(await finishRead(env.DB, {
     wardId: ward.wardId, jobId: received.jobId, attempt, source: "model", packVersion: "u55-fictional-sheet@1", model: "fixture",
     body: { ...fixture.answerSheetReading, rows: [{ ...fixture.answerSheetReading.rows[0]!, original_id: original.originalId,

@@ -78,8 +78,8 @@ describe("QRの部品", () => {
 describe("A4の版面", () => {
   const app = new Hono().get("/", (c) =>
     c.html(
-      <PrintDocument title="試験の案内（架空）">
-        <Sheet footer={<span>架空の区</span>}>
+      <PrintDocument title="試験の案内">
+        <Sheet footer={<span>試しの区</span>}>
           <h1>試験の案内</h1>
           <FieldBox label="代表者のお名前" />
           <CutLine />
@@ -109,7 +109,7 @@ describe("A4の版面", () => {
     expect(html).toContain("<svg");
     expect(html).toContain("width:30mm");
     expect(html).toContain("代表者のお名前");
-    expect(html).toContain("架空の区");
+    expect(html).toContain("試しの区");
   });
 
   it("タイトルなどの文字はescapeされる", async () => {

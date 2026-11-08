@@ -13,14 +13,14 @@ import { withdrawJob } from "../src/intake/store";
 import { requestProjectDeletion, requestWardDeletion, runDeletionCron } from "../src/ops/lifecycle";
 import { createProject } from "../src/project/api";
 
-it("架空の原本と写しを別に保管し、失敗後に続け、取り下げ・受付・行事・自治会の消去も両方へ反映する", async () => {
+it("試しの原本と写しを別に保管し、失敗後に続け、取り下げ・受付・行事・自治会の消去も両方へ反映する", async () => {
   if (!env.ORIGINALS_BACKUP) throw new Error("試験用の別の保管先がありません");
   const { ward, account } = await seedAdmin(env.DB);
   const w = ward.wardId;
-  const project = await createProject(env.DB, w, { kind: "event", title: "架空の保管確認会", year: 2026, accountId: account.accountId });
+  const project = await createProject(env.DB, w, { kind: "event", title: "試しの保管確認会", year: 2026, accountId: account.accountId });
   const received = await receive(env, {
     wardId: w, projectId: project.projectId, via: "admin", accountId: account.accountId,
-    parts: Array.from({ length: 7 }, (_, i) => ({ kind: "text" as const, filename: `架空の資料${i}.txt`,
+    parts: Array.from({ length: 7 }, (_, i) => ({ kind: "text" as const, filename: `試しの資料${i}.txt`,
       mediaType: "text/plain", bytes: new TextEncoder().encode(`${PROVIDER_CONTACT_FIXTURE.more}${i}`) })),
   });
   const primary = new WardBucket(env.ORIGINALS, w);
@@ -30,12 +30,12 @@ it("架空の原本と写しを別に保管し、失敗後に続け、取り下�
   const contact = await receiveContact(env.DB, { kind: "access", ...PROVIDER_CONTACT_FIXTURE });
   const kept = await receiveContact(env.DB, { kind: "usage", ...PROVIDER_CONTACT_FIXTURE });
   const row = await contactById(env.DB, contact.id);
-  if (!row) throw new Error("架空の受付を作れませんでした");
+  if (!row) throw new Error("試しの受付を作れませんでした");
   await appendMessage(env, row, "person", PROVIDER_CONTACT_FIXTURE.more,
-    new File([PROVIDER_CONTACT_FIXTURE.more], "架空の添付.jpg", { type: "image/jpeg" }));
+    new File([PROVIDER_CONTACT_FIXTURE.more], "試しの添付.jpg", { type: "image/jpeg" }));
   const photo = await env.DB.prepare("SELECT photo_key FROM provider_contact_messages WHERE ward_id = ? AND contact_id = ? AND photo_key IS NOT NULL")
     .bind(CONTACT_WARD, contact.id).first<{ photo_key: string }>();
-  if (!photo) throw new Error("架空の添付を作れませんでした");
+  if (!photo) throw new Error("試しの添付を作れませんでした");
   const day = new Date("2026-11-07T00:00:00Z");
   const tick = { cron: CRON.EVERY_5_MIN } as ScheduledController;
   const daily = { cron: CRON.DAILY } as ScheduledController;
@@ -50,7 +50,7 @@ it("架空の原本と写しを別に保管し、失敗後に続け、取り下�
       ).bind(id)));
       if (active.every((result) => result.results.length === 0)) return;
     }
-    throw new Error("架空の保管の続きが終わりませんでした");
+    throw new Error("試しの保管の続きが終わりませんでした");
   }
   async function finishDeletion(id: string) {
     for (let step = 0; step < 100; step++) {
@@ -60,7 +60,7 @@ it("架空の原本と写しを別に保管し、失敗後に続け、取り下�
       expect(queued?.state).not.toBe("error");
       if (!queued) return;
     }
-    throw new Error("架空の消去の続きが終わりませんでした");
+    throw new Error("試しの消去の続きが終わりませんでした");
   }
 
   await runBackupCron(daily, env, day);
@@ -68,7 +68,7 @@ it("架空の原本と写しを別に保管し、失敗後に続け、取り下�
     .bind(w).first<{ cursor: string | null; phase: string }>();
   expect(progress?.phase).toBe("copy");
   expect(progress?.cursor).toEqual(expect.any(String));
-  const failedPut = vi.spyOn(env.ORIGINALS_BACKUP, "put").mockRejectedValueOnce(new Error("架空の停止"));
+  const failedPut = vi.spyOn(env.ORIGINALS_BACKUP, "put").mockRejectedValueOnce(new Error("試しの停止"));
   try { await runBackupCron(tick, env, day); } finally { failedPut.mockRestore(); }
   expect((await backupStatus(env, [w]))?.failures).toBe(1);
   await finishBackup(day);

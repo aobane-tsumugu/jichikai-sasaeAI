@@ -31,7 +31,7 @@ it("行事を聞く候補は住民向けのページに知らせたものに限�
     const row = await env.DB.prepare(`SELECT document_id, version_id, version_no FROM document_versions
       WHERE ward_id = ? AND project_id = ? ORDER BY version_no DESC LIMIT 1`)
       .bind(admin.ward.wardId, project.projectId).first<{ document_id: string; version_id: string; version_no: number }>();
-    if (!row) throw new Error("架空の下書きがありません");
+    if (!row) throw new Error("試しの下書きがありません");
     return { project, row };
   };
   const publish = async (admin: typeof owner, data: Awaited<ReturnType<typeof draft>>, scope: "public" | "space") => {
@@ -62,7 +62,7 @@ it("行事を聞く候補は住民向けのページに知らせたものに限�
       bytes: new Uint8Array([...fixture.answerSheetPhotoBytes, index]),
     }] });
     const original = result.received[0];
-    if (!result.jobId || !original) throw new Error("架空の写真を受け取れていません");
+    if (!result.jobId || !original) throw new Error("試しの写真を受け取れていません");
     const reading: Reading = {
       document_kind: "photo", summary: fixture.reportText,
       original_years: [{ original_id: original.originalId, year: fixture.eventYear }],

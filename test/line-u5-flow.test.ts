@@ -58,7 +58,7 @@ it("写真を引用して一問ずつ聞き、撮り直しと分からないで�
   const photoJob = async (tag: number) => {
     const result = await receive(runtime, { wardId: ward.wardId, projectId: project.projectId, via: "line_group", parts: [{ kind: "photo", filename: fixture.answerSheetFilename,
       mediaType: "image/jpeg", bytes: new Uint8Array([...fixture.answerSheetPhotoBytes, tag]) }] });
-    if (!result.jobId) throw new Error("架空の写真を受け付けられませんでした");
+    if (!result.jobId) throw new Error("試しの写真を受け付けられませんでした");
     return result.jobId;
   };
   const saveReading = async (jobId: string, unreadable: boolean, year: number | null) => {

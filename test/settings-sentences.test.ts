@@ -17,8 +17,8 @@ it("設定の画面は、要約の付いたリンクでなく、今の状態を�
   expect(alone).not.toContain("直したいものを選んでください。");
   expect(alone).not.toContain("LINEやメールをつなぎます。");
 
-  await setSetting(env.DB, ward.wardId, SETTING_KEYS.publicContact, "架空自治会の窓口\n集会所の郵便受け", account.accountId);
-  expect(await page("/settings")).toContain("住民向けのページには、自治会の連絡先として「架空自治会の窓口　集会所の郵便受け」が出ています。");
+  await setSetting(env.DB, ward.wardId, SETTING_KEYS.publicContact, "自治会の窓口\n集会所の郵便受け", account.accountId);
+  expect(await page("/settings")).toContain("住民向けのページには、自治会の連絡先として「自治会の窓口　集会所の郵便受け」が出ています。");
 
   const info = await page("/settings/info");
   expect(info.indexOf("住民向けのページに出す連絡先")).toBeLessThan(info.indexOf("個人情報の扱い"));

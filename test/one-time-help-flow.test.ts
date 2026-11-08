@@ -27,7 +27,7 @@ it("募集の紙とWebから同じ手伝いに申し込み、役員が時間を�
   const version = await env.DB.prepare(`SELECT document_id, version_id, version_no FROM document_versions
     WHERE ward_id = ? AND project_id = ?`).bind(ward.wardId, project.projectId)
     .first<{ document_id: string; version_id: string; version_no: number }>();
-  if (!version) throw new Error("架空の募集がありません。");
+  if (!version) throw new Error("試しの募集がありません。");
   expect((await postForm(realApp, `${base}/admin/publish/${project.projectId}/send`, {
     documentId: version.document_id, versionId: version.version_id, versionNo: String(version.version_no), lineDelivery: "skip",
   }, cookie)).status).toBe(303);
@@ -51,13 +51,13 @@ it("募集の紙とWebから同じ手伝いに申し込み、役員が時間を�
   }
   expect(hand).not.toMatch(/name="(?:household|district|people_count)"/);
   const submissionId = /name="submission_id" value="([^"]+)"/.exec(hand)?.[1];
-  if (!submissionId) throw new Error("架空の手入力の送信番号がありません。");
+  if (!submissionId) throw new Error("試しの手入力の送信番号がありません。");
   const input = { helper_name: FIRST_SLICE.sheetHelper, helper_times: fixture.times[0], submission_id: submissionId };
   const entered = await postForm(realApp, `${root}/help`, input, cookie);
   expect(entered.status).toBe(303);
   expect((await postForm(realApp, `${root}/help`, input, cookie)).status).toBe(303);
   const [offer] = await listHelpOffers(env.DB, ward.wardId, project.projectId);
-  if (!offer) throw new Error("紙からの架空の申し込みがありません。");
+  if (!offer) throw new Error("紙からの試しの申し込みがありません。");
   const endpoint = `${root}/help/${offer.offerId}`;
   expect(await listHelpOffers(env.DB, ward.wardId, project.projectId)).toHaveLength(1);
   expect(await listAnswers(env.DB, ward.wardId, project.projectId)).toHaveLength(0);
@@ -98,16 +98,16 @@ it.each([
 ])("確認中の時間帯を手伝いの選択肢から外し、決まった時間帯がないときは希望を書ける（$slots）", async ({ slots, choices }) => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の手伝いの募集", year: 2026, accountId: account.accountId,
+    kind: "event", title: "試しの手伝いの募集", year: 2026, accountId: account.accountId,
   });
   const base = `/${ward.slug}`;
   expect(await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
-    kind: "recruitment", title: "架空の募集", scope: "public", basedOn: project.stateVersion,
-    body: JSON.stringify({ text: "架空の手伝いを募集します。", items: [{ key: "helper_slots", content: slots }] }),
+    kind: "recruitment", title: "試しの募集", scope: "public", basedOn: project.stateVersion,
+    body: JSON.stringify({ text: "試しの手伝いを募集します。", items: [{ key: "helper_slots", content: slots }] }),
   })).toBe(true);
   const version = await env.DB.prepare("SELECT document_id, version_id, version_no FROM document_versions WHERE ward_id = ? AND project_id = ?")
     .bind(ward.wardId, project.projectId).first<{ document_id: string; version_id: string; version_no: number }>();
-  if (!version) throw new Error("架空の募集がありません。");
+  if (!version) throw new Error("試しの募集がありません。");
   expect((await postForm(realApp, `${base}/admin/publish/${project.projectId}/send`, {
     documentId: version.document_id, versionId: version.version_id, versionNo: String(version.version_no), lineDelivery: "skip",
   }, cookie)).status).toBe(303);

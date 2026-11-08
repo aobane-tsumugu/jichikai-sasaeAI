@@ -11,7 +11,7 @@ import { addExemption } from "../src/rota/store";
 import { get, postForm, realApp } from "./helpers";
 
 it("通年のごみ当番を月曜で作り、免除と名簿変更を反映し、市報の配布は予定と基本情報に残す", async () => {
-  // この試験の世帯、進め方、免除の理由は全て架空。
+  // この試験の世帯、進め方、免除の理由は全て。
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
@@ -145,7 +145,7 @@ it("通年の曜日を空や範囲外で送っても表を作らず、当番の�
 });
 
 it.each(["担当を決める"])("eventのまま%sを足すと通年の曜日と当番表を保存できる", async (taskName) => {
-  // この試験の世帯と準備は全て架空。
+  // この試験の世帯と準備は全て。
   const { ward, account, cookie } = await seedAdmin(env.DB);
   await replaceRoster(env.DB, ward.wardId, KAKUU_YEAR_RECURRING.roster, { household: 0, district: 1 });
   const roster = await getRoster(env.DB, ward.wardId);

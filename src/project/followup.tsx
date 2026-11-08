@@ -22,7 +22,7 @@ type DisplayInquiry = InquiryRow & { line_bundle_id?: string | null; line_event_
 
 export const followupAdmin = new Hono<AdminEnv>();
 
-/** 公式 LINE の問い合わせは原文で残す。AI も架空の入力者アカウントも使わない。 */
+/** 公式 LINE の問い合わせは原文で残す。AIも代わりの入力者アカウントも使わない。 */
 export async function recordLineInquiry(db: D1Database, wardId: string, input: {
   eventId: string; receivedAt: string; text: string; sourceType: string; sourceId: string; userId?: string | null; senderLabel: string | null;
 }): Promise<void> {

@@ -33,7 +33,7 @@ it("取消と原本の消去を写しにも反映して戻し、古いAI処理�
   const input = async (projectId: string, text: string) => {
     const result = await receive(env, { wardId: w, projectId, via: "admin", accountId: account.accountId,
       parts: [{ kind: "text", filename: text, mediaType: "text/plain", bytes: new TextEncoder().encode(text) }] });
-    if (!result.jobId || !result.received[0]) throw new Error("架空の資料を受け付けられませんでした");
+    if (!result.jobId || !result.received[0]) throw new Error("試しの資料を受け付けられませんでした");
     return { jobId: result.jobId, originalId: result.received[0].originalId };
   };
   const material = await input(city.projectId, fixture.rosterName);
@@ -49,7 +49,7 @@ it("取消と原本の消去を写しにも反映して戻し、古いAI処理�
     sessions: {
       create: async () => ({ id: newSession }),
       delete: async (id: string) => {
-        if (rejectOld && id === oldSession) throw Object.assign(new Error("架空の一時的な失敗"), { status: 503 });
+        if (rejectOld && id === oldSession) throw Object.assign(new Error("試しの一時的な失敗"), { status: 503 });
         deleted.push(id);
         return { id };
       },
@@ -65,7 +65,7 @@ it("取消と原本の消去を写しにも反映して戻し、古いAI処理�
       if (!queue.results.length) return;
       await tick();
     }
-    throw new Error("架空の自治会の消去が終わりませんでした");
+    throw new Error("試しの自治会の消去が終わりませんでした");
   };
   try {
     await env.DB.prepare("UPDATE jobs SET status = 'done', session_id = ? WHERE ward_id = ? AND job_id = ?")
@@ -93,12 +93,12 @@ it("取消と原本の消去を写しにも反映して戻し、古いAI処理�
         confidence: "high", packVersion: "fixture-deletion@1" })).status).toBe("applied");
     }
     const state = await getProjectState(env.DB, w, city.projectId);
-    if (!state) throw new Error("架空の仕事がありません");
+    if (!state) throw new Error("試しの仕事がありません");
     expect(await saveDocument(env.DB, w, city.projectId, account.accountId, { kind: "report", title: fixture.draftTitle, scope: "staff",
       basedOn: state.project.stateVersion, body: JSON.stringify({ text: fixture.rosterName, items: [] }) })).toBe(true);
     const version = await env.DB.prepare("SELECT document_id, version_id, version_no, body FROM document_versions WHERE ward_id = ? AND project_id = ?")
       .bind(w, city.projectId).first<{ document_id: string; version_id: string; version_no: number; body: string }>();
-    if (!version) throw new Error("架空の本文がありません");
+    if (!version) throw new Error("試しの本文がありません");
     const tables = await currentPublicationTables(env.DB, w, city.projectId);
     expect(tables.find((row) => row.data.name === fixture.rosterName)?.sourceRef).toBe(material.originalId);
     // 配布済みの記録を用意する。消去後もこの番号と配布の記録は保つ。
@@ -121,7 +121,7 @@ it("取消と原本の消去を写しにも反映して戻し、古いAI処理�
     await recordLineInquiry(env.DB, w, { eventId: crypto.randomUUID(), receivedAt: "2026-11-05T00:00:00Z", text: fixture.publicAnnouncement,
       sourceType: "user", sourceId: `fictional-source-${w}`, senderLabel: null });
     const inquiryId = await env.DB.prepare("SELECT inquiry_id FROM inquiry_records WHERE ward_id = ?").bind(w).first<string>("inquiry_id");
-    if (!inquiryId) throw new Error("架空の問い合わせがありません");
+    if (!inquiryId) throw new Error("試しの問い合わせがありません");
     const cancelledId = crypto.randomUUID();
     const closedId = crypto.randomUUID();
     for (const [id, name] of [[cancelledId, fixture.phoneHelper], [closedId, fixture.sheetHelper]] as const) {
@@ -134,7 +134,7 @@ it("取消と原本の消去を写しにも反映して戻し、古いAI処理�
     expect(await (await get(realApp, `${root}/settings/deletion`, cookie)).text()).toContain(fixture.previousMaterial);
     expect((await postForm(realApp, `${root}/inquiries/${inquiryId}/remove`, {}, cookie)).status).toBe(200);
     const receipt = await cancelHelpOffer(env.DB, w, event.projectId, cancelledId);
-    if (!receipt) throw new Error("架空の取消ができませんでした");
+    if (!receipt) throw new Error("試しの取消ができませんでした");
     expect(await restoreHelpOffer(env.DB, w, event.projectId, receipt)).toBe(true);
     expect(await cancelHelpOffer(env.DB, w, event.projectId, cancelledId)).not.toBeNull();
     expect((await postForm(realApp, `${root}/close/${event.projectId}/finalize`, {}, cookie)).status).toBe(303);
@@ -164,10 +164,10 @@ it("取消と原本の消去を写しにも反映して戻し、古いAI処理�
     expect(deleted.filter((id) => id === oldSession)).toHaveLength(1);
 
     const snapshotObject = await bucket.get("snapshots/daily/2026-11-05.json");
-    if (!snapshotObject) throw new Error("架空の写しがありません");
+    if (!snapshotObject) throw new Error("試しの写しがありません");
     const snapshot = await snapshotObject.text();
     for (const erased of [fixture.previousMaterial, fixture.publicAnnouncement, fixture.phoneHelper, fixture.sheetHelper]) expect(snapshot).not.toContain(erased);
-    // 取り下げや取消前に作った写しを、実際に空にした同じ架空の区へ戻す。
+    // 取り下げや取消前に作った写しを、実際に空にした同じ試しの区へ戻す。
     await env.DB.prepare("UPDATE wards SET is_active = 0 WHERE ward_id = ?").bind(w).run();
     for (const table of [...SNAPSHOT_TABLES].reverse()) await env.DB.prepare(`DELETE FROM ${table} WHERE ward_id = ?`).bind(w).run();
     await env.DB.exec(snapshotToSql(JSON.parse(snapshot) as unknown).sql);
@@ -206,31 +206,31 @@ it("資料を取り下げて消しても知らせた案内と日次の本文を�
     // 文字の受付で、読み取り全体と原本ごとの本文が自動で索引に入る。手で重ねて足さない。
     const received = await receive(env, { wardId: w, projectId: project.projectId, via: "admin", accountId: account.accountId,
       parts: [{ kind: "text", filename: name, mediaType: "text/plain", bytes: new TextEncoder().encode(name) }] });
-    if (!received.jobId || !received.received[0]) throw new Error("架空の資料を受け付けられませんでした");
+    if (!received.jobId || !received.received[0]) throw new Error("試しの資料を受け付けられませんでした");
     const originalId = received.received[0].originalId;
     const readingBody = await env.DB.prepare("SELECT body FROM readings WHERE ward_id = ? AND job_id = ?")
       .bind(w, received.jobId).first<string>("body");
-    if (!readingBody) throw new Error("架空の資料の読み取りがありません");
+    if (!readingBody) throw new Error("試しの資料の読み取りがありません");
     inputs.push({ jobId: received.jobId, originalId, name, readingBody });
     expect((await applyChange(env.DB, w, project.projectId, { kind: "row", table: "committee", data: { name, role: fixture.helperTime },
       source: { kind: "original", ref: originalId, year: fixture.eventYear }, confidence: "high", packVersion: "fixture-deletion@1" })).status).toBe("applied");
   }
   const [withdrawal, removal] = inputs;
-  if (!withdrawal || !removal) throw new Error("架空の資料が足りません");
+  if (!withdrawal || !removal) throw new Error("試しの資料が足りません");
   expect((await applyChange(env.DB, w, project.projectId, { kind: "row", table: "committee", data: { name: fixture.firstOfficer },
     source: { kind: "person", accountId: account.accountId }, confidence: "high", packVersion: "fixture-deletion@1" })).status).toBe("applied");
   const state = await getProjectState(env.DB, w, project.projectId);
-  if (!state) throw new Error("架空の行事がありません");
+  if (!state) throw new Error("試しの行事がありません");
   expect(await saveDocument(env.DB, w, project.projectId, account.accountId, { kind: "announcement", title: fixture.draftTitle,
     scope: "public", basedOn: state.project.stateVersion, body: JSON.stringify({ text: fixture.publicAnnouncement, items: [] }) })).toBe(true);
   const version = await env.DB.prepare("SELECT document_id, version_id, version_no FROM document_versions WHERE ward_id = ? AND project_id = ?")
     .bind(w, project.projectId).first<{ document_id: string; version_id: string; version_no: number }>();
-  if (!version) throw new Error("架空の案内がありません");
+  if (!version) throw new Error("試しの案内がありません");
   expect((await postForm(realApp, `${root}/admin/publish/${project.projectId}/send`, { documentId: version.document_id,
     versionId: version.version_id, versionNo: String(version.version_no), lineDelivery: "skip" }, cookie)).status).toBe(303);
   const body = await env.DB.prepare("SELECT body FROM document_versions WHERE ward_id = ? AND version_id = ?")
     .bind(w, version.version_id).first<string>("body");
-  if (body === null) throw new Error("架空の知らせた案内の本文がありません");
+  if (body === null) throw new Error("試しの知らせた案内の本文がありません");
   expect(body).toContain(fixture.publicAnnouncement);
   const tables = await currentPublicationTables(env.DB, w, project.projectId);
   expect(tables).toHaveLength(3);
@@ -267,7 +267,7 @@ it("資料を取り下げて消しても知らせた案内と日次の本文を�
       .bind(w, project.projectId).all<SearchEntry>();
     expect(search.results.map(searchKey).sort()).toEqual(expectedSearch.map(searchKey).sort());
     const object = await bucket.get("snapshots/daily/2026-11-05.json");
-    if (!object) throw new Error("架空の日次の写しがありません");
+    if (!object) throw new Error("試しの日次の写しがありません");
     const snapshot = await object.json<{ tables: { document_versions: { version_id: string; body: string; tables_snapshot: string }[];
       archive_search_entries: SearchEntry[] } }>();
     const copied = snapshot.tables.document_versions.find((row) => row.version_id === version.version_id);
@@ -280,7 +280,7 @@ it("資料を取り下げて消しても知らせた案内と日次の本文を�
       if (!(await env.DB.prepare("SELECT queue_id FROM ops_deletion_queue WHERE ward_id = ?").bind(w).first())) return;
       await runDeletionCron({ cron: CRON.EVERY_5_MIN } as ScheduledController, env);
     }
-    throw new Error("架空の資料の消去が終わりませんでした");
+    throw new Error("試しの資料の消去が終わりませんでした");
   };
   await check(savedTables, inputs.map((input) => input.originalId));
   expect(await withdrawJob(env, w, withdrawal.jobId)).toBe(true);

@@ -6,11 +6,11 @@ import { sha256Hex } from "../src/core/password";
 import { seedWard } from "../src/core/testing";
 import { createProject } from "../src/project/api";
 
-const text = "今年の持ち物を教えてください（架空の質問）";
+const text = "今年の持ち物を教えてください（試しの質問）";
 
 async function setup() {
   const ward = await seedWard(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026 });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭", year: 2026 });
   return { wardId: ward.wardId, projectId: project.projectId };
 }
 

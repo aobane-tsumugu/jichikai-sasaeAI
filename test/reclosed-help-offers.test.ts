@@ -9,20 +9,20 @@ import { get, postForm, realApp } from "./helpers";
 it("行事を開き直して閉じても手伝いの件数を保ち、名前を消して新しい申し込みの件数だけ足す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の記録確認会", year: 2026, accountId: account.accountId,
+    kind: "event", title: "試しの記録確認会", year: 2026, accountId: account.accountId,
   });
   const base = `/${ward.slug}`;
   const closePath = `${base}/admin/close/${project.projectId}`;
-  const names = ["架空 受付役", "架空 片付け役", "架空 追加の担当"];
+  const names = ["受付役", "片付け役", "追加の担当"];
   expect(await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
     kind: "recruitment", title: "手伝いの募集", scope: "public", basedOn: project.stateVersion,
-    body: JSON.stringify({ text: "架空の会の手伝いを募集します。", items: [{ key: "helper_slots", content: "10時〜11時" }] }),
+    body: JSON.stringify({ text: "試しの会の手伝いを募集します。", items: [{ key: "helper_slots", content: "10時〜11時" }] }),
   })).toBe(true);
   const version = await env.DB.prepare(`SELECT v.document_id, v.version_id, v.version_no FROM document_versions v
     JOIN documents d ON d.ward_id = v.ward_id AND d.document_id = v.document_id
     WHERE v.ward_id = ? AND v.project_id = ? AND d.kind = 'recruitment'`)
     .bind(ward.wardId, project.projectId).first<{ document_id: string; version_id: string; version_no: number }>();
-  if (!version) throw new Error("架空の募集がありません。");
+  if (!version) throw new Error("試しの募集がありません。");
   expect((await postForm(realApp, `${base}/admin/publish/${project.projectId}/send`, {
     documentId: version.document_id, versionId: version.version_id, versionNo: String(version.version_no), lineDelivery: "skip",
   }, cookie)).status).toBe(303);

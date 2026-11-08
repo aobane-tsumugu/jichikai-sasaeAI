@@ -13,7 +13,7 @@ import { createInvite } from "../src/space/api";
 import { addExemption, compareRota } from "../src/rota/store";
 import { cookieFrom, get, postForm, realApp } from "./helpers";
 
-it("架空の去年の表と変わった名簿から免除を外した下書きを直して配り、世帯の履歴と役員だけの免除を残して渡し、消せる", async () => {
+it("試しの去年の表と変わった名簿から免除を外した下書きを直して配り、世帯の履歴と役員だけの免除を残して渡し、消せる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
@@ -101,13 +101,13 @@ it("架空の去年の表と変わった名簿から免除を外した下書き�
   expect((await get(realApp, `${root}/rota/history`, other.cookie)).status).toBe(303);
   expect((await get(realApp, `/${ward.slug}/rota/exemptions`)).status).toBe(404);
 
-  const seat = await seedSeat(env.DB, ward.wardId, "書記（架空）");
+  const seat = await seedSeat(env.DB, ward.wardId, "書記");
   await env.DB.prepare("UPDATE accounts SET seat_id = ? WHERE ward_id = ? AND account_id = ?").bind(seat, ward.wardId, account.accountId).run();
   await env.DB.prepare("UPDATE accounts SET seat_id = NULL WHERE ward_id = ? AND account_id = ?").bind(ward.wardId, account.accountId).run();
   const history = await (await get(realApp, `${root}/rota/history`, cookie)).text();
   expect(history).toContain("出席の記録あり");
   expect(history).toContain(fixture.reason);
-  expect(history).toContain("書記（架空）");
+  expect(history).toContain("書記");
   const exported = (await exportWard(env, ward.wardId)).body;
   expect(exported).toContain(fixture.reason);
   await writeDailyWardSnapshots(env, new Date("2026-11-07T00:00:00Z"));
@@ -121,24 +121,24 @@ it("架空の去年の表と変わった名簿から免除を外した下書き�
   expect(await env.DB.prepare("SELECT ward_id FROM wards WHERE ward_id = ?").bind(other.ward.wardId).first()).not.toBeNull();
 });
 
-it("架空の名簿にある世帯は名前に各や班を含んでも免除を反映し、去年からの担当として扱う", async () => {
+it("試しの名簿にある世帯は名前に各や班を含んでも免除を反映し、去年からの担当として扱う", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
-  // 名前も班も架空。名簿にない「各世帯」「1班」は団体の担当として残す。
-  const roster = [{ household: "架空の各務", district: "1班" }, { household: "架空の班目", district: "1班" }];
+  // 名前も班も。名簿にない「各世帯」「1班」は団体の担当として残す。
+  const roster = [{ household: "試しの各務", district: "1班" }, { household: "試しの班目", district: "1班" }];
   await replaceRoster(env.DB, ward.wardId, roster, { household: 0, district: 1 });
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "duty", title: "架空の清掃当番", year: 2026, eventDay: "2026-11-08", accountId: account.accountId,
+    kind: "duty", title: "試しの清掃当番", year: 2026, eventDay: "2026-11-08", accountId: account.accountId,
   });
   const assignees = { 午前: roster[0]!.household, 午後: roster[1]!.household, 共同: "各世帯", 全体: "1班" };
   for (const [slot, assignee] of Object.entries(assignees)) {
     expect((await applyChange(env.DB, ward.wardId, project.projectId, {
-      kind: "row", table: "duties", data: { slot, task: "架空の清掃", assignee },
+      kind: "row", table: "duties", data: { slot, task: "試しの清掃", assignee },
       source: { kind: "original", ref: "fictional-name-rota", locator: slot, year: 2025 },
       confidence: "high", packVersion: "rota-flow-fictional@1",
     })).status).toBe("applied");
   }
   expect(await addExemption(env.DB, ward.wardId, account.accountId, {
-    ...roster[0]!, reason: "架空の免除理由", startsOn: "2026-01-01", endsOn: "2026-12-31",
+    ...roster[0]!, reason: "試しの免除理由", startsOn: "2026-01-01", endsOn: "2026-12-31",
   })).toBe(true);
 
   const proposal = await compareRota(env.DB, ward.wardId, project.projectId);
@@ -161,22 +161,22 @@ it.each([
     example: "年をまたぐ表", slots: ["2025年12月30日", "2025年12月31日", "2026年1月2日"], eventDay: "2026-12-29",
     exemptOn: "2027-01-01", exemptIndex: 2, expectedSlots: ["12月29日（火）", "12月30日（水）", "1月1日（金）"],
   },
-])("架空の$exampleを今年へずらし、当番から外す期間に当たる日だけ担当を空欄にする", async ({ slots, eventDay, exemptOn, exemptIndex, expectedSlots }) => {
+])("試しの$exampleを今年へずらし、当番から外す期間に当たる日だけ担当を空欄にする", async ({ slots, eventDay, exemptOn, exemptIndex, expectedSlots }) => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
-  const household = { household: "架空の当番世帯", district: "1班" };
+  const household = { household: "試しの当番世帯", district: "1班" };
   await replaceRoster(env.DB, ward.wardId, [household], { household: 0, district: 1 });
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "duty", title: "架空の日ごとの当番", year: 2026, eventDay, accountId: account.accountId,
+    kind: "duty", title: "試しの日ごとの当番", year: 2026, eventDay, accountId: account.accountId,
   });
   for (const slot of slots) {
     expect((await applyChange(env.DB, ward.wardId, project.projectId, {
-      kind: "row", table: "duties", data: { slot, task: "架空の見回り", assignee: household.household },
+      kind: "row", table: "duties", data: { slot, task: "試しの見回り", assignee: household.household },
       source: { kind: "original", ref: "fictional-exemption-dates", locator: slot, year: 2025 },
       confidence: "high", packVersion: "rota-flow-fictional@1",
     })).status).toBe("applied");
   }
   expect(await addExemption(env.DB, ward.wardId, account.accountId, {
-    ...household, reason: "架空の一日の免除", startsOn: exemptOn, endsOn: exemptOn,
+    ...household, reason: "試しの一日の免除", startsOn: exemptOn, endsOn: exemptOn,
   })).toBe(true);
   const expected = expectedSlots.map((slot, index) => [slot, index === exemptIndex ? "" : household.household]);
   const proposal = await compareRota(env.DB, ward.wardId, project.projectId);

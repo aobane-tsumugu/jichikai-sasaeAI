@@ -23,7 +23,7 @@ it("共通の回答を提出時の本文として残して閉じ、発言者のI
   };
   const saveAnswer = async (projectId: string, text: string) => {
     const state = await getProjectState(env.DB, ward.wardId, projectId);
-    if (!state) throw new Error("架空の仕事がありません");
+    if (!state) throw new Error("試しの仕事がありません");
     expect(await saveDocument(env.DB, ward.wardId, projectId, account.accountId, {
       kind: "report", title: fixture.draftTitle, scope: "staff", basedOn: state.project.stateVersion,
       body: JSON.stringify({ text, items: [{ key: "content", content: fixture.previousMaterial }] }),

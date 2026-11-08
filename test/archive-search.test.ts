@@ -19,9 +19,9 @@ it("記録に聞く抜粋は長い本文の後半の答えを含み、別の自�
   const other = await seedAdmin(env.DB);
   const padding = "去年の準備の経過を確認しました。\n".repeat(80);
   const records = [
-    { owner: local, title: "架空の長い議事録", content: padding + "テント代は8,000円でした。" + padding },
-    { owner: local, title: "架空の冒頭に答えがある記録", content: "テント代は3,000円でした。" + padding },
-    { owner: other, title: "架空の別の自治会の記録", content: padding + "テント代は99,000円でした。" },
+    { owner: local, title: "試しの長い議事録", content: padding + "テント代は8,000円でした。" + padding },
+    { owner: local, title: "試しの冒頭に答えがある記録", content: "テント代は3,000円でした。" + padding },
+    { owner: other, title: "試しの別の自治会の記録", content: padding + "テント代は99,000円でした。" },
   ];
   for (const { owner, title, content } of records) {
     const project = await createProject(env.DB, owner.ward.wardId, {

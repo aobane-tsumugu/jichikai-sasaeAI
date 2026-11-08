@@ -9,11 +9,11 @@ import { get, postForm, realApp } from "./helpers";
 it("閉じた返事の画面では受付をせず、開き直してから電話の返事を入れられる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の答えの確認", year: 2026, accountId: account.accountId,
+    kind: "event", title: "試しの答えの確認", year: 2026, accountId: account.accountId,
   });
   const root = `/${ward.slug}/admin`;
   const path = `${root}/answers/${project.projectId}`;
-  const phone = { household: "架空の世帯", district: "架空の班", people_count: "2" };
+  const phone = { household: "試しの世帯", district: "試しの班", people_count: "2" };
   expect((await postForm(realApp, `${path}/phone`, phone, cookie)).status).toBe(303);
   expect((await postForm(realApp, `${path}/deadline`, { due_on: "2026-10-10" }, cookie)).status).toBe(303);
   expect((await postForm(realApp, `${root}/close/${project.projectId}/finalize`, {}, cookie)).status).toBe(303);
@@ -21,7 +21,7 @@ it("閉じた返事の画面では受付をせず、開き直してから電話�
   const stalePhone = await postForm(realApp, `${path}/phone`, phone, cookie);
   expect(stalePhone.status).toBe(303);
   const photo = new FormData();
-  photo.append("part", new File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1])], "架空の回答票.jpg", { type: "image/jpeg" }));
+  photo.append("part", new File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1])], "試しの回答票.jpg", { type: "image/jpeg" }));
   const staleSheet = await realApp.request(`${path}/sheet`, {
     method: "POST", headers: { cookie, origin: "http://localhost" }, body: photo,
   }, env);
@@ -35,7 +35,7 @@ it("閉じた返事の画面では受付をせず、開き直してから電話�
   expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM jobs WHERE ward_id = ? AND project_id = ?")
     .bind(ward.wardId, project.projectId).first()).toEqual({ count: 0 });
   const html = await (await get(realApp, `${path}?view=list`, cookie)).text();
-  expect(html).toContain("架空の世帯");
+  expect(html).toContain("試しの世帯");
   expect(html).toContain("2人");
   expect(html).toContain("終わりにした画面で、終わりを取り消してください");
   expect(html).not.toContain('name="children_count"');
@@ -44,7 +44,7 @@ it("閉じた返事の画面では受付をせず、開き直してから電話�
 
   expect((await postForm(realApp, `${root}/close/${project.projectId}/reopen`, {}, cookie)).status).toBe(303);
   expect(await (await get(realApp, `${path}?view=hand`, cookie)).text()).toContain('name="children_count"');
-  expect((await postForm(realApp, `${path}/phone`, { ...phone, household: "架空の別の世帯", people_count: "3" }, cookie)).status).toBe(303);
+  expect((await postForm(realApp, `${path}/phone`, { ...phone, household: "試しの別の世帯", people_count: "3" }, cookie)).status).toBe(303);
   expect(await listAnswers(env.DB, ward.wardId, project.projectId)).toHaveLength(2);
 });
 

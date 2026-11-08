@@ -162,12 +162,12 @@ async function selfTest() {
   const server = createServer((request, response) => {
     requests.push(request.method ?? "");
     response.setHeader("content-type", "text/html; charset=utf-8");
-    response.end(html(request.url === "/bad" ? '<h1>架空の画面</h1><h3>飛ばした見出し</h3><input placeholder="名前だけ" value="fictional-value-must-not-be-reported"><p style="font-size:14px">小さい字</p><p style="color:#aaa">色の差の小さい字</p><span role="button" tabindex="-1" onclick="void 0">届かない操作</span>'
-      : '<h1>架空の画面</h1><h2>入力してください</h2><form><label for="name">名前</label><input id="name"><label><input type="radio" name="kind" checked>参加</label><label><input type="radio" name="kind">欠席</label><button>送る</button></form><details><summary>説明を読む</summary><label>補足<input></label><a href="/good">戻る</a></details>'));
+    response.end(html(request.url === "/bad" ? '<h1>試しの画面</h1><h3>飛ばした見出し</h3><input placeholder="名前だけ" value="fictional-value-must-not-be-reported"><p style="font-size:14px">小さい字</p><p style="color:#aaa">色の差の小さい字</p><span role="button" tabindex="-1" onclick="void 0">届かない操作</span>'
+      : '<h1>試しの画面</h1><h2>入力してください</h2><form><label for="name">名前</label><input id="name"><label><input type="radio" name="kind" checked>参加</label><label><input type="radio" name="kind">欠席</label><button>送る</button></form><details><summary>説明を読む</summary><label>補足<input></label><a href="/good">戻る</a></details>'));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
-  if (!address || typeof address === "string") throw new Error("架空の画面を開けません");
+  if (!address || typeof address === "string") throw new Error("試しの画面を開けません");
   let browser: Browser | undefined;
   try {
     browser = await chromium.launch({ headless: true });
@@ -181,7 +181,7 @@ async function selfTest() {
     }
     assert.ok(requests.every((method) => method === "GET"));
     assert.ok(!report(results).includes("fictional-value-must-not-be-reported"));
-    console.log("架空の2画面・2つの幅で5項目を確認しました。自己試験成功。");
+    console.log("試しの2画面・2つの幅で5項目を確認しました。自己試験成功。");
   } finally { await browser?.close(); await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); }
 }
 

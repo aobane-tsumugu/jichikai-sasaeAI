@@ -66,6 +66,7 @@ it("配った当番・配置・協賛先は直しても変わらず、知らせ�
   const unchanged = await (await get(realApp, spacePath, memberCookie)).text();
   expect(unchanged).toContain(FIRST_SLICE.phoneHelper);
   expect(unchanged).toContain(FIRST_SLICE.layoutPosition);
+  expect(unchanged).toContain(FIRST_SLICE.sponsorName);
   expect(unchanged).toContain("可");
   expect(unchanged).not.toContain(FIRST_SLICE.requestedBy);
   expect(unchanged).not.toContain(FIRST_SLICE.reportText);
@@ -80,6 +81,7 @@ it("配った当番・配置・協賛先は直しても変わらず、知らせ�
   const changed = await (await get(realApp, spacePath, memberCookie)).text();
   expect(changed).toContain(FIRST_SLICE.requestedBy);
   expect(changed).toContain(FIRST_SLICE.previousPlace);
+  expect(changed).toContain(FIRST_SLICE.sponsorName);
   expect(changed).not.toContain(FIRST_SLICE.reportText);
   expect(changed).toContain("不可");
   expect(changed).not.toContain(FIRST_SLICE.amountNotPublished);

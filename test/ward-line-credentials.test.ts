@@ -12,10 +12,10 @@ import { cookieFrom, get, postForm, realApp, withEnv } from "./helpers";
 async function openTestWard() {
   const destination = `U-fictional-${crypto.randomUUID()}`;
   const result = await openWard(env.DB, {
-    slug: uniqueSlug("line-ward"), name: "自治会ごとのLINEの確認（架空）", firstAccountName: "役員（架空）",
+    slug: uniqueSlug("line-ward"), name: "自治会ごとのLINEの確認", firstAccountName: "役員",
     lineDestination: destination, officialLineUrl: "https://example.invalid/line",
   });
-  if (!result.ok) throw new Error("架空の自治会を開けません");
+  if (!result.ok) throw new Error("試しの自治会を開けません");
   return { ...result, destination };
 }
 
@@ -23,7 +23,7 @@ it("開設した二つの区はそれぞれの鍵で配り、まだ決めてい�
   const first = await openTestWard();
   const second = await openTestWard();
   const missing = await openTestWard();
-  if (!first.line || !second.line) throw new Error("架空のLINEの参照先がありません");
+  if (!first.line || !second.line) throw new Error("試しのLINEの参照先がありません");
   const secrets = {
     [first.line.channelSecretBinding]: "fictional-secret-first",
     [first.line.accessTokenBinding]: "fictional-token-first",
@@ -50,14 +50,14 @@ it("開設した二つの区はそれぞれの鍵で配り、まだ決めてい�
       const cookie = cookieFrom(login, "device");
       expect(cookie).not.toBeNull();
       const project = await createProject(env.DB, opened.ward.wardId, {
-        kind: "event", title: "架空の行事", year: 2026, accountId: opened.account.accountId,
+        kind: "event", title: "試しの行事", year: 2026, accountId: opened.account.accountId,
       });
       expect(await saveDocument(env.DB, opened.ward.wardId, project.projectId, opened.account.accountId, {
-        kind: "announcement", title: "架空の案内", scope: "public", body: JSON.stringify({ text: "架空の行事を開きます。", items: [] }), basedOn: project.stateVersion,
+        kind: "announcement", title: "試しの案内", scope: "public", body: JSON.stringify({ text: "試しの行事を開きます。", items: [] }), basedOn: project.stateVersion,
       })).toBe(true);
       const version = await env.DB.prepare("SELECT document_id, version_id, version_no FROM document_versions WHERE ward_id = ? AND project_id = ?")
         .bind(opened.ward.wardId, project.projectId).first<{ document_id: string; version_id: string; version_no: number }>();
-      if (!version) throw new Error("架空の案内を保存できません");
+      if (!version) throw new Error("試しの案内を保存できません");
       const start = calls.length;
       const sent = await postForm(realApp, `${root}/publish/${project.projectId}/send`, {
         documentId: version.document_id, versionId: version.version_id, versionNo: String(version.version_no), lineDelivery: "send", distribution: "",
@@ -96,7 +96,7 @@ async function sign(body: string, secret: string) {
 it("webhookの署名・返信・投稿者と写真の取得にも、その自治会の鍵だけを使う", async () => {
   const first = await openTestWard();
   const second = await openTestWard();
-  if (!first.line || !second.line) throw new Error("架空のLINEの参照先がありません");
+  if (!first.line || !second.line) throw new Error("試しのLINEの参照先がありません");
   const bindings = withEnv({
     [first.line.channelSecretBinding]: "fictional-secret-first", [first.line.accessTokenBinding]: "fictional-token-first",
     [second.line.channelSecretBinding]: "fictional-secret-second", [second.line.accessTokenBinding]: "fictional-token-second",
@@ -107,7 +107,7 @@ it("webhookの署名・返信・投稿者と写真の取得にも、その自治
     const url = String(input);
     calls.push({ url, authorization: new Headers(init?.headers).get("authorization") });
     if (url.endsWith("/message/reply")) return new Response(null, { status: 200 });
-    if (url.includes("/member/")) return Response.json({ displayName: "架空の投稿者" });
+    if (url.includes("/member/")) return Response.json({ displayName: "試しの投稿者" });
     if (url.endsWith("/content")) return new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]));
     throw new Error("この試験で予定していない外部通信です");
   };
@@ -133,6 +133,6 @@ it("webhookの署名・返信・投稿者と写真の取得にも、その自治
     const requests = calls.slice(start);
     expect(requests).toHaveLength(3);
     expect(requests.every((call) => call.authorization === `Bearer ${token}`)).toBe(true);
-    expect(ports.receiveOriginal).toHaveBeenCalledWith(opened.ward.wardId, expect.objectContaining({ kind: "image", senderDisplayName: "架空の投稿者" }));
+    expect(ports.receiveOriginal).toHaveBeenCalledWith(opened.ward.wardId, expect.objectContaining({ kind: "image", senderDisplayName: "試しの投稿者" }));
   }
 });

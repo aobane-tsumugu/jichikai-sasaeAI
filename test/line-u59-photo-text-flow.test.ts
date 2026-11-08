@@ -19,7 +19,7 @@ import { createProject } from "../src/project/api";
 import { withEnv } from "./helpers";
 
 it("U59: 次の写真を決めつけず、引用と撮り直しの選択だけ結び、一時の当て失敗は再判定する", async () => {
-  // 架空の区・資料だけを使い、署名付き受付、D1、R2、読み取りと当てを通す。
+  // 試しの区・資料だけを使い、署名付き受付、D1、R2、読み取りと当てを通す。
   const { ward, account } = await seedAdmin(env.DB);
   const first = await createProject(env.DB, ward.wardId, { kind: "event", title: fixture.draftTitle, year: fixture.eventYear, accountId: account.accountId });
   const second = await createProject(env.DB, ward.wardId, { kind: "event", title: fixture.dutyTitle, year: fixture.eventYear, accountId: account.accountId });
@@ -28,7 +28,7 @@ it("U59: 次の写真を決めつけず、引用と撮り直しの選択だけ�
   const source = { type: "group" as const, id: "fictional-u59-group", senderId: "fictional-u59-sender" };
   await env.DB.prepare("INSERT INTO line_channels (ward_id, destination, channel_secret_binding, access_token_binding) VALUES (?, ?, 'LINE_CHANNEL_SECRET', 'LINE_CHANNEL_ACCESS_TOKEN')")
     .bind(ward.wardId, destination).run();
-  // 架空資料に画像見出しを付け、実際の寸法確認も通す。画像の読み取り精度は測らない。
+  // 試しの資料に画像見出しを付け、実際の寸法確認も通す。画像の読み取り精度は測らない。
   const image = (tag: number) => new Uint8Array([0xff, 0xd8, 0xff, 0xc0, 0, 11, 8, 3, 32, 4, 0, 3, 1, 1, 0, ...fixture.answerSheetPhotoBytes, tag]);
   let unreadable = false;
   let textFailures = 0;
@@ -48,7 +48,7 @@ it("U59: 次の写真を決めつけず、引用と撮り直しの選択だけ�
       } else {
         textCalls++;
         if (textFailures-- > 0) return Response.json({ error: { type: "overloaded_error", message: "fictional unavailable" } }, { status: 529 });
-        result = { choice: MATCH_UNRELATED, reason: "架空のあいさつです。", intent: "material", attendanceAnswer: false };
+        result = { choice: MATCH_UNRELATED, reason: "試しのあいさつです。", intent: "material", attendanceAnswer: false };
       }
     } else if (request.model === "claude-sonnet-5-5") {
       const originalId = Array.isArray(content) ? content.flatMap((block) => /^原本 ID: ([^（]+)/.exec(block.text ?? "")?.[1] ?? [])[0] : undefined;
@@ -66,7 +66,7 @@ it("U59: 次の写真を決めつけず、引用と撮り直しの選択だけ�
     const path = String(url);
     if (path.includes("api-data.line.me")) {
       const tag = Number(/\/message\/(\d+)\//.exec(path)?.[1]);
-      if (!Number.isInteger(tag)) throw new Error("架空の写真番号がありません");
+      if (!Number.isInteger(tag)) throw new Error("試しの写真番号がありません");
       return new Response(image(tag), { headers: { "content-type": "image/jpeg" } });
     }
     if (path.includes("/member/")) return Response.json({ displayName: fixture.sheetHelper });
@@ -166,7 +166,7 @@ it("U59: 次の写真を決めつけず、引用と撮り直しの選択だけ�
       .bind(ward.wardId, now.toISOString().slice(0, 10)).first()).toEqual({ item_count: 1 });
     textFailures = 3;
     const beforeStop = textCalls;
-    const stoppedText = `架空の文です。${fixture.previousMaterial}`;
+    const stoppedText = `試しの文です。${fixture.previousMaterial}`;
     const stopped = await send({ type: "text", id: "fictional-stopped", text: stoppedText }, "fictional-u59-direct", true);
     expect(textCalls).toBe(beforeStop + 3);
     const kept = await inbox(stopped);

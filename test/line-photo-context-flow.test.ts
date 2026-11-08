@@ -47,14 +47,14 @@ it("L-258: 写真をまとめて前後で当て、迷えば待ち、AIが止ま�
   let readCalls = 0;
   let connectCalls = 0;
   const ai = new Anthropic({ apiKey: "fictional-photo-api-key", maxRetries: 0, fetch: async (url, init) => {
-    if (!String(url).endsWith("/v1/messages")) throw new Error("架空のMessages以外への通信です");
+    if (!String(url).endsWith("/v1/messages")) throw new Error("試しのMessages以外への通信です");
     const request = JSON.parse(String(init?.body)) as { system: string; model: string; tools?: Array<{ name: string }>; messages: Array<{ content: string | Array<{ type: string; text?: string }> }> };
     let result: unknown;
     if (request.tools) {
       const prompt = request.messages[0]?.content;
-      if (typeof prompt !== "string" || !/^仕事: connect$/m.test(prompt)) throw new Error("架空の接続の指示がありません");
+      if (typeof prompt !== "string" || !/^仕事: connect$/m.test(prompt)) throw new Error("試しの接続の指示がありません");
       connectCalls++;
-      result = { text: "架空の文の接続を終えました。" };
+      result = { text: "試しの文の接続を終えました。" };
     } else if (request.system.includes("写真の文字")) result = { readability: "readable", paperKind: "photo", reason: "other" };
     else if (request.system.includes("どのプロジェクトの物かを選ぶ")) {
       const prompt = request.messages[0]?.content;
@@ -63,7 +63,7 @@ it("L-258: 写真をまとめて前後で当て、迷えば待ち、AIが止ま�
         textMatchCalls++;
         result = prompt.includes(`受け取った物の要約: ${fixture.previousMaterial}`)
           ? { choice: first.projectId, reason: "会場の連絡です。", intent: "material", attendanceAnswer: false }
-          : { choice: MATCH_UNRELATED, reason: "架空の雑談", intent: "material", attendanceAnswer: false };
+          : { choice: MATCH_UNRELATED, reason: "試しの雑談", intent: "material", attendanceAnswer: false };
       }
       else {
         matchCalls++;
@@ -93,7 +93,7 @@ it("L-258: 写真をまとめて前後で当て、迷えば待ち、AIが止ま�
     const path = String(url);
     if (path.includes("api-data.line.me")) {
       const tag = Number(/\/message\/(\d+)\//.exec(path)?.[1]);
-      if (!Number.isInteger(tag)) throw new Error("架空の写真番号がありません");
+      if (!Number.isInteger(tag)) throw new Error("試しの写真番号がありません");
       return new Response(new Uint8Array([...fixture.answerSheetPhotoBytes, tag]), { headers: { "content-type": "image/jpeg" } });
     }
     if (path.endsWith("/message/reply") || path.endsWith("/message/push")) {

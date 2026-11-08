@@ -28,7 +28,7 @@ it("総会の決定文に足された決定は、括弧の中でも照合で止�
 });
 
 // 複数の仕事の受付・AIとの接続・配布・閉じるまでを本体で通すため、この試験だけ30秒待つ。
-it("U51: 架空の役員会2回、当番の名簿変更と免除、市の依頼、総会への一年の決定を本体の経路で通す", async () => {
+it("U51: 試しの役員会2回、当番の名簿変更と免除、市の依頼、総会への一年の決定を本体の経路で通す", async () => {
   const setup = await prepareKindsRuntime(env);
   const options = { base: "http://localhost", ward: setup.ward.slug, name: setup.account.name, password: setup.account.password };
   const reports: string[] = [], logs: string[] = [], cookieValues: string[] = [];
@@ -78,7 +78,7 @@ it("U51: 架空の役員会2回、当番の名簿変更と免除、市の依頼�
     const duty = await getProjectState(env.DB, setup.ward.wardId, result.projects.duty2!);
     expect(duty?.tables.duties.filter(row => row.scope === "current").map(row => row.data.assignee)).toEqual([source.names.retained, "", source.names.arrived]);
     const original = await env.DB.prepare("SELECT r2_path FROM originals WHERE ward_id = ? AND filename = ?")
-      .bind(setup.ward.wardId, `架空の当番の表_${result.projects.duty1}.txt`).first<{ r2_path: string }>();
+      .bind(setup.ward.wardId, `試しの当番の表_${result.projects.duty1}.txt`).first<{ r2_path: string }>();
     expect(original).toBeTruthy();
     const bucket = new WardBucket(env.ORIGINALS, setup.ward.wardId);
     expect(await (await bucket.get(original!.r2_path))?.text()).toBe(source.duty);

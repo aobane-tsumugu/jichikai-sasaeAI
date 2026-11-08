@@ -11,10 +11,10 @@ import { createProject } from "../src/project/api";
 import { createInvite } from "../src/space/api";
 import { cookieFrom, get, postForm, realApp } from "./helpers";
 
-it("架空の総会の返事をLINEからも世帯で数え、実行委員・班長と記録に同じ意味で出し、行事の人数を保つ", async () => {
+it("試しの総会の返事をLINEからも世帯で数え、実行委員・班長と記録に同じ意味で出し、行事の人数を保つ", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "general_meeting", title: "総会（架空）", year: fixture.eventYear, accountId: account.accountId,
+    kind: "general_meeting", title: "総会", year: fixture.eventYear, accountId: account.accountId,
   });
   const id = project.projectId;
   const root = `/${ward.slug}/admin`;
@@ -35,12 +35,12 @@ it("架空の総会の返事をLINEからも世帯で数え、実行委員・班
   const lineAnswer = async (projectId: string, text: string) => {
     const received = await receive(env, {
       wardId: ward.wardId, projectId, via: "line_direct",
-      parts: [{ kind: "text", filename: "架空のLINEの文.txt", mediaType: "text/plain", bytes: new TextEncoder().encode(text) }],
+      parts: [{ kind: "text", filename: "試しのLINEの文.txt", mediaType: "text/plain", bytes: new TextEncoder().encode(text) }],
     });
     const originalId = received.received[0]?.originalId;
-    if (!received.jobId || !originalId || !ports.saveAnswerReply) throw new Error("架空の文を受け付けられません。");
+    if (!received.jobId || !originalId || !ports.saveAnswerReply) throw new Error("試しの文を受け付けられません。");
     await ports.saveAnswerReply(ward.wardId, projectId, {
-      eventId: crypto.randomUUID(), senderId: "架空の送信者", sourceType: "user", kind: "text", text,
+      eventId: crypto.randomUUID(), senderId: "試しの送信者", sourceType: "user", kind: "text", text,
       receivedAt: new Date().toISOString(),
     }, received.jobId);
     return originalId;
@@ -116,7 +116,7 @@ it("架空の総会の返事をLINEからも世帯で数え、実行委員・班
     JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
     WHERE d.ward_id = ? AND d.project_id = ? AND d.kind = 'notice' ORDER BY v.version_no DESC LIMIT 1`)
     .bind(ward.wardId, id).first<{ document_id: string; version_id: string; version_no: number }>();
-  if (!notice) throw new Error("住民へ配る架空の知らせがありません。");
+  if (!notice) throw new Error("住民へ配る試しの知らせがありません。");
   expect((await postForm(realApp, `${root}/publish/${id}/send`, {
     documentId: notice.document_id, versionId: notice.version_id, versionNo: String(notice.version_no), lineDelivery: "skip",
   }, cookie)).status).toBe(303);

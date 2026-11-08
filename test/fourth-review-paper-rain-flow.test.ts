@@ -31,7 +31,7 @@ it("過ぎた締切を知らせて配り、雨の変更後に答えと手伝い�
     };
     const save = async (kind: DocumentKind, body: DocumentBody) => {
       const state = await getProjectState(env.DB, ward.wardId, id);
-      if (!state) throw new Error("架空の行事がありません");
+      if (!state) throw new Error("試しの行事がありません");
       expect(await saveDocument(env.DB, ward.wardId, id, account.accountId, {
         kind, title: fixture.draftTitle, scope: "public", basedOn: state.project.stateVersion, body: JSON.stringify(body),
       })).toBe(true);
@@ -41,7 +41,7 @@ it("過ぎた締切を知らせて配り、雨の変更後に答えと手伝い�
         JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
         WHERE d.ward_id = ? AND d.project_id = ? AND d.kind = ? ORDER BY v.version_no DESC LIMIT 1`)
         .bind(ward.wardId, id, kind).first<{ document_id: string; version_id: string; version_no: number; body: string }>();
-      if (!row) throw new Error("架空の文書がありません");
+      if (!row) throw new Error("試しの文書がありません");
       return row;
     };
     const publish = async (kind: DocumentKind) => {
@@ -134,7 +134,7 @@ it("過ぎた締切を知らせて配り、雨の変更後に答えと手伝い�
       { ...row, adults: 2, seniors: null },
       { ...row, adults: 0, not_attending: false },
     ] };
-    // AIだけを架空の写真の読み取りで置き換え、実際の保存と集計を通す。
+    // AIだけを試しの写真の読み取りで置き換え、実際の保存と集計を通す。
     expect(await runRead(env, ward.wardId, received.jobId!, { deps: {
       createClient: () => new Anthropic({ apiKey: fixture.passphrase }),
       readImpl: async () => ({ body: reading, packVersion: READ_PACK_VERSION.answer_sheet, model: "fixture",

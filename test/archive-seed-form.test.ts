@@ -5,16 +5,16 @@ import { createProject, getProjectState, getProjectSummary } from "../src/projec
 import { get, postForm, realApp } from "./helpers";
 
 it("記録から始める入力で名前を直すときも、入力した年と日付を保つ", async () => {
-  // 行事の名前と日付は試験用の架空のもの。
+  // 行事の名前と日付は試験用の試しのもの。
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const source = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の去年の行事", year: 2026, eventDay: "2026-09-06", accountId: account.accountId,
+    kind: "event", title: "試しの去年の行事", year: 2026, eventDay: "2026-09-06", accountId: account.accountId,
   });
   await env.DB.prepare("UPDATE projects SET closed_at = ? WHERE ward_id = ? AND project_id = ?")
     .bind("2026-09-07T00:00:00Z", ward.wardId, source.projectId).run();
   const root = `/${ward.slug}/admin/archive/${source.projectId}`;
   const initial = await (await get(realApp, `${root}?view=seed`, cookie)).text();
-  expect(initial).toContain('name="title" type="text" value="架空の去年の行事"');
+  expect(initial).toContain('name="title" type="text" value="試しの去年の行事"');
   expect(initial).toContain('name="year" type="number" inputmode="numeric" value="2027"');
 
   const values = { title: "　", year: "2030", eventDay: "2030-09-03" };
@@ -30,7 +30,7 @@ it("記録から始める入力で名前を直すときも、入力した年と�
   expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM projects WHERE ward_id = ? AND seed_project_id = ?")
     .bind(ward.wardId, source.projectId).first<number>("count")).toBe(0);
 
-  const title = "架空の次の行事";
+  const title = "試しの次の行事";
   const saved = await postForm(realApp, `${root}/seed`, { ...values, title }, cookie);
   expect(saved.status).toBe(303);
   const location = saved.headers.get("location")!;
@@ -46,7 +46,7 @@ it("記録から始める入力で名前を直すときも、入力した年と�
 it("記録から当日が未定でも始められ、去年の日付を今年の予定にしない", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const source = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の去年の行事", year: 2026, eventDay: "2026-09-06", accountId: account.accountId,
+    kind: "event", title: "試しの去年の行事", year: 2026, eventDay: "2026-09-06", accountId: account.accountId,
   });
   await env.DB.prepare("UPDATE projects SET closed_at = ? WHERE ward_id = ? AND project_id = ?")
     .bind("2026-09-07T00:00:00Z", ward.wardId, source.projectId).run();
@@ -56,7 +56,7 @@ it("記録から当日が未定でも始められ、去年の日付を今年の�
   expect(before.mapTasks.some((task) => task.periodStart !== null)).toBe(true);
   const root = `/${ward.slug}/admin/archive/${source.projectId}`;
   const saved = await postForm(realApp, `${root}/seed`, {
-    title: "架空の次の行事", year: "2027", eventDay: "",
+    title: "試しの次の行事", year: "2027", eventDay: "",
   }, cookie);
   expect(saved.status).toBe(303);
   const location = saved.headers.get("location")!;
@@ -65,7 +65,7 @@ it("記録から当日が未定でも始められ、去年の日付を今年の�
   if (!targetId) throw new Error("新しく始めた行事がありません。");
   const next = await getProjectState(env.DB, ward.wardId, targetId);
   if (!next) throw new Error("新しく始めた行事を読めません。");
-  expect(next.project).toMatchObject({ title: "架空の次の行事", year: 2027, closedAt: null });
+  expect(next.project).toMatchObject({ title: "試しの次の行事", year: 2027, closedAt: null });
   expect(next.project.deadlines).toEqual({});
   expect(next.mapTasks.map(({ taskKey, name, periodStart, periodEnd }) => ({ taskKey, name, periodStart, periodEnd })))
     .toEqual(before.mapTasks.map(({ taskKey, name }) => ({ taskKey, name, periodStart: null, periodEnd: null })));

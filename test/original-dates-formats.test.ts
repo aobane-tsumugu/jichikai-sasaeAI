@@ -20,9 +20,9 @@ it("WordとExcelのcore.xmlの保存日を優先し、無ければ作成日、�
   const extract = officeExtractor();
   const word = await fictionalDatedWord("10月3日", undefined, "2025-09-10T09:00:00Z");
   const excel = await makeOriginalDateZip({
-    "xl/workbook.xml": '<workbook><sheets><sheet name="架空の案内" r:id="rId1"/></sheets></workbook>',
+    "xl/workbook.xml": '<workbook><sheets><sheet name="試しの案内" r:id="rId1"/></sheets></workbook>',
     "xl/_rels/workbook.xml.rels": '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
-    "xl/worksheets/sheet1.xml": '<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>2025年の架空の案内</t></is></c></row></sheetData></worksheet>',
+    "xl/worksheets/sheet1.xml": '<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>2025年の試しの案内</t></is></c></row></sheetData></worksheet>',
     "docProps/core.xml": '<cp:coreProperties><dcterms:modified xsi:type="dcterms:W3CDTF">2025-09-20T10:00:00+09:00</dcterms:modified><dcterms:created>2025-09-10T09:00:00Z</dcterms:created></cp:coreProperties>',
   }, true);
   const fallback = Date.parse("2025-09-01T00:00:00Z");
@@ -50,9 +50,9 @@ it("PDFは文書情報の保存日、作成日、端末の日の順に取り、�
     .toEqual({ date: "2025-09-20T15:30:00+09:00", source: "pdf_modified" });
   expect(await originalDate("pdf", pdf("/CreationDate <443A32303235303931323039303030305A>"), null))
     .toEqual({ date: "2025-09-12T09:00:00Z", source: "pdf_created" });
-  expect(await originalDate("pdf", pdf("/Title (架空の案内)"), null, Date.parse("2025-09-01T00:00:00Z")))
+  expect(await originalDate("pdf", pdf("/Title (試しの案内)"), null, Date.parse("2025-09-01T00:00:00Z")))
     .toEqual({ date: "2025-09-01T00:00:00.000Z", source: "file_last_modified" });
-  expect(await originalDate("pdf", pdf("/Title (架空の案内)"), null)).toBeNull();
+  expect(await originalDate("pdf", pdf("/Title (試しの案内)"), null)).toBeNull();
 });
 
 function fictionalExifPhoto(): Uint8Array {
@@ -80,8 +80,8 @@ it("写真のEXIF撮影日を取り、LINEの写真に日付が無ければ受�
   expect(await originalDate("image", bytes.subarray(0, 14), null)).toBeNull();
   const ward = await seedWard(env.DB);
   const result = await receive(env, { wardId: ward.wardId, via: "line_group", parts: [
-    { kind: "photo", filename: "架空の写真.jpg", mediaType: "image/jpeg", bytes: fictionalStoredPhoto(), lastModified: Date.now() },
-    { kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode("架空の言葉") },
+    { kind: "photo", filename: "試しの写真.jpg", mediaType: "image/jpeg", bytes: fictionalStoredPhoto(), lastModified: Date.now() },
+    { kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode("試しの言葉") },
   ] });
   expect(result.received).toHaveLength(2);
   const dates = await env.DB.prepare("SELECT document_date, document_date_source FROM originals WHERE ward_id = ? AND job_id = ?")
@@ -91,9 +91,9 @@ it("写真のEXIF撮影日を取り、LINEの写真に日付が無ければ受�
 
 it("写真をJPEGに直す前のFile.lastModifiedが、ブラウザの送信と役員の受付を通って残る", async () => {
   const { ward, cookie } = await seedAdmin(env.DB);
-  setClientFactory(() => { throw new Error("架空の試験から実際のAIへは接続しません"); });
+  setClientFactory(() => { throw new Error("試しの試験から実際のAIへは接続しません"); });
   const lastModified = Date.parse("2025-09-20T10:15:00Z");
-  const file = new File([fictionalPhonePhoto()], "架空の写真.png", { type: "image/png", lastModified });
+  const file = new File([fictionalPhonePhoto()], "試しの写真.png", { type: "image/png", lastModified });
   const stored = fictionalStoredPhoto();
   const status = { textContent: "", className: "" };
   const button = { disabled: false };

@@ -22,11 +22,11 @@ it("チラシの日時を段取りと一年とトップにつなぎ、手で入�
     });
     const state = async (projectId: string) => {
       const value = await getProjectState(env.DB, ward.wardId, projectId);
-      if (!value) throw new Error("架空の行事が見つかりません");
+      if (!value) throw new Error("試しの行事が見つかりません");
       return value;
     };
     let sequence = 0;
-    // 架空の写真と、読む手が返した形の読み取りを用意する。本物のAIは呼ばない。
+    // 試しの写真と、読む手が返した形の読み取りを用意する。本物のAIは呼ばない。
     const prepare = async (projectId: string, text: string, year: number | null = 2026) => {
       const input = await receive(env, {
         wardId: ward.wardId, projectId, via: "line_direct",
@@ -34,7 +34,7 @@ it("チラシの日時を段取りと一年とトップにつなぎ、手で入�
           bytes: new Uint8Array([...FIRST_SLICE.answerSheetPhotoBytes, ++sequence]) }],
       });
       const originalId = input.received[0]?.originalId;
-      if (!input.jobId || !originalId) throw new Error("架空の写真を受け取れませんでした");
+      if (!input.jobId || !originalId) throw new Error("試しの写真を受け取れませんでした");
       const body = buildDirectReading([{ originalId, text }]);
       body.original_years = [{ original_id: originalId, year }];
       const ticket = `tk_${newId()}`;
@@ -53,7 +53,7 @@ it("チラシの日時を段取りと一年とトップにつなぎ、手で入�
       };
     };
 
-    const project = await open("架空のチラシの行事");
+    const project = await open("試しのチラシの行事");
     const before = await state(project.projectId);
     const venue = before.mapTasks.find((task) => task.taskKey === "venue");
     if (!venue) throw new Error("会場の仕事がありません");
@@ -90,12 +90,12 @@ it("チラシの日時を段取りと一年とトップにつなぎ、手で入�
 
     // 年のない表記は、この行事の年から補う。
     for (const text of ["11月19日（木）", "令和8年11月19日", "11/19"]) {
-      const other = await open(`架空の日付の確認${sequence}`);
+      const other = await open(`試しの日付の確認${sequence}`);
       expect((await (await prepare(other.projectId, text))()).status).toBe("applied");
       expect((await state(other.projectId)).project.deadlines.event_day).toBe("2026-11-19");
     }
 
-    const manual = await open("架空の手で日を入れた行事");
+    const manual = await open("試しの手で日を入れた行事");
     expect(await setEventDay(env.DB, ward.wardId, manual.projectId, "2026-11-20", account.accountId)).toBe(true);
     const manualBefore = await state(manual.projectId);
     const different = await prepare(manual.projectId, "11/19");
@@ -115,7 +115,7 @@ it("チラシの日時を段取りと一年とトップにつなぎ、手で入�
     expect(saved.mapTasks.find((task) => task.taskKey === "day")?.periodStart).toBe("2026-11-19");
 
     for (const [text, year] of [["日が決まったら知らせます", 2026], ["2026/02/30", 2026], ["11/31", 2026], ["2025/11/19", 2025], ["11/19", null]] as const) {
-      const ignored = await open(`架空の日を入れない確認${sequence}`);
+      const ignored = await open(`試しの日を入れない確認${sequence}`);
       expect((await (await prepare(ignored.projectId, text, year))()).status).toBe("applied");
       const result = await state(ignored.projectId);
       expect(result.project.deadlines.event_day).toBeUndefined();

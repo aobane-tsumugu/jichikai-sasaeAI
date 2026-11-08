@@ -21,7 +21,7 @@ it.each(["board_meeting", "general_meeting"] as const)("%sで資料と同じ決�
   const input = await receive(env, { wardId: ward.wardId, projectId: project.projectId, via: "admin", accountId: account.accountId,
     parts: [{ kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode(fixture.publicAnnouncement) }] });
   const originalId = input.received[0]?.originalId;
-  if (!originalId) throw new Error("架空の議事の資料を受け付けられませんでした");
+  if (!originalId) throw new Error("試しの議事の資料を受け付けられませんでした");
   expect((await applyChange(env.DB, ward.wardId, project.projectId, {
     kind: "row", table: "decisions", data: { what: fixture.publicAnnouncement },
     source: { kind: "original", ref: originalId, locator: fixture.previousLocator, year: fixture.eventYear },
@@ -55,7 +55,7 @@ it.each(["board_meeting", "general_meeting"] as const)("%sで資料と同じ決�
   expect(state?.tables.decisions[0]?.source.locator).toBe(`議事録:${minutes?.version_id}`);
 });
 
-// fixturesの架空資料を使う。AIの外部起動と読み取りの応答だけを置き換える。
+// fixturesの試しの資料を使う。AIの外部起動と読み取りの応答だけを置き換える。
 it("役員会を2回閉じ、前回の決定と未決、年の決定と運営メモと報告を総会から翌年へ残す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
@@ -105,7 +105,7 @@ it("役員会を2回閉じ、前回の決定と未決、年の決定と運営メ
       parts: [{ kind: "photo", filename: `${fixture.draftTitle}${index + 1}.jpg`, mediaType: "image/jpeg",
         bytes: new Uint8Array([...fixture.answerSheetPhotoBytes, index]) }] });
     const originalId = input.received[0]?.originalId;
-    if (!originalId || !input.jobId) throw new Error("架空の議事の資料を受け付けられませんでした");
+    if (!originalId || !input.jobId) throw new Error("試しの議事の資料を受け付けられませんでした");
     expect(input.needsModelRead).toBe(true);
     const reading: Reading = {
       document_kind: "memo", summary: fixture.draftTitle,
@@ -201,7 +201,7 @@ it("議事録の見出しが違っても、決まらなかったことだけを�
 
   const headings = ["決まらなかったこと", "継続して話し合うこと", "保留", "次回に回すこと", "未決"];
   for (const [index, heading] of headings.entries()) {
-    // 本文は既存の架空資料から使い、短い箇条書きも見出しと取り違えないことを確かめる。
+    // 本文は既存の試しの資料から使い、短い箇条書きも見出しと取り違えないことを確かめる。
     const minutes = (title: string) => [
       fixture.reportText, "■決まったこと", fixture.publicAnnouncement,
       title, `・${fixture.nextYearTask}`,

@@ -5,15 +5,15 @@ import { saveDocument } from "../src/project/actions";
 import { createProject, getProjectState } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-const person = { name: "架空 名簿太郎", role: "受付", contact: "000-0000-0701" };
+const person = { name: "名簿太郎", role: "受付", contact: "000-0000-0701" };
 
 it("資料を送らずに名簿へ一人足し、外しても履歴を残し、もう一度足せる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の名簿の確認", year: 2026, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "試しの名簿の確認", year: 2026, accountId: account.accountId });
   const id = project.projectId;
   const path = `/${ward.slug}/admin/projects/${id}/committee`;
-  await saveDocument(env.DB, ward.wardId, id, account.accountId, { kind: "duty_roster", title: "当番表", scope: "space", basedOn: 0, body: JSON.stringify({ text: "架空の説明", items: [] }) });
+  await saveDocument(env.DB, ward.wardId, id, account.accountId, { kind: "duty_roster", title: "当番表", scope: "space", basedOn: 0, body: JSON.stringify({ text: "試しの説明", items: [] }) });
   const rows = async () => (await getProjectState(env.DB, ward.wardId, id))!.tables.committee;
 
   expect(await (await get(realApp, path, cookie)).text()).toContain("<button>名簿に足す</button>");

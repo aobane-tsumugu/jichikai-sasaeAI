@@ -8,14 +8,14 @@ import { compareRota, prepareRota } from "../src/rota/store";
 import { get, postForm, realApp } from "./helpers";
 
 it.each(["担当を決める"])("eventのまま%sを足すと、届いた三晩の表と翌年の記録から当番表を始める", async (taskName) => {
-  // 日、班、世帯と資料は全て架空。読み取った去年の表を保存したところから通す。
+  // 日、班、世帯と資料は全て。読み取った去年の表を保存したところから通す。
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
-  const roster = ["架空の甲世帯", "架空の乙世帯", "架空の丙世帯"].map((household, index) => ({ household, district: `${index + 1}班` }));
+  const roster = ["試しの甲世帯", "試しの乙世帯", "試しの丙世帯"].map((household, index) => ({ household, district: `${index + 1}班` }));
   await replaceRoster(env.DB, ward.wardId, roster, { household: 0, district: 1 });
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の年末の見回り", year: 2026, eventDay: "2026-12-26", eventEnd: "2026-12-28",
+    kind: "event", title: "試しの年末の見回り", year: 2026, eventDay: "2026-12-26", eventEnd: "2026-12-28",
     taskKeys: SHORT_TEMPLATE.tasks, accountId: account.accountId,
   });
   const path = `${root}/projects/${project.projectId}`;
@@ -60,7 +60,7 @@ it.each(["担当を決める"])("eventのまま%sを足すと、届いた三晩�
 it("行事の「当番表と配置を決める」だけでは名簿の順で回さず、手伝いの返事から AI に下書きを頼む", async () => {
   // 名簿の順で回すのは「担当を決める」がある時だけ。行事の当番表は手伝いの申し込みと世帯の返事から作る。
   const { ward, account, cookie } = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の秋の祭り", year: 2026, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "試しの秋の祭り", year: 2026, accountId: account.accountId });
   const state = await getProjectState(env.DB, ward.wardId, project.projectId);
   expect(state?.mapTasks.some((task) => task.taskKey === "duty_roster")).toBe(true);
   expect(state?.mapTasks.some((task) => task.taskKey === "assign")).toBe(false);

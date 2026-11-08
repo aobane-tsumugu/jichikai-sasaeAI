@@ -1,20 +1,20 @@
-// 日付を固定して再生成する架空資料。文だけの通しは従来どおり実行日の値を使う。
+// 日付を固定して再生成する試しの資料。文だけの通しは従来どおり実行日の値を使う。
 export const KINDS_FIXTURE_YEAR = 2026;
 export const MEETING_FIXTURE_NOW = "2026-11-07T00:00:00Z";
 
 export const KIND_FILES = {
   meetingAgenda: [
-    "general_meeting/架空_去年の議案書.docx",
-    "general_meeting/架空_去年の決算書.xlsx",
-    "general_meeting/架空_前回の総会の議事録.jpg",
-    "general_meeting/架空_今年の総会の資料.docx",
+    "general_meeting/去年の議案書.docx",
+    "general_meeting/去年の決算書.xlsx",
+    "general_meeting/前回の総会の議事録.jpg",
+    "general_meeting/今年の総会の資料.docx",
   ],
-  meetingMinutes: ["general_meeting/架空_今年の総会の記録.jpg"],
-  boardAgenda: ["board_meeting/架空_議題の紙.jpg"],
-  boardMinutes: ["board_meeting/架空_議事のメモ.docx"],
-  boardNextMinutes: ["board_meeting/架空_次の役員会のメモ.docx"],
-  duty: ["duty/架空_去年の当番表.xlsx", "duty/架空_掲示の当番表.jpg"],
-  city: ["city_request/架空_市の通知.pdf", "city_request/架空_回答の様式.docx"],
+  meetingMinutes: ["general_meeting/今年の総会の記録.jpg"],
+  boardAgenda: ["board_meeting/議題の紙.jpg"],
+  boardMinutes: ["board_meeting/議事のメモ.docx"],
+  boardNextMinutes: ["board_meeting/次の役員会のメモ.docx"],
+  duty: ["duty/去年の当番表.xlsx", "duty/掲示の当番表.jpg"],
+  city: ["city_request/市の通知.pdf", "city_request/回答の様式.docx"],
 } as const;
 
 export type KindFileGroup = keyof typeof KIND_FILES;
@@ -41,7 +41,7 @@ export async function kindFilesForm(projectId: string, group: KindFileGroup, loa
       pdf: "application/pdf", jpg: "image/jpeg",
     };
     const type = types[extension];
-    if (!type || bytes.length === 0) throw new Error("架空の資料ファイルを開けません");
+    if (!type || bytes.length === 0) throw new Error("試しの資料ファイルを開けません");
     form.append("part", new Blob([bytes], { type }), name);
     form.append("part_kind", extension === "jpg" ? "photo" : "file");
     form.append("part_extracted", extension === "docx" || extension === "xlsx" ? JSON.stringify(await office.extractOffice(bytes)) : "");

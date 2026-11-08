@@ -115,7 +115,7 @@ describe("役員画面の入口", () => {
     expect((await get(realApp, `/${ward.slug}/admin/`, cookie)).status).toBe(303);
   });
 
-  it("使い続けている架空の端末はブラウザの記憶も更新し、初回から180日を超えても入れる", async () => {
+  it("使い続けている試しの端末はブラウザの記憶も更新し、初回から180日を超えても入れる", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
       vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));

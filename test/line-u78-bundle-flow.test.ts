@@ -29,7 +29,7 @@ it("U78: 写真と言葉を送信者ごとに10分で結び、一回受領し、
   const fakeLine: typeof fetch = async (url, init) => {
     if (String(url).includes("api-data.line.me")) {
       const tag = Number(/\/message\/(\d+)\//.exec(String(url))?.[1]);
-      if (!Number.isInteger(tag)) throw new Error("架空の写真の番号がありません");
+      if (!Number.isInteger(tag)) throw new Error("試しの写真の番号がありません");
       return new Response(new Uint8Array([...fixture.answerSheetPhotoBytes, tag]), { headers: { "content-type": "image/jpeg" } });
     }
     if (String(url).includes("/member/")) return Response.json({ displayName: fixture.sheetHelper });
@@ -43,10 +43,10 @@ it("U78: 写真と言葉を送信者ごとに10分で結び、一回受領し、
   const matcher = createLineIntakePorts(runtime, { waitUntil: () => undefined }, async (_wardId, original) => {
     judged.push(original);
     return { choice: original.text === texts.chat ? MATCH_UNRELATED : MATCH_NEW,
-      reason: "架空資料の読みと言葉で判断しました。", intent: original.text?.includes(texts.questions[1]!.text) || (original.text?.includes(texts.questions[0]!.text) && original.photoSummaries?.includes(fixture.previousMaterial)) ? "inquiry" : "material",
+      reason: "試しの資料の読みと言葉で判断しました。", intent: original.text?.includes(texts.questions[1]!.text) || (original.text?.includes(texts.questions[0]!.text) && original.photoSummaries?.includes(fixture.previousMaterial)) ? "inquiry" : "material",
       attendanceAnswer: false, usage: { input_tokens: 1, output_tokens: 1 } };
   });
-  // 署名、受付、D1、R2、当ての入力と画面は本体を通す。写真の読みだけ架空資料の読みを保存する。
+  // 署名、受付、D1、R2、当ての入力と画面は本体を通す。写真の読みだけ試しの資料の読みを保存する。
   const ports: LineIntakePorts = {
     matchInboxItem: matcher.matchInboxItem,
     async receiveOriginal(wardId, original) {
@@ -108,7 +108,7 @@ it("U78: 写真と言葉を送信者ごとに10分で結び、一回受領し、
   vi.stubGlobal("fetch", fakeLine);
   const photoAi = new Anthropic({ apiKey: "fictional-u78-ai-key", maxRetries: 0, fetch: async () => Response.json({
     id: "fictional-u78-photo-match", type: "message", role: "assistant", model: "claude-haiku-5-5",
-    content: [{ type: "text", text: JSON.stringify({ choice: "__uncertain__", confident: false, reason: "架空の写真の行事は分かりません。", intent: "material", attendanceAnswer: false, knowTopic: "none" }) }],
+    content: [{ type: "text", text: JSON.stringify({ choice: "__uncertain__", confident: false, reason: "試しの写真の行事は分かりません。", intent: "material", attendanceAnswer: false, knowTopic: "none" }) }],
     stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 },
   }) });
   setPipelineDeps({ createClient: () => photoAi });

@@ -15,7 +15,7 @@ try {
   mf = new Miniflare(convertV4MiniflareOptions({
     modules: true, scriptPath: output + "/worker.mjs", compatibilityDate: "2026-08-01", compatibilityFlags: ["nodejs_compat"],
     d1Databases: ["DB"], r2Buckets: ["ORIGINALS"],
-    bindings: { PUBLIC_BASE_URL: "http://localhost", DEMO_NOTICE: "資料と名前はすべて架空です。" },
+    bindings: { PUBLIC_BASE_URL: "http://localhost", DEMO_NOTICE: "デモ用自治会です。" },
     outboundService: () => new Response("ローカル確認では外へ接続しません", { status: 503 }),
   }));
   const db = await mf.getD1Database("DB");
@@ -24,7 +24,7 @@ try {
     await db.exec(sql);
   }
   const response = await mf.dispatchFetch("http://localhost/__kinds_setup", { method: "POST" });
-  if (!response.ok) throw new Error("架空の区を準備できません");
+  if (!response.ok) throw new Error("試しの区を準備できません");
   const setup = await response.json();
   const result = await runKindsWalkthrough({ base: "http://localhost", ...setup }, {
     fetch: (input, init) => mf.dispatchFetch(String(input), init),

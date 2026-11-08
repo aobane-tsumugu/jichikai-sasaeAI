@@ -8,7 +8,7 @@ import { createProject } from "../src/project/api";
 import type { DocumentKind, Scope } from "../src/project/model";
 import { get, postForm, realApp, withEnv } from "./helpers";
 
-it("二つの架空の区で、配った情報を転送でき、限定・下げたもの・停止した区を検索の一覧に出さない", async () => {
+it("二つの試しの区で、配った情報を転送でき、限定・下げたもの・停止した区を検索の一覧に出さない", async () => {
   const first = await seedAdmin(env.DB);
   const second = await seedAdmin(env.DB);
   const bindings = withEnv({ PUBLIC_BASE_URL: "https://example.test/" });
@@ -116,10 +116,10 @@ it("二つの架空の区で、配った情報を転送でき、限定・下げ�
   expect(page).toContain('property="og:description"');
   expect(page).toContain(fixture.nextYearTitle);
   // 本文と項目が食い違っても、知らせの項目や以前の案内の場所を説明へ戻さない。
-  await publish(first, project.projectId, "notice", body("架空の新会場へ変更します。", fixture.previousPlace));
+  await publish(first, project.projectId, "notice", body("試しの新会場へ変更します。", fixture.previousPlace));
   page = head(await html(path));
   expect(page).not.toContain(fixture.previousPlace);
-  expect(page).not.toContain("架空の新会場");
+  expect(page).not.toContain("試しの新会場");
   const lower = async (kind: DocumentKind) => {
     const record = await env.DB.prepare(`SELECT r.publication_id FROM publication_records r
       JOIN documents d ON d.ward_id = r.ward_id AND d.document_id = r.document_id

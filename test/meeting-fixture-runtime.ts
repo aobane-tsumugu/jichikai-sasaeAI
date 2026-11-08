@@ -1,4 +1,4 @@
-// U42のローカル確認専用。本体の経路を使い、Anthropicへの通信だけを架空にする。
+// U42のローカル確認専用。本体の経路を使い、Anthropicへの通信だけをにする。
 import Anthropic from "@anthropic-ai/sdk";
 import { meetingMaterial } from "../scripts/walkthrough-meeting";
 import { setClientFactory } from "../src/ai/deps";
@@ -15,15 +15,15 @@ export async function prepareMeetingRuntime(env: Env) {
   let calls = 0;
   let drafts = 0;
   const client = new Anthropic({ apiKey: "fictional-u42-ai", maxRetries: 0, fetch: async (input, init) => {
-    if (!String(input).endsWith("/v1/messages")) throw new Error("架空のMessages以外への通信です");
+    if (!String(input).endsWith("/v1/messages")) throw new Error("試しのMessages以外への通信です");
     calls++;
     const request = JSON.parse(String(init?.body)) as {
       messages: { role: string; content: string | { type: string; content?: string; is_error?: boolean; tool_use_id?: string }[] }[];
     };
     const first = request.messages[0]?.content;
-    if (typeof first !== "string") throw new Error("架空のAIに指示がありません");
+    if (typeof first !== "string") throw new Error("試しのAIに指示がありません");
     const ticket = /^札: (.+)$/m.exec(first)?.[1];
-    if (!ticket) throw new Error("架空のAIに書き込み先がありません");
+    if (!ticket) throw new Error("試しのAIに書き込み先がありません");
     const response = (content: unknown, stopReason: string) => Response.json({
       id: "msg_fictional_u42", type: "message", role: "assistant", model: "fictional-u42",
       content, stop_reason: stopReason, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 },
@@ -34,10 +34,10 @@ export async function prepareMeetingRuntime(env: Env) {
       ...(/^仕事: connect$/m.test(first) ? [call("fixture_reading", "get_reading", {})] : []),
     ], "tool_use");
     const last = request.messages.at(-1)?.content;
-    if (!Array.isArray(last)) throw new Error("架空のAIへ道具の答えが届いていません");
+    if (!Array.isArray(last)) throw new Error("試しのAIへ道具の答えが届いていません");
     for (const result of last) {
-      if (result.is_error) throw new Error("架空のAIの道具が失敗しました");
-      if (result.tool_use_id === "fixture_draft" && !result.content?.includes('"applied"')) throw new Error("架空の下書きが保存されていません");
+      if (result.is_error) throw new Error("試しのAIの道具が失敗しました");
+      if (result.tool_use_id === "fixture_draft" && !result.content?.includes('"applied"')) throw new Error("試しの下書きが保存されていません");
     }
     if (request.messages.length === 3 && /^仕事: draft$/m.test(first)) {
       const kind = first.includes("対象の文書: report。") ? "report" : "announcement";
@@ -49,13 +49,13 @@ export async function prepareMeetingRuntime(env: Env) {
       return response([call("fixture_draft", "write_change", { kind: "draft", target: kind, confidence: "high", data: {
         title: pack.title, scope: pack.scope, text: kind === "report" ? source.minutes : source.announcement,
         items: [
-          { key: "date_time", content: source.date + "10時" }, { key: "place", content: "架空の集会室" },
+          { key: "date_time", content: source.date + "10時" }, { key: "place", content: "集会室" },
           ...(kind === "announcement" ? [{ key: "content", content: "清掃活動の回数、遊具の更新" }, { key: "due", content: source.due }] : []),
         ],
         pack_version: pack.version, based_on_state_version: state.project.stateVersion,
       } })], "tool_use");
     }
-    return response([{ type: "text", text: "架空のAIの応答を終えました。" }], "end_turn");
+    return response([{ type: "text", text: "試しのAIの応答を終えました。" }], "end_turn");
   } });
   setClientFactory(() => client);
   setPipelineDeps({ createClient: () => client });

@@ -5,7 +5,7 @@ import { allowSend, CONTACT_WARD, messages, receiveContact } from "../src/contac
 import { WardBucket } from "../src/core/storage";
 import { get, postForm, realApp, withEnv } from "./helpers";
 
-const text = "  架空の問い合わせの書き足しです。\n<資料について>&追加の質問です。  ";
+const text = "  試しの問い合わせの書き足しです。\n<資料について>&追加の質問です。  ";
 const escaped = text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 async function fixture() {
   const received = await receiveContact(env.DB, { ...PROVIDER_CONTACT_FIXTURE, kind: "access" });
@@ -49,7 +49,7 @@ it("写真の入力に誤りがあっても文を残し、未送信の写真を�
   const contact = await fixture();
   const form = new FormData();
   form.set("body", text);
-  form.set("photo", new File(["fictional-file"], "架空の写真.heic", { type: "image/heic" }));
+  form.set("photo", new File(["fictional-file"], "試しの写真.heic", { type: "image/heic" }));
   const response = await realApp.request(contact.path, { method: "POST", headers: { origin: "http://localhost" }, body: form }, noVerification());
   expect(response.status).toBe(400);
   const html = await response.text();

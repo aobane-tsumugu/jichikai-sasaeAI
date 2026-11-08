@@ -10,7 +10,7 @@ import { setPipelineDeps } from "../src/intake/pipeline";
 import { realApp } from "./helpers";
 import { prepareMeetingRuntime } from "./meeting-fixture-runtime";
 
-it("U42: 架空の総会を受付・AIの偽応答・公開・4通りのWebの返事・紙・電話・議事録・閉じた記録まで通す", async () => {
+it("U42: 試しの総会を受付・AIの偽応答・公開・4通りのWebの返事・紙・電話・議事録・閉じた記録まで通す", async () => {
   const setup = await prepareMeetingRuntime(env);
   const options = { base: "http://localhost", ward: setup.ward.slug, name: setup.account.name, password: setup.account.password };
   const reports: string[] = [];
@@ -49,7 +49,7 @@ it("U42: 架空の総会を受付・AIの偽応答・公開・4通りのWebの�
     const answers = await listAnswers(env.DB, setup.ward.wardId, result.project);
     expect(answers).toHaveLength(5);
     expect(answers.filter(a => a.source === "web")).toHaveLength(4);
-    expect(answers.filter(a => a.meetingStatus === "proxy").map(a => a.proxyName).sort()).toEqual(["", "架空代理花子"]);
+    expect(answers.filter(a => a.meetingStatus === "proxy").map(a => a.proxyName).sort()).toEqual(["", "代理花子"]);
     expect((await getProjectState(env.DB, setup.ward.wardId, result.project))?.project.closedAt).toBeTruthy();
     const originals = await env.DB.prepare("SELECT o.r2_path FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id WHERE o.ward_id = ? AND j.project_id = ?")
       .bind(setup.ward.wardId, result.project).all<{ r2_path: string }>();

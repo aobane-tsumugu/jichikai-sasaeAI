@@ -10,7 +10,7 @@ import type { DocumentKind, Scope } from "../src/project/model";
 import { createInvite } from "../src/space/api";
 import { cookieFrom, get, postForm, realApp } from "./helpers";
 
-// 資料、名前、合言葉はfixturesの架空の入力だけを使う。
+// 資料、名前、合言葉はfixturesの試しの入力だけを使う。
 it("総会と役員会を種類に合う題で読み、当番の知らせは実行委員と班長へ配り、総会の返事を同じ順で見る", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const base = `/${ward.slug}`;
@@ -24,7 +24,7 @@ it("総会と役員会を種類に合う題で読み、当番の知らせは実�
       JOIN documents d ON d.ward_id = v.ward_id AND d.document_id = v.document_id
       WHERE v.ward_id = ? AND v.project_id = ? AND d.kind = ? ORDER BY v.version_no DESC LIMIT 1`)
       .bind(ward.wardId, projectId, kind).first<{ document_id: string; version_id: string; version_no: number }>();
-    if (!version) throw new Error("架空の下書きがありません。");
+    if (!version) throw new Error("試しの下書きがありません。");
     return { documentId: version.document_id, versionId: version.version_id, versionNo: String(version.version_no), lineDelivery: "skip" };
   };
   const read = async (path: string, credentials?: string) => {
@@ -68,7 +68,7 @@ it("総会と役員会を種類に合う題で読み、当番の知らせは実�
   const memberCookie = cookieFrom(entered, `space_${id}`);
   const token = await createInvite(env.DB, ward.wardId, id, "leader", FIRST_SLICE.district, account.accountId, true);
   const leaderCookie = cookieFrom(await get(realApp, `${space}/person/${token}`), `space_${id}`);
-  if (!memberCookie || !leaderCookie) throw new Error("架空の実行委員と班長が入れません。");
+  if (!memberCookie || !leaderCookie) throw new Error("試しの実行委員と班長が入れません。");
   const notice = await save(id, duty.stateVersion, "notice", "space", FIRST_SLICE.dutyText);
   expect(await read(space, memberCookie)).not.toContain(FIRST_SLICE.dutyText);
   const confirmation = await read(`${admin}/publish/${id}/confirm?kind=notice`, cookie);

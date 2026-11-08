@@ -19,13 +19,13 @@ it("U83: トーク、参考への直し、AIの上書き防止、分割と戻す
   const root = `/${ward.slug}/admin`;
   const project = await createProject(env.DB, ward.wardId, { kind: "event", title: fixture.project, year: 2026, accountId: account.accountId });
   const photo = await receive(env, { wardId: ward.wardId, projectId: project.projectId, via: "line_group", parts: [1, 2].map((tag) => ({
-    kind: "photo", filename: `架空の当番表${tag}.jpg`, mediaType: "image/jpeg", bytes: new Uint8Array([...FIRST_SLICE.answerSheetPhotoBytes, tag]),
+    kind: "photo", filename: `試しの当番表${tag}.jpg`, mediaType: "image/jpeg", bytes: new Uint8Array([...FIRST_SLICE.answerSheetPhotoBytes, tag]),
   })) });
-  if (!photo.jobId) throw new Error("架空の写真が受け付けられませんでした");
+  if (!photo.jobId) throw new Error("試しの写真が受け付けられませんでした");
   const words = await receive(env, { wardId: ward.wardId, projectId: project.projectId, via: "line_group", parts: [{
-    kind: "text", filename: "架空の説明.txt", mediaType: "text/plain", bytes: new TextEncoder().encode(fixture.words),
+    kind: "text", filename: "試しの説明.txt", mediaType: "text/plain", bytes: new TextEncoder().encode(fixture.words),
   }] });
-  if (!words.jobId) throw new Error("架空の説明が受け付けられませんでした");
+  if (!words.jobId) throw new Error("試しの説明が受け付けられませんでした");
   const bundle = "fictional-u83-topic";
   for (const [jobId, eventId, kind, text, at] of [
     [photo.jobId, "fictional-u83-photo", "image", null, "2026-11-07T05:02:00.000Z"],
@@ -41,7 +41,7 @@ it("U83: トーク、参考への直し、AIの上書き防止、分割と戻す
   await saveAiBundleDecision(env.DB, ward.wardId, bundle, fixture.summary, "material", project.projectId, new Date());
   const originals = await listOriginals(env.DB, ward.wardId, photo.jobId);
   const original = originals[0];
-  if (!original?.r2_path) throw new Error("架空の写真の原本がありません");
+  if (!original?.r2_path) throw new Error("試しの写真の原本がありません");
   const batch = await registerLinePhoto(env.DB, ward.wardId, { destination: fixture.destination,
     source: { type: "group", id: fixture.group, senderId: fixture.person }, jobId: photo.jobId, messageId: "fictional-u83-message", now: new Date("2026-11-07T05:02:00Z") });
   const clarification = "fictional-u83-unreadable";
@@ -50,7 +50,7 @@ it("U83: トーク、参考への直し、AIの上書き防止、分割と戻す
     .bind(ward.wardId, clarification, batch, photo.jobId, original.original_id, fixture.question).run();
   const event = "fictional-u83-resident-question";
   await recordLineInquiry(env.DB, ward.wardId, { eventId: event, receivedAt: "2026-11-07T05:10:00Z", text: fixture.inquiry,
-    sourceType: "user", sourceId: fixture.resident, senderLabel: "架空の住民" });
+    sourceType: "user", sourceId: fixture.resident, senderLabel: "試しの住民" });
   await env.DB.prepare("UPDATE inquiry_records SET line_bundle_id = ? WHERE ward_id = ? AND line_event_id = ?")
     .bind("fictional-u83-inquiry", ward.wardId, event).run();
   await saveAiBundleDecision(env.DB, ward.wardId, "fictional-u83-inquiry", "住民からの駐車場の質問です。", "inquiry", null, new Date());
@@ -64,7 +64,7 @@ it("U83: トーク、参考への直し、AIの上書き防止、分割と戻す
   const path = root + talkPath(group.id);
   const inbox = await (await get(realApp, `${root}/inbox`, cookie)).text();
   expect(inbox).toContain("役員のLINEグループ");
-  expect(inbox).toContain("架空の住民");
+  expect(inbox).toContain("試しの住民");
   expect(inbox).toContain("AIから役員への質問が1つあり、まだ答えがありません。");
   expect(inbox).not.toContain("その場で直せます");
   expect(inbox).not.toContain("答えを待っている質問: ");
@@ -143,8 +143,8 @@ it("U83: トーク、参考への直し、AIの上書き防止、分割と戻す
 it("U83: 役員の画面の一回の送信を一つの枠で出し、関係ないへの直しも戻せる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const outcome = await receive(env, { wardId: ward.wardId, accountId: account.accountId, via: "admin", parts: [
-    { kind: "photo", filename: "架空の写真.jpg", mediaType: "image/jpeg", bytes: new Uint8Array(FIRST_SLICE.answerSheetPhotoBytes) },
-    { kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode("架空の役員会で決まったことです。") },
+    { kind: "photo", filename: "試しの写真.jpg", mediaType: "image/jpeg", bytes: new Uint8Array(FIRST_SLICE.answerSheetPhotoBytes) },
+    { kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode("試しの役員会で決まったことです。") },
   ] });
   if (!outcome.jobId) throw new Error("役員の送信がありません");
   const talk = (await listTalks(env.DB, ward.wardId))[0];

@@ -9,14 +9,14 @@ import { get, postForm, realApp } from "./helpers";
 it("閉じたあとは取り込み済みの回答票も変わらず、開き直すと同じ返事を直せる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,
+    kind: "event", title: "試しの行事", year: 2026, accountId: account.accountId,
   });
   const sheet = await receive(env, {
     wardId: ward.wardId, projectId: project.projectId, via: "admin", readKind: "answer_sheet", accountId: account.accountId,
-    parts: [{ kind: "photo", filename: "架空の回答票.jpg", mediaType: "image/jpeg", bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0]) }],
+    parts: [{ kind: "photo", filename: "試しの回答票.jpg", mediaType: "image/jpeg", bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0]) }],
   });
   const input: AnswerInput = {
-    projectId: project.projectId, household: "架空の世帯", district: "1班", peopleCount: 2,
+    projectId: project.projectId, household: "試しの世帯", district: "1班", peopleCount: 2,
     source: "sheet", originalId: sheet.received[0]!.originalId, sheetRowIndex: 0, accountId: account.accountId,
   };
   const answerId = await addAnswer(env.DB, ward.wardId, input);

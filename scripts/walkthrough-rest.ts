@@ -17,11 +17,11 @@ const sqlText = (value: string) => `'${value.replaceAll("'", "''")}'`;
 async function fictionalWard(slug: string, ports: CheckPorts): Promise<string> {
   const rows = await ports.query(`SELECT ward_id, name FROM wards WHERE ward_id = (SELECT ward_id FROM wards WHERE slug = ${sqlText(slug)}) AND slug = ${sqlText(slug)}`);
   const row = rows[0];
-  if (rows.length !== 1 || typeof row?.ward_id !== "string" || typeof row.name !== "string" || !row.name.includes("架空")) throw new Error("D1で架空の区を確認できません");
+  if (rows.length !== 1 || typeof row?.ward_id !== "string" || typeof row.name !== "string" || !/試し|試験用|通し確認/.test(row.name)) throw new Error("D1で試しの区を確認できません");
   return row.ward_id;
 }
 
-// 鍵の値は取らず、line-simと同じ架空専用の設定の名前だけを照合する。
+// 鍵の値は取らず、line-simと同じ試験専用の設定の名前だけを照合する。
 export async function checkInquiry(slug: string, ports: CheckPorts): Promise<{ result: "通過" | "飛ばす"; reason: string; status: number }> {
   const admin = "/" + encodeURIComponent(slug) + "/admin";
   const list = await ports.request(admin + "/inquiries");
@@ -35,7 +35,7 @@ export async function checkInquiry(slug: string, ports: CheckPorts): Promise<{ r
   // LINE由来の記録は専用設定を要する。送り先の無い記録には送る操作が出ない。
   if (records[0]?.line_source_type) {
     const channels = await ports.query(`SELECT destination, channel_secret_binding, access_token_binding FROM line_channels WHERE ward_id = ${sqlText(wardId)}`);
-    if (channels.length !== 1 || channels[0]?.destination !== "U" + "0".repeat(32) || channels[0]?.channel_secret_binding !== "LINE_SIM_CHANNEL_SECRET" || channels[0]?.access_token_binding !== "LINE_SIM_CHANNEL_ACCESS_TOKEN") throw new Error("架空専用のLINE設定ではないため返事を試していません");
+    if (channels.length !== 1 || channels[0]?.destination !== "U" + "0".repeat(32) || channels[0]?.channel_secret_binding !== "LINE_SIM_CHANNEL_SECRET" || channels[0]?.access_token_binding !== "LINE_SIM_CHANNEL_ACCESS_TOKEN") throw new Error("試験専用のLINE設定ではないため返事を試していません");
   }
   const path = admin + "/inquiries/" + encodeURIComponent(id);
   if (!html.includes(`href="${path}"`)) throw new Error("問い合わせ一覧から記録を開けません");
@@ -48,8 +48,8 @@ export async function checkInquiry(slug: string, ports: CheckPorts): Promise<{ r
   // 失敗時も再送しない。LINE_SIMの無効な鍵で、送れない結果を見る。
   const response = await ports.request(path, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ operation: "send", answer }) });
   const result = await response.text();
-  if (![400, 502].includes(response.status) || !result.includes("<h1>返事を送れませんでした</h1>") || !result.includes(answer) || !result.includes(`href="${path}"`)) throw new Error("架空の返事を送ろうとした結果と戻り先を確認できません");
-  return { result: "通過", reason: "役員の一覧から問い合わせと返事の欄を開き、架空の返事が送れない結果と書いた文、戻り先を確認。実LINEへの到達は未確認", status: response.status };
+  if (![400, 502].includes(response.status) || !result.includes("<h1>返事を送れませんでした</h1>") || !result.includes(answer) || !result.includes(`href="${path}"`)) throw new Error("試しの返事を送ろうとした結果と戻り先を確認できません");
+  return { result: "通過", reason: "役員の一覧から問い合わせと返事の欄を開き、試しの返事が送れない結果と書いた文、戻り先を確認。実LINEへの到達は未確認", status: response.status };
 }
 
 export async function checkWorkersRoute(slug: string, projectId: string, fixtureText: string, ports: CheckPorts): Promise<void> {
@@ -68,11 +68,11 @@ export async function checkWorkersRoute(slug: string, projectId: string, fixture
     const data = new FormData();
     data.set("project_id", projectId);
     const runId = crypto.randomUUID();
-    data.append("part", new Blob([fixtureText + "\n架空の予備経路の確認: " + runId], { type: "text/plain" }), "架空の予備経路_" + runId + ".txt");
+    data.append("part", new Blob([fixtureText + "\n試しの予備経路の確認: " + runId], { type: "text/plain" }), "試しの予備経路_" + runId + ".txt");
     data.append("part_kind", "file");
     const sent = await ports.request("/" + encodeURIComponent(slug) + "/admin/intake", { method: "POST", headers: { accept: "application/json" }, body: data });
     const receipt: unknown = await sent.json();
-    if (!sent.ok || !receipt || typeof receipt !== "object" || !("ok" in receipt) || receipt.ok !== true || !("jobId" in receipt) || typeof receipt.jobId !== "string") throw new Error("予備経路の架空資料を新しく1件受け付けられません");
+    if (!sent.ok || !receipt || typeof receipt !== "object" || !("ok" in receipt) || receipt.ok !== true || !("jobId" in receipt) || typeof receipt.jobId !== "string") throw new Error("予備経路の試しの資料を新しく1件受け付けられません");
     const job = sqlText(receipt.jobId);
     const until = Date.now() + 360_000;
     do {
@@ -128,12 +128,12 @@ const credsArg = arg("--creds");
 const opsCredsArg = arg("--ops-creds");
 const workersWard = arg("--workers-route-ward");
 if (args.includes("--help") || !ward || !baseArg || !credsArg) {
-  console.error("使い方: npm run walkthrough-rest -- --base <URL> --ward <区> --creds <役員の資格情報> [--ops-creds <運用の資格情報>] [--workers-route-ward <自治会のURL名>]\n予備経路は--wardと同じ専用の架空区を指定します。kakuuとdemokuは指定しないでください。D1はローカルのHTTPなら--local、指定のstagingなら--remoteで確認します。LINE由来の問い合わせの返事はLINE_SIM専用の区でだけ試します。LINE_SIMの送信の鍵はfictional-で始まる無効な値にしてください。");
+  console.error("使い方: npm run walkthrough-rest -- --base <URL> --ward <区> --creds <役員の資格情報> [--ops-creds <運用の資格情報>] [--workers-route-ward <自治会のURL名>]\n予備経路は--wardと同じ専用の試験用の区を指定します。kakuuとdemokuは指定しないでください。D1はローカルのHTTPなら--local、指定のstagingなら--remoteで確認します。LINE由来の問い合わせの返事はLINE_SIM専用の区でだけ試します。LINE_SIMの送信の鍵はfictional-で始まる無効な値にしてください。");
   if (args.includes("--help")) return;
   process.exit(2);
 }
 if (args.includes("--workers-route-ward") && (!workersWard || workersWard.startsWith("--") || workersWard !== ward || ["kakuu", ...JUDGE_WARDS].includes(workersWard.toLowerCase()))) {
-  console.error("--workers-route-wardは--wardと同じ専用の架空区を指定してください。kakuuとdemokuは使えません。");
+  console.error("--workers-route-wardは--wardと同じ専用の試験用の区を指定してください。kakuuとdemokuは使えません。");
   process.exit(2);
 }
 if (isJudgeWard(ward)) {
@@ -259,7 +259,7 @@ let projectId = "";
 let projectTitle = "";
 let publicLive = false;
 let sheetOriginal = "";
-const sheetFilename = "架空の回答票_2班.jpg";
+const sheetFilename = "試しの回答票_2班.jpg";
 let opsLoggedIn = false;
 let adminLoggedIn = false;
 const startLogin = Date.now();
@@ -308,7 +308,7 @@ if (adminLoggedIn) {
   for (const [number, title] of [[2,"回答票"],[3,"今やることと区のやること"],[5,"実態の一枚"],[6,"言葉で下書きを直す"],[7,"当番表の編集"],[8,"対象者への配布"],[11,"行政の依頼と運営メモ"],[12,"元の資料を消す"],[13,"引渡し"]] as const) skip(number, title, "役員画面に入れず、前提の行事がありません");
 }
 
-// 2. 架空の回答票を読み取り、役員が確認して確定する。
+// 2. 試しの回答票を読み取り、役員が確認して確定する。
 if (projectId && publicLive) {
   const start = Date.now();
   try {
@@ -392,9 +392,9 @@ else {
     const page = await get(path + "?view=activity");
     if (!page.response.ok) throw new Error("役員の仕事を紹介する画面を開けません");
     const form = readForm(page.html, path + "/activity");
-    form.fields.introduction = "会場の予約と案内を役員が受け持ちました（架空）。";
-    form.fields.membershipBurden = "年に一度の当番があります（架空）。";
-    form.fields.membershipBenefit = "行事の案内が届きます（架空）。";
+    form.fields.introduction = "会場の予約と案内を役員が受け持ちました。";
+    form.fields.membershipBurden = "年に一度の当番があります。";
+    form.fields.membershipBenefit = "行事の案内が届きます。";
     const taskId = /<input\b[^>]*name="taskId"[^>]*value="([^"]*)"/i.exec(page.html)?.[1];
     if (taskId) form.fields.taskId = unescapeHtml(taskId);
     form.fields.action = "save";
@@ -419,7 +419,7 @@ else {
       const reopened = await post(reopen.action, reopen.fields);
       if (reopened.status !== 303) throw new Error("後続の確認用に行事を開き直せません");
     }
-    record(5, "実態の一枚", "通過", "架空の活動紹介を保存し、閉じたあとに住民向けのページで載せる内容を確認。後続の確認用に開き直した", saved.status, start);
+    record(5, "実態の一枚", "通過", "試しの活動紹介を保存し、閉じたあとに住民向けのページで載せる内容を確認。後続の確認用に開き直した", saved.status, start);
   } catch (error) { fail(5, "実態の一枚", error, start); }
 }
 
@@ -440,18 +440,18 @@ if (projectId) {
   } catch (error) { fail(6, "言葉で下書きを直す", error, start); }
 } else skip(6, "言葉で下書きを直す", "行事を開けませんでした");
 
-// 7. 確認用の行事に架空の当番資料を入れ、その一行を編集して読み返す。
+// 7. 確認用の行事に試しの当番資料を入れ、その一行を編集して読み返す。
 if (projectId) {
   const start = Date.now();
   try {
-    const filename = "架空の当番_" + stamp + ".txt";
+    const filename = "試しの当番_" + stamp + ".txt";
     const material = new FormData();
     material.set("project_id", projectId);
-    material.append("part", new Blob([`${new Date().getFullYear()}年「${projectTitle}」の当番表。通し確認用の架空資料です。\n時間帯:10:00-11:00\n持ち場:受付\n担当:架空確認担当\nこの内容で今年の当番を決めました。`], { type: "text/plain" }), filename);
+    material.append("part", new Blob([`${new Date().getFullYear()}年「${projectTitle}」の当番表。通し確認用の試しの資料です。\n時間帯:10:00-11:00\n持ち場:受付\n担当:確認担当\nこの内容で今年の当番を決めました。`], { type: "text/plain" }), filename);
     material.append("part_kind", "file");
     const sent = await req(admin + "/intake", { method: "POST", headers: { accept: "application/json" }, body: material });
     const receipt = await sent.json().catch(() => null) as { ok?: boolean; jobId?: string | null; duplicates?: number } | null;
-    if (!sent.ok || !receipt?.ok || !receipt.jobId && !receipt.duplicates) throw new Error("架空の当番資料を送れません");
+    if (!sent.ok || !receipt?.ok || !receipt.jobId && !receipt.duplicates) throw new Error("試しの当番資料を送れません");
     if (receipt.jobId) {
       const state = (html: string) => { const pos = html.indexOf(filename); return pos < 0 ? "" : html.slice(pos, pos + 900); };
       await waitPage(admin + "/intake/received?project=" + encodeURIComponent(projectId),
@@ -460,16 +460,16 @@ if (projectId) {
     }
     const path = admin + "/projects/" + projectId + "/draft/duty_roster";
     // 「行事に入れました」の後に AI が行を入れるので、行が見えるまで待つ。
-    const page = await waitPage(path, html => html.includes("架空確認担当"));
-    const fixture = [...page.html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/gi)].find(form => form[0].includes("/draft/duty-row/") && form[0].includes("架空確認担当"))?.[0];
-    if (!page.response.ok || !fixture) throw new Error("架空資料の当番の行が見えません");
+    const page = await waitPage(path, html => html.includes("確認担当"));
+    const fixture = [...page.html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/gi)].find(form => form[0].includes("/draft/duty-row/") && form[0].includes("確認担当"))?.[0];
+    if (!page.response.ok || !fixture) throw new Error("試しの資料の当番の行が見えません");
     const form = readForm(fixture, "/draft/duty-row/");
     form.fields.task = (form.fields.task ?? "") + "（確認）";
     const saved = await post(form.action, form.fields);
     if (saved.status !== 303) throw new Error("当番表の行を保存できません");
     const after = await get(path);
     if (!after.response.ok || readForm(after.html, form.action).fields.task !== form.fields.task) throw new Error("当番表の編集内容が保存されていません");
-    record(7, "当番表の編集", "通過", "架空資料の当番の一行を用意し、編集して保存後の内容を読み返した", saved.status, start);
+    record(7, "当番表の編集", "通過", "試しの資料の当番の一行を用意し、編集して保存後の内容を読み返した", saved.status, start);
   } catch (error) { fail(7, "当番表の編集", error, start); }
 } else skip(7, "当番表の編集", "行事を開けませんでした");
 
@@ -489,9 +489,9 @@ else {
     const firstHousehold = (html: string) => /<input\b[^>]*name="household"[^>]*value="([^"]*)"/i.exec(html)?.[1];
     if (!firstHousehold(previewHtml)) {
       const imported = await req(admin + "/answers/roster", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" },
-        body: JSON.stringify({ rows_json: JSON.stringify([["代表者のお名前", "班"], ["架空確認世帯", "架空確認班"]]), household_column: 0, district_column: 1 }) });
+        body: JSON.stringify({ rows_json: JSON.stringify([["代表者のお名前", "班"], ["確認世帯", "確認班"]]), household_column: 0, district_column: 1 }) });
       const result = await imported.json().catch(() => null) as { ok?: boolean } | null;
-      if (!imported.ok || !result?.ok) throw new Error("架空の名簿を用意できません");
+      if (!imported.ok || !result?.ok) throw new Error("試しの名簿を用意できません");
       preview = await post(entry.action, entry.fields);
       if (!preview.ok) throw new Error("名簿を入れたあとに知らせる内容を開けません");
       previewHtml = await preview.text();
@@ -512,7 +512,7 @@ else {
 }
 
 const checkPorts: CheckPorts = { request: req, query: (sql) => queryD1(base, root, sql), sleep: (ms) => new Promise(done => setTimeout(done, ms)) };
-// 9. 架空専用の問い合わせを役員画面で開き、返事を試した結果を見る。
+// 9. 試験専用の問い合わせを役員画面で開き、返事を試した結果を見る。
 if (!adminLoggedIn) skip(9, "問い合わせ", "役員画面に入れませんでした");
 else
 {
@@ -523,14 +523,14 @@ else
   } catch (error) { fail(9, "問い合わせ", error, start); }
 }
 
-// 10. 専用の架空区でだけ予備経路を使い、設定の復元まで確認する。
+// 10. 専用の試験用の区でだけ予備経路を使い、設定の復元まで確認する。
 if (!workersWard) skip(10, "予備の列", "--workers-route-ward がありません");
 else if (!projectId) skip(10, "予備の列", "前提の行事を開けませんでした");
 else {
   const start = Date.now();
   try {
     await checkWorkersRoute(workersWard, projectId, FIRST_SLICE.publicAnnouncement, checkPorts);
-    record(10, "予備の列", "通過", "架空資料1件の読み取りとWorkers経路での接続完了をD1で確認し、設定を元に戻した", lastStatus, start);
+    record(10, "予備の列", "通過", "試しの資料1件の読み取りとWorkers経路での接続完了をD1で確認し、設定を元に戻した", lastStatus, start);
   } catch (error) { fail(10, "予備の列", error, start); }
 }
 
@@ -565,7 +565,7 @@ else {
     if (!ledgerResultPath || !(await get(ledgerResultPath)).html.includes("メモを残しました")) throw new Error("運営メモを保存したあとの案内を開けません");
     const ledgerReadback = await get(memoPath);
     if (!ledgerReadback.html.includes(FIRST_SLICE.reportText)) throw new Error("運営メモの保存内容を読み返せません");
-    record(11, "行政の依頼と運営メモ", "通過", "架空の行政依頼と運営メモを保存して読み返した。提出操作なし", ledgerReadback.response.status, start);
+    record(11, "行政の依頼と運営メモ", "通過", "試しの行政依頼と運営メモを保存して読み返した。提出操作なし", ledgerReadback.response.status, start);
   } catch (error) { fail(11, "行政の依頼と運営メモ", error, start); }
 }
 
@@ -592,7 +592,7 @@ else {
   } catch (error) { fail(12, "元の資料を消す", error, start); }
 }
 
-// 13. 架空の役員にリンクを渡し、本人がIDとパスワードを作る。資格情報は表示・記録しない。
+// 13. 試しの役員にリンクを渡し、本人がIDとパスワードを作る。資格情報は表示・記録しない。
 if (!projectId) skip(13, "引渡し", "前提の行事を開けませんでした");
 else {
   const start = Date.now();
@@ -619,7 +619,7 @@ else {
     const login = await post(admin + "/login", { loginId, password });
     const newAccountHome = await get(admin + "/");
     if (login.status !== 303 || !cookies.has("device") || !newAccountHome.response.ok) throw new Error("新しい資格で役員画面に入れません");
-    record(13, "引渡し", "通過", "架空の役員にリンクを渡し、本人が作ったIDとパスワードで入る。資格値は表示・記録していない", newAccountHome.response.status, start);
+    record(13, "引渡し", "通過", "試しの役員にリンクを渡し、本人が作ったIDとパスワードで入る。資格値は表示・記録していない", newAccountHome.response.status, start);
   } catch (error) { fail(13, "引渡し", error, start); }
 }
 

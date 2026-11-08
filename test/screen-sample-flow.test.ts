@@ -22,8 +22,8 @@ it("読めなかった人数を参加しないと分け、人数は短い名前�
 
 it("回答票で人数が読めなかった世帯を参加しないに数えず、返事の画面の上に出す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の読み取り確認", year: 2026, accountId: account.accountId });
-  await addAnswer(env.DB, ward.wardId, { projectId: project.projectId, household: "架空 読めない世帯", district: "", peopleCount: 0, childrenCount: null, adultsCount: null, seniorsCount: null, helperName: "", helperTimes: "", source: "sheet" });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "試しの読み取り確認", year: 2026, accountId: account.accountId });
+  await addAnswer(env.DB, ward.wardId, { projectId: project.projectId, household: "読めない世帯", district: "", peopleCount: 0, childrenCount: null, adultsCount: null, seniorsCount: null, helperName: "", helperTimes: "", source: "sheet" });
   const page = await (await get(realApp, `/${ward.slug}/admin/answers/${project.projectId}`, cookie)).text();
   expect(page).toContain("人数が読めなかった返事が1件あります");
   expect(page).toContain("今日までに1世帯から返事が届いています。");
@@ -32,10 +32,10 @@ it("回答票で人数が読めなかった世帯を参加しないに数えず�
 
 it("手伝いの同じ申し込みは一件だけ残し、間違えた時は入れた内容を残す", async () => {
   const { ward, account } = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の手伝い確認", year: 2026, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "試しの手伝い確認", year: 2026, accountId: account.accountId });
   await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
-    kind: "recruitment", title: "架空の募集", scope: "public", basedOn: project.stateVersion,
-    body: JSON.stringify({ text: "架空の募集です", items: [{ key: "helper_slots", content: "午前、午後" }] }),
+    kind: "recruitment", title: "試しの募集", scope: "public", basedOn: project.stateVersion,
+    body: JSON.stringify({ text: "試しの募集です", items: [{ key: "helper_slots", content: "午前、午後" }] }),
   });
   const version = await env.DB.prepare(`SELECT d.document_id, v.version_id, v.version_no FROM documents d
     JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
@@ -46,8 +46,8 @@ it("手伝いの同じ申し込みは一件だけ残し、間違えた時は入�
     version_no, line_status, published_at, published_by_account_id) VALUES (?, ?, ?, ?, ?, ?, 'not_sent', ?, ?)`)
     .bind(ward.wardId, crypto.randomUUID(), project.projectId, version.document_id, version.version_id,
       version.version_no, new Date().toISOString(), account.accountId).run();
-  expect(await addHelpOffer(env.DB, ward.wardId, project.projectId, "架空 花子", "午前")).toMatchObject({ name: "架空 花子", times: "午前" });
-  expect(await addHelpOffer(env.DB, ward.wardId, project.projectId, "架空 花子", "午前")).toMatchObject({ name: "架空 花子", times: "午前" });
+  expect(await addHelpOffer(env.DB, ward.wardId, project.projectId, "花子", "午前")).toMatchObject({ name: "花子", times: "午前" });
+  expect(await addHelpOffer(env.DB, ward.wardId, project.projectId, "花子", "午前")).toMatchObject({ name: "花子", times: "午前" });
   expect(await listHelpOffers(env.DB, ward.wardId, project.projectId)).toHaveLength(1);
 
   const helpPath = `/${ward.slug}/help/${project.projectId}`;
@@ -63,10 +63,10 @@ it("読み終わった物が無い時は読み終わりましたと言わず、�
   const read = await (await get(realApp, `/${ward.slug}/admin/intake/read`, cookie)).text();
   expect(read).toContain("読み終わったものはまだありません");
   expect(read).not.toContain("<h1>読み終わりました</h1>");
-  await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の始める確認", year: 2026, accountId: account.accountId });
+  await createProject(env.DB, ward.wardId, { kind: "event", title: "試しの始める確認", year: 2026, accountId: account.accountId });
   const start = await (await get(realApp, `/${ward.slug}/admin/projects`, cookie)).text();
   expect(start).toContain("<h1>新しく準備を始める</h1>");
-  expect(start).not.toContain("架空の始める確認");
+  expect(start).not.toContain("試しの始める確認");
   const home = await (await get(realApp, `/${ward.slug}/admin/`, cookie)).text();
   expect(home).toContain(`href="/${ward.slug}/admin/projects/today"`);
   expect(home).toContain(`href="/${ward.slug}/admin/answers"`);
@@ -84,15 +84,15 @@ it("取り消したあとと、同じ資料だった時の結果を別の画面�
 
 it("届いた資料で入ったことを一行で書き、多い時は短くする", () => {
   const source = (ref: string) => ({ kind: "original", ref, locator: null, year: 2026 });
-  const value = (ref: string) => ({ valueId: ref, content: "架空", scope: "current", refYear: null, source: source(ref), confidence: "high", createdAt: "" });
+  const value = (ref: string) => ({ valueId: ref, content: "試し", scope: "current", refYear: null, source: source(ref), confidence: "high", createdAt: "" });
   const item = (key: string, ref: string) => ({ key, label: key, current: value(ref), references: [] });
   const state = {
     items: [item("date_time", "a"), item("place", "a"), item("rain_plan", "b"), item("content", "b"), item("belongings", "b"), item("due", "b")],
     tables: { sponsors: [
-      { scope: "current", data: { name: "架空商店", reply: "yes" }, source: source("c") },
-      { scope: "current", data: { name: "架空薬局", reply: "pending" }, source: source("c") },
-      { scope: "current", data: { name: "架空米店", reply: "" }, source: source("z") },
-          { scope: "reference", data: { name: "架空酒店", reply: "yes" }, source: source("e") },
+      { scope: "current", data: { name: "商店", reply: "yes" }, source: source("c") },
+      { scope: "current", data: { name: "薬局", reply: "pending" }, source: source("c") },
+      { scope: "current", data: { name: "米店", reply: "" }, source: source("z") },
+          { scope: "reference", data: { name: "酒店", reply: "yes" }, source: source("e") },
     ], duties: [], layout: [], ledger: [{ scope: "current", data: {}, source: source("d") }], decisions: [], submissions: [], committee: [] },
     questions: [{ source: source("a") }],
     mapTasks: [{ name: "会場を押さえる", progress: "done", progressSource: source("a") }],
@@ -107,14 +107,14 @@ it("届いた資料で入ったことを一行で書き、多い時は短くす�
 
 it("やることの最近届いた資料に、その資料から入った項目を出す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の資料確認", year: 2026, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "試しの資料確認", year: 2026, accountId: account.accountId });
   const now = new Date().toISOString();
   await env.DB.prepare(`INSERT INTO jobs (job_id, ward_id, via, read_kind, sender_label, account_id, project_id, status, created_at, updated_at, read_at)
-    VALUES ('job-map', ?, 'admin', 'general', '架空', ?, ?, 'done', ?, ?, ?)`).bind(ward.wardId, account.accountId, project.projectId, now, now, now).run();
+    VALUES ('job-map', ?, 'admin', 'general', '試し', ?, ?, 'done', ?, ?, ?)`).bind(ward.wardId, account.accountId, project.projectId, now, now, now).run();
   await env.DB.prepare(`INSERT INTO originals (original_id, ward_id, job_id, position, filename, kind, media_type, content_hash, byte_size, received_at)
-    VALUES ('original-map', ?, 'job-map', 0, '架空の案内.txt', 'text', 'text/plain', 'hash-map', 1, ?)`).bind(ward.wardId, now).run();
+    VALUES ('original-map', ?, 'job-map', 0, '試しの案内.txt', 'text', 'text/plain', 'hash-map', 1, ?)`).bind(ward.wardId, now).run();
   await env.DB.prepare(`INSERT INTO project_item_values (value_id, ward_id, project_id, item_key, scope, content, source_kind, source_ref, confidence, created_at)
-    VALUES ('value-map', ?, ?, 'place', 'current', '架空の公民館', 'original', 'original-map', 'high', ?)`).bind(ward.wardId, project.projectId, now).run();
+    VALUES ('value-map', ?, ?, 'place', 'current', '試しの公民館', 'original', 'original-map', 'high', ?)`).bind(ward.wardId, project.projectId, now).run();
   const page = await (await get(realApp, `/${ward.slug}/admin/projects/${project.projectId}/map`, cookie)).text();
   expect(page).toContain("どこでを入れました");
   expect(page).not.toContain("読み終わりました。届いた資料で内容を見られます");
@@ -122,27 +122,27 @@ it("やることの最近届いた資料に、その資料から入った項目�
 
 it("実行委員向けの下書きも、知らせる前に本文と表を確かめる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の当番確認", year: 2026, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "試しの当番確認", year: 2026, accountId: account.accountId });
   const id = project.projectId;
   const root = `/${ward.slug}/admin`;
   const addDuty = async (assignee: string) => expect((await applyChange(env.DB, ward.wardId, id, {
     kind: "row", table: "duties", data: { slot: "午前", assignee }, source: { kind: "person", accountId: account.accountId }, confidence: "high", packVersion: "confirm-test@1",
   })).status).toBe("applied");
-  await addDuty("架空の受付係");
-  await saveDocument(env.DB, ward.wardId, id, account.accountId, { kind: "duty_roster", title: "当番表", scope: "space", basedOn: 0, body: JSON.stringify({ text: "架空の当番の説明", items: [] }) });
+  await addDuty("試しの受付係");
+  await saveDocument(env.DB, ward.wardId, id, account.accountId, { kind: "duty_roster", title: "当番表", scope: "space", basedOn: 0, body: JSON.stringify({ text: "試しの当番の説明", items: [] }) });
   const list = await (await get(realApp, `${root}/publish/${id}`, cookie)).text();
   expect(list).toContain(`action="${root}/publish/${id}/confirm"`);
   expect(list).not.toContain(`action="${root}/publish/${id}/space"`);
 
   const state = await getProjectState(env.DB, ward.wardId, id);
   const saved = await postForm(realApp, `${root}/projects/${id}/draft/duty_roster/save`, {
-    based_on: String(state?.project.stateVersion ?? 0), title: "当番表", scope: "space", text: "架空の当番の説明を直した文", after: "confirm",
+    based_on: String(state?.project.stateVersion ?? 0), title: "当番表", scope: "space", text: "試しの当番の説明を直した文", after: "confirm",
   }, cookie);
   expect(saved.status).toBe(200);
   const confirm = await saved.text();
   expect(confirm).toContain("次の内容で実行委員と班長のページに載せます");
-  expect(confirm).toContain("架空の当番の説明を直した文");
-  expect(confirm).toContain("架空の受付係");
+  expect(confirm).toContain("試しの当番の説明を直した文");
+  expect(confirm).toContain("試しの受付係");
   expect(confirm).toContain("実行委員と班長のページに載せます。住民向けのページには載りません。");
   expect(confirm).toContain(`action="${root}/publish/${id}/space"`);
   expect(confirm).not.toContain("LINEで送った知らせ");
@@ -160,19 +160,19 @@ it("実行委員向けの下書きも、知らせる前に本文と表を確か�
   // 表が変わっていなければ、配り直す確認は出ない。
   expect((await postForm(realApp, `${root}/publish/${id}/confirm`, fields(draft), cookie)).status).toBe(303);
 
-  await addDuty("架空の片付け係");
+  await addDuty("試しの片付け係");
   const again = await (await postForm(realApp, `${root}/publish/${id}/confirm`, fields(draft), cookie)).text();
   expect(again).toContain("次の内容で載せ直します");
   expect(again).toContain("載せたときから表が変わっています");
-  expect(again).toContain("架空の片付け係");
+  expect(again).toContain("試しの片付け係");
 });
 
 it("実行委員だけに見せる案内も、確かめて配れる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の内輪の案内", year: 2026, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "試しの内輪の案内", year: 2026, accountId: account.accountId });
   const id = project.projectId;
   const root = `/${ward.slug}/admin`;
-  await saveDocument(env.DB, ward.wardId, id, account.accountId, { kind: "announcement", title: "案内", scope: "space", basedOn: 0, body: JSON.stringify({ text: "架空の内輪の文", items: [] }) });
+  await saveDocument(env.DB, ward.wardId, id, account.accountId, { kind: "announcement", title: "案内", scope: "space", basedOn: 0, body: JSON.stringify({ text: "試しの内輪の文", items: [] }) });
   const row = await env.DB.prepare("SELECT v.document_id, v.version_id, v.version_no FROM document_versions v WHERE v.ward_id = ? AND v.project_id = ?")
     .bind(ward.wardId, id).first<{ document_id: string; version_id: string; version_no: number }>();
   if (!row) throw new Error("案内がありません。");
@@ -180,7 +180,7 @@ it("実行委員だけに見せる案内も、確かめて配れる", async () =
   const confirm = await postForm(realApp, `${root}/publish/${id}/confirm`, fields, cookie);
   expect(confirm.status).toBe(200);
   const page = await confirm.text();
-  expect(page).toContain("架空の内輪の文");
+  expect(page).toContain("試しの内輪の文");
   expect(page).not.toContain("回答票");
   expect(page).not.toContain("<h3>当番</h3>");
   expect((await postForm(realApp, `${root}/publish/${id}/space`, fields, cookie)).status).toBe(303);

@@ -25,20 +25,20 @@ async function drain(wardId: string) {
 it("元の資料と答えと知らせた案内のある行事を列で消し、D1・R2・毎日の写しに残さない", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "消去する行事（架空）", year: 2026, eventDay: "2026-10-24", accountId: account.accountId,
+    kind: "event", title: "消去する行事", year: 2026, eventDay: "2026-10-24", accountId: account.accountId,
   });
   const received = await receive(env, { wardId: ward.wardId, projectId: project.projectId, via: "admin", parts: [
-    { kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode("消す対象の会場メモ（架空）") },
+    { kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode("消す対象の会場メモ") },
   ] });
   await applyChange(env.DB, ward.wardId, project.projectId, {
-    kind: "item", itemKey: "place", value: "消す対象の会場（架空）",
+    kind: "item", itemKey: "place", value: "消す対象の会場",
     source: { kind: "original", ref: received.received[0]!.originalId, year: 2026 }, confidence: "low", packVersion: "test@1",
   });
-  await addAnswer(env.DB, ward.wardId, { projectId: project.projectId, household: "架空の世帯", district: "1班", peopleCount: 2, source: "web" });
+  await addAnswer(env.DB, ward.wardId, { projectId: project.projectId, household: "試しの世帯", district: "1班", peopleCount: 2, source: "web" });
   const stateVersion = await env.DB.prepare("SELECT state_version FROM projects WHERE ward_id = ? AND project_id = ?")
     .bind(ward.wardId, project.projectId).first<number>("state_version");
   await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
-    kind: "announcement", title: "消す案内（架空）", scope: "public", body: JSON.stringify({ text: "公開する架空の案内", items: [] }), basedOn: stateVersion!,
+    kind: "announcement", title: "消す案内", scope: "public", body: JSON.stringify({ text: "公開する試しの案内", items: [] }), basedOn: stateVersion!,
   });
   const version = await env.DB.prepare("SELECT document_id, version_id, version_no FROM document_versions WHERE ward_id = ? AND project_id = ?")
     .bind(ward.wardId, project.projectId).first<{ document_id: string; version_id: string; version_no: number }>();
@@ -71,9 +71,9 @@ it("元の資料と答えと知らせた案内のある行事を列で消し、D
 
 it("種にした先の行事は残し、D1と毎日の写しの種の繋がりだけを外す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
-  const source = await createProject(env.DB, ward.wardId, { kind: "event", title: "去年の行事（架空）", year: 2026, accountId: account.accountId });
+  const source = await createProject(env.DB, ward.wardId, { kind: "event", title: "去年の行事", year: 2026, accountId: account.accountId });
   const next = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "来年の行事（架空）", year: 2027, seedProjectId: source.projectId, accountId: account.accountId,
+    kind: "event", title: "来年の行事", year: 2027, seedProjectId: source.projectId, accountId: account.accountId,
   });
   await writeDailyWardSnapshots(env, new Date("2026-11-05T00:00:00Z"));
   expect((await postForm(realApp, `/${ward.slug}/admin/settings/deletion/projects/${source.projectId}`, {}, cookie)).status).toBe(303);

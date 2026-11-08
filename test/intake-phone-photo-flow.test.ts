@@ -12,7 +12,7 @@ import { getJob, getReadings, listOriginals } from "../src/intake/store";
 import { realApp } from "./helpers";
 import { fictionalPhonePhoto, fictionalStoredPhoto } from "./fixtures/phone-photo";
 
-it("6.7MBの架空写真は2400pxのJPEG一つを保管して読み、縮小前後の再送を重ねず、変換失敗も質問へ渡す", async () => {
+it("6.7MBの写真は2400pxのJPEG一つを保管して読み、縮小前後の再送を重ねず、変換失敗も質問へ渡す", async () => {
   const { ward, cookie } = await seedAdmin(env.DB);
   const original = fictionalPhonePhoto();
   const stored = fictionalStoredPhoto();
@@ -21,7 +21,7 @@ it("6.7MBの架空写真は2400pxのJPEG一つを保管して読み、縮小前�
   expect(imageDimensions(stored)).toEqual({ width: 1697, height: 2400 });
   const sourceHash = await sha256Hex(original);
   let conversions = 0;
-  // Imagesの通信だけを代え、出力には実際に縮小・JPEG圧縮した架空の回答票を使う。
+  // Imagesの通信だけを代え、出力には実際に縮小・JPEG圧縮した試しの回答票を使う。
   const transformer: ImageTransformer = {
     transform(options) { expect(options).toEqual({ width: 2400, height: 2400, fit: "scale-down" }); return transformer; },
     draw() { throw new Error("重ねる処理は使いません"); },
@@ -47,10 +47,10 @@ it("6.7MBの架空写真は2400pxのJPEG一つを保管して読み、縮小前�
     // AI通信の代用。実際の手書き認識の精度を証明する試験にはしない。
     return Response.json({ id: "fixture-phone-photo", type: "message", role: "assistant", model: "claude-sonnet-5-5",
       stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 100, output_tokens: 50 },
-      content: [{ type: "text", text: JSON.stringify({ summary: "架空の回答票", rows: [{
-        original_id: "fixture-original", locator: "人数欄", household_name: "架空の世帯", ward_group: "架空の班",
+      content: [{ type: "text", text: JSON.stringify({ summary: "試しの回答票", rows: [{
+        original_id: "fixture-original", locator: "人数欄", household_name: "試しの世帯", ward_group: "試しの班",
         adults: 2, children: 1, seniors: 0, not_attending: false, meeting_status: null, proxy_name: "",
-        helper_names: [], helper_slots: ["受付"], note: "架空の答え", confidence: "high",
+        helper_names: [], helper_slots: ["受付"], note: "試しの答え", confidence: "high",
       }], unreadable: [] }) }],
     });
   } });
@@ -58,7 +58,7 @@ it("6.7MBの架空写真は2400pxのJPEG一つを保管して読み、縮小前�
   setClientFactory(() => { throw new Error("試験から本物のAIは呼びません"); });
   const send = async (bytes: Uint8Array, hash?: string) => {
     const form = new FormData();
-    form.append("part", new File([bytes], "架空の回答票.jpg", { type: "image/jpeg" }));
+    form.append("part", new File([bytes], "試しの回答票.jpg", { type: "image/jpeg" }));
     form.append("part_kind", "photo");
     if (hash) form.append("part_source_hash", hash);
     const response = await realApp.fetch(new Request(`http://localhost/${ward.slug}/admin/intake`, {
@@ -72,7 +72,7 @@ it("6.7MBの架空写真は2400pxのJPEG一つを保管して読み、縮小前�
   try {
     const result = await send(original);
     expect(result.message).toContain("受け取りました");
-    if (!result.jobId) throw new Error("架空写真を受け付けられませんでした");
+    if (!result.jobId) throw new Error("写真を受け付けられませんでした");
     await Promise.all(tasks);
     expect(modelCalls).toBe(1);
     expect(conversions).toBe(1);
@@ -90,7 +90,7 @@ it("6.7MBの架空写真は2400pxのJPEG一つを保管して読み、縮小前�
     expect((await bucket.list("originals/")).keys.map(item => item.key)).toEqual([row.r2_path]);
     const readings = await getReadings(env.DB, ward.wardId, result.jobId);
     expect(readings).toHaveLength(1);
-    expect(readings[0]!.body).toMatchObject({ rows: [{ original_id: row.original_id, household_name: "架空の世帯", adults: 2, children: 1, seniors: 0 }] });
+    expect(readings[0]!.body).toMatchObject({ rows: [{ original_id: row.original_id, household_name: "試しの世帯", adults: 2, children: 1, seniors: 0 }] });
     const beforeResend = conversions;
     expect((await send(stored, sourceHash)).message).toContain("同じ");
     // ブラウザで整えられなかった再送と、LINEの入口からの同じ写真も同じ物になる。
@@ -104,9 +104,9 @@ it("6.7MBの架空写真は2400pxのJPEG一つを保管して読み、縮小前�
 
     // 変換失敗でも大きい写真を保管し、通常の読み取りが既存の質問を残す。
     const other = await seedWard(env.DB);
-    const failedImages: PhotoImages = { input: () => { throw new Error("架空の変換失敗"); } };
+    const failedImages: PhotoImages = { input: () => { throw new Error("試しの変換失敗"); } };
     const failureEnv = Object.create(env, { IMAGES: { value: failedImages } }) as typeof runtime;
-    const failed = await receive(failureEnv, { wardId: other.wardId, via: "line_direct", parts: [{ kind: "photo", filename: "架空の回答票.jpg", mediaType: "image/jpeg", bytes: original }] });
+    const failed = await receive(failureEnv, { wardId: other.wardId, via: "line_direct", parts: [{ kind: "photo", filename: "試しの回答票.jpg", mediaType: "image/jpeg", bytes: original }] });
     if (!failed.jobId) throw new Error("変換失敗の写真を受け付けられませんでした");
     const kept = (await listOriginals(env.DB, other.wardId, failed.jobId))[0]!;
     expect(kept.byte_size).toBe(original.length);

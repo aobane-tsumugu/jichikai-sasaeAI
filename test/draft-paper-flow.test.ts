@@ -18,7 +18,7 @@ import { cookieFrom, get, postForm, realApp, withEnv } from "./helpers";
 
 it("資料から当番の下書きを行にし、役員が直して紙と実行委員と班長のページへ配り、案内を一か所で直して記録を残す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
-  // 固定の本文や題だけで成立しないよう、入力ごとに違う架空の名前と場所をフォームへ渡す。
+  // 固定の本文や題だけで成立しないよう、入力ごとに違う試しの名前と場所をフォームへ渡す。
   const suffix = crypto.randomUUID().slice(0, 8);
   const title = `${FIRST_SLICE.nextYearTitle} ${suffix}`;
   const helper = `${FIRST_SLICE.phoneHelper} ${suffix}`;
@@ -27,7 +27,7 @@ it("資料から当番の下書きを行にし、役員が直して紙と実行�
   const itemPlace = `${FIRST_SLICE.layoutPosition} ${suffix}`;
   const textPlace = `${FIRST_SLICE.layoutSpot} ${suffix}`;
   const date = `${FIRST_SLICE.sourceYear}年${FIRST_SLICE.publicDayText}`;
-  const slot = "10:30-12:00"; // fixtures の架空の当番表と同じ時間帯。
+  const slot = "10:30-12:00"; // fixtures の試しの当番表と同じ時間帯。
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title, year: FIRST_SLICE.eventYear, accountId: account.accountId,
   });
@@ -40,7 +40,7 @@ it("資料から当番の下書きを行にし、役員が直して紙と実行�
     ) }],
   });
   const original = received.received[0];
-  if (!original) throw new Error("架空の資料が入りませんでした");
+  if (!original) throw new Error("試しの資料が入りませんでした");
   const source = { kind: "original" as const, ref: original.originalId, year: FIRST_SLICE.sourceYear, locator: FIRST_SLICE.previousLocator };
   for (const [itemKey, value] of [["place", oldPlace], ["date_time", date]] as const) {
     expect((await applyChange(env.DB, ward.wardId, id, {

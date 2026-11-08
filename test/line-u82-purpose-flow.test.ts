@@ -21,10 +21,10 @@ import { applyChange, createProject, getProjectState } from "../src/project/api"
 import { markReferenceSource, placeSource } from "../src/project/source";
 import { get, postForm, realApp, withEnv } from "./helpers";
 
-// 全て架空。受信・原本・読み取りの保存・当てるAI・接続・既存の質問フォームを通す。
+// 全て。受信・原本・読み取りの保存・当てるAI・接続・既存の質問フォームを通す。
 async function setup(intent: NonNullable<MatchResult["intent"]>) {
   const { ward, account, cookie } = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の秋の集まり", year: 2026, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "試しの秋の集まり", year: 2026, accountId: account.accountId });
   const group = `fictional-u82-group-${crypto.randomUUID()}`;
   const destination = crypto.randomUUID();
   const runtime = withEnv({ LINE_CHANNEL_SECRET: "fictional-u82-secret", LINE_CHANNEL_ACCESS_TOKEN: "fictional-u82-token" });
@@ -43,28 +43,28 @@ async function setup(intent: NonNullable<MatchResult["intent"]>) {
       if (!prompt) throw new Error("当てる文がありません");
       prompts.push(prompt);
       const residentPhoto = intent === "inquiry" && !prompt.includes("受け取った物の要約: 住民に知らせてほしい");
-      result = { choice: residentPhoto ? "__uncertain__" : project.projectId, reason: "架空の写真と添えた言葉で目的を読みました。", intent,
+      result = { choice: residentPhoto ? "__uncertain__" : project.projectId, reason: "試しの写真と添えた言葉で目的を読みました。", intent,
         confident: !residentPhoto, attendanceAnswer: false, knowTopic: "none" };
     } else throw new Error("この試験にないAIの呼び出しです");
     return Response.json({ id: "fictional-u82-ai", type: "message", role: "assistant", model: "claude-haiku-5-5",
       content: [{ type: "text", text: JSON.stringify(result) }], stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 } });
   } });
   const date = "2026/11/19 10:00〜12:00";
-  const place = "架空の遠方広場";
-  const contact = "架空の外部催し係";
+  const place = "試しの遠方広場";
+  const contact = "試しの外部催し係";
   const fields = [{ name: "日時", value: date }, { name: "場所", value: place }, { name: "連絡先", value: contact }];
   const factory = vi.spyOn(anthropic, "createAnthropic").mockReturnValue(ai);
   setClientFactory(() => ai);
   setPipelineDeps({ createClient: () => ai, readImpl: async (_client, input) => {
     const original = input.originals[0];
     if (!original) throw new Error("読む元の写真がありません");
-    const body: Reading = { document_kind: "announcement", summary: "架空の催しのチラシ",
+    const body: Reading = { document_kind: "announcement", summary: "試しの催しのチラシ",
       original_years: [{ original_id: original.originalId, year: 2026 }],
       text_blocks: [{ original_id: original.originalId, locator: "全体", text: `${date} ${place} ${contact}` }],
       fields: fields.map((field) => ({ ...field, original_id: original.originalId, locator: field.name, confidence: "high" })),
       tables: [], decisions: [], unreadable: [],
-      project_suggestions: [{ original_id: original.originalId, kind: "event", title: "架空の外の催し", date_text: date, place }],
-      year_entries: [{ original_id: original.originalId, title: "架空の外の催し", month: 11, date_text: date }] };
+      project_suggestions: [{ original_id: original.originalId, kind: "event", title: "試しの外の催し", date_text: date, place }],
+      year_entries: [{ original_id: original.originalId, title: "試しの外の催し", month: 11, date_text: date }] };
     return { body, packVersion: "read-u82-fictional@1", model: "claude-sonnet-5-5", usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0 } };
   } });
   // 繋げるエージェントが書く日時・場所・連絡先を同じapplyChangeへ渡す。外部の実AIは呼ばない。
@@ -87,7 +87,7 @@ async function setup(intent: NonNullable<MatchResult["intent"]>) {
   });
   const fakeLine: typeof fetch = async (url, init) => {
     if (String(url).includes("api-data.line.me")) return new Response(new Uint8Array([...FIRST_SLICE.answerSheetPhotoBytes, 82]), { headers: { "content-type": "image/jpeg" } });
-    if (String(url).includes("/member/")) return Response.json({ displayName: "架空の送信者" });
+    if (String(url).includes("/member/")) return Response.json({ displayName: "試しの送信者" });
     if (String(url).endsWith("/message/reply")) {
       const body = JSON.parse(String(init?.body)) as { messages: Array<{ text: string }> };
       replies.push(...body.messages.map((message) => message.text));
@@ -135,7 +135,7 @@ async function setup(intent: NonNullable<MatchResult["intent"]>) {
   };
   const state = async () => {
     const result = await getProjectState(env.DB, ward.wardId, project.projectId);
-    if (!result) throw new Error("架空の準備がありません");
+    if (!result) throw new Error("試しの準備がありません");
     return result;
   };
   const cleanup = () => { factory.mockRestore(); dispatch.mockRestore(); setClientFactory(null); setPipelineDeps(null); vi.unstubAllGlobals(); vi.useRealTimers(); };
@@ -151,7 +151,7 @@ it("U82: 役員の参考は原本と読み取りを残し、今年の日時・�
     await s.settle();
     expect(await getBundleDecision(env.DB, s.ward.wardId, received.bundle_id)).toMatchObject({ action: "reference", project_id: s.project.projectId, decided_by: "ai" });
     expect(await getJob(env.DB, s.ward.wardId, received.job_id)).toMatchObject({ project_id: s.project.projectId, status: "done", withdrawn_at: null });
-    expect((await getReadings(env.DB, s.ward.wardId, received.job_id))[0]?.body.summary).toBe("架空の催しのチラシ");
+    expect((await getReadings(env.DB, s.ward.wardId, received.job_id))[0]?.body.summary).toBe("試しの催しのチラシ");
     expect(await new WardBucket(env.ORIGINALS, s.ward.wardId).get(received.path)).not.toBeNull();
     expect(s.dispatch).not.toHaveBeenCalled();
     const source = await markReferenceSource(env.DB, s.ward.wardId, { kind: "original", ref: received.original.original_id, year: 2026, qr: true });
@@ -174,7 +174,7 @@ it("U82: 役員の参考は原本と読み取りを残し、今年の日時・�
     expect((await listClarifications(env.DB, s.ward.wardId))).toHaveLength(0);
     expect(s.prompts.some((prompt) => prompt.includes("指定された役員グループ") && prompt.includes("こんなデザインで作りたい"))).toBe(true);
     const html = await redirectedTalkPage(`/${s.ward.slug}/admin/inbox/${received.item_id}/pick`, s.cookie, s.runtime);
-    expect(html).toContain("架空の秋の集まりの参考にしました。");
+    expect(html).toContain("試しの秋の集まりの参考にしました。");
   } finally { s.cleanup(); }
 });
 
@@ -204,7 +204,7 @@ it("U82: 自分たちの案内の写真は今年の中身と行事の日に入�
     expect(state.items.find((item) => item.key === "date_time")?.current?.content).toBe(s.date);
     expect(state.items.find((item) => item.key === "place")?.current?.content).toBe(s.place);
     expect(await env.DB.prepare("SELECT title FROM ward_year_items WHERE ward_id = ? AND source_original_id = ?")
-      .bind(s.ward.wardId, received.original.original_id).first()).toEqual({ title: "架空の外の催し" });
+      .bind(s.ward.wardId, received.original.original_id).first()).toEqual({ title: "試しの外の催し" });
   } finally { s.cleanup(); }
 });
 
@@ -242,7 +242,7 @@ it.each(["参考資料", "この準備の資料"])("U82: 目的不明には一�
     await saveAiBundleDecision(env.DB, s.ward.wardId, received.bundle_id, "別のAIの判断", "confirm_purpose", null, new Date());
     expect(await getBundleDecision(env.DB, s.ward.wardId, received.bundle_id)).toMatchObject({ action, decided_by: "officer", project_id: s.project.projectId });
     const other = await seedAdmin(env.DB);
-    await saveAiBundleDecision(env.DB, other.ward.wardId, received.bundle_id, "架空の別の自治会", "reference", null, new Date());
+    await saveAiBundleDecision(env.DB, other.ward.wardId, received.bundle_id, "試しの別の自治会", "reference", null, new Date());
     expect(await getBundleDecision(env.DB, s.ward.wardId, received.bundle_id)).toMatchObject({ action, decided_by: "officer" });
   } finally { s.cleanup(); }
 });

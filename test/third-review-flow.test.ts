@@ -30,7 +30,7 @@ it("空の下書きを項目から整え、行事の日を直し、名簿なし�
   };
   const state = async () => {
     const value = await getProjectState(env.DB, ward.wardId, id);
-    if (!value) throw new Error("架空の行事がありません");
+    if (!value) throw new Error("試しの行事がありません");
     return value;
   };
   const publish = async (kind: DocumentKind) => {
@@ -38,7 +38,7 @@ it("空の下書きを項目から整え、行事の日を直し、名簿なし�
       JOIN document_versions v ON v.ward_id = d.ward_id AND v.document_id = d.document_id
       WHERE d.ward_id = ? AND d.project_id = ? AND d.kind = ? ORDER BY v.version_no DESC LIMIT 1`)
       .bind(ward.wardId, id, kind).first<{ document_id: string; version_id: string; version_no: number }>();
-    if (!row) throw new Error("架空の文書がありません");
+    if (!row) throw new Error("試しの文書がありません");
     expect((await postForm(realApp, `${root}/publish/${id}/send`, {
       documentId: row.document_id, versionId: row.version_id, versionNo: String(row.version_no), lineDelivery: "skip",
     }, cookie)).status).toBe(303);
@@ -85,7 +85,7 @@ it("空の下書きを項目から整え、行事の日を直し、名簿なし�
   const tasks = (await state()).mapTasks;
   const done = tasks.find((task) => task.taskKey === "committee");
   const manual = tasks.find((task) => task.taskKey === "venue");
-  if (!done || !manual) throw new Error("架空のやることがありません");
+  if (!done || !manual) throw new Error("試しのやることがありません");
   // 案内を知らせても、会場を押さえる仕事まで済みにしない。
   expect(manual.progress).toBe("open");
   expect(await setMapTask(env.DB, ward.wardId, id, done.taskId, {
@@ -138,7 +138,7 @@ it("空の下書きを項目から整え、行事の日を直し、名簿なし�
       wardId: ward.wardId, projectId: id, via: "line_direct",
       parts: [{ kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode(reply) }],
     });
-    if (!received.jobId || !ports.saveAnswerReply) throw new Error("架空のLINEの返事を受け付けられません");
+    if (!received.jobId || !ports.saveAnswerReply) throw new Error("試しのLINEの返事を受け付けられません");
     await ports.saveAnswerReply(ward.wardId, id, {
       eventId: crypto.randomUUID(), senderId: fixture.firstHousehold, sourceType: "user", receivedAt: new Date().toISOString(), kind: "text", text: reply,
     }, received.jobId);

@@ -17,7 +17,7 @@ describe("自治会の設定: 役員の席とアカウント", () => {
       expect(res.status, path).toBe(200);
       expect(res.headers.get("cache-control")).toBe("no-store");
     }
-    expect(await (await get(realApp, people(ward.slug), cookie)).text()).toContain("試験の役員（架空）");
+    expect(await (await get(realApp, people(ward.slug), cookie)).text()).toContain("試験の役員");
   });
 
   it("席を足し、同じ名前は足せず、外せる", async () => {
@@ -210,9 +210,9 @@ describe("自治会の設定: 役員の席とアカウント", () => {
 describe("自治会の設定: 自治会の情報と決まった知らせの文", () => {
   it("公開用の連絡先と班の名前を保存し、空にすると消える", async () => {
     const { ward, cookie } = await seedAdmin(env.DB);
-    const res = await postForm(realApp, `/${ward.slug}/admin/settings/info`, { contact: "自治会の窓口\n電話000-0000-0000（架空）", squads: " 1班\n2班\n\n2班\n 3班 " }, cookie);
+    const res = await postForm(realApp, `/${ward.slug}/admin/settings/info`, { contact: "自治会の窓口\n電話000-0000-0000", squads: " 1班\n2班\n\n2班\n 3班 " }, cookie);
     expect(res.status).toBe(303);
-    expect(await getPublicContact(env.DB, ward.wardId)).toBe("自治会の窓口\n電話000-0000-0000（架空）");
+    expect(await getPublicContact(env.DB, ward.wardId)).toBe("自治会の窓口\n電話000-0000-0000");
     expect(await getSquads(env.DB, ward.wardId)).toEqual(["1班", "2班", "3班"]);
     const page = await (await get(realApp, `/${ward.slug}/admin/settings/info`, cookie)).text();
     expect(page).toContain("自治会の窓口");

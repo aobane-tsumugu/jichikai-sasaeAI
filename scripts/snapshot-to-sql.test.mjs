@@ -26,16 +26,16 @@ function database(t) {
 
 function fixture(t) {
   const db = database(t);
-  db.prepare("INSERT INTO wards (ward_id, slug, name) VALUES (?, 'fixture-restore', '架空の復元確認区')").run(wardId);
+  db.prepare("INSERT INTO wards (ward_id, slug, name) VALUES (?, 'fixture-restore', '試しの復元確認区')").run(wardId);
   db.prepare(`INSERT INTO accounts (account_id, ward_id, name, name_key, login_id, password_salt, password_hash)
-    VALUES ('z-creator', ?, '架空 作成役', '架空作成役', 'fixture-creator', 'fictional-salt', 'fictional-hash')`).run(wardId);
+    VALUES ('z-creator', ?, '作成役', '作成役', 'fixture-creator', 'fictional-salt', 'fictional-hash')`).run(wardId);
   return db;
 }
 
 function project(db, id, year, seed = null) {
   db.prepare(`INSERT INTO projects (project_id, ward_id, kind, title, year, seed_project_id, closed_at, created_by_account_id)
     VALUES (?, ?, 'event', ?, ?, ?, ?, 'z-creator')`)
-    .run(id, wardId, `架空のO'Brien祭${year}`, year, seed, year < 2026 ? `${year}-11-01T00:00:00Z` : null);
+    .run(id, wardId, `試しのO'Brien祭${year}`, year, seed, year < 2026 ? `${year}-11-01T00:00:00Z` : null);
 }
 
 function snapshot(db) {
@@ -82,9 +82,9 @@ test("変更記録と写真の質問と認証の記録を、写しの表が逆�
   db.prepare(`INSERT INTO project_changes (change_id, ward_id, project_id, kind, target, status, dedupe_key, payload_hash, payload, result, pack_version, created_by_account_id)
     VALUES ('fixture-change', ?, 'fixture-project', 'item', 'place', 'applied', 'fixture-change', 'fictional-hash', '{}', '{}', 'fixture@1', 'z-creator')`).run(wardId);
   db.prepare(`INSERT INTO project_item_values (value_id, ward_id, project_id, item_key, scope, content, source_kind, source_ref, confidence, change_id, created_by_account_id)
-    VALUES ('fixture-value', ?, 'fixture-project', 'place', 'current', '架空の公民館', 'person', 'z-creator', 'high', 'fixture-change', 'z-creator')`).run(wardId);
+    VALUES ('fixture-value', ?, 'fixture-project', 'place', 'current', '試しの公民館', 'person', 'z-creator', 'high', 'fixture-change', 'z-creator')`).run(wardId);
   db.prepare(`INSERT INTO project_rows (row_id, ward_id, project_id, table_key, scope, match_key, data, source_kind, source_ref, confidence, change_id, created_by_account_id)
-    VALUES ('fixture-duty', ?, 'fixture-project', 'duties', 'current', 'fixture-duty', '{"name":"架空 受付役"}', 'person', 'z-creator', 'high', 'fixture-change', 'z-creator')`).run(wardId);
+    VALUES ('fixture-duty', ?, 'fixture-project', 'duties', 'current', 'fixture-duty', '{"name":"受付役"}', 'person', 'z-creator', 'high', 'fixture-change', 'z-creator')`).run(wardId);
   db.prepare(`INSERT INTO jobs (job_id, ward_id, project_id, via, task, status, created_at, updated_at)
     VALUES ('fixture-job', ?, 'fixture-project', 'line_direct', 'connect', 'done', '2026-11-06', '2026-11-06')`).run(wardId);
   db.prepare(`INSERT INTO originals (original_id, ward_id, job_id, position, kind, content_hash, media_type, byte_size, received_at)
@@ -96,9 +96,9 @@ test("変更記録と写真の質問と認証の記録を、写しの表が逆�
   db.prepare(`INSERT INTO line_photo_items (ward_id, batch_id, job_id, message_id, quote_token)
     VALUES (?, 'fixture-batch', 'fixture-job', 'fixture-message', 'fictional-quote')`).run(wardId);
   db.prepare(`INSERT INTO line_clarifications (ward_id, clarification_id, batch_id, job_id, original_id, topic, text)
-    VALUES (?, 'fixture-clarification', 'fixture-batch', 'fixture-job', 'fixture-original', 'year', '架空の年の質問')`).run(wardId);
+    VALUES (?, 'fixture-clarification', 'fixture-batch', 'fixture-job', 'fixture-original', 'year', '試しの年の質問')`).run(wardId);
   db.prepare(`INSERT INTO line_clarification_answers (ward_id, event_id, clarification_id, job_id, answer_text, sender_label)
-    VALUES (?, 'fixture-event', 'fixture-clarification', 'fixture-job', '架空の返事', '架空の役員')`).run(wardId);
+    VALUES (?, 'fixture-event', 'fixture-clarification', 'fixture-job', '試しの返事', '試しの役員')`).run(wardId);
   db.prepare(`INSERT INTO sign_in_links (link_id, ward_id, account_id, purpose, token_hash, expires_at, created_at, created_by_account_id)
     VALUES ('fixture-link', ?, 'z-creator', 'invite', 'fictional-token-hash', '2026-11-07', '2026-11-06', 'z-creator')`).run(wardId);
   db.prepare("UPDATE accounts SET sign_in_completed_at = NULL WHERE ward_id = ? AND account_id = 'z-creator'").run(wardId);
@@ -110,7 +110,7 @@ test("変更記録と写真の質問と認証の記録を、写しの表が逆�
 test("作った役員を後任が外した記録も、相互の参照を保って戻せる", (t) => {
   const db = fixture(t);
   db.prepare(`INSERT INTO accounts (account_id, ward_id, name, name_key, login_id, password_salt, password_hash, created_by_account_id)
-    VALUES ('a-successor', ?, '架空 後任役', '架空後任役', 'fixture-successor', 'fictional-salt', 'fictional-hash', 'z-creator')`).run(wardId);
+    VALUES ('a-successor', ?, '後任役', '後任役', 'fixture-successor', 'fictional-salt', 'fictional-hash', 'z-creator')`).run(wardId);
   db.prepare("UPDATE accounts SET removed_at = '2026-11-06T00:00:00Z', removed_by_account_id = 'a-successor' WHERE ward_id = ? AND account_id = 'z-creator'").run(wardId);
   roundTrip(t, snapshot(db));
 });
