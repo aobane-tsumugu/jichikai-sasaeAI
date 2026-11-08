@@ -36,14 +36,16 @@ async function upload(path: string, data: FormData, cookie: string) {
 }
 
 it.each([
-  { title: fixture.title, heading: fixture.title },
-  { title: "案内", heading: "広場で遊ぶ日のご案内" },
-])("試しの下書きにチラシを付けて知らせ、文と画像を一度で送り、雨の変更では画像を引き継がない（題: $title）", async ({ title, heading }) => {
+  { title: fixture.title, heading: fixture.title, attendance: true },
+  { title: "案内", heading: "広場で遊ぶ日のご案内", attendance: true },
+  { title: fixture.title, heading: fixture.title, attendance: false },
+])("試しの下書きにチラシを付けて知らせ、文と画像を一度で送り、雨の変更では画像を引き継がない（題: $title、出欠: $attendance）", async ({ title, heading, attendance }) => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "広場で遊ぶ日", year: 2027, accountId: account.accountId });
   const admin = `/${ward.slug}/admin`;
   const draft = `${admin}/projects/${project.projectId}/draft`;
+  if (!attendance) expect((await postForm(realApp, `${admin}/answers/${project.projectId}/attendance`, { state: "off" }, cookie)).status).toBe(303);
   const data = form(project.stateVersion);
   data.set("title", title);
   const save = await upload(`${draft}/announcement/save`, data, cookie);
@@ -82,7 +84,7 @@ it.each([
     expect((await publish()).status).toBe(303);
     expect(sent).toHaveLength(1);
     expect(sent[0]?.messages).toEqual([
-      { type: "text", text: `${heading}\n${fixture.date}\n${fixture.place}\nhttps://example.invalid/${ward.slug}/answer/${project.projectId}` },
+      { type: "text", text: `${heading}\n${fixture.date}\n${fixture.place}\nhttps://example.invalid/${ward.slug}/${attendance ? "answer" : "p"}/${project.projectId}` },
       { type: "image", originalContentUrl: `https://example.invalid${path}`,
         previewImageUrl: `https://example.invalid${noticeFlyerPath(ward.slug, version.version_id, flyer.flyer_id, true)}` },
     ]);
@@ -95,6 +97,8 @@ it.each([
   expect(html).toContain(`src="${path}"`);
   expect(html).toContain(`alt="${title}"`);
   expect(html).toContain(fixture.date);
+  if (attendance) expect(html).toContain("出欠を答える");
+  else expect(html).not.toContain("出欠を答える");
   const image = await get(realApp, path);
   expect(image.status).toBe(200);
   expect(image.headers.get("content-type")).toBe("image/jpeg");

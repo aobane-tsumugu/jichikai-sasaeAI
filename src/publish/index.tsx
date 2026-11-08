@@ -498,8 +498,9 @@ admin.post("/publish/:projectId/send", async (c) => {
         } else {
           if (flyer?.flyer_id) {
             const root = new URL(publicUrl).origin;
-            const answerUrl = `${root}/${ward.slug}/answer/${encodeURIComponent(projectId)}`;
-            await broadcastLineText(token, noticeLineText(paperHeading(project.title, row.title), publishedBody, answerUrl), fetch, {
+            const linkUrl = taskCollectsAttendance(tasks, row.kind)
+              ? `${root}/${ward.slug}/answer/${encodeURIComponent(projectId)}` : publicUrl;
+            await broadcastLineText(token, noticeLineText(paperHeading(project.title, row.title), publishedBody, linkUrl), fetch, {
               originalContentUrl: root + noticeFlyerPath(ward.slug, versionId, flyer.flyer_id),
               previewImageUrl: root + noticeFlyerPath(ward.slug, versionId, flyer.flyer_id, true),
             });
