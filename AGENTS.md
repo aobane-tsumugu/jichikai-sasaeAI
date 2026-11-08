@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Codex が守る決まりです。詳しい決まりは CLAUDE.md、現在地は docs/STATE.md、設計の要約は docs/DESIGN.md にあります。最初に読んでください。日本語で作業し、絵文字は使いません。ファイルは UTF-8（BOM なし）、LF です。
+Codex が守る決まりです。詳しい決まりは CLAUDE.md、設計の要約は docs/DESIGN.md にあります。最初に読んでください。日本語で作業し、絵文字は使いません。ファイルは UTF-8（BOM なし）、LF です。
 
 ## 連絡網
 
