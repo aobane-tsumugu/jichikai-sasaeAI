@@ -169,7 +169,10 @@ export async function startMaterialGroup(env: Env, ctx: Waitable, wardId: string
   const chosen = choice.projectId ? (await listOpenProjects(env.DB, wardId)).find((p) => p.projectId === choice.projectId) : null;
   if (choice.projectId && !chosen) return null;
   // 日を入れて別の年を選んだ時だけ、同じ名前でも別の行事として始める。名前を入れた時は、その名前で新しくする。
-  const existing = chosen ?? (!choice.projectName && group.joins && (!eventDay || group.joins.year === year) ? group.joins : null);
+  // ただし開いている準備と同じ名前・同じ年なら、新しく作らずそこへ入れる。始める操作は数秒かかり、二度押すと
+  // 一度目が入れ終わる前の残りの資料で同じ名前の準備がもう一つできてしまうため（ささえ台自治会、2026-11-08）。
+  const sameName = !choice.projectName || (group.joins ? sameEvent(choice.projectName, group.joins.title) : false);
+  const existing = chosen ?? (sameName && group.joins && (!eventDay || group.joins.year === year) ? group.joins : null);
   if (existing) {
     await attachGroup(env, wardId, group, existing.projectId, existing.title);
     for (const jobId of new Set(group.materials.map((m) => m.jobId))) await attachClarificationQuestions(env.DB, wardId, jobId);
