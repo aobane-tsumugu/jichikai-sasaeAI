@@ -53,12 +53,12 @@ export async function searchArchive(db: D1Database, wardId: string, input: Archi
   const result = await db.prepare(`
     SELECT e.entry_id, e.project_id, p.title, p.closed_at, p.kind AS project_kind, e.year, e.record_type,
            e.counterpart, e.source_id, e.locator,
-           ${short ? "substr(e.content, 1, 80)" : "snippet(archive_search_fts, 0, '「', '」', ' … ', 16)"} AS excerpt
+           ${short ? "substr(e.content, max(1, instr(e.content, ?) - 30), 80)" : "snippet(archive_search_fts, 0, '「', '」', ' … ', 16)"} AS excerpt
       FROM ${short ? "archive_search_entries e" : "archive_search_fts JOIN archive_search_entries e ON e.entry_id = archive_search_fts.rowid"}
       JOIN projects p ON p.ward_id = e.ward_id AND p.project_id = e.project_id
      WHERE ${clauses.join(" AND ")}
      ORDER BY e.year DESC, e.created_at DESC, e.entry_id DESC
-     LIMIT ?`).bind(...binds).all<ArchiveSearchResult>();
+     LIMIT ?`).bind(...(short ? [query] : []), ...binds).all<ArchiveSearchResult>();
   return result.results;
 }
 
