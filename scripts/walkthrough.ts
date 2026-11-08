@@ -437,12 +437,14 @@ async function runFull() {
     await new Promise(r => setTimeout(r, 3000));
     closePage = await get(closePath);
   }
-  if (!closePage.html.includes("報告: できました") || !closePage.html.includes("やること: できました")) throw new Error("未完了: 実施報告またはやることのAI下書きが待ちの上限までにできませんでした");
-  const close = readForm(closePage.html, "/close/" + project + "/finalize");
-  const staffReport = close.values.getAll("body")[1] ?? "";
-  close.values.delete("body");
-  close.values.append("body", "試しの秋の収穫祭を実施しました。雨会場に変更して開催しました。");
-  close.values.append("body", staffReport);
+  if (!closePage.html.includes("報告の下書き: できました") || !closePage.html.includes("やること: できました")) throw new Error("未完了: 実施報告またはやることのAI下書きが待ちの上限までにできませんでした");
+  // 住民への報告は、ほかの連絡と同じ下書きと送り方で送ってから終わりにする（L-319）。終わりにする画面に報告の欄は無い。
+  const reportDraft = readForm((await get(admin + "/projects/" + project + "/draft/report")).html, "/save");
+  reportDraft.fields.text = "試しの秋の収穫祭を実施しました。雨会場に変更して開催しました。" + String.fromCharCode(10) + (reportDraft.fields.text ?? "");
+  if ((await post(reportDraft.action, reportDraft.fields)).status !== 303) throw new Error("報告の下書きを保存できません");
+  if ((await publish(project, (await get(admin + "/publish/" + project)).html, "public", "報告")).response.status !== 303) throw new Error("報告を住民に送れません");
+  const close = readForm((await get(closePath)).html, "/close/" + project + "/finalize");
+  if (!(await get(closePath)).html.includes("住民に送りました")) throw new Error("終わりにする画面に、報告を送ったことが出ません");
   if ((await post(close.action, close.values)).status !== 303) throw new Error("閉じる操作に失敗");
   if (!(await get(wardPath + "/p/" + project)).html.includes("実施しました")) throw new Error("公開ページに実施報告がありません");
   const archive = await get(admin + "/archive/" + project);
@@ -456,7 +458,7 @@ async function runFull() {
   const location = next.headers.get("location") ?? "";
   const nextId = new URL(location, base).searchParams.get("started");
   if (next.status !== 303 || !nextId || !(await get(location)).html.includes("去年のやることを新しい日に置き直しました") || !(await get(admin + "/projects/" + nextId + "/map")).response.ok) throw new Error("記録から新しく始められません");
-  record("6", "通過", "報告と来年への一言を一緒に保存して閉じ、記録から新しく始めた。", start);
+  record("6", "通過", "報告を下書きから住民に送り（LINE には送らない）、来年への一言を残して閉じ、記録から新しく始めた。", start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";
     record("6", message.startsWith("未完了:") ? "未完了" : "停止", message.replace(/^未完了:\s*/, ""), start);
