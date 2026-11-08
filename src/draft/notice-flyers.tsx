@@ -26,14 +26,15 @@ export async function flyerMaterials(env: Env, wardId: string, projectId: string
     LEFT JOIN projects p ON p.ward_id = j.ward_id AND p.project_id = j.project_id
     WHERE o.ward_id = ? AND o.withdrawn_at IS NULL AND o.r2_path IS NOT NULL
       AND o.media_type IN ('image/jpeg', 'image/png') AND j.withdrawn_at IS NULL
-      -- 住民に出る画像の候補。どの準備の資料にも入っていない写真（年賀状や予約票など）は出さない（前提 21）。
-      AND j.project_id IS NOT NULL
+      -- 住民に出る画像の候補。この準備に入った写真だけを出す。どの準備の資料にも入っていない写真（年賀状や予約票など）と、
+      -- ほかの準備の写真は出さない（前提 21。ほかの行事の写真が並ぶと、初めての人が選び間違える）。
+      AND j.project_id = ?
       AND (j.via = 'admin' OR EXISTS (
         SELECT 1 FROM line_inbox_items i LEFT JOIN line_bundle_decisions d
           ON d.ward_id = i.ward_id AND d.bundle_id = i.bundle_id
         WHERE i.ward_id = o.ward_id AND i.job_id = o.job_id AND i.source_type = 'group' AND i.source_id = ?
           AND COALESCE(d.action, 'material') NOT IN ('inquiry', 'unrelated')))
-    ORDER BY COALESCE(j.project_id = ?, 0) DESC, o.received_at DESC, o.original_id LIMIT 40`).bind(wardId, group ?? "", projectId).all<MaterialPhoto>();
+    ORDER BY o.received_at DESC, o.original_id LIMIT 40`).bind(wardId, projectId, group ?? "").all<MaterialPhoto>();
   return rows.results;
 }
 
@@ -77,7 +78,7 @@ export function FlyerPanel({ c, projectId, state }: {
     <label><input type="radio" name="flyer_choice" value="none" checked={!ask && !current?.flyer_id} required={ask} />{current?.flyer_id ? "画像を外す" : "画像を付けない"}</label>
     <label><input type="radio" name="flyer_choice" value="attach" required={ask} />{ask ? "画像を付け直す" : "画像を付ける"}</label>
     <label>スマホやパソコンの画像<input type="file" name="flyer_file" accept="image/*" /></label>
-    {materials.length ? <label>届いた写真から選ぶ（役員の画面と、役員のLINEグループに届いたもの）<select name="flyer_material"><option value="">写真を選んでください</option>
+    {materials.length ? <label>この準備に届いた写真から選ぶ（役員の画面と、役員のLINEグループに届いたもの）<select name="flyer_material"><option value="">写真を選んでください</option>
       {materials.map((photo) => <option value={photo.original_id}>{formatJst(photo.received_at)}　{photo.project_title ?? "自治会の資料"}　{photo.filename || "写真"}</option>)}</select></label> : null}
     <p class="help-text">写真、JPEG、PNGを使えます。WordやPDFは付けられません。保存しただけでは住民には見えません。</p>
     <p role="status" data-flyer-status="" aria-live="polite"></p>

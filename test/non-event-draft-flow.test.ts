@@ -56,7 +56,8 @@ it.each(cases)("$kindの仕事から資料と下書きへ進み、紙と同じ�
       expect(mapHtml).toContain(`${root}/answers/${id}`);
       continue; // 答えの中身はU33の担当。
     }
-    expect(mapHtml).toContain(`${path}/map/${task.taskId}`);
+    // 担当を決める（当番表を作る）は、当番表の下書きを直接開く
+    expect(mapHtml).toContain(key === "assign" ? `${path}/draft/duty_roster` : `${path}/map/${task.taskId}`);
     const taskHtml = await read(`${path}/map/${task.taskId}`);
     const kind = entry.tasks[key];
     if (kind) {

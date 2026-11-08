@@ -193,6 +193,8 @@ admin.get("/close/:projectId", async (c) => {
   const reportStarted = status.results.some((job) => job.task === "report" && job.status !== "failed");
   const autoStarted = !project.closedAt && !notYet && !activityView && !report(internalReport ? "staff" : "public") && !reportStarted
     && await startCloseDrafts(c, id);
+  // 消えるものが無い時に「消えるものがあります」と書かない（点検 B2-2）。
+  const helpOffers = project.closedAt || activityView ? 0 : (await c.env.DB.prepare("SELECT COUNT(*) AS n FROM project_help_offers WHERE ward_id = ? AND project_id = ?").bind(ward.wardId, id).first<{ n: number }>())?.n ?? 0;
   // 報告づくりで AI が役員に聞きたいこと。終わりにしたあとは答えられなくなるので、先に見せる。
   const openQuestions = project.closedAt || activityView ? 0 : (await c.env.DB.prepare("SELECT COUNT(*) AS n FROM project_questions WHERE ward_id = ? AND project_id = ? AND state IN ('open', 'later')")
     .bind(ward.wardId, id).first<{ n: number }>())?.n ?? 0;
@@ -248,10 +250,9 @@ admin.get("/close/:projectId", async (c) => {
       {notYet ? <div class="notice warn"><strong>{project.title}は、まだ終わっていません</strong><p>{closeDay ? `当日は${formatJstDate(closeDay)}で、まだ来ていません。` : "まだ当日が決まっていません。"}終わりにするのは、当日が済んで、住民に報告を載せるときです。中止したときは、このまま終わりにできます。</p><a class="button" href={adminPath(ward, `/projects/${id}/map`)}>{project.title}のやることへ戻る</a></div> : null}
       <p class="lead">{internalReport ? pack.title : "報告"}と、来年への一言を残します。終わりにしたあとも取り消せます。</p>
       {internalReport ? <p><a class="button secondary" href={adminPath(ward, `/projects/${id}/draft/notice`)}>住民への連絡を作る</a></p> : null}
-      <div class="notice warn"><strong>終わりにすると消えるものがあります</strong><p>手伝いだけの申し込みの名前と時間帯は消えます。終わりを取り消しても戻りません。</p></div>
+      {helpOffers ? <div class="notice warn"><strong>終わりにすると消えるものがあります</strong><p>手伝いだけの申し込み（{helpOffers}人）の名前と時間帯は消えます。終わりを取り消しても戻りません。</p></div> : null}
       {status.results.map((job) => <p>{job.task === "report" ? pack.title : "やること"}: {job.status === "done" ? (job.task === "report" && !report(internalReport ? "staff" : "public") ? "下書きを書けませんでした。下の欄に直接書けます" : "できました") : job.status === "failed" ? "止まりました。下の欄に直接書けます" : "準備中"}</p>)}
       {autoStarted || status.results.some((job) => job.status !== "done" && job.status !== "failed") ? <p class="muted">{autoStarted ? `集まった資料と返事から、${internalReport ? pack.title : "報告"}の下書きを作り始めました。` : ""}作っています。画面を閉じても続きます。少しあとに、もう一度開いてください。</p> : null}
-      {openQuestions ? <section class="next"><strong>終わりにする前に</strong><p>AIから役員への質問が{openQuestions < 10 ? `${openQuestions}つ` : `${openQuestions}件`}あります。答えると{internalReport ? pack.title : "報告"}に入ります。終わりにしたあとは、終わりを取り消すまで答えられません。答えずに終わりにしてもかまいません。</p><a class="button secondary" href={adminPath(ward, `/projects/${id}/questions`)}>質問に答える</a></section> : null}
       {!autoStarted && !report(internalReport ? "staff" : "public") && !status.results.some((job) => job.task === "report" && job.status !== "failed") ? <form method="post" action={`${root}/prepare`}><button class="secondary">{internalReport ? pack.title : "報告"}とやることの下書きを作る</button><p class="muted">AIが止まっていても、下の欄に直接書けます。</p></form> : null}
       <form method="post" action={`${root}/finalize`}>
         {internalReport ? <input type="hidden" name="body" value="" /> : <div class="field"><label for="report-public">住民への報告</label><p class="help-text">{report("public") ? "保存した報告です。直してかまいません。" : "ここに直接書けます。"}終わりにすると住民向けのページに載ります。</p><textarea id="report-public" name="body" rows={7} maxlength={12000}>{report("public")}</textarea>
@@ -271,7 +272,8 @@ admin.get("/close/:projectId", async (c) => {
           <label for={`next-${task.task_id}`}>来年変えること</label><textarea id={`next-${task.task_id}`} name="nextYear" rows={2} maxlength={1200}>{task.next_year}</textarea>
         </div></details>) : <p>残っている仕事はありません。報告だけでも終わりにできます。</p>}
         <h2>終わりにすると、こうなります</h2><ul><li>{internalReport ? `${pack.title}が役員の記録に残ります` : "報告が住民向けのページに載ります"}</li><li>実行委員と班長のページを開けないようにします</li><li>返事の受付が終わります</li></ul>
-        <div class="action-bar"><button class={notYet ? "secondary" : undefined}>終わりにする</button></div>
+        {/* 質問の案内は、下に貼り付く「終わりにする」のすぐ上に置く。押す前に必ず目に入り、入力欄は一画面目から始まる。 */}
+        <div class="action-bar">{openQuestions ? <p>AIから役員への質問が{openQuestions < 10 ? `${openQuestions}つ` : `${openQuestions}件`}あります。答えると{internalReport ? pack.title : "報告"}に入ります。終わりにしたあとは、取り消すまで答えられません。<a href={adminPath(ward, `/projects/${id}/questions`)}>質問に答える</a></p> : null}<button class={notYet ? "secondary" : undefined}>終わりにする</button></div>
       </form>
     </>}
   </AdminPage>);

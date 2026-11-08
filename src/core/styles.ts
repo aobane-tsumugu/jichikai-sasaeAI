@@ -311,6 +311,7 @@ table { width: 100%; margin: var(--space-3) 0; border-collapse: collapse; font-s
 .drop-zone { border: 2px dashed var(--line-strong); border-radius: 8px; padding: var(--space-3); margin: var(--space-3) 0; text-align: center; }
 .drop-zone.over { background: var(--info-bg); border-color: var(--accent); }
 .drop-zone p { margin: var(--space-1) 0; }
+@media (pointer: coarse) { .drop-zone { display: none; } }
 .read-table caption { text-align: left; color: var(--muted); font-weight: 700; }
 th { padding: var(--space-2) var(--space-3); background: var(--sunk); text-align: left; }
 td { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--line); vertical-align: top; }

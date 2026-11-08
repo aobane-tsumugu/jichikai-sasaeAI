@@ -147,11 +147,12 @@ intakeAdmin.get("/intake", async (c) => {
     <form id="send-form" method="post" action={`${adminPath(ward, "/intake")}?${query}`} enctype="multipart/form-data">
       <div class="field"><label class="file-button">カメラで紙を撮る<input id="cam" type="file" name="part" accept="image/*" capture="environment" multiple /></label><p id="cam-count" class="help-text" aria-live="polite" /></div>
       <div class="field"><label class="file-button">ファイルを選ぶ<input id="files" type="file" name="part" accept="image/*,application/pdf,.pdf,.docx,.xlsx,.doc,.xls,.txt,.csv" multiple /></label><p id="files-count" class="help-text" aria-live="polite" /><p class="help-text">写真、PDF、Word、Excel（古い形式の.docや.xlsも）を送れます。写真は紙の文字や行事の様子が分かる大きさに整えて保存します。</p></div>
-      <div id="drop-zone" class="drop-zone"><p>パソコンなら、ここにファイルを落としても送れます。</p><p class="help-text">一度に30点、一つ25MB、合わせて80MBまでです。</p><p id="drop-count" class="help-text" aria-live="polite" /></div>
       <details class="fold"><summary>電話や立ち話で決まったことを書く</summary><div><div class="field"><label for="text">決まったこと</label><textarea id="text" name="text" maxlength={2000} rows={3} /></div></div></details>
       <input type="hidden" name="project_id" value={project?.projectId ?? ""} />
       <div class="action-links"><button id="send-button" type="submit">送る</button></div>
       <p id="send-status" role="status" aria-live="polite" />
+      {/* 落とす欄は「送る」より下に置く。主なボタンを一画面目に残すため。画面のどこに落としても受け取る。 */}
+      <div id="drop-zone" class="drop-zone"><p>パソコンなら、この画面にファイルを落としても送れます。</p><p class="help-text">一度に30点、一つ25MB、合わせて80MBまでです。</p><p id="drop-count" class="help-text" aria-live="polite" /></div>
     </form>
     <p class="muted">送ったあとは、画面を閉じてもかまいません。</p>
     <script dangerouslySetInnerHTML={{ __html: SEND_SCRIPT }} />
@@ -278,7 +279,7 @@ intakeAdmin.get("/intake/read", async (c) => {
       return <section class="panel"><h2>{group.joins?.title ?? group.title}の資料のようです</h2>
         <dl class="facts"><dt>資料</dt><dd>{group.materials.length}件</dd>{date ? <><dt>資料の日付</dt><dd>{formatDateText(date)}</dd></> : null}{place ? <><dt>場所</dt><dd>{place}</dd></> : null}</dl>
         {month ? <p>{monthNote(month)}</p> : null}
-        <WhichProject id={`group-${index}`} question="この資料は、次の準備のものですか？" projects={open} suggested={group.joins?.projectId} suggestedName={group.joins ? "" : group.title} startText={startTemplateText(group.title, materialGroupTemplate(group, past, yearItems), "materials")} action={adminPath(ward, "/intake/start")} hidden={{ group: group.key }} withDay />
+        <WhichProject id={`group-${index}`} question="この資料は、次の準備のものですか？" projects={open} suggested={group.joins?.projectId} suggestedName={group.joins ? "" : group.title} startText={startTemplateText(group.title, materialGroupTemplate(group, past, yearItems), "materials")} action={adminPath(ward, "/intake/start")} hidden={{ group: group.key }} withDay primary={index === 0} />
       </section>;
     }))}
     {wardUsed.length ? <p>{wardUsed.map((name) => `「${name}」`).join("、")}は、どの準備のものでもなく、自治会の基本情報と一年の予定に入れました。<a href={adminPath(ward, "/know")}>自治会の基本情報を見る</a></p> : null}
@@ -324,6 +325,22 @@ intakeAdmin.get("/intake/started/:projectId", async (c) => {
   const draftKind = firstTaskDraft(state.mapTasks);
   const draftTitle = documentTitle(taskDocumentKind(state.mapTasks, draftKind), draftKind);
   const people = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM accounts WHERE ward_id = ? AND removed_at IS NULL").bind(ward.wardId).first<{ n: number }>();
+  // もう済んだ行事を始めた時（去年の担当から引き継いだ新任の役員など）は、案内でなく、報告をまとめて終わりにする道を先に出す。
+  const today = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date());
+  const eventDay = state.project.deadlines.event_day;
+  const month = eventDay ? null : await yearPlanMonth(c.env.DB, ward.wardId, state.project.title);
+  const currentMonth = Number(today.slice(5, 7));
+  const passed = eventDay ? eventDay < today : month !== null && (month + 8) % 12 < (currentMonth + 8) % 12;
+  const questionCount = questions < 10 ? `${questions}つ` : `${questions}件`;
+  if (passed) return c.html(<Layout title={state.project.title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <h1>{state.project.title}</h1><p class="lead">{count?.n ? `${count.n}件の資料をまとめました。` : ""}</p>
+    <section class="next"><strong>次は</strong><p>{state.project.title}は、{eventDay ? `${formatJstDate(eventDay)}に行いました` : `年間の予定では${month}月の予定で、もう過ぎています`}。済んでいれば、報告をまとめて終わりにすると、来年の担当の方がこの記録から始められます。{questions ? `AIからの質問が${questionCount}あります。答えると報告に入ります。` : ""}</p>
+      <a class="button" href={adminPath(ward, `/close/${id}`)}>報告をまとめて終わりにする</a>
+      <p>押すと、集まった資料と返事から報告の下書きを作り、終わりにする画面が開きます。</p></section>
+    {questions ? <p class="link-line"><a href={adminPath(ward, `/projects/${id}/questions`)}>先に質問に答える</a></p> : null}
+    <p class="link-line"><a href={adminPath(ward, `/projects/${id}/map`)}>まだ済んでいないときは、やることを見る</a></p>
+    <p class="link-line"><a href={adminPath(ward, "/")}>最初の画面へ</a></p>
+  </Layout>);
   return c.html(<Layout title={state.project.title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>{state.project.title}</h1><p class="lead">{count?.n ? `${count.n}件の資料を読んで、${tasks}${tasks > 0 && tasks < 10 ? "つ" : "件"}のやることを用意しました` : `ふつうの${tasks}${tasks > 0 && tasks < 10 ? "つ" : "件"}のやることを用意しました`}</p>
     <section class="next"><strong>次は</strong><p>{questions ? "分かるものから答えてください。あとでもかまいません。" : `${draftTitle}の下書きを見て、直せます。`}</p>

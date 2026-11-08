@@ -67,7 +67,7 @@ admin.get("/projects/:projectId/map", async (c) => {
           <form method="post" action={adminPath(ward, `/projects/${id}/map/event-day`)}><div class="field"><label for="event-day-first">始まる日</label><input id="event-day-first" name="event_day" type="date" required /></div><div class="field"><label for="event-end-first">終わる日（一日だけなら空のまま）</label><input id="event-end-first" name="event_end" type="date" /></div><button>日を保存する</button></form>
           <p>日が決まる前に進めたいときは、下の仕事を押してください。</p></section> :
         <section class="next"><strong>次は</strong>
-          <p>{next ? next.periodEnd ? `${taskPeriodText(next, true)}の仕事です。` : day ? "この仕事の時期はまだ決まっていません。仕事を押すと入れられます。" : "時期は、始まる日を入れると決まります。" : "やることは全部済みました。"}</p>
+          <p>{next ? next.periodEnd ? `${taskPeriodText(next, true)}の仕事です。` : day ? (taskKeyOf(next.taskKey, next.name) === "assign" ? "去年の当番表をもとに、今年の担当を決めます。押すと、当番表の下書きが開きます。" : `「${next.name}」を進めます。押すと、時期と担当を入れられます。`) : "時期は、始まる日を入れると決まります。" : "やることは全部済みました。"}</p>
           <a class="button" href={adminPath(ward, next ? taskUrl(next) : `/close/${id}`)}>{next?.name ?? "報告を書いて終わりにする"}</a>
           {tasks.some((task) => task.taskId === c.req.query("changed") && task.taskKey === "announcement" && task.progress === "done") ? <a class="quiet" href={adminPath(ward, `/print/${id}`)}>案内の紙を印刷する</a> : null}
         </section>}

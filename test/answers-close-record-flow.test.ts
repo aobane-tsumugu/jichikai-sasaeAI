@@ -70,7 +70,8 @@ it("資料なしで答えを入れ、一度で閉じ、紹介と記録から翌�
   expect(closing).toContain("報告の中に見つかったもの");
   expect(closing).toContain(`名簿の名前: ${fixture.firstHousehold}`);
   expect(closing).toContain("このまま終わりにすることもできます");
-  expect(closing).toContain("終わりを取り消しても戻りません");
+  // 手伝いだけの申し込みが無いので、消えるものの警告は出さない
+  expect(closing).not.toContain("終わりにすると消えるものがあります");
   expect(closing).not.toContain("<svg");
   const task = (await getProjectState(env.DB, ward.wardId, project.projectId))?.mapTasks.find((entry) => entry.taskKey === "venue");
   if (!task) throw new Error("記録を残す仕事がありません。");

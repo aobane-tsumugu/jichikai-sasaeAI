@@ -19,6 +19,6 @@ it("当日が済んでから終わりにする画面を開くと、報告の下�
 
   await addQuestion(env.DB, ward.wardId, project.projectId, { kind: "decide", text: "当日に来た人数は何人でしたか。", packVersion: "test@1" });
   const asked = await (await get(realApp, path, cookie)).text();
-  expect(asked).toContain("AIから役員への質問が1つあります。答えると報告に入ります。終わりにしたあとは、終わりを取り消すまで答えられません。");
+  expect(asked).toContain("AIから役員への質問が1つあります。答えると報告に入ります。終わりにしたあとは、取り消すまで答えられません。");
   expect(asked).toContain(`href="/${ward.slug}/admin/projects/${project.projectId}/questions">質問に答える</a>`);
 });
