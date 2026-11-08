@@ -236,9 +236,9 @@ describe("今年の中身と参考の中身", () => {
     expect(date?.references[0]).toMatchObject({ scope: "reference", refYear: null });
   });
 
-  it("QRの紙から読んだ物と、今年の日付の資料の物と、人の入力は今年に入る", async () => {
+  it("今年のQRの紙と、今年の日付の資料の物と、人の入力は今年に入る", async () => {
     const { ward, account, project } = await setup();
-    const qr: Source = { kind: "original", ref: "o-qr", locator: "欄1", qr: true };
+    const qr: Source = { kind: "original", ref: "o-qr", locator: "欄1", qr: true, year: 2026 };
     expectStatus(await applyChange(db, ward.wardId, project.projectId, item(qr, "10月24日11時")), "applied");
     const place = { itemKey: "place" as const, confidence: "high" as const, packVersion: "p" };
     expectStatus(
