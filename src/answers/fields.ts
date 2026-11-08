@@ -114,6 +114,20 @@ export async function removeAnswerField(db: D1Database, wardId: string, projectI
 }
 
 /** 送られた答えを、今の欄の定義に合わせて取り出す。選ぶ物に無い値と、長すぎる文は受けない。 */
+/**
+ * 返事を直す画面で、その返事で既に選ばれている日を、今の候補に無くても選べる物に足す。
+ * 候補を直した後に、名前や人数だけを直して保存すると、前に選んだ日が黙って消えるため。住民の新しい返事には使わない。
+ */
+export function withAnsweredOptions(fields: readonly AnswerField[], values: FieldValues | undefined): AnswerField[] {
+  return fields.map((field) => {
+    if (field.kind !== "days") return field;
+    const value = values?.[field.fieldId];
+    const chosen = Array.isArray(value) ? value : value ? [value] : [];
+    const extra = chosen.filter((option) => !field.options.includes(option));
+    return extra.length ? { ...field, options: [...field.options, ...extra] } : field;
+  });
+}
+
 export function readFieldValues(form: Record<string, unknown>, fields: readonly AnswerField[]): { values: FieldValues; error: string | null } {
   const values: FieldValues = {};
   for (const field of fields) {

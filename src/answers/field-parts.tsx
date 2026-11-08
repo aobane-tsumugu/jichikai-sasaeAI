@@ -2,12 +2,15 @@ import { FieldBox } from "../print/a4";
 import { TEXT_ANSWER_LIMIT, type AnswerField, type FieldSuggestion, type FieldValues, fieldValueText } from "./fields";
 
 /** Web の返事と、電話の返事を入れる画面と、返事を直す画面に、足した欄を出す。 */
-export function FieldInputs({ fields, values = {}, prefix = "field" }: { fields: readonly AnswerField[]; values?: FieldValues; prefix?: string }) {
+export function FieldInputs({ fields, values = {}, prefix = "field", currentFields }: { fields: readonly AnswerField[]; values?: FieldValues; prefix?: string;
+  /** 返事を直す画面で、今の候補。ここに無い日は「今の候補にはありません」と添えて出す。 */
+  currentFields?: readonly AnswerField[] }) {
+  const isCurrent = (field: AnswerField, option: string) => !currentFields || (currentFields.find((entry) => entry.fieldId === field.fieldId)?.options.includes(option) ?? true);
   return <>{fields.map((field) => {
     const value = values[field.fieldId];
     const chosen = Array.isArray(value) ? value : value ? [value] : [];
     if (field.kind === "days") return <fieldset><legend>{field.label}{field.multiple ? "（いくつでも選べます）" : "（一つ選んでください）"}</legend>
-      {field.options.length ? <div class="choice">{field.options.map((option) => <label><input type={field.multiple ? "checkbox" : "radio"} name={`field_${field.fieldId}`} value={option} checked={chosen.includes(option)} /> {option}</label>)}</div>
+      {field.options.length ? <div class="choice">{field.options.map((option) => <label><input type={field.multiple ? "checkbox" : "radio"} name={`field_${field.fieldId}`} value={option} checked={chosen.includes(option)} /> {option}{isCurrent(field, option) ? "" : "（今の候補にはありません）"}</label>)}</div>
         : <p class="muted">選ぶ日がまだ決まっていません。</p>}
       <p class="muted">分からないときは、選ばずに送ってかまいません。</p></fieldset>;
     return <div class="field"><label for={`${prefix}-${field.fieldId}`}>{field.label}（書かなくてかまいません）</label>

@@ -21,7 +21,7 @@ import { receiveOriginal, getReadings } from "../intake/api";
 import { getJob, getOriginal, markRosterAnswered } from "../intake/store";
 import { SEND_SCRIPT } from "../intake/browser-script";
 import { getSquads } from "../settings/store";
-import { addAnswerField, countFields, dayOptions, fieldSuggestions, setSuggestionsOff, suggestionsOff, fieldValueText, getAnswerFields, optionsFromText, readFieldValues, removeAnswerField, updateAnswerField, type AnswerField, type AnswerFieldKind } from "./fields";
+import { addAnswerField, countFields, dayOptions, fieldSuggestions, setSuggestionsOff, suggestionsOff, fieldValueText, getAnswerFields, optionsFromText, readFieldValues, withAnsweredOptions, removeAnswerField, updateAnswerField, type AnswerField, type AnswerFieldKind } from "./fields";
 import { FieldInputs, SuggestionNotice, askedText } from "./field-parts";
 import { getProjectSummary } from "../project/api";
 import { projectTasks, taskFeatures } from "../project/task-features";
@@ -453,7 +453,7 @@ async function editAnswerPage(c: Context<AdminEnv>, retry?: Record<string, unkno
         <label for="edit-household">世帯の代表者（ふつうは世帯主）のお名前</label><input id="edit-household" name="household" type="text" value={asString(values.household)} required maxLength={120} />
         <fieldset><legend>班</legend><DistrictSelect districts={editDistricts} selected={district} /></fieldset>
         <AttendanceFields title={project.title} selected={asString(values.attend)} /><div class="admin-answer-counts"><CountFields labels={labels} answer={answer} prefix="edit" rawValues={retry} /></div>
-        <FieldInputs fields={fields} values={retry ? readFieldValues(retry, fields).values : answer.fieldValues ?? {}} prefix="edit" />
+        <FieldInputs fields={withAnsweredOptions(fields, answer.fieldValues)} currentFields={fields} values={retry ? readFieldValues(retry, withAnsweredOptions(fields, answer.fieldValues)).values : answer.fieldValues ?? {}} prefix="edit" />
         <label for="edit-helper">手伝う方のお名前（書かなくてかまいません）</label><input id="edit-helper" name="helper_name" type="text" value={asString(values.helper_name)} maxLength={240} />
         <label for="edit-times">手伝える時間帯（書かなくてかまいません）</label><input id="edit-times" name="helper_times" type="text" value={asString(values.helper_times)} maxLength={240} />
         <div class="action-bar"><button type="submit">直した返事を保存する</button></div>
@@ -470,7 +470,8 @@ admin.post("/answers/:projectId/:answerId/edit", async (c) => {
   const form = await c.req.parseBody({ all: true });
   const before = await getAnswer(c.env.DB, c.var.ward.wardId, c.req.param("projectId"), c.req.param("answerId"));
   const { fields } = await getAnswerFields(c.env.DB, c.var.ward.wardId, c.req.param("projectId"), await getSquads(c.env.DB, c.var.ward.wardId));
-  const answered = readFieldValues(form, fields);
+  // 前に選んだ日は、今の候補に無くても受け付ける（名前や人数だけ直した時に消さない）。
+  const answered = readFieldValues(form, withAnsweredOptions(fields, before?.fieldValues));
   if (answered.error) return editAnswerPage(c, { ...form, field_error: answered.error });
   // 外した欄の答えは残し、今出している欄だけを書き換える。
   const fieldValues = { ...Object.fromEntries(Object.entries(before?.fieldValues ?? {}).filter(([key]) => !fields.some((field) => field.fieldId === key))), ...answered.values };
