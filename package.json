@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "自治会運営AI支援（仮称）。Cloudflare Workers の上で動く運営支援システム。",
+  "description": "自治会運営AI支援サービス「SasaeAI」。Cloudflare Workers の上で動く運営支援システム。",
   "scripts": {
     "dev": "wrangler dev",
     "test": "vitest run",

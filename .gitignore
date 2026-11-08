@@ -8,3 +8,6 @@ dist/
 coverage/
 *.log
 tmp/
+
+# 通しのスクリプトが書く記録。手元に残し、Git には入れない。
+docs/EVIDENCE/
