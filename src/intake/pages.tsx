@@ -276,7 +276,7 @@ intakeAdmin.get("/intake/read", async (c) => {
       return <section class="panel"><h2>{group.joins?.title ?? group.title}の資料のようです</h2>
         <dl class="facts"><dt>資料</dt><dd>{group.materials.length}件</dd>{date ? <><dt>資料の日付</dt><dd>{formatDateText(date)}</dd></> : null}{place ? <><dt>場所</dt><dd>{place}</dd></> : null}</dl>
         {month ? <p>{monthNote(month)}</p> : null}
-        <WhichProject id={`group-${index}`} question="この資料は、次の準備のものですか？" projects={open} suggested={group.joins?.projectId} suggestedName={group.joins ? "" : group.title} startText={startTemplateText(group.title, materialGroupTemplate(group, past, yearItems), "materials")} action={adminPath(ward, "/intake/start")} hidden={{ group: group.key }} withDay />
+        <WhichProject id={`group-${index}`} question="この資料は、次の準備のものですか？" projects={open} suggested={group.joins?.projectId} suggestedName={group.joins ? "" : group.title} startText={startTemplateText(group.title, materialGroupTemplate(group, past, yearItems), "materials")} action={adminPath(ward, "/intake/start")} hidden={{ group: group.key }} withDay primary={index === 0} />
       </section>;
     }))}
     {wardUsed.length ? <p>{wardUsed.map((name) => `「${name}」`).join("、")}は、どの準備のものでもなく、自治会の基本情報と一年の予定に入れました。<a href={adminPath(ward, "/know")}>自治会の基本情報を見る</a></p> : null}
@@ -322,6 +322,22 @@ intakeAdmin.get("/intake/started/:projectId", async (c) => {
   const draftKind = firstTaskDraft(state.mapTasks);
   const draftTitle = documentTitle(taskDocumentKind(state.mapTasks, draftKind), draftKind);
   const people = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM accounts WHERE ward_id = ? AND removed_at IS NULL").bind(ward.wardId).first<{ n: number }>();
+  // もう済んだ行事を始めた時（去年の担当から引き継いだ新任の役員など）は、案内でなく、報告をまとめて終わりにする道を先に出す。
+  const today = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date());
+  const eventDay = state.project.deadlines.event_day;
+  const month = eventDay ? null : await yearPlanMonth(c.env.DB, ward.wardId, state.project.title);
+  const currentMonth = Number(today.slice(5, 7));
+  const passed = eventDay ? eventDay < today : month !== null && (month + 8) % 12 < (currentMonth + 8) % 12;
+  const questionCount = questions < 10 ? `${questions}つ` : `${questions}件`;
+  if (passed) return c.html(<Layout title={state.project.title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <h1>{state.project.title}</h1><p class="lead">{count?.n ? `${count.n}件の資料をまとめました。` : ""}</p>
+    <section class="next"><strong>次は</strong><p>{state.project.title}は、{eventDay ? `${formatJstDate(eventDay)}に行いました` : `年間の予定では${month}月の予定で、もう過ぎています`}。済んでいれば、報告をまとめて終わりにすると、来年の担当の方がこの記録から始められます。{questions ? `AIからの質問が${questionCount}あります。答えると報告に入ります。` : ""}</p>
+      <a class="button" href={adminPath(ward, `/close/${id}`)}>報告をまとめて終わりにする</a>
+      <p>押すと、集まった資料と返事から報告の下書きを作り、終わりにする画面が開きます。</p></section>
+    {questions ? <p class="link-line"><a href={adminPath(ward, `/projects/${id}/questions`)}>先に質問に答える</a></p> : null}
+    <p class="link-line"><a href={adminPath(ward, `/projects/${id}/map`)}>まだ済んでいないときは、やることを見る</a></p>
+    <p class="link-line"><a href={adminPath(ward, "/")}>最初の画面へ</a></p>
+  </Layout>);
   return c.html(<Layout title={state.project.title} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <h1>{state.project.title}</h1><p class="lead">{count?.n ? `${count.n}件の資料を読んで、${tasks}${tasks > 0 && tasks < 10 ? "つ" : "件"}のやることを用意しました` : `ふつうの${tasks}${tasks > 0 && tasks < 10 ? "つ" : "件"}のやることを用意しました`}</p>
     <section class="next"><strong>次は</strong><p>{questions ? "分かるものから答えてください。あとでもかまいません。" : `${draftTitle}の下書きを見て、直せます。`}</p>

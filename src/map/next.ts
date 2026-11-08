@@ -35,6 +35,8 @@ export function mapTaskPath(projectId: string, _kind: string, task: Pick<MapTask
   const key = taskKeyOf(task.taskKey, task.name);
   if (key === "answers" || key === "delegation") return `/answers/${projectId}`;
   if (key === "report") return `/close/${projectId}`;
+  // 担当を決める仕事は、去年の当番表から下書きを作る当番表の画面を直接開く。仕事一つの画面から探させない。
+  if (key === "assign") return `/projects/${projectId}/draft/duty_roster`;
   return `/projects/${projectId}/map/${task.taskId}`;
 }
 

@@ -19,5 +19,8 @@ it("前提 21: 住民に出す画像の候補に、どの準備の資料にも�
   };
   const used = await add("去年の見回りの写真.jpg", project.projectId);
   await add("年賀状.jpg", null);
+  // ほかの準備の写真も、この準備の案内の候補には並べない
+  const other = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭", year: 2026, accountId: account.accountId });
+  await add("収穫祭の配置図.jpg", other.projectId);
   expect((await flyerMaterials(env, ward.wardId, project.projectId)).map((photo) => photo.original_id)).toEqual([used]);
 });
