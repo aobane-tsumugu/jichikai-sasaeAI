@@ -22,8 +22,9 @@ it("混ざった送り先の返事を残った場所へだけ送り直し、時�
   const now = new Date("2026-11-06T01:00:00Z");
   const destination = crypto.randomUUID();
   const group = "C-fictional-u13-group";
+  const officerGroup = "C-fictional-u13-officers";
   const secret = "fictional-u13-secret";
-  await env.DB.prepare("INSERT INTO ward_settings (ward_id, key, value) VALUES (?, 'line.officer_group', ?)").bind(ward.wardId, "C-fictional-u13-officers").run();
+  await env.DB.prepare("INSERT INTO ward_settings (ward_id, key, value) VALUES (?, 'line.officer_group', ?)").bind(ward.wardId, officerGroup).run();
   const runtime = withEnv({ LINE_CHANNEL_SECRET: secret, LINE_CHANNEL_ACCESS_TOKEN: "fictional-u13-token"});
   await env.DB.prepare("INSERT INTO line_channels (ward_id, destination, channel_secret_binding, access_token_binding) VALUES (?, ?, 'LINE_CHANNEL_SECRET', 'LINE_CHANNEL_ACCESS_TOKEN')").bind(ward.wardId, destination).run();
   const calls: Array<{ to: string; text: string; key: string }> = [];
@@ -68,6 +69,14 @@ it("混ざった送り先の返事を残った場所へだけ送り直し、時�
     await webhook("fictional-u13-direct-a", { type: "user", userId: "U-fictional-u13-a" }, subject);
     await webhook("fictional-u13-direct-b", { type: "user", userId: "U-fictional-u13-b" }, subject);
     await webhook("fictional-u13-group", { type: "group", groupId: group, userId: "U-fictional-u13-member" }, `公式へ、${subject}`);
+    // 個別に届いた問い合わせの即時通知と、役員が書く返事を分けて数える。
+    expect(calls.map((call) => call.to)).toEqual([officerGroup, officerGroup]);
+    for (const call of calls) {
+      expect(call.text).toContain("住民から問い合わせが届きました。");
+      expect(call.text).toContain(subject);
+      expect(call.text).toContain(`${root}/inquiries/`);
+    }
+    const beforeAnswers = calls.length;
     const row = await env.DB.prepare("SELECT inquiry_id FROM inquiry_records WHERE ward_id = ? AND line_event_id = ?").bind(ward.wardId, "fictional-u13-direct-a").first<{ inquiry_id: string }>();
     if (!row) throw new Error("問い合わせがありません");
     const path = `${root}/inquiries/${row.inquiry_id}`;
@@ -76,14 +85,15 @@ it("混ざった送り先の返事を残った場所へだけ送り直し、時�
     const failed = await postForm(realApp, path, { operation: "send", answer: fixture.publicDayText }, cookie, runtime);
     expect(failed.status).toBe(502);
     expect(await failed.text()).toContain("1か所に送り直す");
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(beforeAnswers + 3);
+    expect(calls.slice(beforeAnswers).map((call) => call.to).sort()).toEqual([group, "U-fictional-u13-a", "U-fictional-u13-b"]);
     expect((await postForm(realApp, path, { operation: "retry", answer: fixture.publicDayText }, cookie, runtime)).status).toBe(303);
-    expect(calls).toHaveLength(4);
+    expect(calls).toHaveLength(beforeAnswers + 4);
     expect(calls.filter((call) => call.to === group).map((call) => call.key)).toEqual([calls.find((call) => call.to === group)!.key, calls.find((call) => call.to === group)!.key]);
     expect(calls.filter((call) => call.to.startsWith("U-")).map((call) => call.to).sort()).toEqual(["U-fictional-u13-a", "U-fictional-u13-b"]);
     used = 200;
     const limited = await postForm(realApp, path, { operation: "send", answer: fixture.reportText }, cookie, runtime);
-    expect(await limited.text()).toContain("通数が足りない"); expect(calls).toHaveLength(4);
+    expect(await limited.text()).toContain("通数が足りない"); expect(calls).toHaveLength(beforeAnswers + 4);
     expect(await getSetting(env.DB, ward.wardId, "line.delivery_alert.reply")).toContain("通数が足りない");
     used = 0;
     await webhook("fictional-u13-no-user", { type: "group", groupId: group }, `公式へ、${fixture.previousMaterial}を教えてください。`);

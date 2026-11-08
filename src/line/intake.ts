@@ -16,6 +16,7 @@ import { sha256Hex } from "../intake/media";
 import { WardBucket } from "../core/storage";
 import { recordLineInquiry } from "../project/followup";
 import { newId } from "../core/ids";
+import { queueInquiryNotice, sendPendingInquiryNotices } from "./inquiry-notice";
 import { lineBundleContents, lineBundlePhotoSummaries } from "./photo-context";
 import { bundleAction, saveAiBundleDecision, isOfficerSource, getBundleDecision } from "./bundle-decisions";
 
@@ -81,8 +82,11 @@ export async function resumeLimitedLineText(env: Env, wardId: string, jobId: str
     await markInboxItemUnrelated(env.DB, wardId, jobId);
   } else if (original.officialAddressed && result.attendanceAnswer !== true && result.inquiry) {
     if (item.bundle_id) await saveLineBundleInquiry(env.DB, wardId, item.bundle_id, original, item.source_id);
-    else await recordLineInquiry(env.DB, wardId, { eventId: item.event_id, receivedAt: item.received_at, text: original.text ?? "",
-      sourceType: item.source_type, sourceId: item.source_id, userId: item.sender_id, senderLabel: item.sender_display_name });
+    else {
+      const inquiryId = await recordLineInquiry(env.DB, wardId, { eventId: item.event_id, receivedAt: item.received_at, text: original.text ?? "",
+        sourceType: item.source_type, sourceId: item.source_id, userId: item.sender_id, senderLabel: item.sender_display_name });
+      if (inquiryId && item.source_type === "user") await queueInquiryNotice(env.DB, wardId, inquiryId);
+    }
     await env.DB.prepare("UPDATE jobs SET status = 'done', finished_at = ? WHERE ward_id = ? AND job_id = ? AND status = 'read'")
       .bind(new Date().toISOString(), wardId, jobId).run();
   } else if (result.disposition === "matched" && result.projectId) {
@@ -93,6 +97,7 @@ export async function resumeLimitedLineText(env: Env, wardId: string, jobId: str
       .bind(result.reason ?? null, wardId, jobId).run();
   }
   await Promise.all(pending);
+  await sendPendingInquiryNotices(env, wardId);
   return true;
 }
 
@@ -143,6 +148,12 @@ export async function saveLineBundleInquiry(db: D1Database, wardId: string, bund
     .bind(newId(), wardId, contents.items[0]?.received_at ?? original.receivedAt, text, new Date().toISOString(),
       original.eventId, original.sourceType, sourceId, original.senderDisplayName ?? null,
       original.sourceType !== "user" && original.senderId === sourceId ? null : original.senderId || null, bundleId).run();
+  if (!existing && original.sourceType === "user") {
+    // 同時受信時に別の処理が作った記録も、実際に保存されたIDで一つだけ待たせる。
+    const saved = await db.prepare("SELECT inquiry_id FROM inquiry_records WHERE ward_id = ? AND line_bundle_id = ?")
+      .bind(wardId, bundleId).first<{ inquiry_id: string }>();
+    if (saved) await queueInquiryNotice(db, wardId, saved.inquiry_id);
+  }
   await db.prepare(`UPDATE line_photo_batches SET match_finished_at = COALESCE(match_finished_at, ?)
     WHERE ward_id = ? AND batch_id IN (SELECT p.batch_id FROM line_photo_items p JOIN line_inbox_items i
       ON i.ward_id = p.ward_id AND i.job_id = p.job_id WHERE p.ward_id = ? AND i.bundle_id = ?)`)

@@ -46,13 +46,13 @@ export function digestPeriodLabel(value: DigestSettings, cutoff: Date): string {
 }
 
 export const inquiryNotice = (value: DigestSettings, hasGroup = true) => `${hasGroup
-  ? `問い合わせは毎日${timeLabel(value.cutoff)}に締め、${value.send > value.cutoff ? "その日" : "翌日"}の${timeLabel(value.send)}に、前回の締めからの分を役員のLINEグループへ通知します。来ない日は送りません。`
+  ? `自治会のLINEに個別に届いた問い合わせは、中身を役員のLINEグループへすぐ通知します。すぐに送れなかったものなどは毎日${timeLabel(value.cutoff)}に締め、${value.send > value.cutoff ? "その日" : "翌日"}の${timeLabel(value.send)}に、前回の締めからの分を通知します。すぐに送ったものは数えません。来ない日は送りません。`
   : "役員のLINEグループへの通知は、まだ使えません。問い合わせはこの画面で見られます。"}当日の${value.eventDays}日前や締切の${value.dueDays}日前からは、通知を待たずに、ときどき見てください。`;
 
 export function DigestFields({ value, rawValues, open = false }: { value: DigestSettings; rawValues?: Record<string, unknown>; open?: boolean }) {
   const field = (name: string, saved: string | number) => typeof rawValues?.[name] === "string" ? String(rawValues[name]) : saved;
-  return <details class="fold" open={open}><summary>通知の時刻を変える</summary><div>
-    <p>時刻は日本時間です。送る時刻から5分ほど遅れることがあります。</p>
+  return <details class="fold" open={open}><summary>まとめて通知する時刻を変える</summary><div>
+    <p>個別に届いた問い合わせはすぐに通知します。ここで変えるのは、すぐに送れなかったものなどをまとめる時刻です。時刻は日本時間です。送る時刻から5分ほど遅れることがあります。</p>
     <label for="digest-cutoff">この時刻までに届いた問い合わせを、次の通知にまとめる</label><input id="digest-cutoff" name="digest_cutoff" type="time" value={field("digest_cutoff", value.cutoff)} required />
     <label for="digest-send">通知を送る時刻</label><input id="digest-send" name="digest_send" type="time" value={field("digest_send", value.send)} required />
     <label for="digest-event-days">当日の何日前から、ときどき見る案内を出すか</label><input id="digest-event-days" name="digest_event_days" type="number" min="0" max="365" value={field("digest_event_days", value.eventDays)} required />

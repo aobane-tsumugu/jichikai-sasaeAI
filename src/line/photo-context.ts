@@ -5,6 +5,7 @@ import type { PhotoSource } from "./clarifications";
 
 // 買い出しや設営で撮って送り直す間をつなぐ仮の幅。別の作業まで長く持ち越さない。
 export const PHOTO_CONTEXT_GAP_MS = 30 * 60_000;
+export const PHOTO_GROUP_GAP_MS = 5000;
 
 /** 既存の「行事に入れる」と、行事を聞いた答えだけで場所を結ぶ。設定の操作は増やさない。 */
 export async function rememberPhotoSource(db: D1Database, wardId: string, jobId: string, projectId: string): Promise<void> {

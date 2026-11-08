@@ -25,12 +25,14 @@ export const followupAdmin = new Hono<AdminEnv>();
 /** 公式 LINE の問い合わせは原文で残す。AIも代わりの入力者アカウントも使わない。 */
 export async function recordLineInquiry(db: D1Database, wardId: string, input: {
   eventId: string; receivedAt: string; text: string; sourceType: string; sourceId: string; userId?: string | null; senderLabel: string | null;
-}): Promise<void> {
-  await db.prepare(`INSERT OR IGNORE INTO inquiry_records
+}): Promise<string | null> {
+  const inquiryId = newId();
+  const inserted = await db.prepare(`INSERT OR IGNORE INTO inquiry_records
     (inquiry_id, ward_id, received_at, kind, subject, answer, submitted_to_city, created_by_account_id, created_at,
       line_event_id, line_source_type, line_source_id, line_sender_label, line_user_id)
     VALUES (?, ?, ?, 'inquiry', ?, '', 0, NULL, ?, ?, ?, ?, ?, ?)`)
-    .bind(newId(), wardId, input.receivedAt, input.text, nowIso(), input.eventId, input.sourceType, input.sourceId, input.senderLabel, input.userId ?? (input.sourceType === "user" ? input.sourceId : null)).run();
+    .bind(inquiryId, wardId, input.receivedAt, input.text, nowIso(), input.eventId, input.sourceType, input.sourceId, input.senderLabel, input.userId ?? (input.sourceType === "user" ? input.sourceId : null)).run();
+  return inserted.meta.changes ? inquiryId : null;
 }
 
 
