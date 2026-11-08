@@ -332,6 +332,9 @@ td { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--line
   button, a.button { display: inline-flex; width: auto; min-width: 15rem; }
   .action-links { flex-direction: row; flex-wrap: wrap; align-items: center; }
   .action-bar { flex-direction: row; justify-content: flex-start; align-items: center; }
+  /* 帯の文が長くても、ボタンの字を「終わ／りに／する」と縦に折らない。文の側が縮む。 */
+  .action-bar > button, .action-bar > a.button { flex: 0 0 auto; white-space: nowrap; }
+  .action-bar > p { flex: 1 1 auto; min-width: 0; }
   .rows.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .counts { gap: var(--space-4); }
 }

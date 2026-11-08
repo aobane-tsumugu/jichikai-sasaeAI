@@ -297,7 +297,8 @@ pub.get("/p/:projectId", async (c) => {
     <a class="back" href={`/${c.var.ward.slug}/`}>← お知らせの一覧へ</a>
     <h1>{heading}</h1>
     {reports.map(renderDocument)}
-    {ordered.filter(({ latest }) => latest.kind === "notice").map(renderDocument)}
+    {/* 連絡事項は送るたびに積む。前の連絡も畳まず、新しい順に一つずつ並べる（L-319）。 */}
+    {ordered.filter(({ latest }) => latest.kind === "notice").flatMap(({ latest, earlier }) => [latest, ...earlier].map((item) => renderDocument({ latest: item, earlier: [] })))}
     {activeAnnouncement ? <>
       {!newerNotice ? <EventDetails item={context.item} due={deadline} /> : deadline ? <p>返事の締切 {formatJstDate(deadline)}まで</p> : null}
       {closed ? <ReceptionClosed closed={!!items[0]!.closed_at} due={deadline} /> : <><p><a class="button" href={`/${c.var.ward.slug}/answer/${encodeURIComponent(projectId)}${suffix}`}>出欠を答える</a></p><p>{features.delegation ? "出席、委任、欠席のどれかを答えてください。" : "参加しないときも、返事をもらえると、準備の数が正しく分かります。返事がないときは、欠席として数えます。"}代表者のお名前、班、人数を聞きます。紙の回答票を班長に渡しても答えられます。</p></>}

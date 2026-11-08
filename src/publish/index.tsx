@@ -196,6 +196,8 @@ admin.get("/publish/:projectId", async (c) => {
         </div>}
       <section class="next"><strong>次は</strong>{lowered ? <><p>内容を直して、知らせ直せます。知らせ直すときに、下書きの画面で「今回はLINEで送らない」を選ぶと、自治会のLINEに同じ知らせが二度届きません。</p><a class="button" href={editHref}>直して知らせ直す</a></> : rain ? <p>班長に電話して伝えてください。掲示も張り替えてください。ここは画面では済みません。</p> : <><p>{paperLabel}{withAnswer ? "、班長への一枚" : ""}を印刷して、{withAnswer ? "班長に渡してください。" : "配ってください。"}</p><a class="button" href={printHref}>{paperLabel}を印刷する</a>{withAnswer ? <a class="quiet" href={`${printBase}/leader`}>班長への一枚を印刷する</a> : null}</>}</section>
       {!rain && !lowered ? <DistributionFacts raw={record.distribution} /> : null}
+      {/* 連絡で日時や場所を変えたときに、案内も直す道を示す。連絡は前の連絡に重ねて積む（L-319）。 */}
+      {kind === "notice" && !lowered && drafts.some((row) => row.kind === "announcement" && row.published_at) ? <><p>日時や場所を変えた連絡なら、案内も直して送り直すと、住民向けのページと紙の案内も新しくなります。</p><p class="link-line"><a href={adminPath(ward, `/projects/${projectId}/draft/announcement`)}>案内の日時と場所を直す</a></p></> : null}
       {!lowered ? <div class="action-links"><a class="button secondary" href={`/${ward.slug}/p/${encodeURIComponent(projectId)}`}>住民向けのページで見る</a></div> : null}
       <h2>間違えたときは</h2><p>{rain ? "直して知らせ直すと、住民向けのページは新しい内容に変わります。LINEで送った知らせは取り消せません。" : `直して知らせ直すと、住民向けのページは新しい${DOCUMENT_KIND_LABEL[kind]}に変わります。`}</p>
       <div class="action-links"><a class="button secondary" href={editHref}>直して知らせ直す</a></div>

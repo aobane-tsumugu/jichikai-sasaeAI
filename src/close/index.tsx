@@ -288,7 +288,7 @@ admin.get("/close/:projectId", async (c) => {
         <h2>来年への一言（書かなくてかまいません）</h2><p class="muted">仕事ごとに、頼んだ人、困ったこと、来年変えることを残せます。来年のやることに出ます。運営メモに書いたことも、そのまま残ります。ここで書き直さなくてかまいません。</p>
         <a class="quiet" href={adminPath(ward, `/projects/${id}/ledger`)}>運営メモを見る</a>
         {/* どの仕事に書くかを選べるように、畳みの名前に時期と済んだかを書く。 */}
-        {tasks.results.length ? tasks.results.map((task) => <details class="fold" id={`task-${task.task_id}`}><summary>{task.name}（{[formatDateText(task.period), MAP_PROGRESS_LABEL[task.progress as MapProgress] ?? ""].filter(Boolean).join("、")}）</summary><div>
+        {tasks.results.length ? tasks.results.map((task) => <details class="fold" id={`task-${task.task_id}`}><summary>{task.name}（{[formatDateText(task.period), task.progress === "open" && !notYet ? "済んだかの記録がありません" : MAP_PROGRESS_LABEL[task.progress as MapProgress] ?? ""].filter(Boolean).join("、")}）</summary><div>
           <input type="hidden" name="taskId" value={task.task_id} />
           <input type="hidden" name="period" value={task.period} /><input type="hidden" name="name" value={task.name} /><input type="hidden" name="progress" value={task.progress} />
           <label for={`requested-${task.task_id}`}>頼んだ人</label><input id={`requested-${task.task_id}`} name="requestedBy" value={task.requested_by} maxlength={160} />

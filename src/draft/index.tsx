@@ -12,7 +12,6 @@ import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, SCOPES, SCOPE_LABEL, t
 import { documentBodyCheckMessage } from "../project/document-body";
 import { getDraftPack, listDraftPacks } from "./packs";
 import type { DraftBody } from "./packs/types";
-import { getDistrictCopies } from "../answers/api";
 import { getSquads, getTemplates } from "../settings/store";
 import { renderTemplate } from "../settings/keys";
 import { saveDutyRow } from "../project/actions";
@@ -183,8 +182,16 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
     return pendingGuide(key, value).show;
   }).map((key) => `「${labels[key] ?? ITEM_LABEL[key]}」`);
   const pendingText = body.text.includes(PENDING);
+  // 連絡事項の下書きでは、知らせた案内の今の日時と場所を見せ、変わるときは案内も一緒に直す道を示す（L-319）。
+  const announced = kindRaw === "notice" && state.documents.some((document) => document.kind === "announcement" && document.publishedVersionNo !== null);
+  const nowValue = (key: ItemKey) => state.items.find((item) => item.key === key)?.current?.content.trim()
+    || (key === "date_time" && project.deadlines.event_day ? formatJstDate(project.deadlines.event_day) : "");
   // 返事を集める文書では、返事で聞くことを一文で書き、欄の候補があれば知らせる（総会の返事は別）。
-  const answerAsk = taskCollectsAttendance(tasks, kindRaw) && !features.delegation && !minutes ? await (async () => {
+  // 出欠を聞かないと選んだ準備は、projectTasks の印で分かる。案内の下書きでは、聞くかどうかをここからも変えられる。
+  const featureTasks = await projectTasks(c.env.DB, ward.wardId, id);
+  const attendanceChoice = kindRaw === "announcement" && !minutes && !features.delegation && taskCollectsAttendance(tasks, kindRaw) && !project.closedAt;
+  const answersOff = attendanceChoice && !taskCollectsAttendance(featureTasks, kindRaw);
+  const answerAsk = taskCollectsAttendance(featureTasks, kindRaw) && !features.delegation && !minutes ? await (async () => {
     const squads = await getSquads(c.env.DB, ward.wardId);
     const current = await getAnswerFields(c.env.DB, ward.wardId, id, squads);
     return { asked: askedText(current.fields, current.districtAsked), suggestions: project.closedAt ? [] : await fieldSuggestions(c.env.DB, ward.wardId, id, current, squads) };
@@ -211,6 +218,8 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
     {taskNotice && !(taskNotice.status === "done" && (project.closedAt || versions.results[0]?.published_at)) ? <Notice><span data-ai-status={taskNotice.status}>{taskNotice.message}</span>{["received", "reading", "read", "connecting"].includes(taskNotice.status) ? " 画面を閉じても続きます。ここで書いて保存することもできます。" : ""}</Notice> : null}
     {document?.stale ? <div class="notice warn"><strong>新しい資料が届きました</strong><p>このまま直して住民に知らせられます。</p><a class="quiet" href="#redo">新しい資料を入れて作り直す</a></div> : null}
     {project.closedAt ? <Notice>{project.title}は終わりにしました。終わりを取り消すと下書きを直せます。</Notice> : null}
+    {c.req.query("notice") === "attendance_off" ? <Notice>この案内では出欠を聞かないようにしました。返事の入口と回答票は付きません。</Notice> : null}
+    {c.req.query("notice") === "attendance_on" ? <Notice>出欠を聞くようにしました。住民向けのページに返事の入口が、紙に回答票が付きます。</Notice> : null}
     {c.req.query("notice") === "this_year" ? <Notice>年の分からない資料を、今年の資料として入れ直しました。欄に入った値を見て、保存してください。</Notice> : null}
     {(pendingLabels.length || pendingText) && kindRaw !== "duty_roster" ? <p class="notice">{pendingLabels.length ? `まだ決まっていない欄が${pendingLabels.length}つあります（${pendingLabels.join("、")}）。欄の下に、どこで決めるかを書きました。` : ""}{pendingText ? `${pack.title}の文の中にも「${PENDING}」があります。分かったら書き換えてください。（確認中）の文は、住民向けのページと紙には出ません。` : ""}</p> : null}
     <MeetingMaterialsView ward={ward} materials={meetingMaterials} />
@@ -228,13 +237,20 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
       {kindRaw === "duty_roster" ? body.items.filter((item) => !["date_time", "place", "helper_slots", "rain_plan", "content"].includes(item.key)).map((item) => <input type="hidden" name={`item_${item.key}`} value={item.content} />) : [...itemKeys].filter((key) => !["date_time", "place", "rain_plan", "content"].includes(key)).sort((a, b) => Number(b === "helper_slots") - Number(a === "helper_slots")).map(field)}
       {answerAsk ? <section class="panel"><b>住民に返事で聞くこと</b><p>{answerAsk.asked}です。住民のスマホの返事と紙の回答票に、同じ欄が出ます。</p>
         {answerAsk.suggestions.map((suggestion) => <p>{suggestion.text}返事に{suggestion.kinds.map((kind) => kind === "days" ? "日を選ぶ欄" : "班を聞く欄").join("と")}を足せます。</p>)}
-        <p class="link-line"><a href={adminPath(ward, `/answers/${id}?view=fields`)}>返事で聞くことを見る・足す</a></p></section> : null}
+        <p class="link-line"><a href={adminPath(ward, `/answers/${id}?view=fields`)}>返事で聞くことを見る・足す</a></p>
+        {attendanceChoice ? <p><button class="quiet" type="submit" form="attendance-form" name="state" value="off">出欠を聞かない（知らせるだけにする）</button></p> : null}</section> : null}
+      {announced && !project.closedAt ? <section class="panel"><b>日時や場所が変わるとき</b>
+        <p>知らせた案内では、{nowValue("date_time") ? `いつは「${nowValue("date_time")}」` : "いつはまだ書かれていません"}、{nowValue("place") ? `どこでは「${nowValue("place")}」` : "どこではまだ書かれていません"}です。この連絡で日時や場所を変えるときは、案内も直して送り直すと、住民向けのページと紙の案内も新しい日時と場所になります。この連絡は、前の連絡に重ねて積みます。</p>
+        <p class="link-line"><a href={adminPath(ward, `/projects/${id}/draft/announcement`)}>案内の日時と場所を直す</a></p></section> : null}
+      {answersOff ? <section class="panel"><b>出欠を聞かない案内です</b><p>住民向けのページに「出欠を答える」の入口は付かず、紙にも回答票は付きません。</p>
+        <p><button class="secondary" type="submit" form="attendance-form" name="state" value="on">出欠を聞く</button></p></section> : null}
       {flyerState && !project.closedAt ? <FlyerPanel c={c} projectId={id} state={flyerState} /> : null}
       <p><button class="secondary" name="after" value="paper">保存して紙の見え方を見る</button></p><p class="muted">紙の見え方を撮って役員のグループへ送ると、見てもらえます。まだ住民には送りません。</p>
       {kindRaw === "duty_roster" ? null : <details class="fold"><summary>誰に見せるかを変える</summary><div><Choices name="scope" legend="誰に見せるか" required={false} items={SCOPES.map((value) => ({ value, checked: value === scope,
         title: value === "public" ? "だれでも読める" : value === "space" ? "実行委員と班長だけ" : "役員だけ",
         note: value === "public" ? "住民向けのページに載せ、自治会のLINEで送り、紙にも印刷できます。" : value === "space" ? "実行委員と班長のページにだけ載せます。住民向けのページには載りません。" : "役員の画面で読めるだけで、どこにも載せません。紙には印刷できます。" }))} /></div></details>}
     </form>
+    {attendanceChoice ? <form id="attendance-form" method="post" action={adminPath(ward, `/answers/${id}/attendance`)}></form> : null}
     {kindRaw === "duty_roster" ? <section>
       <h2>当番の担当を直す</h2>
       <p>{features.rota ? "去年の表があればその順で、なければ名簿の順で下書きを入れます。時間帯や担当を直せます。" : "手伝いの申し込みと、世帯の返事にある手伝いから、AIが担当の下書きを入れます。"}直した行は、AIが上書きしません。</p>
@@ -281,11 +297,8 @@ async function confirmDraft(c: import("hono").Context<AdminEnv>, kind: DocumentK
   if (lineDelivery) fields.set("lineDelivery", lineDelivery);
   const query = new URLSearchParams({ check_body: bodyChecks.join(",") });
   if (fields.get("scope") === "staff") return c.redirect(adminPath(c.var.ward, `/publish/${id}?${query}`), 303);
-  if (fields.get("scope") === "public") {
-    const copies = await getDistrictCopies(c.env.DB, c.var.ward.wardId);
-    fields.set("distribution", copies.map((row) => `${row.district} ${row.copies}`).join("\n"));
-  }
-  // 保存は済んでいるので、確かめる画面を開き直す。アドレスが確かめる画面のものになり、読み直しても同じ画面が出る。値は文書の番号と部数と LINE の選択だけ。
+  // 紙の配る相手と部数は、確かめの画面が名簿から一か所で決める（L-319）。ここでは数えない。
+  // 保存は済んでいるので、確かめる画面を開き直す。アドレスが確かめる画面のものになり、読み直しても同じ画面が出る。値は文書の番号と LINE の選択だけ。
   for (const [key, value] of query) fields.set(key, value);
   return c.redirect(adminPath(c.var.ward, `/publish/${id}/confirm?${fields}`), 303);
 }
