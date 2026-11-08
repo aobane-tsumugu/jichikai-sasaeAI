@@ -12,6 +12,16 @@ it("去年の表の日を、今年の当日に合わせてずらし、曜日も�
   expect(shiftSlots(["12月26日（金）"], undefined, 2025)).toEqual({ slots: ["12月26日（金）"], shifted: false });
 });
 
+it("架空の期間の終わりを、先にずらした始まりの日と取り違えずに動かす", () => {
+  expect(shiftSlots(["12月26日〜12月27日 午後8時"], "2026-12-27", 2025))
+    .toEqual({ slots: ["12月27日（日）〜12月28日（月） 午後8時"], shifted: true });
+});
+
+it("架空の欄に同じ日が二度あっても、それぞれに今年の曜日を一つだけ添える", () => {
+  expect(shiftSlots(["12月26日 午前・12月26日 午後"], "2026-12-26", 2025))
+    .toEqual({ slots: ["12月26日（土） 午前・12月26日（土） 午後"], shifted: true });
+});
+
 it("世帯の名簿が無い時は、去年の当番表の世帯を外さずに残し、日は今年の当日に合わせる", async () => {
   const { ward, account } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, { kind: "duty", title: "年末の見回り", year: 2026, accountId: account.accountId, eventDay: "2026-12-26" });
