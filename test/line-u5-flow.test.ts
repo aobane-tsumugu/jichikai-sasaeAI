@@ -15,6 +15,7 @@ import { sendOfficerDigest } from "../src/line/digest";
 import { saveDocument } from "../src/project/actions";
 import { recordLineInquiry } from "../src/project/followup";
 import { get, postForm, realApp, withEnv } from "./helpers";
+import { sendLatest } from "./helpers";
 
 afterEach(() => vi.useRealTimers());
 
@@ -210,10 +211,13 @@ it("写真を引用して一問ずつ聞き、撮り直しと分からないで�
     if (!draft) throw new Error("雨の変更の前の案内がありません");
     await env.DB.prepare("UPDATE document_versions SET published_at = '2026-11-06T01:00:00.000Z' WHERE ward_id = ? AND document_id = ?").bind(ward.wardId, draft.document_id).run();
     const rainHtml = await (await get(realApp, `${root}/projects/${project.projectId}/draft/notice`, cookie, runtime)).text();
-    expect(rainHtml).toContain('name="lineDelivery"');
+    // LINE に送るかは、送る前の確かめの画面で、ほかの届け先と一緒に選ぶ（L-319）。
+    expect(rainHtml).not.toContain('name="lineDelivery"');
+    expect(rainHtml).toContain("送る前に確かめる画面が開きます");
     const beforeRain = sent.length;
     const rain = await postForm(realApp, `${root}/projects/${project.projectId}/draft/rain-notice`, { templateId: "rain", eventName: fixture.draftTitle, place: fixture.previousPlace, dateTime: rainDayText, lineDelivery: "skip" }, cookie, runtime);
     expect(rain.status).toBe(303);
+    expect((await sendLatest(ward.slug, ward.wardId, project.projectId, "notice", cookie, runtime)).status).toBe(303);
     expect(sent).toHaveLength(beforeRain);
     expect((await env.DB.prepare("SELECT line_status FROM publication_records WHERE ward_id = ? AND project_id = ?").bind(ward.wardId, project.projectId).all<{ line_status: string }>()).results).toEqual([{ line_status: "not_sent" }]);
     expect(await (await get(realApp, `${root}/`, cookie, runtime)).text()).not.toContain(`href="${root}/ledger"`);

@@ -17,9 +17,7 @@ import { getSquads, getTemplates } from "../settings/store";
 import { renderTemplate } from "../settings/keys";
 import { saveDutyRow } from "../project/actions";
 import { formatJstDate } from "../core/time";
-import { openPublish } from "./publish-flow";
 import { rainDraft, rainSent, rainTemplate } from "./rain";
-import { checkPublicDraft } from "../publish/check";
 import { paperHeading, plainProjectTitle } from "../project/heading";
 import { opensOf, taskDraftKind, taskKeyOf } from "../map/template";
 import { getMeetingMaterials, MeetingMaterialsView } from "./meeting-materials";
@@ -197,7 +195,8 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
   const flyerState = FLYER_KINDS.includes(kindRaw) ? await flyerPanelState(c.env, ward.wardId, id, kindRaw) : null;
   const rota = features.rota && kindRaw === "duty_roster" ? await rotaPanel(c.env.DB, ward, id) : null;
   // 住民へのメッセージ（案内、募集、連絡、報告）で、住民向けの下書きは、この画面の一番下から住民に送る。
-  const sendable = FLYER_KINDS.includes(kindRaw) && scope === "public";
+  // 住民向けの文書と、実行委員と班長に渡す文書は、同じ「送る」から送る前の確かめの画面へ進む。役員だけの文書は送らず、紙で見る。
+  const sendable = (FLYER_KINDS.includes(kindRaw) && scope === "public") || scope === "space";
   const sentBefore = versions.results.some((version) => version.published_at);
   const rotaNotes = features.rota && kindRaw === "duty_roster" ? await rotaRowNotes(c.env.DB, ward.wardId, id) : [];
   return c.html(<Layout title={`${pack.title}の下書きを直す`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
@@ -232,10 +231,6 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
         <p class="link-line"><a href={adminPath(ward, `/answers/${id}?view=fields`)}>返事で聞くことを見る・足す</a></p></section> : null}
       {flyerState && !project.closedAt ? <FlyerPanel c={c} projectId={id} state={flyerState} /> : null}
       <p><button class="secondary" name="after" value="paper">保存して紙の見え方を見る</button></p><p class="muted">紙の見え方を撮って役員のグループへ送ると、見てもらえます。まだ住民には送りません。</p>
-      {sendable && canSendLine(kindRaw) && !project.closedAt ? <Choices name="lineDelivery" legend="自治会のLINE" items={[
-        { value: "send", title: "LINEの友だちにも送る", note: "文と画像を、自治会のLINEを友だちに追加している人みんなに送ります。LINEで送ったものは取り消せません。", checked: true },
-        { value: "skip", title: "今回はLINEで送らない", note: "住民向けのページに載せ、紙を印刷できるようにします。" },
-      ]} /> : null}
       {kindRaw === "duty_roster" ? null : <details class="fold"><summary>誰に見せるかを変える</summary><div><Choices name="scope" legend="誰に見せるか" required={false} items={SCOPES.map((value) => ({ value, checked: value === scope,
         title: value === "public" ? "だれでも読める" : value === "space" ? "実行委員と班長だけ" : "役員だけ",
         note: value === "public" ? "住民向けのページに載せ、自治会のLINEで送り、紙にも印刷できます。" : value === "space" ? "実行委員と班長のページにだけ載せます。住民向けのページには載りません。" : "役員の画面で読めるだけで、どこにも載せません。紙には印刷できます。" }))} /></div></details>}
@@ -263,8 +258,8 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
       {features.rota && kindRaw === "duty_roster" ? null : <details class="fold" id="redo"><summary>AIに言葉で頼む</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/start`)}>
         <div class="field"><label for="instruction">頼むこと</label><input id="instruction" name="instruction" type="text" maxlength={800} /><p class="help-text">{kindRaw === "notice" && features.attendance ? "例: 雨のときの場所の変更を入れてください" : minutes ? "例: 送った資料から決めたことをまとめてください" : "例: 送った資料の内容を入れてください"}</p></div><button class="secondary">AIに頼む</button>
       </form></div></details>}
-      {sendable ? <><p class="muted">「{sentBefore ? "直した内容を住民に送る" : "住民に送る"}」を押すと、この内容を住民向けのページに載せ、{canSendLine(kindRaw) ? "上で選んだとおり自治会のLINEでも送り、" : ""}紙を印刷できるようにします。個人の名前や電話番号のように載せない方がよいものや、まだ決まっていないところが見つかったときだけ、送る前に確かめる画面を出します。</p>
-        <div class="action-bar page-action"><button type="submit" form="draft-form" name="after" value="send">{sentBefore ? "直した内容を住民に送る" : "住民に送る"}</button><button class="secondary" type="submit" form="draft-form">保存だけする</button></div></>
+      {sendable ? <><p class="muted">「{sentBefore ? "直した内容を送る" : "送る"}」を押すと、保存して、送る前に確かめる画面が開きます。{scope === "space" ? "実行委員と班長のページと紙を" : `住民向けのページ、${canSendLine(kindRaw) ? "自治会のLINE、" : ""}紙の配る相手と部数を`}一つの画面で見てから送ります。まだ送りません。</p>
+        <div class="action-bar page-action"><button type="submit" form="draft-form" name="after" value="send">{sentBefore ? "直した内容を送る" : "送る"}</button><button class="secondary" type="submit" form="draft-form">保存だけする</button></div></>
       : <><p class="muted">下のボタンを押しても、まだ住民には送りません。次の画面で内容を確かめてから送ります。</p>
         <div class="action-bar page-action"><button type="submit" form="draft-form" name="after" value={paperFirst ? "paper" : "confirm"}>{paperFirst ? "保存して紙の見え方を見る" : "保存して知らせる内容を見る"}</button><button class="secondary" type="submit" form="draft-form">保存だけする</button></div></>}
     </> : null}
@@ -295,21 +290,6 @@ async function confirmDraft(c: import("hono").Context<AdminEnv>, kind: DocumentK
   return c.redirect(adminPath(c.var.ward, `/publish/${id}/confirm?${fields}`), 303);
 }
 
-/**
- * 下書きの画面の「住民に送る」。保存した版を、今の知らせる処理（publish の send）でそのまま送る。
- * 載せない方がよいものや、まだ決まっていないところがある時だけ、今の確かめの画面に回す（雨の変更の知らせと同じ道）。
- */
-async function sendDraft(c: import("hono").Context<AdminEnv>, kind: DocumentKind, bodyChecks: ItemKey[], body: string, lineDelivery: string): Promise<Response> {
-  const fields = await latestFields(c, kind); const id = c.req.param("projectId");
-  if (!fields || !id) return c.notFound();
-  if (fields.get("scope") !== "public") return confirmDraft(c, kind, bodyChecks, lineDelivery);
-  const warnings = await checkPublicDraft(c.env.DB, c.var.ward.wardId, id, kind, body);
-  if (warnings.length || body.includes(PENDING)) return confirmDraft(c, kind, bodyChecks, lineDelivery);
-  const copies = await getDistrictCopies(c.env.DB, c.var.ward.wardId);
-  fields.set("distribution", copies.map((row) => `${row.district} ${row.copies}`).join("\n"));
-  fields.set("lineDelivery", lineDelivery);
-  return openPublish(c, `/publish/${id}/send`, fields);
-}
 
 admin.post("/projects/:projectId/draft/:kind/restore/:versionNo", async (c) => {
   const { ward, account } = c.var; const id = c.req.param("projectId"); const kindRaw = c.req.param("kind");
@@ -365,16 +345,8 @@ admin.post("/projects/:projectId/draft/rain-notice", async (c) => {
   if (!saved) return c.notFound();
   try { await saveFlyer(c.env, ward.wardId, id, saved.get("versionId")!, flyerInput); }
   catch { return rainDraft(c, "連絡の文は保存しましたが、チラシの画像を保存できませんでした。連絡の下書きから画像を付け直してください。"); }
-  saved.set("lineDelivery", form.get("lineDelivery") === "skip" ? "skip" : "send");
-  const warnings = await checkPublicDraft(c.env.DB, ward.wardId, id, "notice", body);
-  // 混入が見つかった時は既存の確認に出す。見つからなければ、見本の「配る」でそのまま配る。
-  if (warnings.length) return openPublish(c, `/publish/${id}/confirm`, saved);
-  saved.set("distribution", JSON.stringify({ mode: "district", targets: [] }));
-  const response = await openPublish(c, `/publish/${id}/send`, saved);
-  const destination = response.headers.get("location");
-  const done = destination ? new URL(destination, c.req.url).searchParams.get("done") : null;
-  if (response.status === 303 && done) return c.redirect(`${adminPath(ward, `/projects/${id}/draft/rain-sent`)}?done=${encodeURIComponent(done)}`, 303);
-  return response;
+  // 雨の変更も、ほかの連絡と同じ送る前の確かめの画面を通す（L-319）。そのまま送る近道を持たない。
+  return confirmDraft(c, "notice", []);
 });
 
 admin.post("/projects/:projectId/draft/:kind/save", async (c) => {
@@ -413,7 +385,8 @@ admin.post("/projects/:projectId/draft/:kind/save", async (c) => {
     if (saved) return c.redirect(adminPath(ward, `/print/${id}/${saved.get("documentId")}/${saved.get("versionNo")}/preview`), 303);
   }
   if (ok && form.get("after") === "confirm") return confirmDraft(c, kindRaw, bodyChecks);
-  if (ok && form.get("after") === "send") return sendDraft(c, kindRaw, bodyChecks, JSON.stringify(body), form.get("lineDelivery") === "skip" ? "skip" : "send");
+  // 送るは一つの道だけ。いつも送る前の確かめの画面を通す（そのまま送る近道を持たない）。
+  if (ok && form.get("after") === "send") return confirmDraft(c, kindRaw, bodyChecks);
   const query = new URLSearchParams(ok ? { notice: "saved", check_body: bodyChecks.join(",") } : { error: "save_failed" });
   return c.redirect(`${adminPath(ward, `/projects/${id}/draft/${kindRaw}`)}?${query}`, 303);
 });

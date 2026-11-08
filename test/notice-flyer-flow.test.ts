@@ -9,7 +9,7 @@ import { saveDocument } from "../src/project/actions";
 import { draftFlyer, flyerMaterials, readFlyerInput, saveFlyer } from "../src/draft/notice-flyers";
 import { getNoticeFlyer, noticeFlyerPath, noticeLineText } from "../src/publish/notice-flyers";
 import { WARD_TABLE_POLICY } from "../src/archive/snapshot";
-import { get, postForm, realApp, withEnv } from "./helpers";
+import { get, postForm, realApp, sendLatest, withEnv } from "./helpers";
 import { NOTICE_FLYER as fixture, noticeFlyerJpeg } from "./fixtures/notice-flyer";
 
 type Version = { document_id: string; version_id: string; version_no: number };
@@ -114,6 +114,8 @@ it.each([
   expect(await undecided.text()).toContain("付け直すか、付けないかを選んでください");
   const rainSend = await postForm(realApp, `${draft}/rain-notice`, { ...rainFields, flyer_choice: "none" }, cookie);
   expect(rainSend.status).toBe(303);
+  // 雨の変更も、送る前の確かめの画面を通してから送る（L-319）。
+  expect((await sendLatest(ward.slug, ward.wardId, project.projectId, "notice", cookie)).status).toBe(303);
   const notice = await latest(ward.wardId, project.projectId, "notice");
   expect((await getNoticeFlyer(env.DB, ward.wardId, notice.version_id))?.flyer_id).toBeNull();
   const changed = await (await get(realApp, `/${ward.slug}/p/${project.projectId}`)).text();

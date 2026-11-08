@@ -6,7 +6,7 @@ import { seedAdmin } from "../src/core/testing";
 import { getDraftPack } from "../src/draft/packs";
 import { getEditableDocument, saveAIDraft, saveDocument } from "../src/project/actions";
 import { createProject, getProjectSummary } from "../src/project/api";
-import { get, postForm, realApp } from "./helpers";
+import { get, postForm, realApp, sendLatest } from "./helpers";
 
 it("文の報告を閉じて残し、直して知らせ直し、五つの種類は既存の指示と範囲で閉じる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
@@ -29,8 +29,9 @@ it("文の報告を閉じて残し、直して知らせ直し、五つの種類�
   }, cookie)).status).toBe(303);
   const before = await getEditableDocument(env.DB, ward.wardId, projectId, "report");
   const close = `${root}/close/${projectId}`;
-  expect(await (await get(realApp, close, cookie)).text()).toContain(fixture.reportText);
-  expect((await postForm(realApp, `${close}/finalize`, { body: fixture.reportText }, cookie)).status).toBe(303);
+  // 報告は終わりにする前に、ほかの連絡と同じ送り方で送ってある（L-319）。終わりにする画面は送ったことだけを書く。
+  expect(await (await get(realApp, close, cookie)).text()).toContain("に住民に送りました。");
+  expect((await postForm(realApp, `${close}/finalize`, {}, cookie)).status).toBe(303);
   expect((await getProjectSummary(env.DB, ward.wardId, projectId))?.closedAt).toBeTruthy();
   expect(await getEditableDocument(env.DB, ward.wardId, projectId, "report")).toEqual(before);
   expect(await (await get(realApp, `/${ward.slug}/p/${projectId}`)).text()).toContain(fixture.reportText);
@@ -38,10 +39,15 @@ it("文の報告を閉じて残し、直して知らせ直し、五つの種類�
   expect((await get(realApp, `${root}/photos/${projectId}`, cookie)).status).toBe(404);
   expect((await get(realApp, `/${ward.slug}/photos/${projectId}/fictional-photo`)).status).toBe(404);
 
-  // 本文を直して閉じ直すと、新しい報告を知らせる。
+  // 終わりを取り消して報告を直し、送り直してから閉じ直すと、新しい報告が載る。
   expect((await postForm(realApp, `${close}/reopen`, {}, cookie)).status).toBe(303);
   const edited = `${fixture.reportText}\n${fixture.nextYearChange}`;
-  expect((await postForm(realApp, `${close}/finalize`, { body: edited }, cookie)).status).toBe(303);
+  expect(await saveDocument(env.DB, ward.wardId, projectId, account.accountId, {
+    kind: "report", title: fixture.draftTitle, scope: "public", basedOn: (await getProjectSummary(env.DB, ward.wardId, projectId))!.stateVersion,
+    body: JSON.stringify({ text: edited, items: [{ key: "content", content: fixture.reportText }] }),
+  })).toBe(true);
+  expect((await sendLatest(ward.slug, ward.wardId, projectId, "report", cookie)).status).toBe(303);
+  expect((await postForm(realApp, `${close}/finalize`, {}, cookie)).status).toBe(303);
   const after = await getEditableDocument(env.DB, ward.wardId, projectId, "report");
   expect(after!.versionId).not.toBe(before!.versionId);
   expect(JSON.parse(after!.body)).toMatchObject({ text: edited });
@@ -79,7 +85,8 @@ it("文の報告を閉じて残し、直して知らせ直し、五つの種類�
       expect((await postForm(realApp, `${path}/prepare`, {}, cookie)).status).toBe(303);
       expect(started.find(task => task.projectId === work.projectId && task.task === "report")?.instruction).toContain(expected);
       const page = await (await get(realApp, path, cookie)).text();
-      expect(page).toContain(fixture.reportText);
+      // 住民向けの報告は、終わりにする画面に欄を置かず、下書きがあることと送る道だけを書く（L-319）。
+      expect(page).toContain(scope === "public" ? "報告の下書きがあります。まだ住民に送っていません。" : fixture.reportText);
       if (scope === "staff") {
         expect(page).toContain(`${getDraftPack("report", kind).title}（役員だけ）`);
         expect(page).not.toContain('id="report-public"');
@@ -91,7 +98,8 @@ it("文の報告を閉じて残し、直して知らせ直し、五つの種類�
       expect(await getEditableDocument(env.DB, ward.wardId, work.projectId, "report")).toMatchObject({ scope });
       const published = await env.DB.prepare("SELECT COUNT(*) AS n FROM publication_records WHERE ward_id = ? AND project_id = ?")
         .bind(ward.wardId, work.projectId).first<number>("n");
-      expect(published).toBe(scope === "public" ? 1 : 0);
+      // 終わりにする処理では配らない。住民への報告は、送る前の確かめの画面から送る。
+      expect(published).toBe(0);
     }
     expect(started.filter(task => task.task === "report")).toHaveLength(5);
     expect(started.filter(task => task.task === "map_draft")).toHaveLength(5);

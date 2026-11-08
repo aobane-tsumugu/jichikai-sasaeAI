@@ -3,6 +3,7 @@ import { expect, it } from "vitest";
 import { seedAdmin } from "../src/core/testing";
 import { createProject, getProjectSummary } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
+import { sendLatest } from "./helpers";
 
 it("L-311: 住民へのメッセージを、トップから選ぶ二つと下書きの一つのボタンで住民に送る", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
@@ -33,19 +34,24 @@ it("L-311: 住民へのメッセージを、トップから選ぶ二つと下書
   const draftPath = made.headers.get("location") ?? "";
   expect(draftPath).toContain(`${root}/projects/${project.projectId}/draft/notice?edit=1`);
   const draft = await (await get(realApp, draftPath, cookie)).text();
-  expect(draft).toContain('name="after" value="send">住民に送る</button>');
+  expect(draft).toContain('name="after" value="send">送る</button>');
   expect(draft).toContain("画像を付ける");
-  expect(draft).toContain("LINEの友だちにも送る");
+  // LINE に送るかは下書きでは選ばず、送る前の確かめの画面で選ぶ（L-319）。
+  expect(draft).not.toContain("LINEの友だちにも送る");
   expect(draft).not.toContain("雨の変更を知らせる</h1>");
 
-  // 「住民に送る」で、保存して、そのまま住民向けのページに載せる
+  // 「送る」で保存して、送る前の確かめの画面を開き、そこから住民向けのページに載せる
   const stateVersion = (await getProjectSummary(env.DB, ward.wardId, project.projectId))!.stateVersion;
   const sent = await postForm(realApp, `${root}/projects/${project.projectId}/draft/notice/save`, {
     title: "試しの収穫祭の持ち物のお知らせ", text: "当日は、試しの収穫祭の会場に、マイバッグを持ってきてください。", scope: "public",
     based_on: String(stateVersion), after: "send", lineDelivery: "skip", flyer_choice: "none",
   }, cookie);
   expect(sent.status).toBe(303);
-  expect(sent.headers.get("location")).toContain(`${root}/publish/${project.projectId}`);
+  expect(sent.headers.get("location")).toContain(`${root}/publish/${project.projectId}/confirm?`);
+  const confirm = await (await get(realApp, sent.headers.get("location")!, cookie)).text();
+  expect(confirm).toContain("次の内容で住民に知らせます");
+  expect(confirm).toContain("住民向けのページに載ります。");
+  expect((await sendLatest(ward.slug, ward.wardId, project.projectId, "notice", cookie)).status).toBe(303);
   const record = await env.DB.prepare(`SELECT r.line_status FROM publication_records r JOIN documents d ON d.ward_id = r.ward_id AND d.document_id = r.document_id
     WHERE r.ward_id = ? AND r.project_id = ? AND d.kind = 'notice'`).bind(ward.wardId, project.projectId).first<{ line_status: string }>();
   expect(record).not.toBeNull();

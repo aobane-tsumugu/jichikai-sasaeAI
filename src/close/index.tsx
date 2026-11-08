@@ -106,6 +106,15 @@ async function latestReport(db: D1Database, wardId: string, projectId: string, s
     .first<{ document_id: string; version_id: string; version_no: number; body: string; title: string }>();
 }
 
+/** 住民に送った報告（取り下げていない一番新しいもの）。報告はほかの連絡と同じ送り方で送り、終わりにする画面からは送らない。 */
+async function sentReport(db: D1Database, wardId: string, projectId: string): Promise<{ body: string; published_at: string } | null> {
+  return db.prepare(`SELECT v.body, r.published_at FROM publication_records r
+    JOIN document_versions v ON v.ward_id = r.ward_id AND v.version_id = r.version_id
+    JOIN documents d ON d.ward_id = v.ward_id AND d.document_id = v.document_id
+    WHERE r.ward_id = ? AND r.project_id = ? AND d.kind = 'report' AND v.scope = 'public' AND r.unpublished_at IS NULL
+    ORDER BY r.published_at DESC LIMIT 1`).bind(wardId, projectId).first<{ body: string; published_at: string }>();
+}
+
 async function generatedReportText(db: D1Database, wardId: string, projectId: string): Promise<string> {
   const row = await latestReport(db, wardId, projectId, "public");
   return row ? documentText(row.body) : "";
@@ -225,7 +234,8 @@ admin.get("/close/:projectId", async (c) => {
   const previousActivity = parseActivityBody(previous?.published_body);
   const activity = savedActivity ?? { introduction: report("public"), membershipBurden: previousActivity?.membershipBurden ?? "", membershipBenefit: previousActivity?.membershipBenefit ?? "", tasks: tasks.results.filter((task) => task.progress === "done").map((task) => ({ taskId: task.task_id, name: task.name, period: task.period })) };
   const recordedActivity = activityView ? await activityFacts(c.env.DB, ward.wardId, id, activity.tasks) : null;
-  const warnings = !project.closedAt && !activityView && !internalReport ? await checkPublicDraft(c.env.DB, ward.wardId, id, "report", { text: report("public"), items: [] }) : [];
+  const sent = !internalReport && !activityView ? await sentReport(c.env.DB, ward.wardId, id) : null;
+  const reportHref = adminPath(ward, `/projects/${id}/draft/report?edit=1`);
   const title = activityView ? `${project.title}と自治会の説明` : `${project.title}を${project.closedAt ? "終わりにしました" : "終わりにする"}`;
   return c.html(<AdminPage ward={ward} account={c.var.account} title={title}
     back={activityView ? { href: adminPath(ward, "/close/activity"), label: "自治会の説明へ" } : !project.closedAt ? { href: adminPath(ward, `/projects/${id}/map`), label: `← ${project.title}のやることへ` } : undefined}>
@@ -250,24 +260,28 @@ admin.get("/close/:projectId", async (c) => {
       </form>
       {activityPage?.published_at ? <form method="post" action={`${root}/activity`}><p>下げても下書きは残り、もう一度載せられます。</p><button class="secondary" name="action" value="unpublish">住民向けのページから取り下げる</button></form> : null}
     </> : project.closedAt ? <>
-      <div class="notice done"><strong>{minutes ? "会議を終わりにして、議事録を役員の記録に残しました" : internalReport ? `${pack.title}を役員の記録に残しました` : `${project.title}を終わりにしました`}</strong><p>{!internalReport ? report("public").trim() ? "報告を住民向けのページに載せました。" : "住民への報告は書かれていません。" : ""}実行委員と班長のページと、返事の受付は終わりました。</p></div>
+      <div class="notice done"><strong>{minutes ? "会議を終わりにして、議事録を役員の記録に残しました" : internalReport ? `${pack.title}を役員の記録に残しました` : `${project.title}を終わりにしました`}</strong><p>{!internalReport ? sent ? `住民への報告は${formatJstDate(sent.published_at)}に送りました。` : "住民への報告は送っていません。送るときは、終わりを取り消してから送れます。" : ""}実行委員と班長のページと、返事の受付は終わりました。</p></div>
       <section class="next"><strong>次は</strong><p>{internalReport ? `残した${pack.title}を読めます。` : "自治会に加入していない人や、これから役員になるかもしれない人に、どんな仕事だったかを伝えられます。急ぎません。"}</p><a class="button" href={internalReport ? `${adminPath(ward, `/archive/${id}`)}#report` : `${root}?view=activity`}>{internalReport ? `${pack.title}を読む` : "紹介の下書きを直す"}</a></section>
       {!internalReport ? <div class="action-links"><a class="button secondary" href={adminPath(ward, `/archive/${id}`)}>終わったものを見る</a></div> : null}
       <h2>間違えたときは</h2><p>終わりを取り消すと、{internalReport ? pack.title : "報告"}とやることを直せます。返事の受付と、実行委員と班長のページも元に戻ります。</p>
       <form method="post" action={`${root}/reopen`}><div class="action-links"><button class="secondary">終わりを取り消す</button></div></form>
     </> : <>
       {notYet ? <div class="notice warn"><strong>{project.title}は、まだ終わっていません</strong><p>{closeDay ? `当日は${formatJstDate(closeDay)}で、まだ来ていません。` : "まだ当日が決まっていません。"}終わりにするのは、当日が済んで、住民に報告を載せるときです。中止したときは、このまま終わりにできます。</p><a class="button" href={adminPath(ward, `/projects/${id}/map`)}>{project.title}のやることへ戻る</a></div> : null}
-      <p class="lead">{internalReport ? pack.title : "報告"}と、来年への一言を残します。終わりにしたあとも取り消せます。</p>
+      <p class="lead">{internalReport ? `${pack.title}と、来年への一言を残します。` : "来年への一言を残して、終わりにします。住民への報告は、終わりにする前に送ってください。"}終わりにしたあとも取り消せます。</p>
       {internalReport ? <p><a class="button secondary" href={adminPath(ward, `/projects/${id}/draft/notice`)}>住民への連絡を作る</a></p> : null}
       {helpOffers ? <div class="notice warn"><strong>終わりにすると消えるものがあります</strong><p>手伝いだけの申し込み（{helpOffers}人）の名前と時間帯は消えます。終わりを取り消しても戻りません。</p></div> : null}
-      {jobStatus.map((job) => <p>{job.task === "report" ? pack.title : "やること"}: {job.status === "done" ? (job.task === "report" && !report(internalReport ? "staff" : "public") ? "下書きを書けませんでした。下の欄に直接書けます" : "できました") : job.status === "failed" ? "止まりました。下の欄に直接書けます" : "準備中"}</p>)}
+      {jobStatus.map((job) => <p>{job.task === "report" ? `${pack.title}の下書き` : "やること"}: {job.status === "done" ? (job.task === "report" && !report(internalReport ? "staff" : "public") ? `下書きを書けませんでした。${internalReport ? "下の欄" : "報告の下書き"}に直接書けます` : "できました") : job.status === "failed" ? `止まりました。${internalReport ? "下の欄" : "報告の下書き"}に直接書けます` : "準備中"}</p>)}
       {autoStarted || redrafted || drafting ? <p class="muted">{autoStarted ? `集まった資料と返事から、${internalReport ? pack.title : "報告"}の下書きを作り始めました。` : redrafted ? `答えた質問を入れて、${internalReport ? pack.title : "報告"}と来年への一言の下書きを作り直し始めました。` : ""}作っています。画面を閉じても続きます。少しあとに、もう一度開いてください。</p> : null}
-      {!autoStarted && !report(internalReport ? "staff" : "public") && !status.results.some((job) => job.task === "report" && job.status !== "failed") ? <form method="post" action={`${root}/prepare`}><button class="secondary">{internalReport ? pack.title : "報告"}の下書きをAIに頼む</button><p class="muted">集まった資料と出欠の返事から、下の欄に入る下書きを作ります。AIが止まっていても、下の欄に直接書けます。</p></form> : null}
+      {!autoStarted && !report(internalReport ? "staff" : "public") && !status.results.some((job) => job.task === "report" && job.status !== "failed") ? <form method="post" action={`${root}/prepare`}><button class="secondary">{internalReport ? pack.title : "報告"}の下書きをAIに頼む</button><p class="muted">集まった資料と出欠の返事から、{internalReport ? "下の欄に入る" : "報告の"}下書きを作ります。AIが止まっていても、{internalReport ? "下の欄" : "報告の下書き"}に直接書けます。</p></form> : null}
+      {/* 住民への報告は、ほかの連絡と同じ下書きと送り方で送る（L-319）。この画面に報告の欄は置かない。 */}
+      {!internalReport ? <section class="panel"><b>住民への報告</b>
+        <p>{sent ? `${formatJstDate(sent.published_at)}に住民に送りました。` : report("public").trim() ? "報告の下書きがあります。まだ住民に送っていません。" : "報告はまだありません。"}</p>
+        <a class={sent || notYet ? "button secondary" : "button"} href={reportHref}>{sent ? "報告を直して送り直す" : "報告を見て送る"}</a>
+        <p class="muted">押すと、報告の下書きが開きます。ほかの連絡と同じく、送る前に住民向けのページ、自治会のLINE、紙を確かめてから送ります。終わりにしたあとは、終わりを取り消すまで送れません。</p>
+      </section> : null}
       <form method="post" action={`${root}/finalize`}>
-        {internalReport ? <input type="hidden" name="body" value="" /> : <div class="field"><label for="report-public">住民への報告</label><p class="help-text">{report("public") ? "保存した報告です。直してかまいません。" : "ここに直接書けます。"}終わりにすると住民向けのページに載ります。</p><textarea id="report-public" name="body" rows={7} maxlength={12000}>{report("public")}</textarea>
-        </div>}
-        {warnings.length ? <div class="notice warn"><strong>報告の中に見つかったもの</strong><ul>{warnings.map((warning) => <li>{warning}</li>)}</ul><p>書き直せます。このまま終わりにすることもできます。</p></div> : null}
-        <div class="field"><label for="report-staff">{internalReport ? `${pack.title}（役員だけ）` : "役員だけのメモ（書かなくてかまいません）"}</label><p class="help-text">住民向けのページには載りません。{minutes ? "下書きを直して終わりにすると、次の会議で読めます。" : internalReport ? "終わりにしても、提出したことにはなりません。" : ""}</p><textarea id="report-staff" name="body" rows={internalReport ? 8 : 4} maxlength={12000}>{report("staff")}</textarea></div>
+        {internalReport ? <><input type="hidden" name="body" value="" />
+        <div class="field"><label for="report-staff">{pack.title}（役員だけ）</label><p class="help-text">住民向けのページには載りません。{minutes ? "下書きを直して終わりにすると、次の会議で読めます。" : "終わりにしても、提出したことにはなりません。"}</p><textarea id="report-staff" name="body" rows={8} maxlength={12000}>{report("staff")}</textarea></div></> : null}
         {decisions ? <div class="field"><label for="meeting-decisions">決めたこと</label><p class="help-text">{decisions.proposal ? "AIが資料から拾った下書きを含みます。" : ""}1行に一つずつ書けます。違うところは直すか消してください。終わりにすると、ここに書いたことが次の役員会と総会の資料に残ります。</p>
           <textarea id="meeting-decisions" name="decisions" rows={5} maxlength={12000}>{decisions.text}</textarea>
         </div> : null}
@@ -280,10 +294,10 @@ admin.get("/close/:projectId", async (c) => {
           <label for={`requested-${task.task_id}`}>頼んだ人</label><input id={`requested-${task.task_id}`} name="requestedBy" value={task.requested_by} maxlength={160} />
           <label for={`difficulty-${task.task_id}`}>困ったこと</label><textarea id={`difficulty-${task.task_id}`} name="difficulty" rows={2} maxlength={1200}>{task.difficulty}</textarea>
           <label for={`next-${task.task_id}`}>来年変えること</label><textarea id={`next-${task.task_id}`} name="nextYear" rows={2} maxlength={1200}>{task.next_year}</textarea>
-        </div></details>) : <p>残っている仕事はありません。報告だけでも終わりにできます。</p>}
-        <h2>終わりにすると、こうなります</h2><ul><li>{internalReport ? `${pack.title}が役員の記録に残ります` : "報告が住民向けのページに載ります"}</li><li>実行委員と班長のページを開けないようにします</li><li>返事の受付が終わります</li></ul>
+        </div></details>) : <p>残っている仕事はありません。このまま終わりにできます。</p>}
+        <h2>終わりにすると、こうなります</h2><ul><li>{internalReport ? `${pack.title}が役員の記録に残ります` : "来年への一言が、来年のやることに出ます"}</li>{!internalReport && !sent ? <li>住民への報告は送らずに終わります</li> : null}<li>実行委員と班長のページを開けないようにします</li><li>返事の受付が終わります</li></ul>
         {/* 質問の案内は、下に貼り付く「終わりにする」のすぐ上に置く。押す前に必ず目に入り、入力欄は一画面目から始まる。 */}
-        <div class="action-bar">{openQuestions ? <p>AIから役員への質問が{openQuestions < 10 ? `${openQuestions}つ` : `${openQuestions}件`}あります。答えてこの画面に戻ると、答えを入れて{internalReport ? pack.title : "報告"}と来年への一言の下書きを作り直します。終わりにしたあとは、取り消すまで答えられません。<a href={adminPath(ward, `/projects/${id}/questions`)}>質問に答える</a></p> : null}<button class={notYet ? "secondary" : undefined}>終わりにする</button></div>
+        <div class="action-bar">{openQuestions ? <p>AIから役員への質問が{openQuestions < 10 ? `${openQuestions}つ` : `${openQuestions}件`}あります。答えてこの画面に戻ると、答えを入れて{internalReport ? pack.title : "報告"}と来年への一言の下書きを作り直します。終わりにしたあとは、取り消すまで答えられません。<a href={adminPath(ward, `/projects/${id}/questions`)}>質問に答える</a></p> : null}<button class={notYet || (!internalReport && !sent) ? "secondary" : undefined}>終わりにする</button></div>
       </form>
     </>}
   </AdminPage>);
@@ -437,7 +451,9 @@ admin.post("/close/:projectId/finalize", async (c) => {
   const saved = await c.env.DB.prepare("SELECT scope, body FROM project_close_reports WHERE ward_id = ? AND project_id = ?")
     .bind(ward.wardId, id).all<{ scope: string; body: string }>();
   const internalDocument = internalReport ? await latestReport(c.env.DB, ward.wardId, id, "staff") : null;
-  const publicText = internalReport ? "" : submitted.length ? String(submitted[0]).trim().slice(0, 12000) : saved.results.find((row) => row.scope === "public")?.body || shown;
+  // 住民への報告は、ほかの連絡と同じ送り方で送る（L-319）。終わりにする処理では配らず、送った報告の文を記録に残すだけ。
+  const sentBefore = internalReport ? null : await sentReport(c.env.DB, ward.wardId, id);
+  const publicText = internalReport ? "" : sentBefore ? documentText(sentBefore.body) : "";
   const staffText = submitted.length > 1 ? String(submitted[1]).trim().slice(0, 12000) : saved.results.find((row) => row.scope === "staff")?.body || (internalDocument ? documentText(internalDocument.body) : "");
   const statements: D1PreparedStatement[] = [];
   if (internalReport) {
@@ -464,35 +480,6 @@ admin.post("/close/:projectId/finalize", async (c) => {
       WHERE ward_id = ? AND project_id = ? AND task_id = ? AND EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL)`)
       .bind(fields("requestedBy", index, 160), fields("difficulty", index, 1200), fields("nextYear", index, 1200), now, account.accountId, ward.wardId, id, String(taskId), ward.wardId, id));
   });
-  if (publicText.trim()) {
-    let report = await latestReport(c.env.DB, ward.wardId, id, "public");
-    const publicationBody = reportBody(report?.body, publicText);
-    // 配った報告は、本文が同じなら作り直さない。
-    if (report?.body !== publicationBody) {
-      const written = await saveDocument(c.env.DB, ward.wardId, id, account.accountId, {
-        kind: "report", title: report?.title ?? (!features.meeting && !features.submit ? "実施報告" : pack.title), scope: "public", body: publicationBody, basedOn: project.stateVersion,
-      });
-      if (!written) return adminResult(c, "報告を保存できませんでした。もう一度お願いします。", 409, { href: adminPath(c.var.ward, `/close/${encodeURIComponent(c.req.param("projectId"))}`), label: "報告と終わりにする画面に戻る" }, "報告と内容を確かめて、もう一度操作してください。");
-      report = await latestReport(c.env.DB, ward.wardId, id, "public");
-    }
-    if (!report) return adminResult(c, "報告を保存できませんでした。もう一度お願いします。", 409, { href: adminPath(c.var.ward, `/close/${encodeURIComponent(c.req.param("projectId"))}`), label: "報告と終わりにする画面に戻る" }, "報告と内容を確かめて、もう一度操作してください。");
-    const alreadyPublished = await c.env.DB.prepare(`SELECT 1 AS found FROM publication_records WHERE ward_id = ? AND project_id = ? AND version_id = ?`)
-      .bind(ward.wardId, id, report.version_id).first();
-    const publicationId = newId();
-    if (!alreadyPublished) statements.push(
-      c.env.DB.prepare(`UPDATE document_versions SET body = ?, published_at = ?, published_by_account_id = ?
-        WHERE ward_id = ? AND project_id = ? AND version_id = ? AND published_at IS NULL
-          AND EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL)`)
-        .bind(publicationBody, now, account.accountId, ward.wardId, id, report.version_id, ward.wardId, id),
-      c.env.DB.prepare(`INSERT INTO publication_records
-        (ward_id, publication_id, project_id, document_id, version_id, version_no, line_status, published_at, published_by_account_id)
-        SELECT ?, ?, ?, ?, ?, ?, 'not_sent', ?, ?
-        WHERE EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL)
-          AND NOT EXISTS (SELECT 1 FROM publication_records WHERE ward_id = ? AND project_id = ? AND version_id = ?)`)
-        .bind(ward.wardId, publicationId, id, report.document_id, report.version_id, report.version_no, now, account.accountId,
-          ward.wardId, id, ward.wardId, id, report.version_id),
-    );
-  }
   await c.env.DB.batch([
     ...statements,
     // 前に閉じた時の人数を保ち、名前を消す前に新しい申し込みの人数を足す。

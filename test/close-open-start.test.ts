@@ -47,11 +47,12 @@ it("下書きを作ったあとに質問に答えて終わりにする画面に�
   expect(await count()).toBe((before ?? 0) + 2);
 });
 
-it("終わりにする画面の来年への一言は、仕事ごとに時期と済んだかを書き、役員だけの欄は「メモ」と呼ぶ", async () => {
+it("終わりにする画面の来年への一言は、仕事ごとに時期と済んだかを書き、住民への報告は欄を置かずに送る道へ渡す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭", year: 2026, accountId: account.accountId, eventDay: "2026-01-10" });
   const page = await (await get(realApp, `/${ward.slug}/admin/close/${project.projectId}`, cookie)).text();
   expect(page).toMatch(/<summary>案内を住民に知らせる（.*、これから）<\/summary>/);
-  expect(page).toContain("役員だけのメモ（書かなくてかまいません）");
-  expect(page).not.toContain("役員だけの記録");
+  expect(page).not.toContain("役員だけのメモ");
+  expect(page).not.toContain('id="report-public"');
+  expect(page).toContain(`href="/${ward.slug}/admin/projects/${project.projectId}/draft/report?edit=1">報告を見て送る</a>`);
 });

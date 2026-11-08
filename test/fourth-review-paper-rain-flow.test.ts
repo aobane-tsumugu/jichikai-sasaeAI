@@ -13,6 +13,7 @@ import { getEditableDocument, saveDocument } from "../src/project/actions";
 import { createProject, getProjectState, type DocumentKind } from "../src/project/api";
 import type { DocumentBody } from "../src/project/document-body";
 import { get, postForm, realApp } from "./helpers";
+import { sendLatest } from "./helpers";
 
 it("過ぎた締切を知らせて配り、雨の変更後に答えと手伝いを受け、紙の空欄を同じ数に入れる", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -87,8 +88,13 @@ it("過ぎた締切を知らせて配り、雨の変更後に答えと手伝い�
     const rain = await postForm(realApp, `${root}/projects/${id}/draft/rain-notice`, {
       templateId: "rain", eventName: project.title, place: fixture.layoutSpot, dateTime: fixture.eventDay, lineDelivery: "skip",
     }, cookie);
+    // 雨の変更も、ほかの連絡と同じ送る前の確かめの画面を通してから送る（L-319）。
     expect(rain.status).toBe(303);
-    expect(await read(rain.headers.get("location")!)).toContain("住民向けのページに載せました");
+    expect(rain.headers.get("location")).toContain(`/publish/${id}/confirm?`);
+    expect(await read(rain.headers.get("location")!)).toContain("次の内容で");
+    const rainSent = await sendLatest(ward.slug, ward.wardId, id, "notice", cookie);
+    expect(rainSent.status).toBe(303);
+    expect(await read(rainSent.headers.get("location")!)).toContain("住民向けのページに載せました");
     const notice = await getEditableDocument(env.DB, ward.wardId, id, "notice");
     expect(notice).not.toBeNull();
     const rainBody = JSON.parse(notice!.body) as DocumentBody;

@@ -11,7 +11,7 @@ import { readDraftMaterials } from "../src/draft/materials";
 import { applyChange, createProject, getProjectState, addQuestion } from "../src/project/api";
 import { saveAIDraft, saveDocument } from "../src/project/actions";
 import { getDraftPack } from "../src/draft/packs";
-import { get, postForm, realApp } from "./helpers";
+import { get, postForm, realApp, sendLatest } from "./helpers";
 
 it.each(["board_meeting", "general_meeting"] as const)("%sで資料と同じ決定文を残して閉じても、人と議事録の出所を保存する", async (kind) => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
@@ -155,7 +155,11 @@ it("役員会を2回閉じ、前回の決定と未決、年の決定と運営メ
   expect((await applyChange(env.DB, ward.wardId, event.projectId, { kind: "row", table: "ledger",
     data: { direction: "income", counterpart: fixture.requestedBy, amount: fixture.sponsorAmount }, source: { kind: "ai_proposal", year: fixture.eventYear },
     confidence: "low", packVersion: "fictional-ledger@1", requestId: crypto.randomUUID() })).status).toBe("applied");
-  expect((await postForm(realApp, `${root}/close/${event.projectId}/finalize`, { body: fixture.reportText }, cookie)).status).toBe(303);
+  // 住民への報告は、終わりにする前にほかの連絡と同じ送り方で送る（L-319）。
+  expect(await saveDocument(env.DB, ward.wardId, event.projectId, account.accountId, { kind: "report", title: "実施報告", scope: "public",
+    basedOn: (await getProjectState(env.DB, ward.wardId, event.projectId))!.project.stateVersion, body: JSON.stringify({ text: fixture.reportText, items: [] }) })).toBe(true);
+  expect((await sendLatest(ward.slug, ward.wardId, event.projectId, "report", cookie)).status).toBe(303);
+  expect((await postForm(realApp, `${root}/close/${event.projectId}/finalize`, {}, cookie)).status).toBe(303);
   const other = await seedAdmin(env.DB);
   const otherBoard = await createProject(env.DB, other.ward.wardId, { kind: "board_meeting", title: fixture.dutyTitle, year: fixture.eventYear, accountId: other.account.accountId });
   await applyChange(env.DB, other.ward.wardId, otherBoard.projectId, { kind: "row", table: "decisions", data: { what: fixture.dutyText },

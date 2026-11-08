@@ -4,6 +4,7 @@ import { seedAdmin } from "../src/core/testing";
 import { createProject } from "../src/project/api";
 import { saveDocument } from "../src/project/actions";
 import { get, postForm, realApp } from "./helpers";
+import { sendLatest } from "./helpers";
 
 // 試しの区で、同じ案内を二度配った後の区のページを確かめる。
 async function publishTwice() {
@@ -53,14 +54,16 @@ describe("住民向けのページ", () => {
 });
 
 describe("報告と閉じる", () => {
-  it("報告を別に保存しなくても、閉じたときに欄に出ていた報告が記録に残る", async () => {
+  it("終わりにする画面は報告を配らず、送った報告の文だけを記録に残す（L-319）", async () => {
     const { ward, account, cookie } = await seedAdmin(env.DB);
     const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭", year: 2026, accountId: account.accountId });
     const closePage = `/${ward.slug}/admin/close/${project.projectId}`;
     await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
       kind: "report", title: "実施報告", scope: "public", body: JSON.stringify({ text: "試しの報告の下書き", items: [] }), basedOn: 0,
     });
-    expect(await (await get(realApp, closePage, cookie)).text()).toContain("試しの報告の下書き");
+    // 送っていない下書きは、終わりにしても配らず、記録にも残さない。送る道を示す。
+    expect(await (await get(realApp, closePage, cookie)).text()).toContain("報告の下書きがあります。まだ住民に送っていません。");
+    expect((await sendLatest(ward.slug, ward.wardId, project.projectId, "report", cookie)).status).toBe(303);
     expect((await postForm(realApp, `${closePage}/finalize`, {}, cookie)).status).toBe(303);
     const saved = await env.DB.prepare("SELECT body FROM project_close_reports WHERE ward_id = ? AND project_id = ? AND scope = 'public'")
       .bind(ward.wardId, project.projectId).first<{ body: string }>();

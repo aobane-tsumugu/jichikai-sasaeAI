@@ -39,12 +39,10 @@ export async function rainDraft(c: Context<AdminEnv>, error?: string) {
       <script type="application/json" id="rain-templates" dangerouslySetInnerHTML={{ __html: JSON.stringify(templates).replace(/</g, "\\u003c") }} />
       <script dangerouslySetInnerHTML={{ __html: `(() => { const form = document.getElementById('rain-form'); const templates = JSON.parse(document.getElementById('rain-templates').textContent); const update = () => { const data = new FormData(form); const template = templates.find(item => item.id === data.get('templateId')); if (!template) return; const values = { '行事名': data.get('eventName'), '会場': data.get('place'), '日時': data.get('dateTime') }; document.getElementById('rain-preview').textContent = template.body.replace(/\\{([^{}]+)\\}/g, (whole, key) => values[key.trim()] ?? whole); }; form.addEventListener('input', update); form.addEventListener('change', update); })();` }} />
       <FlyerPanel c={c} projectId={id} state={await flyerPanelState(c.env, ward.wardId, id, "notice")} />
-      <fieldset><legend>自治会のLINE</legend><label><input type="radio" name="lineDelivery" value="send" checked />LINEで友だちに知らせる</label><label><input type="radio" name="lineDelivery" value="skip" />今回は知らせない</label></fieldset>
-      <p>「LINEで友だちに知らせる」を選ぶと、自治会のLINEの友だち全員へ送ります。LINEで送った知らせは取り消せません。</p>
-      <div class="action-bar"><button>住民に知らせる</button></div>
+      <p>「送る」を押すと、保存して、送る前に確かめる画面が開きます。住民向けのページと自治会のLINEを、ほかの連絡と同じ画面で見てから送ります。まだ送りません。</p>
+      <div class="action-bar"><button>送る</button></div>
     </form> : state.project.closedAt ? <p>{state.project.title}は終わりにしました。</p>
       : <section class="next"><p>{state.project.title}の案内は、まだ住民に知らせていません。雨の変更は、案内を知らせたあとに、ここからすぐ知らせられます。先に案内を知らせてください。</p><a class="button" href={adminPath(ward, `/projects/${id}/draft/announcement`)}>{state.project.title}の案内の下書きを開く</a><p>雨のほかに急いで知らせることがあるときは、<a href={adminPath(ward, `/projects/${id}/draft/notice?edit=1`)}>連絡の下書きを書く</a>から書けます。</p></section>}
-    {canSend && template ? <p class="muted">住民向けのページに載せ、LINEで送り、紙を印刷できるようにします。LINEは、上で選んだとおりに送ります。</p> : null}
     {!template ? <p class="link-line"><a href={adminPath(ward, `/projects/${id}/draft/notice?edit=1`)}>連絡の下書きを書く</a></p> : null}
     {error && template ? <p class="link-line"><a href={adminPath(ward, `/projects/${id}/draft/notice?edit=1`)}>連絡の下書きに戻る</a></p> : null}
   </Layout>);
