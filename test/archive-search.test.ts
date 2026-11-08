@@ -43,14 +43,14 @@ it("記録に聞く抜粋は英字の大小によらず答えの箇所を含み�
   }
 });
 
-it("試しの記録を二文字で探すと、一致した箇所を周りの文とともに読める", async () => {
+it("二文字の英字は大小によらず同じ記録に一致し、元の表記で周りの文を読める", async () => {
   const local = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
-  const padding = "試しの行事の準備の経過を記録しました。\n".repeat(80);
+  const padding = "行事の準備の経過を記録しました。\n".repeat(80);
   const records = [
-    { owner: local, title: "試しの長い会計の記録", content: padding + "会費は1,200円でした。" + padding },
-    { owner: local, title: "試しの冒頭に会費がある記録", content: "会費は700円でした。" + padding },
-    { owner: other, title: "試しの別の自治会の会計", content: padding + "会費は99,000円でした。" },
+    { owner: local, title: "長い会計の記録", content: padding + "会費は1,200円でした。QRの付いた紙で返します。" + padding },
+    { owner: local, title: "冒頭に会費がある記録", content: "会費は700円でした。qrの付いた紙で返します。" + padding },
+    { owner: other, title: "別の自治会の会計", content: padding + "会費は99,000円でした。Qrの付いた紙で返します。" },
   ];
   for (const { owner, title, content } of records) {
     const project = await createProject(env.DB, owner.ward.wardId, {
@@ -58,14 +58,16 @@ it("試しの記録を二文字で探すと、一致した箇所を周りの文�
     });
     await env.DB.prepare(`INSERT INTO archive_search_entries
       (ward_id, project_id, record_type, year, counterpart, locator, content, created_at)
-      VALUES (?, ?, 'decision', 2026, '試しの会計係', '会費の記録', ?, '2026-11-06T00:00:00Z')`)
+      VALUES (?, ?, 'decision', 2026, '会計係', '会費の記録', ?, '2026-11-06T00:00:00Z')`)
       .bind(owner.ward.wardId, project.projectId, content).run();
   }
-  const results = await searchArchive(env.DB, local.ward.wardId, {
-    query: "会費", year: 2026, recordType: "decision", projectKind: "event", counterpart: "会計係",
-  });
-  expect(results).toHaveLength(2);
-  expect(results.find(result => result.title === records[0]!.title)?.excerpt).toContain("会費は1,200円でした。");
-  expect(results.find(result => result.title === records[1]!.title)?.excerpt).toMatch(/^会費は700円でした。/);
-  for (const result of results) expect(result.excerpt.length).toBeLessThanOrEqual(80);
+  for (const query of ["会費", "QR", "qr", "qR"]) {
+    const results = await searchArchive(env.DB, local.ward.wardId, {
+      query, year: 2026, recordType: "decision", projectKind: "event", counterpart: "会計係",
+    });
+    expect(results).toHaveLength(2);
+    expect(results.find(result => result.title === records[0]!.title)?.excerpt).toContain("会費は1,200円でした。QRの付いた紙で返します。");
+    expect(results.find(result => result.title === records[1]!.title)?.excerpt).toMatch(/^会費は700円でした。qrの付いた紙で返します。/);
+    for (const result of results) expect(result.excerpt.length).toBeLessThanOrEqual(80);
+  }
 });
