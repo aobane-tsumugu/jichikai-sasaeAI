@@ -178,7 +178,21 @@ const DAY_WORDS = /都合のよい日|都合の良い日|参加できる日|出�
  * この準備に届いた資料から、返事で聞く欄の候補を出す（L-317）。回答票に日や班の欄があった時と、案内に日を選べると書いてあった時。
  * 役員が押すまで足さない。AI に決めさせず、読み取りに書かれた欄と文だけを見る。今聞いている欄と、班の名前が無い自治会の班は出さない。
  */
+/** 役員が「足さない」と押した準備か。押した時と人は、役員の操作として残す（AI の判断としては残さない）。 */
+export async function suggestionsOff(db: D1Database, wardId: string, projectId: string): Promise<boolean> {
+  const row = await db.prepare("SELECT answer_suggestions_off_at FROM projects WHERE ward_id = ? AND project_id = ?").bind(wardId, projectId).first<{ answer_suggestions_off_at: string | null }>();
+  return Boolean(row?.answer_suggestions_off_at);
+}
+
+/** 候補を出さないようにする、または元に戻す。終わりにした準備は変えない。 */
+export async function setSuggestionsOff(db: D1Database, wardId: string, projectId: string, accountId: string, off: boolean): Promise<boolean> {
+  const result = await db.prepare("UPDATE projects SET answer_suggestions_off_at = ?, answer_suggestions_off_by = ? WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL")
+    .bind(off ? nowIso() : null, off ? accountId : null, wardId, projectId).run();
+  return (result.meta.changes ?? 0) === 1;
+}
+
 export async function fieldSuggestions(db: D1Database, wardId: string, projectId: string, current: { fields: readonly AnswerField[]; districtAsked: boolean }, squads: readonly string[]): Promise<FieldSuggestion[]> {
+  if (await suggestionsOff(db, wardId, projectId)) return [];
   const rows = (await db.prepare(`SELECT o.original_id, o.filename, r.body FROM jobs j
     JOIN originals o ON o.ward_id = j.ward_id AND o.job_id = j.job_id
     JOIN readings r ON r.ward_id = j.ward_id AND r.job_id = j.job_id
