@@ -95,8 +95,10 @@ export async function checkPublicDraft(db: D1Database, wardId: string, projectId
     const digits = normalizePhone(value);
     return digits.length >= 8 && publicPhones.includes(digits);
   };
-  const contacts = [...privateValues.filter((v) => /@|\d{8,}/.test(v)), ...(text.match(email) ?? []), ...(text.match(phone) ?? []).filter((v) => normalizePhone(v).length >= 10)];
-  for (const value of contacts) if (!isAllowed(value) && text.includes(value)) found.push({ kind: "個人の連絡先", value });
+  // 連絡先の欄は、住民に見せるために役員が入れる欄なので調べない。本文とほかの欄に出た番号やメールだけを知らせる（点検 A6-3）。
+  const contactText = [body.text ?? "", ...(body.items ?? []).filter((item) => item.key !== "public_contact").map((item) => item.content ?? "")].join("\n");
+  const contacts = [...privateValues.filter((v) => /@|\d{8,}/.test(v)), ...(contactText.match(email) ?? []), ...(contactText.match(phone) ?? []).filter((v) => normalizePhone(v).length >= 10)];
+  for (const value of contacts) if (!isAllowed(value) && contactText.includes(value)) found.push({ kind: "個人の連絡先", value });
   return [...new Map(found.map((f) => [`${f.kind}:${f.value}`, f])).values()].map((f) => `${f.kind}: ${f.value}`);
 }
 

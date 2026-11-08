@@ -17,7 +17,9 @@ it("資料のない一年目に案内を手で保存し、出欠の入口と当�
   const materials = await materialsResponse.text();
   expect(materials).toContain("の届いた資料と今年の内容");
   expect(materials).toContain("まだ資料は入っていません。");
-  expect(materials).toContain("質問はありません");
+  // 質問が無い時は質問の行を出さない（点検 A7）。まだ分からない項目は一文にまとめる
+  expect(materials).not.toContain("質問はありません");
+  expect(materials).toContain("まだ分からないこと: ");
   expect(materials).toContain("下書きの一覧を開く");
 
   const dutyDraft = await (await get(realApp, `${root}/projects/${id}/draft/duty_roster`, cookie)).text();

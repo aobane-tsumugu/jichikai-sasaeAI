@@ -33,9 +33,8 @@ it("閉じるときに残した三つの記録を種から開いたやること�
   expect(page.status).toBe(200);
   const html = await page.text();
   expect(html).toContain("去年の記録");
-  expect(html).toContain("<dt>頼んだ人</dt><dd>会場の担当者（架空）");
-  expect(html).toContain("<dt>困ったこと</dt><dd>鍵を受け取る時刻が合わなかった（架空）");
-  expect(html).toContain("<dt>来年は</dt><dd>一週間前に鍵の受け取りを頼む（架空）");
+  // 去年の記録は札の並びでなく文で出す
+  expect(html).toContain("去年は、会場の担当者（架空）に頼みました。困ったことは「鍵を受け取る時刻が合わなかった（架空）」、来年は「一週間前に鍵の受け取りを頼む（架空）」と残っています。");
   expect(html.match(/去年の記録/g)).toHaveLength(1);
 });
 

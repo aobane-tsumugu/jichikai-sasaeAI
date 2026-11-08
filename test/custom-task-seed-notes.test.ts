@@ -34,8 +34,7 @@ it("人がやることに足した仕事にも、これをもとに新しく始�
   expect(page.status).toBe(200);
   const html = await page.text();
   expect(html).toContain("架空の会場の鍵を受け取る");
-  expect(html).toContain("<dt>頼んだ人</dt><dd>架空の会場の担当者");
-  expect(html).toContain("<dt>困ったこと</dt><dd>架空の鍵の受け取り時刻が合わなかった");
-  expect(html).toContain("<dt>来年は</dt><dd>架空の鍵は一週間前に受け取りを頼む");
+  // 去年の記録は札の並びでなく文で出す
+  expect(html).toContain("去年は、架空の会場の担当者に頼みました。困ったことは「架空の鍵の受け取り時刻が合わなかった」、来年は「架空の鍵は一週間前に受け取りを頼む」と残っています。");
   expect(html.match(/去年の記録/g)).toHaveLength(1);
 });

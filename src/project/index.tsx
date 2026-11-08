@@ -195,6 +195,10 @@ admin.get("/projects/:projectId", async (c) => {
   const visibleItems = new Set(taskItemKeys(state.mapTasks));
   const unknown = unknownYearContents(state);
   const unknownOriginalIds = new Set([...unknown.items, ...unknown.rows].map((value) => value.source.ref));
+  // 今年の内容も参考も無い項目は、一行ずつ「まだ書かれていません」と並べず、一文にまとめる。
+  const shownItems = state.items.filter((item) => visibleItems.has(item.key) || item.current || item.references.length);
+  const knownItems = shownItems.filter((item) => item.current?.content.trim() || item.references.length);
+  const unknownLabels = shownItems.filter((item) => !(item.current?.content.trim() || item.references.length)).map((item) => ITEM_SCREEN_LABEL[item.key]);
   return c.html(<Layout title="今年の内容" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, `/projects/${projectId}/map`)}>← {project.title}のやることへ</a>
     <h1>{project.title}の届いた資料と今年の内容</h1><p class="lead">届いた資料と、そこから読み取った今年の内容が見られます。</p>
@@ -202,10 +206,8 @@ admin.get("/projects/:projectId", async (c) => {
       {state?.questions.length ? <a class="button" href={adminPath(ward, `/projects/${projectId}/questions`)}>AIからの質問に答える</a> : null}
       <a class={state?.questions.length ? "button secondary" : "button"} href={adminPath(ward, `/intake?project=${encodeURIComponent(projectId)}`)}>資料を送る</a>
     </nav>
-    <p class="muted">{project.title}　{project.year}年</p>
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     <details class="fold"><summary>名前を直す</summary><form method="post" action={adminPath(ward, `/projects/${projectId}/title`)}><label for="title">名前</label><input id="title" name="title" value={project.title} maxlength={100} required /> <button class="secondary">名前を保存する</button></form></details>
-    <ul class="rows"><li><a class="row-link" href={adminPath(ward, `/projects/${projectId}/questions`)}><b>質問{state.questions.length ? `が${countWord(state.questions.length)}あります` : "はありません"}</b><span>答えなくても知らせられます。</span></a></li></ul>
     <h2 id="materials">届いた資料</h2>
     {await Promise.all(jobs.map(async (job) => {
       const originals = await listOriginals(c.env.DB, ward.wardId, job.job_id);
@@ -226,13 +228,14 @@ admin.get("/projects/:projectId", async (c) => {
       </section>;
     }))}
     {jobs.length === 0 ? <p>まだ資料は入っていません。</p> : null}
-    <a class="quiet" href={adminPath(ward, `/projects/${projectId}/map`)}>やることで、変わった仕事を見る</a>
+    {changes.results.length ? <><a class="quiet" href={adminPath(ward, `/projects/${projectId}/map`)}>やることで、変わった仕事を見る</a>
     <h2>資料から変わったところ</h2>
     <ul class="rows">{changes.results.map((change) => <li class="panel"><b>{changeTargetLabel(change.kind, change.target, state)}</b><p>{change.status === "applied" ? change.reason === ROW_REMOVED ? "外しました" : change.kind === "map_task" ? "済みにしました" : "今年の内容に入れました" : change.status === "same" ? "同じでした" : change.status === "conflict" ? "食い違いとして並びました" : change.status === "kept" ? "今の内容を残しました" : change.status === "held" ? "確認待ちです" : change.status === "dropped" ? `取り込めませんでした${change.reason ? `: ${change.reason}` : ""}` : "記録しました"}{change.source_locator && change.source_kind === "original" ? `（${change.source_locator}）` : ""}</p></li>)}</ul>
-    {changes.results.length === 0 ? <p>まだ変わったところはありません。</p> : null}
+    </> : null}
     <h2>今年の内容</h2>
     <p class="lead">今年の内容がない項目には、去年までの資料を参考として並べます。</p>
-    <dl class="facts">{state.items.filter((item) => visibleItems.has(item.key) || item.current || item.references.length).map((item) => <><dt>{ITEM_SCREEN_LABEL[item.key]}</dt><dd>{item.current?.content ?? "まだ書かれていません"}{item.references.map((v) => <span class="muted block">参考（{v.refYear === null ? "年不明" : `${v.refYear}年`}）: {v.content}</span>)}</dd></>)}</dl>
+    <dl class="facts">{knownItems.map((item) => <><dt>{ITEM_SCREEN_LABEL[item.key]}</dt><dd>{item.current?.content ?? "まだ書かれていません"}{item.references.map((v) => <span class="muted block">参考（{v.refYear === null ? "年不明" : `${v.refYear}年`}）: {v.content}</span>)}</dd></>)}</dl>
+    {unknownLabels.length ? <p>まだ分からないこと: {unknownLabels.join("、")}。資料を送ると読み取ります。下書きの欄に直接書くこともできます。</p> : null}
     {features.committee ? <><h2>実行委員名簿</h2><ul class="links"><li><a href={adminPath(ward, `/projects/${projectId}/committee`)}>実行委員名簿を見て直す</a></li></ul></> : null}
     <h2 id="ledger">運営メモ</h2>
     <p>何に、どこに、いくらかけたか、来年のためのメモです。領収書や見積りの写真からも入ります。</p>

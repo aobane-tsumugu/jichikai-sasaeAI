@@ -82,8 +82,11 @@ admin.get("/projects/:projectId/map", async (c) => {
             const current = task.progress !== "done" && !!(task.periodStart || task.periodEnd) && (!task.periodStart || task.periodStart <= today) && (!task.periodEnd || task.periodEnd >= today);
             const just = task.taskId === c.req.query("changed") && task.progress === "done";
             const owner = seats.results.find((seat) => seat.seat_id === task.seatId)?.title;
+            // 時期を過ぎて済んでいない仕事に印を付ける。当日が無い時は、上の「まず、日を決めます」で一度だけ書き、行ごとに「時期はまだ決まっていません」を並べない。
+            const overdue = task.progress !== "done" && !!task.periodEnd && task.periodEnd < today;
+            const periodText = task.progress === "done" ? "済み" : task.periodStart || task.periodEnd ? `${taskPeriodText(task)}${overdue ? "（過ぎています）" : ""}` : day ? taskPeriodText(task) : "";
             return <li><a class={`map-row${task.progress === "done" ? " done" : current ? " now" : ""}${just ? " just" : ""}`} href={adminPath(ward, taskUrl(task))}>
-              <span class="map-name"><b>{task.name}</b><small>{task.progress === "done" ? "済み" : taskPeriodText(task)}{owner ? `　${owner}` : ""}</small>{just ? <small class="map-just">いま済みにしました</small> : null}</span>
+              <span class="map-name"><b>{task.name}</b><small>{periodText}{owner ? `${periodText ? "　" : ""}${owner}` : ""}</small>{just ? <small class="map-just">いま済みにしました</small> : null}</span>
               <span class="map-track">{task.periodStart || task.periodEnd ? <i style={`--from:${calendar.position(task.periodStart ?? task.periodEnd ?? calendar.first) * 100}%;--to:${calendar.position(task.periodEnd ?? task.periodStart ?? calendar.last) * 100}%`} /> : null}</span>
             </a></li>;
           })}</ol>
@@ -146,15 +149,17 @@ async function taskPage(c: Context<AdminEnv>, retry?: { values: Record<string, s
   const labels: Record<MapOpens, string> = { materials: "写真やファイルを送る", draft: `${documentTitle(family, draftKind)}の下書きを直す`, answers: "出欠の返事を見る", ledger: task.taskKey === "venue" ? "会場のことを運営メモに残す" : "運営メモを見る", committee: "実行委員名簿を入れる", sponsors: "協賛先の一覧を印刷する" };
   return c.html(<Layout title={task.name} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {project.title}のやることへ</a>
-    <h1>{task.name}</h1><p class="lead">{task.periodStart && task.periodEnd && task.periodStart !== task.periodEnd ? `${formatJstDate(task.periodStart)}から${formatJstDate(task.periodEnd)}まで。` : task.periodEnd ? `${formatJstDate(task.periodEnd)}まで。` : task.periodStart ? `${formatJstDate(task.periodStart)}から。` : "時期はまだ決まっていません。"}{owner ? `担当は${owner}です。` : "担当はあとから直せます。"}</p>
+    <h1>{task.name}</h1><p class="lead">{task.periodStart && task.periodEnd && task.periodStart !== task.periodEnd ? `${formatJstDate(task.periodStart)}から${formatJstDate(task.periodEnd)}まで。` : task.periodEnd ? `${formatJstDate(task.periodEnd)}まで。` : task.periodStart ? `${formatJstDate(task.periodStart)}から。` : "時期はまだ決まっていません。"}{owner ? `担当は${owner}です。` : ""}</p>
+    {!task.periodStart && !task.periodEnd && !project.deadlines.event_day && !project.closedAt ? <p>時期は、{project.title}の当日を入れると決まります。<a href={adminPath(ward, `/projects/${id}/map`)}>{project.title}の当日を入れる</a></p> : null}
     {retry ? <Notice error>{retry.message} 入れた内容は残っています。</Notice> : <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />}
-    {!retry && c.req.query("notice") === "saved" ? <section class="next"><strong>直した内容を保存しました</strong><p>やることに入りました。時期や担当はあとから直せます。</p><a class="button" href={adminPath(ward, `/projects/${id}/map`)}>やることへ</a></section> : null}
+    {!retry && c.req.query("notice") === "saved" ? <section class="next"><strong>「{task.name}」を保存しました</strong><p>{task.periodStart || task.periodEnd ? `時期は${task.periodStart && task.periodEnd && task.periodStart !== task.periodEnd ? `${formatJstDate(task.periodStart)}から${formatJstDate(task.periodEnd)}まで` : formatJstDate((task.periodEnd ?? task.periodStart)!)}です。` : "時期はまだ決まっていません。"}{owner ? `担当は${owner}です。` : "担当はまだ決まっていません。"}{task.progress === "done" ? "この仕事は済みにしました。" : ""}</p><a class="button" href={adminPath(ward, `/projects/${id}/map`)}>やることへ</a></section> : null}
     {guide ? <p>{guide}</p> : null}
-    {history.results.filter((entry) => entry.task_key === task.taskKey && [entry.requested_by, entry.difficulty, entry.next_year].some((value) => value.trim())).map((entry) => <><h2>去年の記録</h2><dl class="facts">
-      {entry.requested_by ? <><dt>頼んだ人</dt><dd>{entry.requested_by}</dd></> : null}{entry.difficulty ? <><dt>困ったこと</dt><dd>{entry.difficulty}</dd></> : null}{entry.next_year ? <><dt>来年は</dt><dd>{entry.next_year}</dd></> : null}
-    </dl></>)}
+    {/* 去年の記録は、札の並びでなく文で書く。 */}
+    {history.results.filter((entry) => entry.task_key === task.taskKey && [entry.requested_by, entry.difficulty, entry.next_year].some((value) => value.trim())).map((entry) => <><h2>去年の記録</h2>
+      <p>{entry.requested_by.trim() ? `去年は、${entry.requested_by.trim()}に頼みました。` : ""}{entry.difficulty.trim() ? `困ったことは「${entry.difficulty.trim()}」` : ""}{entry.difficulty.trim() && entry.next_year.trim() ? "、" : entry.difficulty.trim() ? "と残っています。" : ""}{entry.next_year.trim() ? `来年は「${entry.next_year.trim()}」と残っています。` : ""}</p>
+    </>)}
     {draft && destinations[0] === "draft" ? <div class="notice" role="status"><strong>下書きができています</strong><p>{state.questions.length ? `AIからの質問が${countWord(state.questions.length)}残っていますが、このまま知らせられます。` : "直して保存しても、まだ知らせません。"}</p></div> : null}
-    <div class="action-links">{destinations.map((destination, index) => <a class={index ? "button secondary" : "button"} href={adminPath(ward, taskKey === "submit" && destination === "draft" ? `/requests/city/${id}` : targetPath[destination](id, taskKey, family))}>{taskKey === "submit" && destination === "draft" ? "提出したことを記録する" : labels[destination]}</a>)}{taskKey === "submit" ? <a class="button secondary" href={adminPath(ward, targetPath.draft(id, taskKey, family))}>{labels.draft}</a> : null}</div>
+    <div class="action-links">{destinations.map((destination, index) => <a class={index || task.progress === "done" ? "button secondary" : "button"} href={adminPath(ward, taskKey === "submit" && destination === "draft" ? `/requests/city/${id}` : targetPath[destination](id, taskKey, family))}>{taskKey === "submit" && destination === "draft" ? "提出したことを記録する" : labels[destination]}</a>)}{taskKey === "submit" ? <a class="button secondary" href={adminPath(ward, targetPath.draft(id, taskKey, family))}>{labels.draft}</a> : null}</div>
     {!project.closedAt ? task.progress === "done" ? <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}/reopen`)}><p>この仕事は済んでいます。</p><button class="secondary">済みを取り消す</button></form>
       : <form method="post" action={adminPath(ward, `/projects/${id}/map/${task.taskId}/done`)}><p class="muted">終わったら押してください。やることに戻り、次の仕事が出ます。あとで取り消せます。</p><button class="secondary">この仕事を済みにする</button></form> : null}
     <p class="link-line"><a href={adminPath(ward, `/projects/${id}#materials`)}>{project.title}の資料を見る</a></p>
