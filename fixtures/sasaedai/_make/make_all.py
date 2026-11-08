@@ -6,10 +6,12 @@
 import sys
 
 import check
+import make_judge
 import make_related
 import make_unrelated
 
 if __name__ == "__main__":
     make_related.main()
     make_unrelated.main()
+    make_judge.main()
     sys.exit(check.main())
