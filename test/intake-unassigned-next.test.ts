@@ -1,10 +1,16 @@
+import Anthropic from "@anthropic-ai/sdk";
 import { env } from "cloudflare:workers";
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { seedAdmin } from "../src/core/testing";
 import { SEND_SCRIPT } from "../src/intake/browser-script";
+import { setPipelineDeps } from "../src/intake/pipeline";
+import { getReadings, listOriginals } from "../src/intake/store";
+import { compound, wordStreams, workbookStream } from "./fixtures/legacy-office";
 import { get, realApp } from "./helpers";
 
-it("行事未定の資料をブラウザから送ると、受け取った画面へ進んでその資料が出る", async () => {
+afterEach(() => setPipelineDeps(null));
+
+it.each(["txt", "doc", "xls"])("行事未定の%sをブラウザから送ると、受け取った画面へ進んでその資料が出る", async (format) => {
   const { ward, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   let submit: ((event: { preventDefault(): void }) => Promise<void>) | undefined;
@@ -15,7 +21,10 @@ it("行事未定の資料をブラウザから送ると、受け取った画面�
   };
   const status = { textContent: "", className: "" };
   const button = { disabled: false };
-  const file = new File(["架空の市の通知です。"], "架空の通知.txt", { type: "text/plain" });
+  const bytes = format === "doc" ? compound(wordStreams("架空の市の通知です。\r"))
+    : format === "xls" ? compound({ Workbook: workbookStream() }) : new TextEncoder().encode("架空の市の通知です。");
+  const mediaType = format === "doc" ? "application/msword" : format === "xls" ? "application/vnd.ms-excel" : "text/plain";
+  const file = new File([bytes], `架空の通知.${format}`, { type: mediaType });
   const elements = new Map<string, unknown>([
     ["send-form", form], ["send-status", status], ["send-button", button], ["files", { files: [file] }],
   ]);
@@ -28,11 +37,22 @@ it("行事未定の資料をブラウザから送ると、受け取った画面�
     },
   };
   const location = { assign: vi.fn(), reload: vi.fn() };
+  const client = new Anthropic({ apiKey: "fixture-not-a-real-key", maxRetries: 0, fetch: async () => Response.json({
+    id: "fixture-suggestions", type: "message", role: "assistant", model: "claude-sonnet-5-5", stop_reason: "end_turn", stop_sequence: null,
+    content: [{ type: "text", text: JSON.stringify({ project_suggestions: [], ward_facts: [], year_entries: [] }) }],
+    usage: { input_tokens: 10, output_tokens: 10 },
+  }) });
+  setPipelineDeps({ createClient: () => client });
   const send = async (path: string, init: RequestInit) => {
     const headers = new Headers(init.headers);
     headers.set("origin", "http://localhost");
     headers.set("cookie", cookie);
-    return realApp.request(path, { ...init, headers }, env);
+    const pending: Promise<unknown>[] = [];
+    const response = await realApp.fetch(new Request(new URL(path, "http://localhost"), { ...init, headers }), env,
+      { waitUntil: (promise: Promise<unknown>) => { pending.push(promise); }, passThroughOnException: () => undefined, props: {} });
+    await Promise.all(pending);
+    expect(response.status).toBe(200);
+    return response;
   };
   new Function("window", "document", "fetch", "location", "setTimeout", SEND_SCRIPT)(
     {}, document, send, location, (callback: () => void) => { callback(); },
@@ -46,6 +66,15 @@ it("行事未定の資料をブラウザから送ると、受け取った画面�
   const inbox = await get(realApp, destination, cookie);
   expect(inbox.status).toBe(200);
   const inboxHtml = await inbox.text();
-  expect(inboxHtml).toContain("架空の通知.txt");
+  expect(inboxHtml).toContain(file.name);
   expect(inboxHtml).toContain(`href="${root}/"`);
+  const original = await env.DB.prepare("SELECT job_id FROM originals WHERE ward_id = ? AND filename = ?")
+    .bind(ward.wardId, file.name).first<{ job_id: string }>();
+  if (!original) throw new Error("ブラウザから送った資料がありません");
+  expect(await listOriginals(env.DB, ward.wardId, original.job_id)).toMatchObject([{ filename: file.name, media_type: mediaType }]);
+  const readings = await getReadings(env.DB, ward.wardId, original.job_id);
+  expect(readings).toHaveLength(1);
+  expect(readings[0]?.body).toMatchObject(format === "xls"
+    ? { tables: [{ name: "協賛先", rows: [{ cells: ["相手", "額"] }, { cells: ["商店A", "6000"] }, { cells: ["", "", "", "2026-10-24"] }] }], unreadable: [] }
+    : { text_blocks: [{ text: "架空の市の通知です。" }], unreadable: [] });
 });
