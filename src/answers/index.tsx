@@ -23,6 +23,7 @@ import { getSquads } from "../settings/store";
 import { addAnswerField, countFields, dayOptions, fieldSuggestions, fieldValueText, getAnswerFields, optionsFromText, readFieldValues, removeAnswerField, updateAnswerField, type AnswerField, type AnswerFieldKind } from "./fields";
 import { FieldInputs, SuggestionNotice, askedText } from "./field-parts";
 import { getProjectSummary } from "../project/api";
+import { projectTasks, taskFeatures } from "../project/task-features";
 import { lookupPrintQr } from "../print/qr";
 import { ArticleBody } from "../publish";
 import { addHelpOffer, getHelpOfferBySubmission, helpTimeChoices, listHelpOffers, listHelpOpportunities, type HelpOpportunity } from "./help";
@@ -514,7 +515,8 @@ admin.post("/answers/:projectId/fields", async (c) => {
   const kinds = (Array.isArray(form.kind) ? form.kind : [form.kind]).filter((kind): kind is AnswerFieldKind => kind === "days" || kind === "text" || kind === "district");
   if (!kinds.length) return c.notFound();
   const [squads, project] = await Promise.all([getSquads(c.env.DB, ward.wardId), getProjectSummary(c.env.DB, ward.wardId, projectId)]);
-  if (!project) return c.notFound();
+  // 総会の出席・委任・欠席の返事には、今回は足さない（L-317）。
+  if (!project || taskFeatures(await projectTasks(c.env.DB, ward.wardId, projectId)).delegation) return c.notFound();
   let first = "";
   for (const kind of kinds) {
     if (kind === "district" && !squads.length) continue;

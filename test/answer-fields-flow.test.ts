@@ -153,3 +153,11 @@ it("班の名前が無い自治会では、班を型として出さず、Webで�
   expect(paper).not.toContain("班（分からないときは空けてかまいません）");
   expect(await (await get(realApp, `/${ward.slug}/answer/${project.projectId}`)).text()).not.toContain("<legend>班</legend>");
 });
+
+it("総会の返事には欄を足さない", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const project = await createProject(env.DB, ward.wardId, { kind: "general_meeting", title: "総会", year: 2026, accountId: account.accountId });
+  expect((await postForm(realApp, `/${ward.slug}/admin/answers/${project.projectId}/fields`, { kind: "days" }, cookie)).status).toBe(404);
+  expect(await (await get(realApp, `/${ward.slug}/admin/answers/${project.projectId}?view=fields`, cookie)).text()).not.toContain("欄を足す");
+  expect((await getAnswerFields(env.DB, ward.wardId, project.projectId, [])).fields).toEqual([]);
+});
