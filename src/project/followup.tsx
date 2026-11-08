@@ -221,7 +221,7 @@ followupAdmin.get("/inquiries/:inquiryId", async (c) => {
       {record.kind === "request" ? <details class="fold"><summary>市に伝える要望ではなかったとき</summary><div><form method="post" action={path}><button class="secondary" name="operation" value="unwish">問い合わせに戻す</button></form></div></details> : <details class="fold"><summary>市に伝える要望だったとき</summary><div><form method="post" action={path}><p>道路や街灯のように、自治会から市に伝えることなら、ここを押します。一覧の「市に伝える要望」に移り、要望書を書いて市に出すまでを残せます。</p><button class="secondary" name="operation" value="wish">市に伝える要望にする</button></form></div></details>}
 
     {notes.length ? <details class="fold"><summary>これまでに残した返事</summary><div>{notes.map((n) => <article><p>{formatJstDate(n.created_at)}</p><p class="preserve-lines">{n.answer}</p></article>)}</div></details> : null}
-    <details class="fold"><summary>この問い合わせを消す</summary><div><p>間違えて残したときに、この記録と返事を消せます。消すと戻せません。</p><form method="post" action={`${path}/remove`}><button class="danger">この記録を消す</button></form></div></details>
+    <details class="fold"><summary>この問い合わせを消す</summary><div><p>間違えて残したときに、この記録と返事を消せます。消すと戻せません。</p><form method="post" action={`${path}/remove`} onsubmit="return confirm('この問い合わせと、残した返事を消します。元に戻せません。続けますか？')"><button class="danger">この記録を消す</button></form></div></details>
   </Layout>);
 });
 

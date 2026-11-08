@@ -16,7 +16,7 @@ export function DraftPaper({ title, projectTitle, projectKind, body, kind, back,
   const slots = paperHelperSlots(publishedItem(body, "helper_slots") || "");
   const answer = (squad: string) => <div class="answer-slip">
     <h2>{projectTitle} 回答票{generalMeeting ? "・委任状" : ""}{squad ? `　${squad}` : ""}</h2>
-    {generalMeeting ? <MeetingSlipFields note={meetingNote} squad={squad} /> : <><p>参加しないときも、答えてください。返事がないときは、欠席として数えます。</p>
+    {generalMeeting ? <MeetingSlipFields note={meetingNote} squad={squad} /> : <><p>参加しないときも、返事をもらえると、準備の数が正しく分かります。返事がないときは、欠席として数えます。</p>
     <FieldBox label="代表者のお名前" heightMm={19} />
     {!squad ? <FieldBox label="班（分からないときは空けてかまいません）" heightMm={10} /> : null}
     <div class="field-box"><p>□ 参加する　　□ 参加しない</p><strong>参加する人数</strong><div class="paper-counts">{labels.map((label) => <div class="paper-count"><div>{label}</div><span>人</span></div>)}</div><p>いない欄は、空けたままでかまいません。</p></div>
@@ -28,7 +28,7 @@ export function DraftPaper({ title, projectTitle, projectKind, body, kind, back,
   </div>;
   const onOneSheet = withAnswer && fitsAboveAnswer(body, generalMeeting
     ? meetingNote + due + "□出席□委任□欠席。委任する相手のお名前。代表者のお名前。委任を選んだときは、この回答票を委任状として受け付けます。委任する相手を書かなかったときは、空欄のまま受け付けます。"
-    : labels.join("") + slots + due + "下書きです。まだ知らせていません。参加しないときも、答えてください。返事がないときは、欠席として数えます。いない欄は、空けたままでかまいません");
+    : labels.join("") + slots + due + "下書きです。まだ知らせていません。参加しないときも、返事をもらえると、準備の数が正しく分かります。返事がないときは、欠席として数えます。いない欄は、空けたままでかまいません");
   const footer = (squad = "") => <><span>{wardName}{squad ? ` ${squad}` : ""}</span><strong>下書きです</strong></>;
   return <PrintDocument title={`下書き: ${paperHeading(projectTitle, title)}`} back={back}>
     {!answerOnly && withAnswer && !onOneSheet ? <Sheet footer={footer()}><p><strong>下書きです。まだ知らせていません。</strong></p><h1>{paperHeading(projectTitle, title)}</h1><PaperBody body={body} project={projectTitle} title={title} kind={kind} /></Sheet> : null}

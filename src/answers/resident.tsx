@@ -79,7 +79,7 @@ export function ResidentContact({ contact }: { contact: string }) {
 
 export function ReceptionClosed({ closed, due }: { closed: boolean; due: string | null }) {
   return <section class="notice"><h2>返事の受付は終わりました</h2>
-    <p>{closed ? "この行事は終わりました。" : due ? `${formatJstDate(due)}で締め切りました。` : "受付は終わりました。"}変えたいときは、下の連絡先へお知らせください。</p>
+    <p>{closed ? "この行事は終わりました。出欠の返事の受付も終わっています。" : `${due ? `${formatJstDate(due)}で締め切りました。` : "受付は終わりました。"}変えたいときは、下の連絡先へお知らせください。`}</p>
   </section>;
 }
 

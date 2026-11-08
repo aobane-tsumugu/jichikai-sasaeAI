@@ -73,8 +73,20 @@ function publicDocumentTitle(item: PublicProject): string {
   return item.display_title ?? item.document_title;
 }
 
+/**
+ * 住民に見せる連絡先。自治会の連絡先がまだ入っていない時は、今出ている案内に書いた連絡先で補う。
+ * 加入していない人や越してきたばかりの人は、班長も役員も知らないため（点検 C5、前提 21）。
+ */
+async function wardContact(db: D1Database, wardId: string): Promise<string> {
+  const saved = await getPublicContact(db, wardId);
+  if (saved) return saved;
+  const rows = await db.prepare(`SELECT v.body FROM publication_records r JOIN document_versions v ON v.ward_id = r.ward_id AND v.version_id = r.version_id
+    WHERE r.ward_id = ? AND r.unpublished_at IS NULL AND v.scope = 'public' ORDER BY r.published_at DESC LIMIT 20`).bind(wardId).all<{ body: string }>();
+  return rows.results.map((row) => publishedItem(row.body, "public_contact")).find(Boolean) ?? "";
+}
+
 async function pageFooter(c: { env: { DB: D1Database }; var: { ward: { wardId: string; slug: string } } }, documentContact = "") {
-  const contact = documentContact || await getPublicContact(c.env.DB, c.var.ward.wardId);
+  const contact = documentContact || await wardContact(c.env.DB, c.var.ward.wardId);
   const lineUrl = await getOfficialLineUrl(c.env.DB, c.var.ward.wardId);
   return <>
     <h2>分からないときは</h2><ResidentContact contact={contact} />
@@ -119,7 +131,7 @@ pub.get("/line", async (c) => {
 });
 
 pub.get("/privacy", async (c) => {
-  const contact = await getPublicContact(c.env.DB, c.var.ward.wardId);
+  const contact = await wardContact(c.env.DB, c.var.ward.wardId);
   const purpose = await getSetting(c.env.DB, c.var.ward.wardId, "privacy_notice");
   return c.html(<Layout title="個人情報の扱い" siteName={c.var.ward.name}>
     <a class="back" href={`/${c.var.ward.slug}/`}>← {c.var.ward.name}のお知らせへ</a>
@@ -169,9 +181,9 @@ pub.get("/", async (c) => {
     const showDetails = isCurrent(item) && !noticeProjects.has(item.project_id);
     const dateTime = showDetails ? publishedItem(item.body, "date_time") : "";
     const place = showDetails ? publishedItem(item.body, "place") : "";
-    return <li key={item.document_id}><a class="row-link" href={`/${c.var.ward.slug}/p/${encodeURIComponent(item.project_id)}`}><b>{item.kind === "announcement" && publicDocumentTitle(item) === "案内" ? `${item.title}のご案内` : paperHeading(item.title, publicDocumentTitle(item))}</b>{dateTime ? <span>{formatDateText(dateTime)}</span> : null}{place ? <span>{place}</span> : null}{dateTime || place ? null : <span>{formatJstDate(item.published_at)}に載せました</span>}</a></li>;
+    return <li key={item.document_id}><a class="row-link" href={`/${c.var.ward.slug}/p/${encodeURIComponent(item.project_id)}`}><b>{item.kind === "announcement" && publicDocumentTitle(item) === "案内" ? `${item.title}のご案内` : item.kind === "report" && publicDocumentTitle(item) === "報告" ? `${item.title}の報告` : paperHeading(item.title, publicDocumentTitle(item))}</b>{dateTime ? <span>{formatDateText(dateTime)}</span> : null}{place ? <span>{place}</span> : null}{dateTime || place ? null : <span>{formatJstDate(item.published_at)}に載せました</span>}</a></li>;
   };
-  const [contact, lineUrl] = await Promise.all([getPublicContact(c.env.DB, c.var.ward.wardId), getOfficialLineUrl(c.env.DB, c.var.ward.wardId)]);
+  const [contact, lineUrl] = await Promise.all([wardContact(c.env.DB, c.var.ward.wardId), getOfficialLineUrl(c.env.DB, c.var.ward.wardId)]);
   return c.html(<Layout title={`${c.var.ward.name}のお知らせ`} siteName={c.var.ward.name}>
     <h1>{c.var.ward.name}のお知らせ</h1>
     <p class="lead">{c.var.ward.name}は、この地域の自治会です。加入していなくても、登録しなくても読めます。</p>
@@ -263,6 +275,8 @@ pub.get("/p/:projectId", async (c) => {
   const squad = c.req.query("s") ?? "";
   const suffix = squad && squads.includes(squad) ? `?s=${encodeURIComponent(squad)}` : "";
   const ordered = [...documents.values()].sort((a, b) => Number(b.latest.kind === "notice") - Number(a.latest.kind === "notice"));
+  // 終わった行事は、あとから来た人（家族、来年の候補）が読みたい報告を先に出す。案内は「前に出した案内」として後ろに残す。
+  const reports = ordered.filter(({ latest }) => latest.kind === "report" && !latest.unpublished_at);
   const featureTasks = await projectTasks(c.env.DB, c.var.ward.wardId, projectId);
   const features = taskFeatures(featureTasks);
   const activeAnnouncement = ordered.some(({ latest }) => taskCollectsAttendance(featureTasks, latest.kind) && !latest.unpublished_at);
@@ -277,7 +291,7 @@ pub.get("/p/:projectId", async (c) => {
         <p>{date(latest)} に載せた{event ? "案内" : title}は、住民向けのページから取り下げました。</p>
       </article>;
       return <article class="panel" key={latest.document_id}>
-        <h2>{latest.kind === "announcement" ? changes ? `${date(latest)}に知らせた案内` : "くわしい案内" : title}</h2>
+        <h2>{latest.kind === "announcement" ? reports.length ? "前に出した案内" : changes ? `${date(latest)}に知らせた案内` : "くわしい案内" : title}</h2>
         {latest.kind === "announcement" && changes ? <p>変わったところは、上のお知らせのとおりです。</p> : null}
         <ArticleBody body={latest.body} title={{ project: latest.title, document: latest.document_title }} kind={latest.kind} hide={latest.kind === "announcement" && !changes ? ["date_time", "place", "rain_plan", "due", "public_contact"] : []} />
         {latest.flyer_id && !(latest.kind === "announcement" && newerNotice) ? <img src={noticeFlyerPath(c.var.ward.slug, latest.version_id, latest.flyer_id)} alt={latest.document_title} style="max-width:100%;height:auto" /> : null}
@@ -288,16 +302,18 @@ pub.get("/p/:projectId", async (c) => {
         </details>)}
       </article>;
     };
-  const heading = items[0]!.kind === "announcement" && publicDocumentTitle(items[0]!) === "案内" ? `${items[0]!.title}のご案内` : paperHeading(items[0]!.title, publicDocumentTitle(items[0]!));
+  const top = reports[0]?.latest ?? items[0]!;
+  const heading = top.kind === "announcement" && publicDocumentTitle(top) === "案内" ? `${top.title}のご案内` : top.kind === "report" && publicDocumentTitle(top) === "報告" ? `${top.title}の報告` : paperHeading(top.title, publicDocumentTitle(top));
   return c.html(<Layout title={publicDocumentTitle(items[0]!) === "案内" ? items[0]!.title : heading} siteName={c.var.ward.name}>
     <a class="back" href={`/${c.var.ward.slug}/`}>← お知らせの一覧へ</a>
     <h1>{heading}</h1>
+    {reports.map(renderDocument)}
     {ordered.filter(({ latest }) => latest.kind === "notice").map(renderDocument)}
     {activeAnnouncement ? <>
       {!newerNotice ? <EventDetails item={context.item} due={deadline} /> : deadline ? <p>返事の締切 {formatJstDate(deadline)}まで</p> : null}
-      {closed ? <ReceptionClosed closed={!!items[0]!.closed_at} due={deadline} /> : <><p><a class="button" href={`/${c.var.ward.slug}/answer/${encodeURIComponent(projectId)}${suffix}`}>出欠を答える</a></p><p>{features.delegation ? "出席、委任、欠席のどれかを答えてください。" : "参加しないときも、答えてください。返事がないときは、欠席として数えます。"}代表者のお名前、班、人数を聞きます。紙の回答票を班長に渡しても答えられます。</p></>}
+      {closed ? <ReceptionClosed closed={!!items[0]!.closed_at} due={deadline} /> : <><p><a class="button" href={`/${c.var.ward.slug}/answer/${encodeURIComponent(projectId)}${suffix}`}>出欠を答える</a></p><p>{features.delegation ? "出席、委任、欠席のどれかを答えてください。" : "参加しないときも、返事をもらえると、準備の数が正しく分かります。返事がないときは、欠席として数えます。"}代表者のお名前、班、人数を聞きます。紙の回答票を班長に渡しても答えられます。</p></>}
     </> : null}
-    {ordered.filter(({ latest }) => latest.kind !== "notice").map(renderDocument)}
+    {ordered.filter(({ latest }) => latest.kind !== "notice" && !reports.some((report) => report.latest.document_id === latest.document_id)).map(renderDocument)}
     {context.documents.some((document) => document.kind === "recruitment") && !closed ? <section><h2>手伝える方へ</h2><p>自治会に加入していない方も手伝えます。</p><a href={`/${c.var.ward.slug}/help/${encodeURIComponent(projectId)}`}>手伝いを申し込む</a></section> : null}
     {activity ? <p class="link-line"><a href={`/${c.var.ward.slug}/work/${encodeURIComponent(projectId)}`}>役員の仕事と活動を見る</a></p> : null}
     {details}

@@ -1,7 +1,7 @@
 import { projectTasks, taskFeatures, taskDocumentKind } from "../project/task-features";
 import { adminResult } from "../core/admin-ui";
 import { formatDateText, formatJstDate } from "../core/time";
-import { Hono, type MiddlewareHandler } from "hono";
+import { Hono, type Context, type MiddlewareHandler } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
 import { ErrorNotice, Notice } from "../core/ui";
@@ -189,6 +189,13 @@ admin.get("/close/:projectId", async (c) => {
     (scope === "public" ? generatedReport : internalDocument?.scope === "staff" ? documentText(internalDocument.body) : "");
   const root = adminPath(ward, `/close/${id}`);
   const activityView = c.req.query("view") === "activity";
+  // 当日が済んでから開いた時は、報告の下書きを押さなくても頼む。開いてすぐ下書きが無いと、何を書けばよいかで止まるため。
+  const reportStarted = status.results.some((job) => job.task === "report" && job.status !== "failed");
+  const autoStarted = !project.closedAt && !notYet && !activityView && !report(internalReport ? "staff" : "public") && !reportStarted
+    && await startCloseDrafts(c, id);
+  // 報告づくりで AI が役員に聞きたいこと。終わりにしたあとは答えられなくなるので、先に見せる。
+  const openQuestions = project.closedAt || activityView ? 0 : (await c.env.DB.prepare("SELECT COUNT(*) AS n FROM project_questions WHERE ward_id = ? AND project_id = ? AND state IN ('open', 'later')")
+    .bind(ward.wardId, id).first<{ n: number }>())?.n ?? 0;
   if (activityView && ["saved", "published", "unpublished"].includes(c.req.query("activity") ?? "")) {
     const published = c.req.query("activity") === "published";
     const lowered = c.req.query("activity") === "unpublished";
@@ -243,8 +250,9 @@ admin.get("/close/:projectId", async (c) => {
       {internalReport ? <p><a class="button secondary" href={adminPath(ward, `/projects/${id}/draft/notice`)}>住民への連絡を作る</a></p> : null}
       <div class="notice warn"><strong>終わりにすると消えるものがあります</strong><p>手伝いだけの申し込みの名前と時間帯は消えます。終わりを取り消しても戻りません。</p></div>
       {status.results.map((job) => <p>{job.task === "report" ? pack.title : "やること"}: {job.status === "done" ? (job.task === "report" && !report(internalReport ? "staff" : "public") ? "下書きを書けませんでした。下の欄に直接書けます" : "できました") : job.status === "failed" ? "止まりました。下の欄に直接書けます" : "準備中"}</p>)}
-      {status.results.some((job) => job.status !== "done" && job.status !== "failed") ? <p class="muted">作っています。画面を閉じても続きます。少しあとに、もう一度開いてください。</p> : null}
-      {!report(internalReport ? "staff" : "public") && !status.results.some((job) => job.task === "report" && job.status !== "failed") ? <form method="post" action={`${root}/prepare`}><button class="secondary">{internalReport ? pack.title : "報告"}とやることの下書きを作る</button><p class="muted">AIが止まっていても、下の欄に直接書けます。</p></form> : null}
+      {autoStarted || status.results.some((job) => job.status !== "done" && job.status !== "failed") ? <p class="muted">{autoStarted ? `集まった資料と返事から、${internalReport ? pack.title : "報告"}の下書きを作り始めました。` : ""}作っています。画面を閉じても続きます。少しあとに、もう一度開いてください。</p> : null}
+      {openQuestions ? <section class="next"><strong>終わりにする前に</strong><p>AIから役員への質問が{openQuestions < 10 ? `${openQuestions}つ` : `${openQuestions}件`}あります。答えると{internalReport ? pack.title : "報告"}に入ります。終わりにしたあとは、終わりを取り消すまで答えられません。答えずに終わりにしてもかまいません。</p><a class="button secondary" href={adminPath(ward, `/projects/${id}/questions`)}>質問に答える</a></section> : null}
+      {!autoStarted && !report(internalReport ? "staff" : "public") && !status.results.some((job) => job.task === "report" && job.status !== "failed") ? <form method="post" action={`${root}/prepare`}><button class="secondary">{internalReport ? pack.title : "報告"}とやることの下書きを作る</button><p class="muted">AIが止まっていても、下の欄に直接書けます。</p></form> : null}
       <form method="post" action={`${root}/finalize`}>
         {internalReport ? <input type="hidden" name="body" value="" /> : <div class="field"><label for="report-public">住民への報告</label><p class="help-text">{report("public") ? "保存した報告です。直してかまいません。" : "ここに直接書けます。"}終わりにすると住民向けのページに載ります。</p><textarea id="report-public" name="body" rows={7} maxlength={12000}>{report("public")}</textarea>
         </div>}
@@ -319,9 +327,16 @@ admin.post("/close/:projectId/activity", async (c) => {
 admin.post("/close/:projectId/prepare", async (c) => {
   const { ward, account } = c.var; const id = c.req.param("projectId");
   if (!(await prepareDrafts(c.env.DB, ward.wardId, id, account.accountId))) return c.notFound();
+  if (!(await startCloseDrafts(c, id))) return c.notFound();
+  return c.redirect(adminPath(ward, `/close/${id}`), 303);
+});
+
+/** 報告とやることの下書きを AI に頼む。終わりにする画面を開いた時と、「下書きを作る」を押した時に使う。 */
+async function startCloseDrafts(c: Context<AdminEnv>, id: string): Promise<boolean> {
+  const { ward, account } = c.var;
   const contact = await getPublicContact(c.env.DB, ward.wardId);
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
-  if (!project) return c.notFound();
+  if (!project) return false;
   const featureTasks = await projectTasks(c.env.DB, ward.wardId, id);
   const features = taskFeatures(featureTasks);
   const meetingSummary = features.delegation
@@ -334,8 +349,8 @@ admin.post("/close/:projectId/prepare", async (c) => {
         instruction: "閉じるときの段取りの下書きを状態から作る。元の資料は読まない。状態にある仕事を一つずつ保ち、task_id、period、name、progress（open/started/done）、requested_by、difficulty、next_yearを記録する。時期、進み具合、頼んだ相手、困ったこと、来年変えることは状態にある内容だけを書き、分からない欄は空にして役員への質問にする。仕事を省いたり、過去の参考情報を今年の実績にしたり、内容を補って作らない。write_changeでkind=map_draft、target=map、data={tasks:[...] }を一度書く。" }),
     ]);
   } catch (error) { console.error("閉じる下書きを起こせませんでした", error instanceof Error ? error.name : ""); }
-  return c.redirect(adminPath(ward, `/close/${id}`), 303);
-});
+  return true;
+}
 
 admin.post("/close/:projectId/report/:scope", async (c) => {
   const { ward, account } = c.var; const id = c.req.param("projectId"); const scope = c.req.param("scope");

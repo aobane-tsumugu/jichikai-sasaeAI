@@ -59,7 +59,8 @@ export async function rotaPanel(db: D1Database, ward: WardInfo, projectId: strin
     {schedule ? <details class="fold"><summary>曜日を直す</summary><div>{weeklyForm}</div></details> : weekly ? <>{weeklyForm}<p>毎週回す当番でなければ、下の操作で去年の表や名簿から作れます。</p></> : null}
     {comparison ? <>
       {schedule ? <p>名簿に加わった世帯: {comparison.added.join("、") || "ありません。"}<br />名簿から外れた世帯: {comparison.removed.join("、") || "ありません。"}</p> : comparison.hasPreviousTable !== false ? <>
-      <p class="muted">{comparison.year}年の{comparison.sourceTitle}と比べています。{!comparison.hasOldRoster ? "去年の名簿は残っていません。当番表にある名前と比べています。" : ""}</p>
+      <p class="muted">{comparison.year}年の{comparison.sourceTitle}と比べています。{comparison.shifted ? "去年の日を、今年の当日に合わせてずらしました。" : "当日を入れると、去年の日を今年の当日に合わせてずらします。"}{!comparison.hasOldRoster && !comparison.noRoster ? "去年の名簿は残っていません。当番表にある名前と比べています。" : ""}</p>
+      {comparison.noRoster ? <p>世帯の名簿がまだないので、去年の担当をそのまま残しています。名簿を入れると、今の名簿にない世帯を担当から外します。<a href={adminPath(ward, "/answers/roster")}>世帯の名簿を入れる</a></p> : null}
       <dl class="facts">
         <dt>{comparison.hasOldRoster ? "名簿に加わった世帯" : "去年の表にない世帯"}</dt><dd>{comparison.added.join("、") || "ありません。"}</dd>
         <dt>{comparison.hasOldRoster ? "名簿から外れた世帯" : "今の名簿にない担当"}</dt><dd>{comparison.removed.join("、") || "ありません。"}</dd>

@@ -60,7 +60,7 @@ describe("印刷用ページ", () => {
       const poster = await read(`${path}/poster`);
       expect(poster).toContain("住民向けのページを開くQR");
       expect(poster.includes("返事の締切：")).toBe(entry.answer);
-      expect(poster.includes("答えてください")).toBe(entry.answer);
+      expect(poster.includes(entry.kind === "general_meeting" ? "答えてください" : "返事をもらえると、準備の数が正しく分かります")).toBe(entry.answer);
       for (const kind of ["answer", "leader"]) {
         expect((await get(realApp, `${path}/${kind}`, cookie)).status).toBe(entry.answer ? 200 : 404);
       }

@@ -7,8 +7,10 @@
 //
 // 注意: この文字列の中に、バッククォートと ${ を書かない。
 import { PHOTO_SCRIPT } from "./photo-script";
+import { MAX_FILE_BYTES, MAX_PARTS, MAX_TOTAL_BYTES } from "./receive";
 
-export const SEND_SCRIPT = PHOTO_SCRIPT + String.raw`(function (root) {
+// 送れる数と大きさの上限は、受付（receive.ts）と同じ値を渡す。落とした時に、送る前に分かるように。
+export const SEND_SCRIPT = PHOTO_SCRIPT + `var SEND_LIMITS = { parts: ${MAX_PARTS}, file: ${MAX_FILE_BYTES}, total: ${MAX_TOTAL_BYTES} };\n` + String.raw`(function (root) {
   'use strict';
 
   function u16(d, o) { return d[o] | (d[o + 1] << 8); }
@@ -263,32 +265,83 @@ export const SEND_SCRIPT = PHOTO_SCRIPT + String.raw`(function (root) {
   var statusEl = document.getElementById('send-status');
   var button = document.getElementById('send-button');
 
-  [['cam', 'cam-count'], ['files', 'files-count']].forEach(function (pair) {
-    var input = document.getElementById(pair[0]);
-    var count = document.getElementById(pair[1]);
-    if (!input || !count || typeof input.addEventListener !== 'function') return;
-    input.addEventListener('change', function () {
-      count.textContent = input.files && input.files.length ? input.files.length + '件を選びました' : '';
-    });
-  });
+  // パソコンから落としたファイル。選んだファイルと合わせて送る。
+  var dropped = [];
+  var limits = root.SEND_LIMITS || { parts: 30, file: 25 * 1024 * 1024, total: 80 * 1024 * 1024 };
+  var mb = function (bytes) { return Math.ceil(bytes / 1024 / 1024); };
 
   function say(message, isError) {
     statusEl.textContent = message;
     statusEl.className = isError ? 'notice error' : 'notice';
   }
 
-  form.addEventListener('submit', async function (ev) {
-    ev.preventDefault();
+  function pickedFiles(extra) {
     var picked = [];
     [['cam', 'photo'], ['files', 'file']].forEach(function (pair) {
       var el = document.getElementById(pair[0]);
       if (el && el.files) Array.prototype.forEach.call(el.files, function (f) { picked.push({ file: f, kind: pair[1] }); });
     });
+    dropped.concat(extra || []).forEach(function (f) { picked.push({ file: f, kind: 'file' }); });
+    return picked;
+  }
+
+  // 写真は送る前に小さく整える（長い辺 2400、5MB まで）ので、元の大きさでは断らない。
+  var isPhotoFile = function (f) { return /^image\//i.test(f.type) || /\.(jpe?g|png|webp|gif|heic|heif)$/i.test(f.name); };
+  var sentSize = function (f) { return isPhotoFile(f) ? Math.min(f.size, 5 * 1024 * 1024) : f.size; };
+
+  // 上限を超えた時の文。超えていなければ空。
+  function limitError(picked) {
+    if (picked.length > limits.parts) return '一度に送れるのは' + limits.parts + '点までです。今は' + picked.length + '点あります。分けて送ってください。';
+    var big = picked.filter(function (p) { return !isPhotoFile(p.file) && p.file.size > limits.file; });
+    if (big.length) return big.map(function (p) { return '「' + p.file.name + '」'; }).join('、') + 'は' + mb(limits.file) + 'MBを超えているので送れません。ファイルを分けて送ってください。';
+    var total = picked.reduce(function (sum, p) { return sum + sentSize(p.file); }, 0);
+    if (total > limits.total) return '合わせて' + mb(limits.total) + 'MBまで送れます。今は' + mb(total) + 'MBあります。分けて送ってください。';
+    return '';
+  }
+
+  var dropCount = document.getElementById('drop-count');
+  function showDropped() {
+    if (dropCount) dropCount.textContent = dropped.length ? '落としたファイル' + dropped.length + '件: ' + dropped.map(function (f) { return f.name; }).join('、') : '';
+  }
+
+  [['cam', 'cam-count'], ['files', 'files-count']].forEach(function (pair) {
+    var input = document.getElementById(pair[0]);
+    var count = document.getElementById(pair[1]);
+    if (!input || !count || typeof input.addEventListener !== 'function') return;
+    input.addEventListener('change', function () {
+      count.textContent = input.files && input.files.length ? input.files.length + '件を選びました' : '';
+      var error = limitError(pickedFiles());
+      if (error) say(error, true);
+    });
+  });
+
+  var zone = document.getElementById('drop-zone');
+  // 欄の外に落としても、ブラウザがファイルを開いて画面から離れないように、画面のどこに落としても受け取る。
+  if (zone && typeof document.addEventListener === 'function') {
+    ['dragenter', 'dragover'].forEach(function (name) {
+      document.addEventListener(name, function (ev) { ev.preventDefault(); zone.className = 'drop-zone over'; });
+    });
+    document.addEventListener('dragleave', function (ev) { if (!ev.relatedTarget) zone.className = 'drop-zone'; });
+    document.addEventListener('drop', function (ev) {
+      ev.preventDefault();
+      zone.className = 'drop-zone';
+      var list = ev.dataTransfer && ev.dataTransfer.files ? Array.prototype.slice.call(ev.dataTransfer.files) : [];
+      if (!list.length) return;
+      var error = limitError(pickedFiles(list));
+      if (error) { say(error + '（落としたファイルは入れていません）', true); return; }
+      dropped = dropped.concat(list);
+      showDropped();
+      say('「送る」を押すと、落としたファイルも送ります。', false);
+    });
+  }
+
+  form.addEventListener('submit', async function (ev) {
+    ev.preventDefault();
+    var picked = pickedFiles();
     var text = form.elements['text'].value;
     if (picked.length === 0 && text.trim() === '') { say('送るものを選ぶか、一行の文を書いてください。', true); return; }
-    // 古い形式（.doc、.xls）は選べるようにし、送る前に、何をすればよいかをその場で書く。
-    var old = picked.filter(function (p) { return /\.(doc|xls)$/i.test(p.file.name); });
-    if (old.length) { say(old.map(function (p) { return '「' + p.file.name + '」'; }).join('、') + 'は、古い形式のWordやExcelなので、中身を読めません。WordやExcelで開いて「名前を付けて保存」から新しい形式（.docx、.xlsx）で保存し直すか、印刷した紙を撮って送ってください。選び直して、もう一度送ってください。', true); return; }
+    var tooMuch = limitError(picked);
+    if (tooMuch) { say(tooMuch, true); return; }
     button.disabled = true;
     say('送っています…', false);
     try {
@@ -328,6 +381,8 @@ export const SEND_SCRIPT = PHOTO_SCRIPT + String.raw`(function (root) {
       say(data.message, !data.ok);
       if (data.ok) {
         form.reset();
+        dropped = [];
+        showDropped();
         if (data.redirectTo) location.assign(data.redirectTo);
         else location.reload();
       }
