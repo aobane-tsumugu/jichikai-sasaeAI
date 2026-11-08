@@ -145,7 +145,9 @@ describe("自治会のLINEと届いたもの", () => {
     const fetcher: typeof fetch = async (_input, init) => {
       sent += 1;
       const body = String(init?.body ?? "");
-      expect(body).toContain("貼られた写真と文は、全部、自治会の記録に残ります");
+      // 挨拶や雑談の文は捨てるので（intake.ts の discard）、「全部残る」とは言わない。
+      expect(body).toContain("貼られた写真と、行事や仕事に関わる文は、自治会の記録に残ります。挨拶や雑談の文は残しません。");
+      expect(body).not.toContain("全部、自治会の記録に残ります");
       return new Response(null, { status: 200 });
     };
     const runtime = { ...env, LINE_CHANNEL_SECRET: secret, LINE_CHANNEL_ACCESS_TOKEN: "fictional-token" } as Env;
