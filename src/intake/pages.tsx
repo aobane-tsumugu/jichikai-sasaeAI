@@ -50,11 +50,9 @@ export const STATUS_LABEL: Record<JobStatus, string> = {
 
 const ERROR_MESSAGE: Record<ReceiveError["code"], (filename: string) => string> = {
   empty: () => "送るものを選ぶか、書いたことを入れてください。",
-  too_many: () => "一度に送れるのは30までです。分けて送ってください。",
-  too_large: (f) => `${f ? `「${f}」` : "送ったもの"}が大きすぎます。小さくして送ってください。`,
-  unsupported: (f) => /\.(doc|xls)$/i.test(f)
-    ? `「${f}」は、古い形式のWordやExcelなので、中身を読めません。WordやExcelで開いて「名前を付けて保存」から新しい形式（.docx、.xlsx）で保存し直すか、印刷した紙を撮って送ってください。`
-    : `${f ? `「${f}」` : "送ったもの"}は読めない形式です。写真、PDF、Word（.docx）、Excel（.xlsx）、文字のファイルを送ってください。`,
+  too_many: () => "一度に送れるのは30点までです。分けて送ってください。",
+  too_large: (f) => `${f ? `「${f}」` : "送ったもの"}が大きすぎます。一つ25MB、合わせて80MBまで送れます。小さくするか、分けて送ってください。`,
+  unsupported: (f) => `${f ? `「${f}」` : "送ったもの"}は読めない形式です。写真、PDF、Word、Excel、文字のファイルを送ってください。`,
   needs_expansion: (f) =>
     `${f ? `「${f}」` : "WordやExcel"}は、この画面をもう一度開いてから、ブラウザで送ってください（ブラウザが中身を開いて送ります）。`,
   bad_text: () => "書いたことが長すぎます。2万文字までです。",
@@ -146,7 +144,8 @@ intakeAdmin.get("/intake", async (c) => {
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     <form id="send-form" method="post" action={`${adminPath(ward, "/intake")}?${query}`} enctype="multipart/form-data">
       <div class="field"><label class="file-button">カメラで紙を撮る<input id="cam" type="file" name="part" accept="image/*" capture="environment" multiple /></label><p id="cam-count" class="help-text" aria-live="polite" /></div>
-      <div class="field"><label class="file-button">ファイルを選ぶ<input id="files" type="file" name="part" accept="image/*,application/pdf,.pdf,.docx,.xlsx,.doc,.xls,.txt,.csv" multiple /></label><p id="files-count" class="help-text" aria-live="polite" /><p class="help-text">写真、PDF、Word、Excelを送れます。写真は紙の文字や行事の様子が分かる大きさに整えて保存します。</p></div>
+      <div class="field"><label class="file-button">ファイルを選ぶ<input id="files" type="file" name="part" accept="image/*,application/pdf,.pdf,.docx,.xlsx,.doc,.xls,.txt,.csv" multiple /></label><p id="files-count" class="help-text" aria-live="polite" /><p class="help-text">写真、PDF、Word、Excel（古い形式の.docや.xlsも）を送れます。写真は紙の文字や行事の様子が分かる大きさに整えて保存します。</p></div>
+      <div id="drop-zone" class="drop-zone"><p>パソコンなら、ここにファイルを落としても送れます。</p><p class="help-text">一度に30点、一つ25MB、合わせて80MBまでです。</p><p id="drop-count" class="help-text" aria-live="polite" /></div>
       <details class="fold"><summary>電話や立ち話で決まったことを書く</summary><div><div class="field"><label for="text">決まったこと</label><textarea id="text" name="text" maxlength={2000} rows={3} /></div></div></details>
       <input type="hidden" name="project_id" value={project?.projectId ?? ""} />
       <div class="action-links"><button id="send-button" type="submit">送る</button></div>

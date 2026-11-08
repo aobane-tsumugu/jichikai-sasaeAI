@@ -47,15 +47,14 @@ it("前提 1: 一度に送った資料のうち、名前の合う準備中のも
   expect(read).not.toContain('name="kind"');
 });
 
-it("古い形式の Word と Excel は選べ、送ると、何をすればよいかをその場で書く", async () => {
+it("古い形式の Word と Excel も選べ、送る画面は断らずに、古い形式も送れると書く。パソコンからファイルを落として送れる", async () => {
+  const { SEND_SCRIPT } = await import("../src/intake/browser-script");
   const { ward, cookie } = await seedAdmin(env.DB);
-  const root = `/${ward.slug}/admin`;
-  const page = await (await get(realApp, `${root}/intake`, cookie)).text();
+  const page = await (await get(realApp, `/${ward.slug}/admin/intake`, cookie)).text();
   expect(page).toContain(".doc,.xls");
-  const form = new FormData();
-  form.set("project_id", "");
-  form.append("part", new File([new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 1, 2, 3])], "架空の会計.xls", { type: "application/vnd.ms-excel" }));
-  form.append("part_kind", "file");
-  const response = await realApp.fetch(new Request(`http://localhost${root}/intake`, { method: "POST", headers: { cookie, origin: "http://localhost", accept: "application/json" }, body: form }), env);
-  expect(((await response.json()) as { message: string }).message).toContain("「架空の会計.xls」は、古い形式のWordやExcelなので、中身を読めません。");
+  expect(page).toContain("写真、PDF、Word、Excel（古い形式の.docや.xlsも）を送れます。");
+  expect(page).toContain('id="drop-zone"');
+  expect(page).toContain("一度に30点、一つ25MB、合わせて80MBまでです。");
+  expect(SEND_SCRIPT).not.toContain("古い形式のWordやExcelなので");
+  expect(SEND_SCRIPT).toContain("var SEND_LIMITS = { parts: 30, file: 26214400, total: 83886080 };");
 });
