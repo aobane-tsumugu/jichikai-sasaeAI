@@ -4,6 +4,7 @@ import { nowIso } from "../core/ids";
 import type { NewQuestion } from "../project/apply";
 import type { Source } from "../project/model";
 import { householdKey, prepareRota } from "./store";
+import { rotaSchedule } from "./schedule";
 
 export const EXEMPTION_TARGET = "rota_exemption:";
 export const EXEMPTION_YES = "今年の当番から外す";
@@ -71,6 +72,10 @@ export async function answerMaterialExemption(
     if (roster.filter((entry) => householdKey(entry) === householdKey(proposal)).length !== 1) return "failed";
   }
   const now = nowIso();
+  // 通年の当番では、表と同じ4月から翌年3月までを今年の免除にする。
+  const schedule = yes ? await rotaSchedule(db, wardId, projectId) : null;
+  const startsOn = `${row.year}-${schedule ? "04-01" : "01-01"}`;
+  const endsOn = schedule ? `${row.year + 1}-03-31` : `${row.year}-12-31`;
   const statements: D1PreparedStatement[] = [];
   if (yes) statements.push(db.prepare(`INSERT INTO rota_exemptions
     (exemption_id, ward_id, household, district, reason, starts_on, ends_on, recorded_at, recorded_by_account_id)
@@ -78,7 +83,7 @@ export async function answerMaterialExemption(
       SELECT 1 FROM project_questions q JOIN projects p ON p.ward_id = q.ward_id AND p.project_id = q.project_id
       WHERE q.ward_id = ? AND q.project_id = ? AND q.question_id = ? AND q.state IN ('open', 'later') AND p.closed_at IS NULL)`)
     .bind(questionId, wardId, proposal.household, proposal.district, editedReason,
-      `${row.year}-01-01`, `${row.year}-12-31`, now, accountId, wardId, projectId, questionId));
+      startsOn, endsOn, now, accountId, wardId, projectId, questionId));
   statements.push(db.prepare(`UPDATE project_questions SET state = ?, answer = ?, answered_at = ?, answered_by_account_id = ?
     WHERE ward_id = ? AND project_id = ? AND question_id = ? AND state IN ('open', 'later')
       AND EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL)`)
