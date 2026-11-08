@@ -7,7 +7,7 @@ import { formatJst, formatJstDate } from "../core/time";
 import { Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { jobSummaries } from "../intake/store";
-import { getProjectState, listOpenProjects } from "../project/api";
+import { getProjectState, listOpenMapTasks, listOpenProjects } from "../project/api";
 import { YEAR_BASE, YearLegend, YearMap, addYearItem, removeYearBase, wardYear } from "./year";
 import { senderText } from "../line/sender";
 import {
@@ -198,7 +198,8 @@ const today = () => new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 1
 admin.get("/year", async (c) => {
   const { ward, account } = c.var;
   const projects = await listOpenProjects(c.env.DB, ward.wardId);
-  const states = await Promise.all(projects.map((project) => getProjectState(c.env.DB, ward.wardId, project.projectId)));
+  // 準備ごとに中身を全部読まず、やることだけをまとめて読む（準備が多い自治会で D1 が詰まらないように）。
+  const states = await listOpenMapTasks(c.env.DB, ward.wardId, projects);
   const year = await wardYear(c.env.DB, ward, projects, states, today());
   const removed = await c.env.DB.prepare("SELECT item_id, title, added FROM ward_year_items WHERE ward_id = ? AND removed_at IS NOT NULL ORDER BY created_at").bind(ward.wardId).all<{ item_id: string; title: string; added: number }>();
   const taken = removed.results.map((row) => ({ key: row.item_id, title: row.added ? row.title : YEAR_BASE.find((base) => base.key === row.item_id)?.title ?? "" })).filter((row) => row.title);

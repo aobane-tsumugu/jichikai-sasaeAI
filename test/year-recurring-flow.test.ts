@@ -74,7 +74,7 @@ it("通年のごみ当番を月曜で作り、免除と名簿変更を反映し�
   const available = ordered.filter((entry) => entry.household !== exempt.household);
   expect(duties.map((row) => row.data.assignee)).toEqual(mondays.map((_, index) => available[index % available.length]!.household));
   expect(duties.every((row) => row.data.assignee !== exempt.household)).toBe(true);
-  const table = await wardYear(env.DB, ward, projects, [state], `${year}-11-08`);
+  const table = await wardYear(env.DB, ward, projects, [{ mapTasks: state!.mapTasks, dateReference: null }], `${year}-11-08`);
   expect(table.rows.find((row) => row.title === "ごみ当番")).toMatchObject({ state: "fact", from: 0, to: 100, note: "毎週月曜。" });
   expect(table.rows.find((row) => row.title === "市報の配布")).toMatchObject({ state: "fact", from: 0, to: 100, note: "毎月。" });
   const html = await (await get(realApp, `${root}/year`, cookie)).text();
@@ -115,7 +115,7 @@ it("kakuuの見本に月曜のごみ当番と毎月の市報を入れ、ほか�
   const first = state.tables.duties.find((row) => row.scope === "current");
   expect(first?.data.slot).toBe("2026-04-06");
   const projects = await listOpenProjects(env.DB, ward.wardId);
-  const table = await wardYear(env.DB, ward, projects, [state], "2026-11-08");
+  const table = await wardYear(env.DB, ward, projects, [{ mapTasks: state!.mapTasks, dateReference: null }], "2026-11-08");
   expect(table.rows.find((row) => row.title === "ごみ当番")?.note).toBe("毎週月曜。");
   expect(table.rows.find((row) => row.title === "市報の配布")?.note).toBe("毎月。");
   expect(projects.map((project) => project.title)).toEqual(["ごみ当番"]);

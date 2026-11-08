@@ -7,7 +7,7 @@
 // - 差分と問いは重複を弾く印で冪等。出どころの検査に通らない差分は捨て、捨てたことが問いの一覧に出る。
 export { applyChange } from "./apply";
 export { addQuestion } from "./questions";
-export { createProject, getProjectState, getProjectSummary, listOpenProjects, listProjects, ProjectInputError } from "./state";
+export { createProject, getProjectState, getProjectSummary, listOpenMapTasks, listOpenProjects, listProjects, ProjectInputError } from "./state";
 export type * from "./types";
 export * from "./model";
 export type { VerifyOriginal } from "./source";

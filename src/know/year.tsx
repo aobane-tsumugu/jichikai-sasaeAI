@@ -11,7 +11,8 @@ import { AdminPage } from "../core/admin-ui";
 import { cleanName } from "../core/password";
 import { Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
-import { createProject, getProjectState, listOpenProjects } from "../project/api";
+import { createProject, getProjectState, listOpenMapTasks, listOpenProjects } from "../project/api";
+import type { OpenProjectBrief } from "../project/state";
 import { getKnowItem, KNOW_LIMITS, saveKnowItem } from "./store";
 import { MAP_TEMPLATES } from "../map/template";
 import { WEEKDAYS } from "../rota/schedule";
@@ -83,7 +84,7 @@ export async function yearItemsForStart(db: D1Database, wardId: string): Promise
   return items;
 }
 
-export async function wardYear(db: D1Database, ward: WardInfo, projects: readonly ProjectSummary[], states: readonly (ProjectState | null)[], today: string) {
+export async function wardYear(db: D1Database, ward: WardInfo, projects: readonly ProjectSummary[], states: readonly (OpenProjectBrief | null)[], today: string) {
   const [materialCounts, answerCounts] = await Promise.all([
     db.prepare(`SELECT j.project_id, COUNT(*) AS n FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
       WHERE o.ward_id = ? AND j.project_id IS NOT NULL AND o.withdrawn_at IS NULL AND j.withdrawn_at IS NULL GROUP BY j.project_id`).bind(ward.wardId).all<{ project_id: string; n: number }>(),
@@ -134,7 +135,7 @@ export async function wardYear(db: D1Database, ward: WardInfo, projects: readonl
       const sameName = (a: string, b: string) => { const clean = (s: string) => s.replace(/\s+/g, "").replace(/^(令和\d+|20\d{2})年度?の?/, ""); return clean(a) === clean(b); };
       const added = overrides.results.find((row) => row.added && !row.removed_at && row.month && sameName(row.title, project.title));
       // 日が決まる前も、年間の予定の月と、届いた資料にある前の年の日を書く。何も分からない時だけ「まだ決まっていません」とだけ書く。
-      const before = state?.items.find((item) => item.key === "date_time")?.references[0];
+      const before = state?.dateReference;
       const beforeText = before ? `${before.refYear && before.refYear === project.year - 1 ? "去年" : before.refYear ? `${before.refYear}年` : "前"}の資料では${formatDateText(before.content)}でした。` : "";
       const undecided = `${added ? `年間の予定では${added.month}月です。` : ""}日はまだ決まっていません。${beforeText}`;
       const from = base ? position(base.from) : added ? position(added.month!) : position(monthOf(today), dayOf(today));
@@ -242,7 +243,8 @@ export const yearRecurringAdmin = new Hono<AdminEnv>();
 yearRecurringAdmin.get("/year", async (c) => {
   const { ward, account } = c.var;
   const projects = await listOpenProjects(c.env.DB, ward.wardId);
-  const states = await Promise.all(projects.map((project) => getProjectState(c.env.DB, ward.wardId, project.projectId)));
+  // 準備ごとに中身を全部読まず、やることだけをまとめて読む（準備が多い自治会で D1 が詰まらないように）。
+  const states = await listOpenMapTasks(c.env.DB, ward.wardId, projects);
   const year = await wardYear(c.env.DB, ward, projects, states, todayJst());
   const removed = await c.env.DB.prepare("SELECT item_id, title, added FROM ward_year_items WHERE ward_id = ? AND removed_at IS NOT NULL ORDER BY created_at")
     .bind(ward.wardId).all<{ item_id: string; title: string; added: number }>();

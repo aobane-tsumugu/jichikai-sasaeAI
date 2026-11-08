@@ -417,8 +417,21 @@ export async function getProjectState(db: D1Database, wardId: string, projectId:
     };
   });
 
-  const taskList: MapTaskView[] = (
-    (tasks?.results ?? []) as unknown as {
+  const taskList = toMapTaskViews((tasks?.results ?? []) as unknown as MapTaskRow[], project);
+
+  return { project, items, tables, documents: documentList, questions: questionList, mapTasks: taskList };
+}
+
+/** やることの表の行を、画面で使う形にする。準備ごとの中身と、まとめて読む時の両方で使う。 */
+type MapTaskRow = {
+  task_id: string; task_key: string | null; name: string; period_start: string | null; period_end: string | null;
+  offset_start_days: number | null; offset_end_days: number | null; sort_order: number; progress: string;
+  progress_source_kind: string | null; progress_source_ref: string | null; progress_source_locator: string | null;
+  progress_confidence: string | null; seat_id: string | null;
+};
+function toMapTaskViews(rows: readonly MapTaskRow[], project: ProjectSummary): MapTaskView[] {
+  return (
+    rows as {
       task_id: string;
       task_key: string | null;
       name: string;
@@ -461,6 +474,30 @@ export async function getProjectState(db: D1Database, wardId: string, projectId:
       seatId: t.seat_id,
     };
   });
+}
 
-  return { project, items, tables, documents: documentList, questions: questionList, mapTasks: taskList };
+/**
+ * 準備中の物のやることを、一回の問い合わせでまとめて読む。トップと一年の画面は、準備ごとの中身のうちやることしか使わない。
+ * 準備ごとに中身を全部読むと、準備が多い自治会で一回の画面に数千の問い合わせが重なり、D1 が詰まって失敗する。
+ */
+export interface OpenProjectBrief extends Pick<ProjectState, "mapTasks"> {
+  /** 去年など前の年の資料にある「いつ」。日が決まっていない準備の行に書く。 */
+  dateReference: { content: string; refYear: number | null } | null;
+}
+export async function listOpenMapTasks(db: D1Database, wardId: string, projects: readonly ProjectSummary[]): Promise<OpenProjectBrief[]> {
+  const rows = await db.prepare(`SELECT t.project_id, t.task_id, t.task_key, t.name, t.period_start, t.period_end, t.offset_start_days, t.offset_end_days,
+      t.sort_order, t.progress, t.progress_source_kind, t.progress_source_ref, t.progress_source_locator, t.progress_confidence, t.seat_id
+    FROM project_map_tasks t JOIN projects p ON p.ward_id = t.ward_id AND p.project_id = t.project_id
+    WHERE t.ward_id = ? AND t.removed_at IS NULL AND p.closed_at IS NULL ORDER BY t.project_id, t.sort_order, t.created_at`)
+    .bind(wardId).all<MapTaskRow & { project_id: string }>();
+  const byProject = new Map<string, MapTaskRow[]>();
+  for (const row of rows.results) byProject.set(row.project_id, [...(byProject.get(row.project_id) ?? []), row]);
+  const dates = await db.prepare(`SELECT v.project_id, v.content, v.ref_year FROM project_item_values v
+    JOIN projects p ON p.ward_id = v.ward_id AND p.project_id = v.project_id
+    WHERE v.ward_id = ? AND v.item_key = 'date_time' AND v.scope = 'reference' AND v.superseded_at IS NULL AND p.closed_at IS NULL
+    ORDER BY v.project_id, COALESCE(v.ref_year, -1) DESC, v.created_at`)
+    .bind(wardId).all<{ project_id: string; content: string; ref_year: number | null }>();
+  const dateOf = new Map<string, { content: string; refYear: number | null }>();
+  for (const row of dates.results) if (!dateOf.has(row.project_id)) dateOf.set(row.project_id, { content: row.content, refYear: row.ref_year });
+  return projects.map((project) => ({ mapTasks: toMapTaskViews(byProject.get(project.projectId) ?? [], project), dateReference: dateOf.get(project.projectId) ?? null }));
 }

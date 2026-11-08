@@ -7,7 +7,7 @@ import { Hint } from "../core/ui";
 import { adminPath, clearDeviceCookie } from "../core/auth";
 import type { Bundle } from "../core/bundle";
 import type { AdminEnv } from "../env";
-import { getProjectState, listOpenProjects } from "../project/api";
+import { getProjectState, listOpenMapTasks, listOpenProjects } from "../project/api";
 import { dateWords, daysRemaining } from "../project/followup";
 import { inquirySubject } from "../project/inquiry-send";
 import { countWord } from "../project/model";
@@ -57,7 +57,8 @@ admin.get("/", async (c) => {
   const reading = pending.results.filter((row) => row.status === "received" || row.status === "reading").reduce((sum, row) => sum + row.count, 0);
   const delayed = pending.results.filter((row) => row.status === "attention").reduce((sum, row) => sum + row.count, 0);
   const failed = pending.results.filter((row) => row.status === "failed").reduce((sum, row) => sum + row.count, 0);
-  const states = await Promise.all(projects.map((p) => getProjectState(c.env.DB, ward.wardId, p.projectId)));
+  // 準備ごとに中身を全部読まず、やることだけをまとめて読む（準備が多い自治会で D1 が詰まらないように）。
+  const states = await listOpenMapTasks(c.env.DB, ward.wardId, projects);
   const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
   const digest = await getDigestSettings(c.env.DB, ward.wardId);
   const near = nearInquiryDates(projects, today, digest);
