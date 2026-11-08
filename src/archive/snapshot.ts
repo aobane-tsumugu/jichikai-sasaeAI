@@ -157,19 +157,46 @@ export async function runSnapshotCron(event: ScheduledController, env: Env): Pro
 }
 
 export function eraseSnapshotJob(snapshot: unknown, wardId: string, jobId: string, knownOriginalIds = new Set<string>(), knownReadingBodies = new Set<string>()): string | null {
+  return eraseSnapshotJobs(snapshot, wardId, new Set([jobId]), knownOriginalIds, knownReadingBodies);
+}
+
+/** 一つの写しを開いたら、同じ自治会で待っている資料と準備をまとめて外す。 */
+export function eraseSnapshotJobs(snapshot: unknown, wardId: string, knownJobIds: Set<string>, knownOriginalIds = new Set<string>(), knownReadingBodies = new Set<string>(), projectIds = new Set<string>()): string | null {
   if (typeof snapshot !== "object" || snapshot === null || Array.isArray(snapshot)) return null;
   const doc = snapshot as { format?: unknown; wardId?: unknown; tables?: unknown };
   if (doc.format !== 1 || doc.wardId !== wardId || typeof doc.tables !== "object" || doc.tables === null || Array.isArray(doc.tables)) return null;
   const tables = doc.tables as Record<string, unknown>;
+  const jobIds = new Set(knownJobIds);
+  for (const row of snapshotRows(tables, "jobs")) {
+    if (typeof row.project_id === "string" && projectIds.has(row.project_id) && typeof row.job_id === "string") jobIds.add(row.job_id);
+  }
   const originalIds = new Set(knownOriginalIds);
+  const splitJobIds = new Set<string>();
   const readingBodies = new Set(knownReadingBodies);
   for (const row of snapshotRows(tables, "originals")) {
-    if (row.job_id === jobId && typeof row.original_id === "string") originalIds.add(row.original_id);
+    if (typeof row.job_id === "string" && jobIds.has(row.job_id) && typeof row.original_id === "string") originalIds.add(row.original_id);
+    if (typeof row.job_id === "string" && !jobIds.has(row.job_id) && typeof row.original_id === "string" && originalIds.has(row.original_id)) splitJobIds.add(row.job_id);
   }
   for (const row of snapshotRows(tables, "readings")) {
-    if (row.job_id === jobId && typeof row.body === "string") readingBodies.add(row.body);
+    if (typeof row.job_id === "string" && jobIds.has(row.job_id) && typeof row.body === "string") readingBodies.add(row.body);
+  }
+  for (const row of snapshotRows(tables, "job_runs")) {
+    if (typeof row.job_id === "string" && splitJobIds.has(row.job_id)) { row.agent_summary = ""; row.agent_errors = "[]"; row.error = ""; }
+  }
+  for (const row of snapshotRows(tables, "job_tool_calls")) {
+    if (typeof row.job_id === "string" && splitJobIds.has(row.job_id)) row.detail = "";
   }
   eraseCopiedContent(tables, originalIds);
+  eraseWardMaterialContent(tables, originalIds);
+  // あとから一件だけ別の受付へ分けても、分ける前の読み取りからその一件を外す。
+  const removedBodies = new Set(readingBodies);
+  for (const table of ["readings", "paper_reading_slices"]) {
+    for (const row of snapshotRows(tables, table)) {
+      if (typeof row.body !== "string" || (typeof row.job_id === "string" && jobIds.has(row.job_id))) continue;
+      const cleaned = eraseReadingOriginals(row.body, originalIds);
+      if (cleaned !== row.body) { removedBodies.add(row.body); row.body = cleaned; }
+    }
+  }
   const remove = (table: string, match: (row: Record<string, unknown>) => boolean) => {
     const rows = tables[table];
     if (Array.isArray(rows)) tables[table] = rows.filter((row) =>
@@ -185,7 +212,7 @@ export function eraseSnapshotJob(snapshot: unknown, wardId: string, jobId: strin
   }
   remove("project_questions", (row) =>
     (typeof row.source_ref === "string" && originalIds.has(row.source_ref)) ||
-    (typeof row.change_id === "string" && changeIds.has(row.change_id)));
+    (typeof row.change_id === "string" && changeIds.has(row.change_id)) || questionUsesOriginal(row.detail, originalIds));
   if (Array.isArray(tables.project_map_tasks)) {
     for (const value of tables.project_map_tasks) {
       if (typeof value !== "object" || value === null) continue;
@@ -199,31 +226,113 @@ export function eraseSnapshotJob(snapshot: unknown, wardId: string, jobId: strin
   }
   const clarificationIds = new Set<string>();
   for (const row of snapshotRows(tables, "line_clarifications")) {
-    if (row.job_id === jobId && typeof row.clarification_id === "string") clarificationIds.add(row.clarification_id);
+    if (((typeof row.job_id === "string" && jobIds.has(row.job_id)) || (typeof row.original_id === "string" && originalIds.has(row.original_id))) && typeof row.clarification_id === "string") clarificationIds.add(row.clarification_id);
   }
-  remove("jobs", (row) => row.job_id === jobId);
-  remove("originals", (row) => row.job_id === jobId || (typeof row.original_id === "string" && originalIds.has(row.original_id)));
+  const jobMatches = (row: SnapshotRow) => typeof row.job_id === "string" && jobIds.has(row.job_id);
+  const originalMatches = (row: SnapshotRow) => typeof row.original_id === "string" && originalIds.has(row.original_id);
+  remove("jobs", jobMatches);
+  remove("originals", (row) => jobMatches(row) || originalMatches(row));
   remove("original_comparisons", (row) =>
     (typeof row.first_original_id === "string" && originalIds.has(row.first_original_id)) ||
     (typeof row.second_original_id === "string" && originalIds.has(row.second_original_id)));
   remove("ward_material_links", (row) => typeof row.original_id === "string" && originalIds.has(row.original_id));
-  for (const table of ["readings", "job_runs", "job_tool_calls", "intake_photo_checks", "line_photo_items", "line_clarifications", "line_talk_admin_topics"]) remove(table, (row) => row.job_id === jobId);
+  for (const table of ["readings", "job_runs", "job_tool_calls", "intake_photo_checks", "line_photo_items", "line_clarifications", "line_talk_admin_topics"]) remove(table, (row) => jobMatches(row) || originalMatches(row));
   // 返事は写真とは別の受付で届く。実DBの連動削除に合わせ、消した確認への返事も外す。
-  remove("line_clarification_answers", (row) => row.job_id === jobId ||
+  remove("line_clarification_answers", (row) => jobMatches(row) ||
     (typeof row.clarification_id === "string" && clarificationIds.has(row.clarification_id)));
-  remove("paper_reading_slices", (row) => row.job_id === jobId || row.source_job_id === jobId);
+  remove("paper_reading_slices", (row) => jobMatches(row) || originalMatches(row) || (typeof row.source_job_id === "string" && jobIds.has(row.source_job_id)));
   for (const table of ["project_item_values", "project_rows", "project_changes"]) {
     remove(table, (row) => typeof row.source_ref === "string" && originalIds.has(row.source_ref));
   }
   remove("project_answers", (row) => typeof row.original_id === "string" && originalIds.has(row.original_id));
-  remove("line_inbox_items", (row) => row.job_id === jobId);
+  remove("line_inbox_items", jobMatches);
   remove("archive_search_entries", (row) =>
     (typeof row.source_id === "string" && originalIds.has(row.source_id)) ||
-    (row.record_type === "reading" && typeof row.content === "string" && readingBodies.has(row.content)));
+    (row.record_type === "reading" && typeof row.content === "string" && removedBodies.has(row.content)));
+  for (const table of Object.keys(tables)) remove(table, (row) => typeof row.project_id === "string" && projectIds.has(row.project_id));
+  for (const row of snapshotRows(tables, "projects")) {
+    if (typeof row.seed_project_id === "string" && projectIds.has(row.seed_project_id)) row.seed_project_id = null;
+  }
   return JSON.stringify(doc);
 }
 
+/** 読み取りの出どころを保ったまま、消す資料の部分と全体の要約を外す。 */
+export function eraseReadingOriginals(body: string, originalIds: Set<string>): string {
+  const value: unknown = JSON.parse(body);
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("読み取った内容を確認できませんでした");
+  const reading = value as Record<string, unknown>;
+  let changed = false;
+  for (const [key, rows] of Object.entries(reading)) {
+    if (!Array.isArray(rows)) continue;
+    const kept = rows.filter((row: unknown) => typeof row !== "object" || row === null ||
+      !originalIds.has(String((row as SnapshotRow).original_id ?? "")));
+    if (kept.length !== rows.length) { reading[key] = kept; changed = true; }
+  }
+  if (!changed) return body;
+  reading.summary = snapshotRows(reading, "text_blocks").map((row) => String(row.text ?? "")).join("\n").slice(0, 2000);
+  return JSON.stringify(reading);
+}
+
+/** 基本情報は、読み取りに残った出どころから消す部分を確かめる。人が書いた別の文は保つ。 */
+export function eraseWardMaterialContent(tables: Record<string, unknown>, originalIds: Set<string>): void {
+  const facts = new Map<string, { removed: Set<string>; kept: Set<string> }>();
+  const texts = new Map<string, string[]>();
+  for (const row of snapshotRows(tables, "readings")) {
+    if (typeof row.body !== "string") continue;
+    const body: unknown = JSON.parse(row.body);
+    if (typeof body !== "object" || body === null || Array.isArray(body)) continue;
+    for (const block of snapshotRows(body as SnapshotRow, "text_blocks")) {
+      if (typeof block.original_id === "string" && typeof block.text === "string") texts.set(block.original_id, [...(texts.get(block.original_id) ?? []), block.text.trim()]);
+    }
+    for (const fact of snapshotRows(body as SnapshotRow, "ward_facts")) {
+      if (typeof fact.topic !== "string" || typeof fact.text !== "string" || typeof fact.original_id !== "string") continue;
+      const group = facts.get(fact.topic) ?? { removed: new Set<string>(), kept: new Set<string>() };
+      (originalIds.has(fact.original_id) ? group.removed : group.kept).add(fact.text.trim());
+      facts.set(fact.topic, group);
+    }
+  }
+  const links = snapshotRows(tables, "ward_material_links").filter((row) => row.target_kind === "know_item");
+  for (const row of snapshotRows(tables, "ward_know_items")) {
+    const group = facts.get(String(row.item_id));
+    if (typeof row.body === "string" && group?.removed.size) {
+      // applyWardReadingは資料の文を改行で足す。複数行の文も同じ形で外す。
+      let body = `\n${row.body}\n`;
+      for (const text of group.removed) if (text && !group.kept.has(text)) body = body.split(`\n${text}\n`).join("\n");
+      row.body = body.slice(1, -1);
+    }
+    const sources = links.filter((link) => link.target_id === row.item_id);
+    const deletedSources = sources.filter((link) => link.linked_by === "ai" && typeof link.original_id === "string" && originalIds.has(link.original_id));
+    if (typeof row.body === "string" && deletedSources.length) {
+      const keptSources = sources.filter((link) => typeof link.original_id === "string" && !originalIds.has(link.original_id));
+      if (row.reviewed_at === null && keptSources.length === 0) row.body = "";
+      else {
+        // LINEの文から直接入れた古い基本情報にはward_factsが無い。結び付いた元の文で確かめる。
+        const deletedText = deletedSources.flatMap((link) => texts.get(String(link.original_id)) ?? []);
+        const keptText = keptSources.flatMap((link) => texts.get(String(link.original_id)) ?? []);
+        row.body = row.body.split("\n").filter((line) => !line.trim() || !deletedText.some((text) => text.includes(line.trim())) || keptText.some((text) => text.includes(line.trim()))).join("\n");
+      }
+    }
+    if (typeof row.proposed_original_id === "string" && originalIds.has(row.proposed_original_id)) {
+      row.proposed_text = ""; row.proposed_original_id = null;
+    }
+  }
+  const year = tables.ward_year_items;
+  if (Array.isArray(year)) tables.ward_year_items = year.filter((row: unknown) => typeof row !== "object" || row === null ||
+    !originalIds.has(String((row as SnapshotRow).source_original_id ?? "")));
+}
+
 type SnapshotRow = Record<string, unknown>;
+
+export function questionUsesOriginal(detail: unknown, originalIds: Set<string>): boolean {
+  if (typeof detail !== "string") return false;
+  const value: unknown = JSON.parse(detail);
+  const uses = (entry: unknown): boolean => {
+    if (Array.isArray(entry)) return entry.some(uses);
+    if (typeof entry !== "object" || entry === null) return false;
+    return Object.entries(entry).some(([key, child]) => ((key === "ref" || key === "originalId") && typeof child === "string" && originalIds.has(child)) || uses(child));
+  };
+  return uses(value);
+}
 
 function snapshotRows(tables: Record<string, unknown>, table: string): SnapshotRow[] {
   const rows = tables[table];

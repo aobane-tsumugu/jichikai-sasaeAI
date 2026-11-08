@@ -222,14 +222,17 @@ admin.get("/projects/:projectId", async (c) => {
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     <details class="fold"><summary>名前を直す</summary><form method="post" action={adminPath(ward, `/projects/${projectId}/title`)}><label for="title">名前</label><input id="title" name="title" value={project.title} maxlength={100} required /> <button class="secondary">名前を保存する</button></form></details>
     <h2 id="materials">届いた資料</h2>
-    {await Promise.all(jobs.map(async (job) => {
-      const originals = await listOriginals(c.env.DB, ward.wardId, job.job_id);
+    {await Promise.all(jobs.filter((job) => !job.withdrawn_at).map(async (job) => {
+      const originals = (await listOriginals(c.env.DB, ward.wardId, job.job_id)).filter((original) => !original.withdrawn_at);
       const readings = await getReadings(c.env.DB, ward.wardId, job.job_id);
       const yearOriginals = originals.filter((original) => !project.closedAt && !original.withdrawn_at && unknownOriginalIds.has(original.original_id));
       // 何を今年の内容に、何を参考に入れたかを、資料ごとに一文で書く（去年の資料を「今年の内容に入れました」と書かない）。
       const changed = originals.map((original) => materialChangeText(state, original.original_id)).filter(Boolean).join("。");
       return <section class="panel"><b>{job.first_filename || "書いたこと"}</b><p class="muted">{job.status === "done" ? changed ? `読み終わりました。${changed}。` : "読み終わりました" : job.status === "failed" ? "読めませんでした" : "読み取りを進めています"}</p>
-        <div class="material-links">{originals.map((original, index) => <a class="quiet" href={adminPath(ward, `/intake/originals/${original.original_id}`)}>元の資料を見る{originals.length > 1 ? `（${index + 1}枚目）` : ""}</a>)}</div>
+        <div class="material-links">{originals.map((original, index) => <div>
+          <a class="quiet" href={adminPath(ward, `/intake/originals/${original.original_id}`)}>元の資料を見る{originals.length > 1 ? `（${index + 1}枚目）` : ""}</a>
+          <a class="quiet" href={`${adminPath(ward, `/intake/originals/${original.original_id}/withdraw`)}?${new URLSearchParams({ back: adminPath(ward, `/projects/${projectId}`) })}`}>{originals.length > 1 ? `${original.filename || `${index + 1}枚目`}を消す` : "この資料を消す"}</a>
+        </div>)}</div>
         {readings.length ? <details class="hint"><summary>読み取った内容</summary><div>{readings.map((r) => <><p>{r.body.summary}</p>
           {"fields" in r.body ? <>{r.body.fields.map((f) => <p>{f.name}: {f.value}（{f.locator}。{f.confidence === "high" ? "はっきり読めました" : f.confidence === "medium" ? "少し読みにくい字でした" : "読みにくい字でした"}）</p>)}{r.body.text_blocks.map((b) => <p>{b.text}（{b.locator}）</p>)}
             {/* 表の中にある日時や担当も、文と同じく読めるように出す。Word の表や Excel は、ここに中身の大事な所がある。 */}
@@ -242,7 +245,7 @@ admin.get("/projects/:projectId", async (c) => {
         {job.status === "failed" ? <form method="post" action={adminPath(ward, `/intake/${job.job_id}/retry`)}><button class="secondary">もう一度読む</button></form> : null}
       </section>;
     }))}
-    {jobs.length === 0 ? <p>まだ資料は入っていません。</p> : null}
+    {jobs.every((job) => job.withdrawn_at) ? <p>まだ資料は入っていません。</p> : null}
     {changes.results.length ? <><a class="quiet" href={adminPath(ward, `/projects/${projectId}/map`)}>やることで、変わった仕事を見る</a>
     <h2>資料から変わったところ</h2>
     <ul class="rows">{changes.results.map((change) => <li class="panel"><b>{changeTargetLabel(change.kind, change.target, state)}</b><p>{change.status === "applied" ? change.reason === ROW_REMOVED ? "外しました" : change.kind === "map_task" ? "済みにしました" : appliedText(change, project.year) : change.status === "same" ? "同じでした" : change.status === "conflict" ? "食い違いとして並びました" : change.status === "kept" ? "今の内容を残しました" : change.status === "held" ? "確認待ちです" : change.status === "dropped" ? `取り込めませんでした${change.reason ? `: ${change.reason}` : ""}` : "記録しました"}{change.source_locator && change.source_kind === "original" ? `（${change.source_locator}）` : ""}</p></li>)}</ul>
