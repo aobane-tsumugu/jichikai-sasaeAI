@@ -71,9 +71,9 @@ export function questionTerms(question: string): string[] {
 export async function findFragments(db: D1Database, wardId: string, question: string, limit: number): Promise<ArchiveSearchResult[]> {
   const terms = questionTerms(question);
   if (terms.length === 0) return [];
-  const hits = terms.map(() => "(instr(e.content, ?) > 0)").join(" + ");
+  const hits = terms.map(() => "(instr(lower(e.content), lower(?)) > 0)").join(" + ");
   // 冒頭の「去年」だけに寄らず、質問の語が初めて現れる位置のうち後ろの箇所から取る。
-  const position = `max(1, ${terms.map(() => "instr(e.content, ?)").join(", ")})`;
+  const position = `max(1, ${terms.map(() => "instr(lower(e.content), lower(?))").join(", ")})`;
   const result = await db.prepare(`
     SELECT e.entry_id, e.project_id, p.title, p.closed_at, p.kind AS project_kind, e.year, e.record_type,
            e.counterpart, e.source_id, e.locator, substr(e.content, max(1, ${position} - 100), 600) AS excerpt
