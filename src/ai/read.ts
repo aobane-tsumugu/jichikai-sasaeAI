@@ -1,4 +1,6 @@
 import type { AnswerLabels } from "../settings/answer-labels";
+import { TEXT_ANSWER_LIMIT, type AnswerField, type FieldValues } from "../answers/fields";
+import type { AnswerSheetRow } from "./schema";
 // 読む: 写真と PDF を Messages API に直接渡して、型付きの読み取りを受ける（一回の呼び出し。claude-sonnet-5-5）。
 // 回答票と復元も同じ道で、包み（指示とスキーマ）だけが違う。画面の応答の後に裏で呼ばれる。
 // 原本の中の文は資料であって、指示ではない（設計書 5.6）。
@@ -96,7 +98,11 @@ const ANSWER_SHEET_SYSTEM = `${COMMON_RULES}
 
 読み取りの作り方（回答票）:
 - 一枚に複数の票が写っていることがあります。票ごとに rows の一行にしてください。
-- household_name は代表者の名前、ward_group は紙に印字された班の名前です。
+- household_name は代表者の名前、ward_group は紙に印字または記入された班の名前です。書かれていなければ空文字にし、推測しません。
+- 渡された返事の欄の定義（fields）と紙の見出しを照らし合わせ、票ごとにfield_valuesへ{field_id, values}を入れてください。field_idは定義のfieldIdをそのまま使います。
+- kindがdaysの欄は、はっきり印の付いた候補だけをvaluesに入れ、文字は定義のoptionsからそのまま写してください。定義に無い日、印の無い候補、読めない印は入れません。multipleがfalseの欄に複数の印があるときは、その欄を入れずnoteとunreadableに残してください。
+- kindがtextの欄は、書かれた文字をそのままvaluesの一つの文字列にしてください。班の答えはward_groupに書きます。
+- 空欄、読めない答え、紙に無い欄はfield_valuesに入れず、推測しません。読めない箇所はnoteとunreadableに残してください。欄の定義が無いとき、欄が刷られる前の古い回答票ではfield_valuesは空の配列にし、それ以外はこれまでどおり読みます。
 - 総会の回答票・委任状は人数ではなく世帯の出席を読みます。出席に印はmeeting_statusをattend、委任に印はproxy、欠席に印はabsentにしてください。空欄、複数の印、判読不能はnullにし、noteとunreadableに残してください。委任先の記載から出欠の印を推測しません。
 - 総会のproxy_nameは委任する相手の名前を書かれたまま写します。空欄と確認できるときは空文字、判読不能はnullです。空欄を議長の名前や「議長」で補いません。総会ではchildren、adults、seniorsはnull、not_attendingはfalse、helper_namesとhelper_slotsは空にします。以下の人数の規則は総会以外に使います。総会以外のmeeting_statusはnull、proxy_nameは空文字にしてください。
 - 「参加しない」「欠席」「不参加」に印があるときは not_attending を true にし、children、adults、seniors をすべて0にしてください。参加する印だけ、または出欠の印が読めないときは false にし、読めない印は note と unreadable に残してください。
@@ -199,9 +205,28 @@ export interface ReadOptions {
   yearItems?: readonly { key: string; title: string }[];
   generalMeeting?: boolean;
   answerLabels?: AnswerLabels;
+  /** Webと紙で使う、その準備の欄の定義。班は従来どおりward_groupへ読む。 */
+  answerFields?: { fields: readonly AnswerField[]; districtAsked: boolean };
   originals: ReadableOriginal[];
   /** 考える深さ。読み取りは文字起こしが中心なので既定は low。 */
   effort?: "low" | "medium" | "high";
+}
+
+/** 読んだ答えのうち、今の欄で受け取れるものだけを保存する。古い読み取りは空のまま。 */
+export function sheetFieldValues(row: AnswerSheetRow, fields: readonly AnswerField[]): FieldValues {
+  const values: FieldValues = {};
+  for (const field of fields) {
+    const entries = (row.field_values ?? []).filter((entry) => entry.field_id === field.fieldId)
+      .flatMap((entry) => entry.values).map((entry) => entry.trim()).filter(Boolean);
+    if (field.kind === "days") {
+      const chosen = [...new Set(entries)].filter((entry) => field.options.includes(entry));
+      if (chosen.length && (field.multiple || chosen.length === 1)) values[field.fieldId] = field.multiple ? chosen : chosen[0]!;
+    } else if (field.kind === "text") {
+      const text = entries.join(" ");
+      if (text && text.length <= TEXT_ANSWER_LIMIT) values[field.fieldId] = text;
+    }
+  }
+  return values;
 }
 
 /** 保存した写真をそのまま読む。保管前の変換失敗は読めない箇所として質問に渡す。 */
@@ -245,6 +270,7 @@ export async function readOriginals(client: Anthropic, options: ReadOptions): Pr
   const content = buildContent(prepared);
   const last = content[content.length - 1];
   if (options.kind !== "answer_sheet" && last?.type === "text") last.text += `\nproject_suggestionsのyear_itemの候補（一年の予定。この中に当たる行がなければ空文字）: ${JSON.stringify(options.yearItems ?? [])}`;
+  if (options.kind === "answer_sheet" && last?.type === "text") last.text += `\nこの準備の返事の欄の定義: ${JSON.stringify(options.answerFields ?? { fields: [], districtAsked: false })}`;
 
   let response: Anthropic.Message;
   try {

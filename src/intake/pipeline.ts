@@ -21,6 +21,9 @@ import { suggestProjects, SUGGEST_PACK_VERSION } from "../ai/suggest";
 import { fixOriginalIds, ReadError, readOriginals, type ReadableOriginal } from "../ai/read";
 import { lookupPaperCode } from "../print/qr";
 import { addAnswer } from "../answers/api";
+import { getAnswerFields } from "../answers/fields";
+import { getSquads } from "../settings/store";
+import { sheetFieldValues } from "../ai/read";
 import { meetingAnswerFromSheet } from "../answers/meeting";
 import {
   claimRead,
@@ -168,7 +171,9 @@ async function performRead(
     const answerLabels = job.read_kind === "answer_sheet" ? await getAnswerLabels(env.DB, wardId) : undefined;
     const answerFeatures = job.read_kind === "answer_sheet" && job.project_id
       ? await projectFeatures(env.DB, wardId, job.project_id) : null;
-    const result = await (deps?.readImpl ?? readOriginals)(client, { kind: job.read_kind, originals: readable, yearItems, answerLabels, generalMeeting: answerFeatures?.delegation });
+    const answerFields = job.read_kind === "answer_sheet" && job.project_id
+      ? await getAnswerFields(env.DB, wardId, job.project_id, await getSquads(env.DB, wardId)) : undefined;
+    const result = await (deps?.readImpl ?? readOriginals)(client, { kind: job.read_kind, originals: readable, yearItems, answerLabels, answerFields, generalMeeting: answerFeatures?.delegation });
     const placed = await finishRead(env.DB, {
       wardId,
       jobId,
@@ -259,6 +264,7 @@ async function saveAnswerSheetRows(
   if (!reading || !("rows" in reading)) return;
   const features = await projectFeatures(db, wardId, projectId);
   if (!features.attendance) return;
+  const { fields } = await getAnswerFields(db, wardId, projectId, await getSquads(db, wardId));
   await Promise.all(reading.rows.map(async (row, index) => {
     const household = row.household_name.trim();
     const district = row.ward_group.trim();
@@ -267,7 +273,7 @@ async function saveAnswerSheetRows(
         const answer = meetingAnswerFromSheet(row);
         if (!answer || reading.unreadable.some((entry) => entry.original_id === row.original_id && entry.locator === row.locator)) return;
         await addAnswer(db, wardId, { projectId, household, district, peopleCount: 0, ...answer,
-          source: "sheet", originalId: row.original_id, sheetRowIndex: index, accountId });
+          source: "sheet", originalId: row.original_id, sheetRowIndex: index, accountId, fieldValues: sheetFieldValues(row, fields) });
         return;
       }
     // 空欄と分かる人数は読み取りで0になる。不明な人数を補って一部だけ数えない。
@@ -287,6 +293,7 @@ async function saveAnswerSheetRows(
       originalId: row.original_id,
       sheetRowIndex: index,
       accountId,
+      fieldValues: sheetFieldValues(row, fields),
     });
   }));
 }
