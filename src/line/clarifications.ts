@@ -3,6 +3,7 @@ import { newId } from "../core/ids";
 import { getClient } from "../ai/deps";
 import { writeClarification, type ClarificationPrompt } from "../ai/clarification";
 import { getReadings } from "../intake/store";
+import type { Reading } from "../ai/schema";
 import { addQuestion } from "../project/api";
 import { lineChannelCredentials, replyLineText, pushInquiryAnswer, inquiryPushAllowance, sendLineQuestion } from "./api";
 import { photoCheckMessage } from "../intake/photo-check";
@@ -129,6 +130,19 @@ export async function attachClarificationQuestions(db: D1Database, wardId: strin
   }
 }
 
+/**
+ * 年を送った人に聞き返すか。年が書かれていない自治会の資料だけを聞く（前提 17。確かめが要る時だけ聞く）。
+ * 準備に入っていない写真は、読み取りが準備の候補、基本情報、一年の予定のどれかに出した物だけを自治会の資料と見る。
+ * 特売のチラシや個人の書類のように関係の無い物に年を聞くと、送った人の負担になるだけなので聞かない。
+ */
+export function needsYearQuestion(body: Reading, originalId: string, inProject: boolean): boolean {
+  const year = body.original_years.find((entry) => entry.original_id === originalId);
+  if (!year || year.year !== null) return false;
+  if (body.text_blocks.filter((b) => b.original_id === originalId).some((b) => /(?:20\d{2}年|令和\s*\d+年|平成\s*\d+年)/.test(b.text))) return false;
+  if (inProject) return true;
+  return [...(body.project_suggestions ?? []), ...(body.ward_facts ?? []), ...(body.year_entries ?? [])].some((entry) => entry.original_id === originalId);
+}
+
 async function prepareQuestions(env: Env, wardId: string, batch: Batch, now: Date): Promise<boolean> {
   if (await batchIsInquiry(env.DB, wardId, batch.batch_id)) return false;
   const items = await env.DB.prepare(`SELECT i.job_id, i.image_index, j.read_at, j.project_id, j.status FROM line_photo_items i
@@ -162,8 +176,7 @@ async function prepareQuestions(env: Env, wardId: string, batch: Batch, now: Dat
       for (const [originalId, notes] of unreadables) for (const note of notes) pending.push({ originalId, topic: "unreadable", text: `この写真の${note}。何と書かれていますか。`, options: ["分からない"] });
       if ("fields" in reading.body && reading.body.document_kind !== "photo") {
         for (const year of reading.body.original_years) {
-          const dated = reading.body.text_blocks.filter((b) => b.original_id === year.original_id).some((b) => /(?:20\d{2}年|令和\s*\d+年|平成\s*\d+年)/.test(b.text));
-          if (year.year === null && !dated && originals.results.some((original) => original.original_id === year.original_id)) pending.push({
+          if (needsYearQuestion(reading.body, year.original_id, Boolean(item.project_id)) && originals.results.some((original) => original.original_id === year.original_id)) pending.push({
             originalId: year.original_id, topic: "year", text: "この写真は、今年のものですか。去年か、それより前のものですか。", options: ["今年のもの", "去年か、それより前のもの", "分からない"],
           });
         }
