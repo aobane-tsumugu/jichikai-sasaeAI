@@ -73,7 +73,8 @@ it("返事の画面で、終わったものの開き直しと訂正をやめる�
   for (const query of ["", "?view=unanswered", "?view=list", "?view=read"]) {
     const response = await get(realApp, `${path}${query}`, cookie);
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain(`<a class="quiet" href="${closePath}">終わりにした画面で、終わりを取り消してください</a>`);
+    // 文の途中でなく、一行の押しやすいリンクで置く
+    expect(await response.text()).toContain(`<p class="link-line"><a href="${closePath}">終わりにした画面を開く</a></p>`);
   }
   const closedEdit = await get(realApp, editPath, cookie);
   expect(closedEdit.status).toBe(200);
