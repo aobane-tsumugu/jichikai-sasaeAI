@@ -1,7 +1,7 @@
 // 受けた物の種類の見分け。ブラウザが言う種類は信じず、先頭のバイトで見る。
 // 対応していない形式は受けない。古いWordとExcelは読み取りに失敗しても原本を残す。
 
-export type MediaClass = "image" | "pdf" | "word" | "excel" | "text";
+export type MediaClass = "image" | "pdf" | "word" | "excel" | "powerpoint" | "text";
 
 export interface Classified {
   mediaType: string;
@@ -10,6 +10,7 @@ export interface Classified {
 
 const WORD_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const EXCEL_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const POWERPOINT_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 const TEXT_EXTENSIONS = new Set(["txt", "csv", "tsv", "json", "md", "log"]);
 
 function extensionOf(filename: string): string {
@@ -36,8 +37,10 @@ export function classifyUpload(bytes: Uint8Array, declaredType: string, filename
     const ext = extensionOf(filename);
     if (ext === "doc") return { mediaType: "application/msword", mediaClass: "word" };
     if (ext === "xls") return { mediaType: "application/vnd.ms-excel", mediaClass: "excel" };
+    if (ext === "ppt") return { mediaType: "application/vnd.ms-powerpoint", mediaClass: "powerpoint" };
     if (declaredType === "application/msword") return { mediaType: declaredType, mediaClass: "word" };
     if (declaredType === "application/vnd.ms-excel") return { mediaType: declaredType, mediaClass: "excel" };
+    if (declaredType === "application/vnd.ms-powerpoint") return { mediaType: declaredType, mediaClass: "powerpoint" };
     return null;
   }
   if (startsWith(bytes, [0xff, 0xd8, 0xff])) return { mediaType: "image/jpeg", mediaClass: "image" };
@@ -56,6 +59,7 @@ export function classifyUpload(bytes: Uint8Array, declaredType: string, filename
     const ext = extensionOf(filename);
     if (ext === "docx" || declaredType === WORD_TYPE) return { mediaType: WORD_TYPE, mediaClass: "word" };
     if (ext === "xlsx" || declaredType === EXCEL_TYPE) return { mediaType: EXCEL_TYPE, mediaClass: "excel" };
+    if (ext === "pptx" || declaredType === POWERPOINT_TYPE) return { mediaType: POWERPOINT_TYPE, mediaClass: "powerpoint" };
     return null;
   }
   const looksText = declaredType.startsWith("text/") || TEXT_EXTENSIONS.has(extensionOf(filename)) || declaredType === "application/json";

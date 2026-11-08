@@ -4,7 +4,7 @@ import { DOCUMENT_KINDS, type Reading, type ReadRow, type ReadTable, type TextBl
 
 /** ブラウザかWorkerが展開した形。 */
 export interface ExtractedDocument {
-  format: "docx" | "xlsx" | "doc" | "xls";
+  format: "docx" | "xlsx" | "doc" | "xls" | "pptx" | "ppt";
   /** Word の本文の段落（表の外）。Excel は空 */
   paragraphs: string[];
   /** Word の表、Excel のシート。rows は行ごとのセルの文字 */
@@ -19,7 +19,7 @@ const MAX_CELLS = 200_000;
 export function parseExtracted(value: unknown): ExtractedDocument | null {
   if (typeof value !== "object" || value === null) return null;
   const v = value as Record<string, unknown>;
-  if (v.format !== "docx" && v.format !== "xlsx" && v.format !== "doc" && v.format !== "xls") return null;
+  if (v.format !== "docx" && v.format !== "xlsx" && v.format !== "doc" && v.format !== "xls" && v.format !== "pptx" && v.format !== "ppt") return null;
   if (!Array.isArray(v.paragraphs) || !Array.isArray(v.tables)) return null;
   if (!v.paragraphs.every((p) => typeof p === "string")) return null;
   let cells = 0;

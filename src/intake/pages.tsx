@@ -146,7 +146,7 @@ intakeAdmin.get("/intake", async (c) => {
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
     <form id="send-form" method="post" action={`${adminPath(ward, "/intake")}?${query}`} enctype="multipart/form-data">
       <div class="field"><label class="file-button">カメラで紙を撮る<input id="cam" type="file" name="part" accept="image/*" capture="environment" multiple /></label><p id="cam-count" class="help-text" aria-live="polite" /></div>
-      <div class="field"><label class="file-button">ファイルを選ぶ<input id="files" type="file" name="part" accept="image/*,application/pdf,.pdf,.docx,.xlsx,.doc,.xls,.txt,.csv" multiple /></label><p id="files-count" class="help-text" aria-live="polite" /><p class="help-text">写真、PDF、Word、Excel（古い形式の.docや.xlsも）を送れます。写真は紙の文字や行事の様子が分かる大きさに整えて保存します。</p></div>
+      <div class="field"><label class="file-button">ファイルを選ぶ<input id="files" type="file" name="part" accept="image/*,application/pdf,.pdf,.docx,.xlsx,.pptx,.doc,.xls,.ppt,.txt,.csv" multiple /></label><p id="files-count" class="help-text" aria-live="polite" /><p class="help-text">写真、PDF、Word、Excel、PowerPoint（古い形式の.docや.xls、.pptも）を送れます。写真は紙の文字や行事の様子が分かる大きさに整えて保存します。</p></div>
       <div id="drop-zone" class="drop-zone"><p>パソコンなら、ここにファイルを落としても送れます。</p><p class="help-text">一度に30点、一つ25MB、合わせて80MBまでです。</p><p id="drop-count" class="help-text" aria-live="polite" /></div>
       <details class="fold"><summary>電話や立ち話で決まったことを書く</summary><div><div class="field"><label for="text">決まったこと</label><textarea id="text" name="text" maxlength={2000} rows={3} /></div></div></details>
       <input type="hidden" name="project_id" value={project?.projectId ?? ""} />

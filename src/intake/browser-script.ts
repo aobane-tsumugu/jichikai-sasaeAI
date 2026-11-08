@@ -38,17 +38,19 @@ export const SEND_SCRIPT = PHOTO_SCRIPT + `var SEND_LIMITS = { parts: ${MAX_PART
       entries[name] = { method: u16(d, p + 10), csize: u32(d, p + 20), lho: u32(d, p + 42) };
       p += 46 + nlen + elen + clen;
     }
-    return {
-      has: function (name) { return !!entries[name]; },
-      text: async function (name) {
+    async function bytes(name) {
         var e = entries[name];
-        if (!e) return '';
+        if (!e) return new Uint8Array(0);
         var start = e.lho + 30 + u16(d, e.lho + 26) + u16(d, e.lho + 28);
         var raw = d.subarray(start, start + e.csize);
-        var bytes = e.method === 0 ? raw : e.method === 8 ? await inflateRaw(raw) : null;
-        if (!bytes) throw new Error('zip method');
-        return new TextDecoder('utf-8').decode(bytes);
-      }
+        var result = e.method === 0 ? raw : e.method === 8 ? await inflateRaw(raw) : null;
+        if (!result) throw new Error('zip method');
+        return result;
+    }
+    return {
+      has: function (name) { return !!entries[name]; },
+      bytes: bytes,
+      text: async function (name) { return new TextDecoder('utf-8').decode(await bytes(name)); }
     };
   }
 
@@ -238,11 +240,118 @@ export const SEND_SCRIPT = PHOTO_SCRIPT + `var SEND_LIMITS = { parts: ${MAX_PART
     return { format: 'xlsx', paragraphs: [], tables: tables };
   }
 
+  // ---- PowerPoint ----
+  function pptXml(xml) {
+    return xml.replace(/<(\/?)[A-Za-z_][\w.-]*:/g, '<$1');
+  }
+
+  function officePath(base, target) {
+    if (!target || /^[a-z][a-z0-9+.-]*:/i.test(target)) return '';
+    var parts = target.charAt(0) === '/' ? [] : base.split('/').slice(0, -1);
+    target.split('/').forEach(function (part) {
+      if (part === '..') parts.pop();
+      else if (part && part !== '.') parts.push(part);
+    });
+    return parts.join('/');
+  }
+
+  async function pptRels(zip, path) {
+    var slash = path.lastIndexOf('/');
+    var xml = pptXml(await zip.text(path.slice(0, slash + 1) + '_rels/' + path.slice(slash + 1) + '.rels'));
+    var rels = {};
+    xml.replace(/<Relationship\b[^>]*>/g, function (tag) {
+      if (attr(tag, 'TargetMode') !== 'External') rels[attr(tag, 'Id')] = { path: officePath(path, attr(tag, 'Target')), type: attr(tag, 'Type') };
+      return '';
+    });
+    return rels;
+  }
+
+  function pptParagraphs(xml) {
+    var list = [];
+    xml.replace(/<p(?=[\s>])[^>]*>([\s\S]*?)<\/p>/g, function (_, inner) {
+      var text = '';
+      inner.replace(/<t(?:\s[^>]*)?>([^<]*)<\/t>|<br\b[^>]*\/>/g, function (tag, value) {
+        text += value === undefined ? '\n' : unescapeXml(value);
+        return '';
+      });
+      if (text.trim()) list.push(text);
+      return '';
+    });
+    return list;
+  }
+
+  async function extractPptx(zip) {
+    var presentation = pptXml(await zip.text('ppt/presentation.xml'));
+    var rels = await pptRels(zip, 'ppt/presentation.xml');
+    var slides = [];
+    presentation.replace(/<sldId\b[^>]*>/g, function (tag) { slides.push(attr(tag, 'r:id')); return ''; });
+    if (!slides.length) throw new Error('slides');
+    var tables = [], images = [];
+    for (var s = 0; s < slides.length; s++) {
+      var rel = rels[slides[s]];
+      if (!rel || !/\/slide$/.test(rel.type) || !zip.has(rel.path)) throw new Error('slide');
+      var xml = pptXml(await zip.text(rel.path));
+      var name = 'スライド' + (s + 1);
+      var slideTables = [];
+      var body = xml.replace(/<tbl\b[^>]*>([\s\S]*?)<\/tbl>/g, function (_, inner) {
+        var rows = [];
+        inner.replace(/<tr\b[^>]*>([\s\S]*?)<\/tr>/g, function (tag, row) {
+          var cells = [];
+          row.replace(/<tc\b[^>]*>([\s\S]*?)<\/tc>/g, function (cellTag, cell) { cells.push(pptParagraphs(cell).join('\n')); return ''; });
+          rows.push(cells);
+          return '';
+        });
+        slideTables.push({ name: name + ' 表' + (slideTables.length + 1), rows: rows });
+        return '';
+      });
+      var paragraphs = pptParagraphs(body);
+      tables.push({ name: name, rows: paragraphs.map(function (p) { return [p]; }) });
+      tables = tables.concat(slideTables);
+      var slideRels = await pptRels(zip, rel.path);
+      // メモの文字はスライド本文の有無に含めない。
+      var hasText = paragraphs.length || slideTables.some(function (table) {
+        return table.rows.some(function (row) { return row.some(function (cell) { return cell.trim(); }); });
+      });
+      if (!hasText) {
+        var seen = {};
+        var imageCount = 0;
+        var blips = /<blip\b[^>]*>/g, blip;
+        while ((blip = blips.exec(xml)) !== null) {
+          var imageRel = slideRels[attr(blip[0], 'r:embed')];
+          if (!imageRel || !/\/image$/.test(imageRel.type) || imageRel.path.indexOf('ppt/media/') !== 0 || seen[imageRel.path]) continue;
+          seen[imageRel.path] = true;
+          if (!zip.has(imageRel.path)) throw new Error('slide image');
+          var ext = imageRel.path.split('.').pop().toLowerCase();
+          var mime = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', heic: 'image/heic', heif: 'image/heif' }[ext];
+          // 写真と同じ道で読める画像だけを渡す。描き直す部品は足さない。
+          if (mime) {
+            imageCount++;
+            images.push({ name: name + 'の画像' + (imageCount > 1 ? String(imageCount) : '') + '.' + ext, type: mime, bytes: await zip.bytes(imageRel.path) });
+          }
+        }
+      }
+      for (var id in slideRels) {
+        var note = slideRels[id];
+        if (!/\/notesSlide$/.test(note.type) || note.path.indexOf('ppt/notesSlides/') !== 0) continue;
+        var notesXml = pptXml(await zip.text(note.path));
+        // スライドの縮小図、ページ番号、日付などの欄をメモの本文に混ぜない。
+        notesXml = notesXml.replace(/<sp\b[^>]*>([\s\S]*?)<\/sp>/g, function (tag, inner) {
+          var placeholder = /<ph\b[^>]*>/.exec(inner);
+          return placeholder && /^(sldImg|sldNum|dt|hdr|ftr)$/.test(attr(placeholder[0], 'type')) ? '' : tag;
+        });
+        var notes = pptParagraphs(notesXml);
+        if (notes.length) tables.push({ name: name + ' メモ', rows: notes.map(function (p) { return [p]; }) });
+      }
+    }
+    return { format: 'pptx', paragraphs: [], tables: tables, images: images };
+  }
+
   async function extractOffice(buffer) {
     var zip = await readZip(buffer);
     var result;
     if (zip.has('word/document.xml')) result = await extractDocx(zip);
     else if (zip.has('xl/workbook.xml')) result = await extractXlsx(zip);
+    else if (zip.has('ppt/presentation.xml')) result = await extractPptx(zip);
     else throw new Error('office');
     var core = await zip.text('docProps/core.xml');
     ['modified', 'created'].some(function (key) {
@@ -349,6 +458,7 @@ export const SEND_SCRIPT = PHOTO_SCRIPT + `var SEND_LIMITS = { parts: ${MAX_PART
       var fd = new FormData();
       fd.append('project_id', form.elements['project_id'] ? form.elements['project_id'].value : '');
       fd.append('text', text);
+      var sentParts = [];
       for (var i = 0; i < picked.length; i++) {
         var f = picked[i].file;
         if (picked[i].kind === 'photo' && typeof BarcodeDetector !== 'undefined') {
@@ -359,16 +469,33 @@ export const SEND_SCRIPT = PHOTO_SCRIPT + `var SEND_LIMITS = { parts: ${MAX_PART
           } catch (ignored) { /* この端末で読めないときは符号を送らず、読み取りへ進む */ }
         }
         var extracted = '';
-        if (/\.(docx|xlsx)$/i.test(f.name)) {
-          try { extracted = JSON.stringify(await extractOffice(await f.arrayBuffer())); }
-          catch (e) { say('「' + f.name + '」を開けませんでした。WordかExcelの新しい形式（.docx、.xlsx）で保存し直してください。', true); button.disabled = false; return; }
+        var slideImages = [];
+        if (/\.(docx|xlsx|pptx)$/i.test(f.name) || f.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
+          try {
+            var office = await extractOffice(await f.arrayBuffer());
+            slideImages = office.images || [];
+            delete office.images;
+            extracted = JSON.stringify(office);
+          }
+          catch (e) { say('「' + f.name + '」を開けませんでした。Word、Excel、PowerPointの新しい形式（.docx、.xlsx、.pptx）で保存し直してください。', true); button.disabled = false; return; }
         }
-        var prepared = await root.__sendPhoto.preparePhoto(f);
-        fd.append('part', prepared.file, prepared.sourceHash ? f.name.replace(/\.[^.]*$/, '') + '.jpg' : f.name);
-        fd.append('part_kind', picked[i].kind);
-        fd.append('part_extracted', extracted);
-        fd.append('part_source_hash', prepared.sourceHash);
-        fd.append('part_last_modified', String(prepared.lastModified || ''));
+        var uploads = [{ file: f, kind: picked[i].kind, extracted: extracted }];
+        slideImages.forEach(function (img) {
+          var imageFile = new File([img.bytes], f.name.replace(/\.[^.]*$/, '') + ' ' + img.name, { type: img.type, lastModified: f.lastModified });
+          uploads.push({ file: imageFile, kind: 'photo', extracted: '' });
+        });
+        for (var u = 0; u < uploads.length; u++) {
+          var upload = uploads[u];
+          var prepared = await root.__sendPhoto.preparePhoto(upload.file);
+          sentParts.push({ file: prepared.file });
+          var expandedError = limitError(sentParts);
+          if (expandedError) { say(expandedError, true); button.disabled = false; return; }
+          fd.append('part', prepared.file, prepared.sourceHash ? upload.file.name.replace(/\.[^.]*$/, '') + '.jpg' : upload.file.name);
+          fd.append('part_kind', upload.kind);
+          fd.append('part_extracted', upload.extracted);
+          fd.append('part_source_hash', prepared.sourceHash);
+          fd.append('part_last_modified', String(prepared.lastModified || ''));
+        }
       }
       var res = await fetch(form.action, { method: 'POST', body: fd, headers: { accept: 'application/json' }, credentials: 'same-origin' });
       if (!(res.headers.get('content-type') || '').toLowerCase().includes('application/json')) {

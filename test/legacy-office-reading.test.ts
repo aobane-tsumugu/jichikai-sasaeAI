@@ -6,7 +6,7 @@ import { classifyUpload } from "../src/intake/media";
 import { originalDate } from "../src/intake/original-date";
 import { biff, biffText, compound, f64, joinBytes, summaryInformation, u16, u32, utf16, wordStreams, workbookStream } from "./fixtures/legacy-office";
 
-describe("古いWordとExcelの見分け", () => {
+describe("古いWord、Excel、PowerPointの見分け", () => {
   const signature = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
   it.each([
     ["通知.DOC", "", "word", "application/msword"],
@@ -14,12 +14,15 @@ describe("古いWordとExcelの見分け", () => {
     ["資料", "application/msword", "word", "application/msword"],
     ["資料", "application/vnd.ms-excel", "excel", "application/vnd.ms-excel"],
     ["表.xls", "application/msword", "excel", "application/vnd.ms-excel"],
+    ["資料.PPT", "", "powerpoint", "application/vnd.ms-powerpoint"],
+    ["資料", "application/vnd.ms-powerpoint", "powerpoint", "application/vnd.ms-powerpoint"],
   ])("複合文書を拡張子か宣言された型で受ける: %s", (filename, type, mediaClass, mediaType) => {
     expect(classifyUpload(signature, type, filename)).toEqual({ mediaClass, mediaType });
   });
-  it("ほかの複合文書や、名前だけがdocのバイナリは受けない", () => {
-    expect(classifyUpload(signature, "application/vnd.ms-powerpoint", "資料.ppt")).toBeNull();
-    for (const filename of ["資料.doc", "資料.xls"]) {
+  it("未対応の複合文書や、拡張子だけがdoc、xls、pptのバイナリは受けない", () => {
+    expect(classifyUpload(signature, "application/vnd.ms-outlook", "資料.msg")).toBeNull();
+    expect(classifyUpload(signature, "application/octet-stream", "資料.bin")).toBeNull();
+    for (const filename of ["資料.doc", "資料.xls", "資料.ppt"]) {
       for (let length = 1; length < signature.length; length++) {
         expect(classifyUpload(signature.subarray(0, length), "application/msword", filename)).toBeNull();
       }
