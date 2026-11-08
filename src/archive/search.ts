@@ -29,8 +29,9 @@ export interface ArchiveSearchInput {
 
 export async function searchArchive(db: D1Database, wardId: string, input: ArchiveSearchInput): Promise<ArchiveSearchResult[]> {
   const query = input.query.trim();
-  if (query.length < 2) return [];
-  const short = query.length < 3;
+  const length = [...query].length;
+  if (length < 2) return [];
+  const short = length < 3;
   const clauses = ["e.ward_id = ?", short ? "instr(lower(e.content), lower(?)) > 0" : "archive_search_fts MATCH ?"];
   const binds: (string | number)[] = [wardId, short ? query : `"${query.replaceAll('"', '""')}"`];
   if (input.year !== undefined) {

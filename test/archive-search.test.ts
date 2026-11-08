@@ -71,3 +71,27 @@ it("二文字の英字は大小によらず同じ記録に一致し、元の表�
     for (const result of results) expect(result.excerpt.length).toBeLessThanOrEqual(80);
   }
 });
+
+it("二文字の名前をUnicodeの文字数で探し、一文字では探さず、三文字でも索引から読める", async () => {
+  const local = await seedAdmin(env.DB);
+  const other = await seedAdmin(env.DB);
+  const padding = "行事の準備の経過を記録しました。\n".repeat(30);
+  for (const owner of [local, other]) {
+    const project = await createProject(env.DB, owner.ward.wardId, {
+      kind: "event", title: "受付の記録", year: 2026, accountId: owner.account.accountId,
+    });
+    await env.DB.prepare(`INSERT INTO archive_search_entries
+      (ward_id, project_id, record_type, year, counterpart, locator, content, created_at)
+      VALUES (?, ?, 'decision', 2026, '受付係', '担当の記録', ?, '2026-11-08T00:00:00Z')`)
+      .bind(owner.ward.wardId, project.projectId, padding + "𠮷田家の方が受付を担当しました。" + padding).run();
+  }
+  for (const query of ["𠮷田", "𠮷田家"]) {
+    const results = await searchArchive(env.DB, local.ward.wardId, {
+      query, year: 2026, recordType: "decision", projectKind: "event", counterpart: "受付係",
+    });
+    expect(results).toHaveLength(1);
+    expect(results[0]?.excerpt).toContain("𠮷田");
+    expect(results[0]?.excerpt).toContain("受付");
+  }
+  expect(await searchArchive(env.DB, local.ward.wardId, { query: "𠮷" })).toEqual([]);
+});
