@@ -9,6 +9,17 @@ import type { Reading } from "../src/ai/schema";
 import { getEditableDocument, saveAIDraft } from "../src/project/actions";
 import { applyChange, createProject, getProjectState, type ItemKey } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
+import type { ReferenceConflictDetail } from "../src/project/questions-original-reference";
+
+async function referenceChoice(wardId: string, projectId: string, questionId: string, value: string) {
+  const row = await env.DB.prepare("SELECT detail FROM project_questions WHERE ward_id = ? AND project_id = ? AND question_id = ?")
+    .bind(wardId, projectId, questionId).first<{ detail: string }>();
+  const detail = JSON.parse(row!.detail) as ReferenceConflictDetail;
+  const item = detail.items![0]!;
+  const source = item.sources[item.options.indexOf(value)]!;
+  const index = detail.originals!.findIndex((original) => original.originalId === source.ref);
+  return { detail, answer: detail.options![index]! };
+}
 
 beforeEach(() => setClientFactory(() => { throw new Error("試験から本物のAIは呼びません"); }));
 afterEach(() => { setClientFactory(null); vi.useRealTimers(); });
@@ -87,7 +98,8 @@ it("画面から去年の食い違いに答えると参考を選び直し、今�
     text: "返事は2026年11月30日までです。", items: [{ key: "due", content: "2026年11月30日" }], based_on_state_version: state.project.stateVersion,
   });
   const before = await getEditableDocument(env.DB, s.ward.wardId, s.project.projectId, "announcement");
-  expect((await postForm(realApp, `${s.root}/projects/${s.project.projectId}/questions/${question!.questionId}`, { answer: "10月5日" }, s.cookie)).status).toBe(303);
+  const { answer } = await referenceChoice(s.ward.wardId, s.project.projectId, question!.questionId, "10月5日");
+  expect((await postForm(realApp, `${s.root}/projects/${s.project.projectId}/questions/${question!.questionId}`, { answer }, s.cookie)).status).toBe(303);
   const after = await s.state();
   expect(after.items.find((item) => item.key === "due")?.references[0]?.content).toBe("10月5日");
   expect(after.items.find((item) => item.key === "due")?.current?.content).toBe("2026年11月30日");
@@ -153,8 +165,11 @@ it("三つ以上の資料の同じ項目の食い違いは、違う値を並べ�
   const state = await s.state();
   expect(state.questions.filter((question) => question.target === "due")).toHaveLength(1);
   const question = state.questions.find((question) => question.target === "due")!;
-  expect(question.options).toEqual(["10月3日", "10月5日", "10月7日"]);
-  await postForm(realApp, `${s.root}/projects/${s.project.projectId}/questions/${question.questionId}`, { answer: "10月7日" }, s.cookie);
+  const { detail, answer } = await referenceChoice(s.ward.wardId, s.project.projectId, question.questionId, "10月7日");
+  expect(detail.items![0]!.options.slice().sort()).toEqual(["10月3日", "10月5日", "10月7日"]);
+  expect(question.options).toEqual(detail.originals!.map((original) => original.description));
+  expect(question.options).toHaveLength(3);
+  await postForm(realApp, `${s.root}/projects/${s.project.projectId}/questions/${question.questionId}`, { answer }, s.cookie);
   expect((await s.state()).items.find((item) => item.key === "due")?.references[0]?.content).toBe("10月7日");
 });
 
