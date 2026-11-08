@@ -147,11 +147,15 @@ export function materialGroupTemplate(group: MaterialGroup, past: Parameters<typ
     ? yearItems.find((entry) => entry.key === group.yearItem) : undefined;
   const template = startTemplate(item?.title ?? title, past, yearItems);
   const hasRota = group.materials.some((material) => material.readings.some(({ body }) => "fields" in body && (
-    body.document_kind === "rota" || body.tables.some((table) => table.original_id === material.original.original_id
-      // 列の名前は資料ごとに違う（「担当の世帯」「回る班」など）ので、言葉を含むかで見る。
-      && table.columns.some((column) => /日|日付|日時/.test(column))
-      && table.columns.some((column) => /班|組/.test(column))
-      && table.columns.some((column) => /担当|当番|世帯/.test(column)))
+    body.document_kind === "rota" || body.tables.some((table) => {
+      if (table.original_id !== material.original.original_id) return false;
+      // 列の名前は資料ごとに違う（「担当の世帯」「回る班」など）ので、言葉を含むかで見る。ブラウザで取り出した Word と Excel の表は
+      // 列の名前の欄が空で、見出しが一行目に入っているので、その時は一行目を見出しとして見る。
+      const heading = table.columns.length ? table.columns : table.rows[0]?.cells ?? [];
+      return heading.some((column) => /日|日付|日時/.test(column))
+        && heading.some((column) => /班|組/.test(column))
+        && heading.some((column) => /担当|当番|世帯/.test(column));
+    })
   )));
   return hasRota && template.taskKeys?.join(",") === "announcement,day,report"
     ? { ...template, taskKeys: ["announcement", "assign", "day", "report"] } : template;
