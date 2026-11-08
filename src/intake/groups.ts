@@ -55,7 +55,6 @@ export async function pendingMaterialGroups(db: D1Database, wardId: string): Pro
     const [originals, readings] = await Promise.all([listOriginals(db, wardId, job.job_id), getReadings(db, wardId, job.job_id)]);
     const suggestions = cleanProjectSuggestions(readings.flatMap((row) => "fields" in row.body ? row.body.project_suggestions ?? [] : []), originals.map((o) => o.original_id));
     const unknown: MaterialGroup["materials"] = [];
-    const inThisSend = new Set<MaterialGroup>();
     for (const original of originals.filter((o) => !o.withdrawn_at)) {
       const material = { jobId: job.job_id, original, readings };
       const suggestion = suggestions.find((s) => s.original_id === original.original_id);
@@ -73,11 +72,10 @@ export async function pendingMaterialGroups(db: D1Database, wardId: string): Pro
         if (item && (!group.yearItem || YEAR_BASE.some((base) => base.key === group!.yearItem))) group.yearItem = item.key;
       }
       group.materials.push(material);
-      inThisSend.add(group);
     }
-    const biggest = [...inThisSend].sort((a, b) => b.materials.length - a.materials.length)[0];
-    if (biggest) biggest.materials.push(...unknown);
-    else if (unknown.length) groups.push({ key: `unknown:${job.job_id}`, title: "", kind: "event", materials: unknown, joins: null });
+    // AI が当て先を出さなかった物は、同じ回に送った物でも一番大きいまとまりに足さない。手元のフォルダをまとめて送ると、
+    // 家計簿のような関係ない物が行事のまとまりに入り、準備を始めると一緒に入ってしまうため。「どの準備の資料か分からなかったもの」に残す。
+    if (unknown.length) groups.push({ key: `unknown:${job.job_id}`, title: "", kind: "event", materials: unknown, joins: null });
   }
   const open = await listOpenProjects(db, wardId);
   for (const group of groups) group.joins = openProjectFor(group, open);

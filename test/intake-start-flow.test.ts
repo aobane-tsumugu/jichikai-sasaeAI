@@ -106,7 +106,7 @@ it("新任の役員が題は案内・年不明の実際のフォームから送�
   }
 });
 
-it("読み手ごとに題が揺れ、当番や役員会の資料が混ざっても、一度に送った資料は一つのまとまりになる", async () => {
+it("読み手ごとに題が揺れ、当番や役員会の資料が混ざっても一つのまとまりになり、当て先の出なかった資料は足さずに残す", async () => {
   const { ward, account } = await seedAdmin(env.DB);
   const jobId = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -131,7 +131,11 @@ it("読み手ごとに題が揺れ、当番や役員会の資料が混ざって�
     ]), now,
   ).run();
   const groups = await pendingMaterialGroups(env.DB, ward.wardId);
-  expect(groups).toHaveLength(1);
-  expect(groups[0]).toMatchObject({ kind: "event" });
-  expect(groups[0]!.materials).toHaveLength(5);
+  // 題の揺れる四つは一つのまとまりになる。当て先の出なかった資料4は、同じ回に送っても行事のまとまりに足さない。
+  const titled = groups.filter((group) => group.title);
+  expect(titled).toHaveLength(1);
+  expect(titled[0]).toMatchObject({ kind: "event" });
+  expect(titled[0]!.materials.map((material) => material.original.original_id).sort()).toEqual(ids.slice(0, 4));
+  const untitled = groups.filter((group) => !group.title);
+  expect(untitled.flatMap((group) => group.materials.map((material) => material.original.original_id))).toEqual([ids[4]]);
 });
