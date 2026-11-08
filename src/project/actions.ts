@@ -5,7 +5,7 @@ import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, ITEM_SCREEN_LABEL, TAB
 import { hashOf, stableStringify } from "./util";
 import { eventDayStatements, getProjectState } from "./state";
 import { isCalendarDay, parseEventDay } from "../core/time";
-import { reconcileDocumentBody, type DocumentBody } from "./document-body";
+import { PENDING, reconcileDocumentBody, type DocumentBody } from "./document-body";
 import { getDraftPack } from "../draft/packs";
 
 type MaterialTable = "duties" | "committee";
@@ -377,7 +377,8 @@ export async function saveDocument(db: D1Database, wardId: string, projectId: st
     (version_id, ward_id, project_id, document_id, version_no, scope, body, title, based_on_state_version, origin, created_at, created_by_account_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'person', ?, ?)`).bind(versionId, wardId, projectId, doc.document_id, (latest?.n ?? 0) + 1, input.scope, JSON.stringify(body), input.title.trim(), wasCurrent ? currentProject?.state_version ?? input.basedOn : input.basedOn, now, accountId)];
   for (const item of body.items) {
-    if (!item.content.trim() || before.items.find((entry) => entry.key === item.key)?.content === item.content) continue;
+    // 「（確認中）」は決まっていない印で、値ではない。今年の値として記録しない（資料の値と食い違う問いを作らない）。
+    if (!item.content.trim() || item.content.includes(PENDING) || before.items.find((entry) => entry.key === item.key)?.content === item.content) continue;
     const change = await applyChange(db, wardId, projectId, { kind: "item", itemKey: item.key, value: item.content,
       source: { kind: "person", accountId }, confidence: "high", packVersion: "person-edit@1", requestId: versionId });
     if (change.status === "rejected") return false;

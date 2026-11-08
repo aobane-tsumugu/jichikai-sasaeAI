@@ -2,6 +2,7 @@
 import { nowIso } from "../core/ids";
 import { originalInProject } from "../intake/store";
 import { applyChange } from "./apply";
+import { PENDING } from "./document-body";
 import { getProjectState } from "./state";
 import type { ChangeInput, ProjectState, RowView, ValueView } from "./types";
 
@@ -44,6 +45,13 @@ export async function markMaterialThisYear(
         .bind(now, wardId, projectId, row.rowId),
     });
   }
+  // 下書きを保存した時に残った「（確認中）」は値ではない。資料の値と食い違う問いにせず、置き換える。
+  const placeholders = items.flatMap((value) => {
+    const current = state.items.find((item) => item.key === value.itemKey)?.current;
+    return current && (current.content.trim() === "" || current.content.includes(PENDING)) ? [current.valueId] : [];
+  });
+  if (placeholders.length) await db.batch([...new Set(placeholders)].map((valueId) => db.prepare(`UPDATE project_item_values SET superseded_at = ?
+    WHERE ward_id = ? AND project_id = ? AND value_id = ? AND scope = 'current' AND superseded_at IS NULL`).bind(now, wardId, projectId, valueId)));
   for (const { change, retire } of changes) {
     const result = await applyChange(db, wardId, projectId, change, options);
     if (result.status === "rejected" || result.status === "dropped") return false;
