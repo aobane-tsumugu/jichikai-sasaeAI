@@ -586,7 +586,7 @@ function FieldsView({ root, draftHref, closed, hidden, fields, districtAsked, sq
         <form method="post" action={`${root}/fields/${encodeURIComponent(field.fieldId)}/remove`}><p class="muted">外しても、今までの答えは消えません。</p><button class="secondary" type="submit">この欄を外す</button></form></> : null}
     </section>)}
     {!closed ? <><h2>欄を足す</h2>
-      <form method="post" action={`${root}/fields`}><input type="hidden" name="kind" value="days" /><p>候補の日を並べて、参加できる日を選んでもらいます。押すと、行事の日から候補を入れます。あとで直せます。</p><button class="secondary" type="submit">日を選ぶ欄を足す</button></form>
+      <form method="post" action={`${root}/fields`}><input type="hidden" name="kind" value="days" /><p>候補の日を並べて、参加できる日を選んでもらいます。行事の日が決まっていれば、押すとその日を候補に入れます。あとで直せます。</p><button class="secondary" type="submit">日を選ぶ欄を足す</button></form>
       <form method="post" action={`${root}/fields`}><input type="hidden" name="kind" value="text" /><p>短い文で答えてもらいます。たとえば、来られる時間や、気をつけてほしいことです。</p><button class="secondary" type="submit">自由に書く欄を足す</button></form>
       {answers ? <p class="muted">もう届いている{answers}件の返事は消えません。足した欄は、その返事では空のまま数えます。</p> : null}
     </> : null}
