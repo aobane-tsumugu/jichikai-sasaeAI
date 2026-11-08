@@ -89,7 +89,8 @@ def main():
     problems = []
     texts = {}
     rows = []
-    for folder in (DIR_REL, DIR_UNREL):
+    judge = os.path.join(BASE, "03_審査員が送る資料")
+    for folder in (DIR_REL, DIR_UNREL) + ((judge,) if os.path.isdir(judge) else ()):
         for name in sorted(os.listdir(folder)):
             path = os.path.join(folder, name)
             size = os.path.getsize(path)
@@ -119,7 +120,10 @@ def main():
             scan(name, name + "\n" + text, problems)
             texts[name] = text
             rows.append((os.path.basename(folder), name, size, info))
+    # 送り方の説明は、管理側では「送り方.md」、提出リポジトリでは README.md に入っている。
     md = os.path.join(BASE, "送り方.md")
+    if not os.path.exists(md):
+        md = os.path.join(BASE, "README.md")
     raw = open(md, "rb").read()
     if raw.startswith(b"\xef\xbb\xbf") or b"\r" in raw:
         problems.append("送り方.md: BOM か CRLF がある")
