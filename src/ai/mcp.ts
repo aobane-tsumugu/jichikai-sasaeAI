@@ -12,6 +12,7 @@ import { projectApi } from "./project-binding";
 import type { ChangeKind, Confidence, WriteContext } from "./project-contract";
 import { jobByTicket } from "./session";
 import { isAnswerSheetReading, normalizeOriginalYears, type ReadingBody } from "./schema";
+import { ITEM_KEYS } from "../project/model";
 
 const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 const MAX_DISCARDS_KEPT = 20;
@@ -64,7 +65,8 @@ export const TOOLS = [
       properties: {
         ticket: ticketProp,
         kind: { type: "string", enum: ["unreadable", "decide", "map_gap"], description: "unreadable は読めなかった所、decide は決めてほしい物、map_gap は地図に足りない物" },
-        target: { type: "string", description: "何についての問いか（項目の名前、「表の名前:相手」など）" },
+        // 役員が下書きの欄で決めた時に、その項目を聞いていた問いを閉じるため、項目は鍵で書いてもらう（src/project/question-target.ts）。
+        target: { type: "string", description: `何についての問いか。今年の項目（日時、場所、返事の締切など）について聞く時は、必ずその項目の鍵だけを書く（${ITEM_KEYS.join("、")}）。表は「表の名前:相手」、それ以外は短い名前` },
         text: { type: "string", description: "役員への問い（一文）" },
         original_id: { type: "string" },
         locator: { type: "string" },
