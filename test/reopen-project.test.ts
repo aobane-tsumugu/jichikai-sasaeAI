@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { expect, it } from "vitest";
 import { seedAdmin } from "../src/core/testing";
 import { createProject } from "../src/project/api";
-import { get, postForm, realApp } from "./helpers";
+import { get, postForm, realApp, sendLatest } from "./helpers";
 
 it("終わったものを開き直し、残っている報告を直して保存できる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
@@ -12,13 +12,16 @@ it("終わったものを開き直し、残っている報告を直して保存�
   const root = `/${ward.slug}/admin/close/${project.projectId}`;
   expect((await get(realApp, root, cookie)).status).toBe(200);
   expect((await postForm(realApp, `${root}/report/public`, { body: "閉じる前の報告" }, cookie)).status).toBe(303);
+  // 住民への報告は、終わりにする前にほかの連絡と同じ送り方で送る（L-319）。
+  expect((await sendLatest(ward.slug, ward.wardId, project.projectId, "report", cookie)).status).toBe(303);
   expect((await postForm(realApp, `${root}/finalize`, {}, cookie)).status).toBe(303);
   const closed = await get(realApp, root, cookie);
   expect(await closed.text()).toContain("終わりを取り消す</button>");
   expect((await postForm(realApp, `${root}/reopen`, {}, cookie)).status).toBe(303);
   const reopened = await get(realApp, root, cookie);
   const html = await reopened.text();
-  expect(html).toContain("閉じる前の報告");
+  expect(html).toContain("に住民に送りました。");
+  expect(html).toContain("報告を直して送り直す");
   expect(html).toContain("終わりにする</button>");
   expect((await postForm(realApp, `${root}/report/public`, { body: "直した報告" }, cookie)).status).toBe(303);
   expect(await env.DB.prepare("SELECT body FROM project_close_reports WHERE ward_id = ? AND project_id = ? AND scope = 'public'")

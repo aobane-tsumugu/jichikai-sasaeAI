@@ -35,9 +35,10 @@ it("行事を開き、当番の行を保存しても、主な操作と記録を�
   }
   const path = `/projects/${id}/draft/duty_roster`;
   const draft = await page(path);
-  expect(primaryLabels(draft)).toEqual(["保存して知らせる内容を見る"]);
+  // 実行委員と班長に渡す文書も、住民へのメッセージと同じ「送る」から送る前の確かめの画面へ進む（L-319）。
+  expect(primaryLabels(draft)).toEqual(["送る"]);
   expect(draft).toContain('<button type="submit" class="secondary">この行を保存する</button>');
-  expect(draft).toContain('form="draft-form" name="after" value="confirm"');
+  expect(draft).toContain('form="draft-form" name="after" value="send"');
   const state = await getProjectState(env.DB, ward.wardId, id);
   const row = state?.tables.duties[0];
   if (!row) throw new Error("当番の行がありません");
@@ -46,7 +47,7 @@ it("行事を開き、当番の行を保存しても、主な操作と記録を�
   }, cookie);
   expect(saved.status).toBe(303);
   const after = await page(path + "?notice=saved");
-  expect(primaryLabels(after)).toEqual(["保存して知らせる内容を見る"]);
+  expect(primaryLabels(after)).toEqual(["送る"]);
   expect(after).toContain(`value="${FIRST_SLICE.phoneHelper}"`);
 
   const search = await page("/archive/search");

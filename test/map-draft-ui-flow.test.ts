@@ -6,6 +6,7 @@ import { receive } from "../src/intake/receive";
 import { addQuestion, applyChange, createProject, getProjectState } from "../src/project/api";
 import { getEditableDocument } from "../src/project/actions";
 import { get, postForm, realApp } from "./helpers";
+import { sendLatest } from "./helpers";
 
 it("資料のない一年目から仕事・質問・下書き・別の雨の知らせへ進み、外した仕事を戻せる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
@@ -69,7 +70,7 @@ it("資料のない一年目から仕事・質問・下書き・別の雨の知�
   const draft = await (await get(realApp, `${path}/draft/announcement`, cookie)).text();
   expect(draft).toMatch(/name="title" value="[^"]+のご案内"/);
   expect(draft).toContain(`value="${FIRST_SLICE.layoutPosition}"`);
-  expect(draft).toContain('name="after" value="send">住民に送る</button>');
+  expect(draft).toContain('name="after" value="send">送る</button>');
   const fields = { title: "案内", scope: "public", based_on: String((await state()).project.stateVersion), text: FIRST_SLICE.publicAnnouncement, item_place: FIRST_SLICE.layoutPosition };
   expect((await postForm(realApp, `${path}/draft/announcement/save`, fields, cookie)).status).toBe(303);
   const saved = await (await get(realApp, `${path}/draft/announcement?notice=saved`, cookie)).text();
@@ -101,8 +102,11 @@ it("資料のない一年目から仕事・質問・下書き・別の雨の知�
     templateId: "rain", eventName: project.title, place: FIRST_SLICE.layoutPosition, dateTime: FIRST_SLICE.publicDayText,
   }, cookie);
   expect(rain.status).toBe(303);
-  expect(rain.headers.get("location")).toContain("/draft/rain-sent?done=");
-  expect(await (await get(realApp, rain.headers.get("location")!, cookie)).text()).toContain("班長に電話し、掲示の紙を張り替えてください");
+  // 雨の変更も、送る前の確かめの画面を通してから送る（L-319）。送ったあとの画面は、雨の時の次のことを書く。
+  expect(rain.headers.get("location")).toContain(`/publish/${project.projectId}/confirm?`);
+  const rainSent = await sendLatest(ward.slug, ward.wardId, project.projectId, "notice", cookie);
+  expect(rainSent.status).toBe(303);
+  expect(await (await get(realApp, rainSent.headers.get("location")!, cookie)).text()).toContain("班長に電話して伝えてください。掲示も張り替えてください。");
   // 配る時に人数の言い方が本文に付くので、案内の文と項目が変わらない事を見る
   const announcementBody = (raw?: string) => { const { text, items } = JSON.parse(raw ?? "{}") as { text?: string; items?: unknown }; return { text, items }; };
   expect(announcementBody((await getEditableDocument(env.DB, ward.wardId, project.projectId, "announcement"))?.body)).toEqual(announcementBody(beforeRain?.body));

@@ -8,6 +8,7 @@ import { photoMatchCandidates } from "../src/line/photo-context";
 import { createProject, getProjectSummary, listProjects } from "../src/project/api";
 import { getOrCreateWardNotices } from "../src/project/state";
 import { get, postForm, realApp } from "./helpers";
+import { sendLatest } from "./helpers";
 
 it("U91: 準備がない自治会で連絡事項を作って送り、同じ年の入れ物を使い続ける", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
@@ -35,7 +36,7 @@ it("U91: 準備がない自治会で連絡事項を作って送り、同じ年�
   const draftPath = start.headers.get("location")!;
   expect(draftPath).toContain(`${root}/projects/${id}/draft/notice?edit=1`);
   const draft = await (await get(realApp, draftPath, cookie)).text();
-  expect(draft).toContain('name="after" value="send">住民に送る</button>');
+  expect(draft).toContain('name="after" value="send">送る</button>');
   expect(draft).not.toContain("雨の変更を知らせる</h1>");
 
   const send = async (title: string, text: string) => {
@@ -45,7 +46,9 @@ it("U91: 準備がない自治会で連絡事項を作って送り、同じ年�
       after: "send", lineDelivery: "skip", flyer_choice: "none",
     }, cookie);
     expect(response.status).toBe(303);
-    expect(response.headers.get("location")).toContain(`${root}/publish/${id}`);
+    // 送る前の確かめの画面を通してから送る（L-319）。
+    expect(response.headers.get("location")).toContain(`${root}/publish/${id}/confirm?`);
+    expect((await sendLatest(ward.slug, ward.wardId, id, "notice", cookie)).status).toBe(303);
   };
   await send("試しのごみの出し方のお知らせ", "試しのごみの出し方が変わります。指定の袋を使ってください。");
   const publicPage = await (await get(realApp, `/${ward.slug}/p/${id}`)).text();

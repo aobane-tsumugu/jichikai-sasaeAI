@@ -9,6 +9,7 @@ import { openSpace } from "../src/space/api";
 import { setSetting } from "../src/settings/store";
 import { lookupPaperCode, lookupPrintQr, printQrUrl, projectPaperQrUrl, qrSvg } from "../src/print/qr";
 import { get, postForm, realApp } from "./helpers";
+import { sendLatest } from "./helpers";
 
 // 80行の登録から配布、閉じた記録まで実際のD1と画面を通すため、この試験だけ30秒まで待つ。
 it("配る前の記入用紙から、班長の紙、閉じたあとの本文と答えと報告へつながる", async () => {
@@ -88,6 +89,8 @@ it("配る前の記入用紙から、班長の紙、閉じたあとの本文と�
   expect((await get(realApp, `${root}/close/${project.projectId}`, cookie)).status).toBe(200);
   expect((await postForm(realApp, `${root}/close/${project.projectId}/report/public`, { body: fixture.reportText }, cookie)).status).toBe(303);
   expect((await postForm(realApp, `${root}/close/${project.projectId}/report/staff`, { body: fixture.nextYearChange }, cookie)).status).toBe(303);
+  // 住民への報告は、終わりにする前にほかの連絡と同じ送り方で送る（L-319）。
+  expect((await sendLatest(ward.slug, ward.wardId, project.projectId, "report", cookie)).status).toBe(303);
   expect((await postForm(realApp, `${root}/close/${project.projectId}/finalize`, {}, cookie)).status).toBe(303);
   const publicPage = await (await get(realApp, `/${ward.slug}/p/${project.projectId}`)).text();
   expect(publicPage).toContain(fixture.reportText);

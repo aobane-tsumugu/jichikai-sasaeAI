@@ -168,7 +168,11 @@ it("空の下書きを項目から整え、行事の日を直し、名簿なし�
   expect(publicHtml.indexOf(fixture.rainAnnouncement)).toBeLessThan(publicHtml.indexOf(renderedText));
   expect(publicHtml).toContain(renderedText);
   expect(await read(`/${ward.slug}/`)).toContain(`${fixture.nextYearTitle} 連絡`);
-  expect((await postForm(realApp, `${root}/close/${id}/finalize`, { body: fixture.reportText }, cookie)).status).toBe(303);
+  // 住民への報告は、終わりにする前にほかの連絡と同じ送り方で送る（L-319）。
+  expect(await saveDocument(env.DB, ward.wardId, id, account.accountId, { kind: "report", title: "実施報告", scope: "public",
+    basedOn: (await getProjectState(env.DB, ward.wardId, id))!.project.stateVersion, body: JSON.stringify({ text: fixture.reportText, items: [] }) })).toBe(true);
+  await publish("report");
+  expect((await postForm(realApp, `${root}/close/${id}/finalize`, {}, cookie)).status).toBe(303);
   const record = await read(`${root}/archive/${id}`);
   expect(record).toContain("参加すると返事をした");
   expect(record).not.toContain("参加した");
