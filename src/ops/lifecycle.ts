@@ -464,13 +464,25 @@ async function finishDeletion(env: Env, item: QueueRow): Promise<void> {
   await eraseWardData(env, item.ward_id, at);
 }
 
+/** 一回の Cron で進める上限。一歩ずつだと、資料の多い準備や区を消し終えるまで何時間もかかるため、時間の許す限り続ける。 */
+const DELETION_STEP_BUDGET_MS = 20_000;
+const DELETION_STEP_LIMIT = 60;
+
 export async function runDeletionCron(event: ScheduledController, env: Env): Promise<void> {
   if (event.cron !== CRON.EVERY_5_MIN) return;
+  const started = Date.now();
+  for (let step = 0; step < DELETION_STEP_LIMIT && Date.now() - started < DELETION_STEP_BUDGET_MS; step++) {
+    if (!(await runDeletionStep(env))) return;
+  }
+}
+
+/** 一歩進める。進めた時は true、待ちが無い時と、続けられなかった時（次の Cron で続きから）は false。 */
+async function runDeletionStep(env: Env): Promise<boolean> {
   const item = await env.DB.prepare(`SELECT queue_id, ward_id, target_type, target_id, cursor
     FROM ops_deletion_queue WHERE ward_id IS NOT NULL AND state IN ('pending', 'running', 'error')
     ORDER BY CASE state WHEN 'error' THEN 1 ELSE 0 END, requested_at LIMIT 1`)
     .first<QueueRow>();
-  if (!item) return;
+  if (!item) return false;
   try {
     await env.DB.prepare("UPDATE ops_deletion_queue SET state = 'running', last_error = '' WHERE queue_id = ? AND ward_id = ?")
       .bind(item.queue_id, item.ward_id).run();
@@ -486,5 +498,7 @@ export async function runDeletionCron(event: ScheduledController, env: Env): Pro
     await env.DB.prepare("UPDATE ops_deletion_queue SET state = 'error', last_error = ? WHERE queue_id = ? AND ward_id = ?")
       .bind(message, item.queue_id, item.ward_id).run();
     console.error("消去処理を続けられませんでした", item.ward_id, item.queue_id, error instanceof Error ? error.name : "unknown");
+    return false;
   }
+  return true;
 }
