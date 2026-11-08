@@ -22,6 +22,11 @@ it("自治会の連絡先が空の時は、出ている案内の連絡先で補�
   expect(top).toContain("収穫祭の係 000-0000-0000");
   expect(top).not.toContain("連絡先が分からないときは、班長か役員にお知らせください。");
   expect(await (await get(realApp, `/${ward.slug}/privacy`)).text()).toContain("収穫祭の係 000-0000-0000");
+  expect(await (await get(realApp, `/${ward.slug}/line`)).text()).toContain("収穫祭の係 000-0000-0000");
+  // 役員のトップも、住民向けのページに実際に出ている連絡先を書く（「班長か役員に」とだけ出ているとは書かない）。
+  const adminTop = await (await get(realApp, `/${ward.slug}/admin/`, cookie)).text();
+  expect(adminTop).toContain("住民向けのページには、案内に書いた連絡先「収穫祭の係 000-0000-0000」を出しています。");
+  expect(adminTop).not.toContain("とだけ出ていて");
 
   await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, { kind: "report", title: "報告", scope: "public", basedOn: 0,
     body: JSON.stringify({ text: "秋の収穫祭には、80人が来てくれました。", items: [] }) });

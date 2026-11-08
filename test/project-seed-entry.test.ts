@@ -16,12 +16,17 @@ it("閉じたやることがある時だけ、新しい年の順にこれをも�
       .bind("2026-11-05T00:00:00Z", ward.wardId, project.projectId).run();
     closed.push(project);
   }
+  // 今年終わったものは「去年の終わったもの」に並べない。
+  const thisYear = Number(new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 4));
+  const doneThisYear = await createProject(env.DB, ward.wardId, { kind: "event", title: "今年終わった行事", year: thisYear, accountId: account.accountId });
+  await env.DB.prepare("UPDATE projects SET closed_at = ? WHERE ward_id = ? AND project_id = ?").bind(new Date().toISOString(), ward.wardId, doneThisYear.projectId).run();
   const page = await get(realApp, `${root}/projects`, cookie);
   const html = await page.text();
   expect(html).toContain("去年の終わったものから始める");
   expect(html.indexOf("2025年 2025年の行事")).toBeLessThan(html.indexOf("2024年 2024年の行事"));
   for (const project of closed) expect(html).toContain(`href="${root}/archive/${project.projectId}"`);
   expect(html).not.toContain(`${root}/archive/${open.projectId}`);
+  expect(html).not.toContain(`${root}/archive/${doneThisYear.projectId}`);
   const record = await get(realApp, `${root}/archive/${closed[0]!.projectId}`, cookie);
   expect(await record.text()).toContain("これをもとに今年の");
 });

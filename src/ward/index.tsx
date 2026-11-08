@@ -7,13 +7,14 @@ import { Hono } from "hono";
 import { Layout } from "../core/ui";
 import type { Bundle } from "../core/bundle";
 import type { WardEnv } from "../env";
-import { getOfficialLineUrl, getPublicContact, getSetting } from "../settings/store";
+import { getOfficialLineUrl, getSetting } from "../settings/store";
 import { ArticleBody } from "../publish";
 import { listHelpOpportunities } from "../answers/help";
 import { documentTitle, paperHeading } from "../project/heading";
 import { DOCUMENT_KIND_LABEL, type DocumentKind, type ProjectKind } from "../project/model";
 import { PUBLIC_PRIVACY_NOTICE } from "../settings/keys";
 import { activityFacts } from "./activity";
+import { wardContact } from "./contact";
 import { WardBucket } from "../core/storage";
 import { noticeFlyerPath } from "../publish/notice-flyers";
 
@@ -73,18 +74,6 @@ function publicDocumentTitle(item: PublicProject): string {
   return item.display_title ?? item.document_title;
 }
 
-/**
- * 住民に見せる連絡先。自治会の連絡先がまだ入っていない時は、今出ている案内に書いた連絡先で補う。
- * 加入していない人や越してきたばかりの人は、班長も役員も知らないため（点検 C5、前提 21）。
- */
-async function wardContact(db: D1Database, wardId: string): Promise<string> {
-  const saved = await getPublicContact(db, wardId);
-  if (saved) return saved;
-  const rows = await db.prepare(`SELECT v.body FROM publication_records r JOIN document_versions v ON v.ward_id = r.ward_id AND v.version_id = r.version_id
-    WHERE r.ward_id = ? AND r.unpublished_at IS NULL AND v.scope = 'public' ORDER BY r.published_at DESC LIMIT 20`).bind(wardId).all<{ body: string }>();
-  return rows.results.map((row) => publishedItem(row.body, "public_contact")).find(Boolean) ?? "";
-}
-
 async function pageFooter(c: { env: { DB: D1Database }; var: { ward: { wardId: string; slug: string } } }, documentContact = "") {
   const contact = documentContact || await wardContact(c.env.DB, c.var.ward.wardId);
   const lineUrl = await getOfficialLineUrl(c.env.DB, c.var.ward.wardId);
@@ -115,7 +104,7 @@ pub.get("/flyers/:versionId/:flyerId/:file", async (c) => {
 
 pub.get("/line", async (c) => {
   const lineUrl = await getOfficialLineUrl(c.env.DB, c.var.ward.wardId);
-  const contact = await getPublicContact(c.env.DB, c.var.ward.wardId);
+  const contact = await wardContact(c.env.DB, c.var.ward.wardId);
   return c.html(<Layout title="自治会のLINEで受け取る" siteName={c.var.ward.name}>
     <a class="back" href={`/${c.var.ward.slug}/`}>← {c.var.ward.name}のお知らせへ</a>
     <h1>新しいお知らせを、LINEで受け取る</h1>

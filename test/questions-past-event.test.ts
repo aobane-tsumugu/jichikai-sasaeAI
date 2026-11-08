@@ -10,7 +10,7 @@ it("当日が過ぎた行事の質問の画面は、答えが報告に入ると�
   const harvest = await createProject(env.DB, ward.wardId, { kind: "duty", title: "秋の収穫祭", year: 2026, accountId: account.accountId, eventDay: "2026-01-10" });
   await addQuestion(env.DB, ward.wardId, harvest.projectId, { kind: "decide", text: "当日に来た人数は何人でしたか。", packVersion: "test@1" });
   const page = await (await get(realApp, `${root}/projects/${harvest.projectId}/questions`, cookie)).text();
-  expect(page).toContain("分かるものだけ答えてください。答えると報告に入ります。答えなくても終わりにできます。");
+  expect(page).toContain("分かるものだけ答えてください。答えると、報告と来年への一言の下書きに入ります。答えなくても終わりにできます。");
   expect(page).not.toContain("答えなくても、案内は住民に知らせられます。");
   expect(page).toContain(`<a class="button" href="${root}/close/${harvest.projectId}">報告をまとめて終わりにする</a>`);
   expect(page).not.toContain("当番表の下書きを見る");

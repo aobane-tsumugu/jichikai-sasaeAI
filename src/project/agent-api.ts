@@ -88,8 +88,9 @@ const agentApi: ProjectApi = {
         const taskId = current.results.some((row) => row.task_id === key) ? key : undefined;
         const name = typeof task.name === "string" ? task.name.trim().slice(0, 120) : "";
         if (!taskId || !name) return { status: "rejected", note: "やることを特定できませんでした" };
+        // 作り直した時（質問に答えたあと、終わりを取り消したあと）も、すでに書いてある頼んだ人、困ったこと、来年変えることは上書きせず、空の欄だけ埋める。
         const progress = task.progress === "done" || task.progress === "started" ? task.progress : "open";
-        statements.push(env.DB.prepare(`UPDATE project_close_map SET period = ?, name = ?, progress = ?, requested_by = ?, difficulty = ?, next_year = ?, updated_at = ?, updated_by_account_id = ?
+        statements.push(env.DB.prepare(`UPDATE project_close_map SET period = ?, name = ?, progress = ?, requested_by = CASE WHEN requested_by = '' THEN ? ELSE requested_by END, difficulty = CASE WHEN difficulty = '' THEN ? ELSE difficulty END, next_year = CASE WHEN next_year = '' THEN ? ELSE next_year END, updated_at = ?, updated_by_account_id = ?
           WHERE ward_id = ? AND project_id = ? AND task_id = ?
             AND EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL)`)
           .bind(typeof task.period === "string" ? task.period.slice(0, 80) : "", name, progress,

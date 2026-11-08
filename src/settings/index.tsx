@@ -26,6 +26,7 @@ import { templates } from "./templates";
 import { deletion } from "./deletion";
 import { listAccounts } from "./accounts";
 import { senderNumbers, senderText } from "../line/sender";
+import { wardContact } from "../ward/contact";
 
 // 束 1: 区の設定（席とアカウント、区の情報、定型文）と役員画面の入口。
 // 他の束が設定を読む入口は store.ts（getPublicContact、getSquads、getTemplates）と keys.ts。
@@ -122,6 +123,13 @@ admin.get("/", async (c) => {
     if (day && passed(project)) return `${project.title}は${formatJstDate(day)}に行いました（${daysRemaining(endOf(project)!)}）。`;
     return day ? `${project.title}は${formatJstDate(day)}、${daysRemaining(day)}です。` : `${project.title}は、当日がまだ決まっていません。`;
   };
+  // 今日が仕事の時期の中にある時だけ「今は…の時期です」と書く。時期の前、時期の無い仕事、過ぎた仕事は、それぞれの文にする。
+  const timingText = (eventDay: string | null | undefined, task: { name: string; periodStart: string | null; periodEnd: string | null }) => {
+    if (!task.periodStart && !task.periodEnd) return `次は「${task.name}」です。この仕事の時期はまだ決まっていません。`;
+    if (task.periodStart && task.periodStart > today) return task.periodStart === eventDay ? `次は「${task.name}」です。` : `次は「${task.name}」です。${shortDate(task.periodStart)}からです（${daysRemaining(task.periodStart)}）。`;
+    if (task.periodEnd && task.periodEnd < today) return `「${task.name}」は${shortDate(task.periodEnd)}までの仕事で、時期を過ぎています。済んでいれば、開いて済みにできます。`;
+    return `今は「${task.name}」の時期です。${task.periodEnd ? `${shortDate(task.periodEnd)}までです（${daysRemaining(task.periodEnd)}）。` : ""}`;
+  };
   const tasksOf = (project: (typeof projects)[number]) => states[projects.indexOf(project)]?.mapTasks.filter((task) => task.progress !== "done") ?? [];
   // 「その次」は、今の仕事より後に締めくくる仕事。過ぎた仕事を次とは呼ばない。
   const afterOf = (project: (typeof projects)[number], taskId: string, from: string) => tasksOf(project).filter((task) => task.taskId !== taskId && task.periodEnd && task.periodEnd >= from)
@@ -137,7 +145,7 @@ admin.get("/", async (c) => {
       <p>押すと、報告を書いて終わりにする画面が開きます。</p>
     </section>;
     return <section class="next">
-      <p class="lead">{mine ? "あなたの担当の仕事があります。" : ""}{whenText(project)}今は「{task.name}」の時期です。{task.periodEnd ? `${shortDate(task.periodEnd)}までです（${daysRemaining(task.periodEnd)}）。` : "この仕事の時期はまだ決まっていません。"}{answers !== null ? `今、${answers}世帯から返事が届いています。` : ""}</p>
+      <p class="lead">{mine ? "あなたの担当の仕事があります。" : ""}{whenText(project)}{timingText(project.deadlines.event_day, task)}{answers !== null ? `今、${answers}世帯から返事が届いています。` : ""}</p>
       <a class="button" href={adminPath(ward, mapTaskPath(project.projectId, project.kind, task))}>{task.taskKey === "answers" ? `${project.title}の出欠の返事を見る` : task.name}</a>
       {then ? <p>その次は、{shortDate(then.periodEnd!)}までに「{then.name}」です。</p> : null}
     </section>;
@@ -152,8 +160,12 @@ admin.get("/", async (c) => {
   const numbers = await senderNumbers(c.env.DB, ward.wardId);
   // 住民向けのページに出す連絡先が無いと、加入していない人は自治会に連絡のしようがない。役員が気づけるようにトップで言う。
   const publicContact = await getPublicContact(c.env.DB, ward.wardId);
+  // 住民向けのページと同じ決まりで、今出ている連絡先を引く（自治会の連絡先が無い時は、出ている案内の連絡先で補っている）。
+  const shownContact = publicContact.trim() ? publicContact : await wardContact(c.env.DB, ward.wardId);
   const waiting = [
-    ...(publicContact.trim() ? [] : [<li><p>住民向けのページに出す自治会の連絡先が、まだ入っていません。今は「班長か役員にお知らせください」とだけ出ていて、加入していない人や班長を知らない人は、自治会に連絡ができません。</p><a class="quiet" href={adminPath(ward, "/settings/info")}>連絡先を入れる</a></li>]),
+    ...(publicContact.trim() ? [] : shownContact.trim()
+      ? [<li><p>自治会の連絡先がまだ入っていないので、住民向けのページには、案内に書いた連絡先「{shownContact}」を出しています。案内を取り下げると出なくなります。自治会の連絡先として入れておくと、案内を出していない時期も出ます。</p><a class="quiet" href={adminPath(ward, "/settings/info")}>連絡先を入れる</a></li>]
+      : [<li><p>住民向けのページに出す自治会の連絡先が、まだ入っていません。今は「班長か役員にお知らせください」とだけ出ていて、加入していない人や班長を知らない人は、自治会に連絡ができません。</p><a class="quiet" href={adminPath(ward, "/settings/info")}>連絡先を入れる</a></li>]),
     ...openInquiries.slice(0, 3).map((row) => <li><p>{senderText(row.line_sender_label, row.line_source_type,
       numbers.get(row.line_user_id || (row.line_source_type === "user" ? row.line_source_id : "") || ""))}から、{formatJstDate(row.received_at)}に「{inquirySubject(row.subject)}」と届いています。まだ返事をしていません。</p>
       <a class="quiet" href={adminPath(ward, `/inquiries/${encodeURIComponent(row.inquiry_id)}`)}>返事を書く</a></li>),
@@ -190,7 +202,8 @@ admin.get("/", async (c) => {
     <li><a href={`/${ward.slug}/`}>住民向けのページを見る</a></li>
   </ul><form method="post" action={adminPath(ward, "/logout")}><button class="quiet">ログアウトする</button></form></>;
   // 名前に「自治会」が入っている時に「〇〇自治会の自治会」と書かない。
-  const wardTitle = /自治会$/.test(ward.name) ? ward.name : `${ward.name}の自治会`;
+  // 「練習の自治会二」のように途中に入る時も同じ。町内会や区会の名前にも「の自治会」を足さない。
+  const wardTitle = /自治会|町内会|町会|区会|部落会/.test(ward.name) ? ward.name : `${ward.name}の自治会`;
   const intro = firstVisit ? <p class="lead">この画面で、{wardTitle}の行事や総会の準備を、役員みんなで進めます。手元の資料を送ると、AIが読んで、いつ何をするかと、住民に知らせる案内の下書きを用意します。</p> : null;
   const readingLine = reading || delayed ? <p class="muted">{reading ? `送った資料のうち${reading}件を、今AIが読んでいます。` : ""}{delayed ? `${delayed}件は読み取りが遅れています。送り直さなくてかまいません。` : ""}</p> : null;
   return c.html(<AdminPage ward={ward} account={account} title="最初の画面" home>

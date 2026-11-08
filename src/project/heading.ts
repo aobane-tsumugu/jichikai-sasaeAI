@@ -39,3 +39,20 @@ export function paperHeading(projectTitle: string, documentTitle: string): strin
   return documentTitle === "案内" ? `${projectTitle}のご案内` : `${projectTitle} ${documentTitle}`;
 }
 
+
+/**
+ * 届いた文書の件名（「防災訓練の参加予定人数のご報告について（お願い）」）を、準備の名前に使える形にする。
+ * 件名の終わりの「（お願い）」「について」「のご案内」などを外す。「〇〇（お願い）のご案内」のような題を作らないため。
+ */
+export function plainProjectTitle(title: string): string {
+  let plain = title.trim();
+  for (let i = 0; i < 3; i += 1) {
+    const next = plain
+      .replace(/[（(](?:お願い|ご依頼|依頼|ご案内|案内|お知らせ|通知|ご報告|報告)[）)]$/, "")
+      .replace(/(?:について|に関して|に係る|のお願い|のご依頼|の依頼|のご案内|のお知らせ|の通知)$/, "")
+      .trim();
+    if (next === plain) break;
+    plain = next;
+  }
+  return plain || title.trim();
+}

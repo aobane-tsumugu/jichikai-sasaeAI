@@ -301,7 +301,15 @@ admin.get("/publish/:projectId/preview/:documentId/:versionNo", (c) => c.redirec
 async function confirmPublication(c: Context<AdminEnv>) {
   const { ward, account } = c.var;
   const projectId = c.req.param("projectId")!;
-  const form = c.req.method === "POST" ? await c.req.formData() : new FormData();
+  // 下書きから回る時は、アドレスに付いた文書の番号、部数、LINE の選択で開く（下書きの保存のあとに開き直すため）。
+  const form = c.req.method === "POST" ? await c.req.formData() : (() => {
+    const data = new FormData();
+    for (const key of ["documentId", "versionId", "versionNo", "lineDelivery", "distribution", "recipientScope"]) {
+      const value = c.req.query(key);
+      if (value) data.set(key, value);
+    }
+    return data;
+  })();
   const tasks = await projectTasks(c.env.DB, ward.wardId, projectId);
   const features = taskFeatures(tasks);
   const project = await getProject(c.env.DB, ward.wardId, projectId);

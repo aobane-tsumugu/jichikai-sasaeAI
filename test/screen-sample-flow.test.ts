@@ -138,8 +138,8 @@ it("実行委員向けの下書きも、知らせる前に本文と表を確か�
   const saved = await postForm(realApp, `${root}/projects/${id}/draft/duty_roster/save`, {
     based_on: String(state?.project.stateVersion ?? 0), title: "当番表", scope: "space", text: "試しの当番の説明を直した文", after: "confirm",
   }, cookie);
-  expect(saved.status).toBe(200);
-  const confirm = await saved.text();
+  expect(saved.status).toBe(303);
+  const confirm = await (await get(realApp, saved.headers.get("location")!, cookie)).text();
   expect(confirm).toContain("次の内容で実行委員と班長のページに載せます");
   expect(confirm).toContain("試しの当番の説明を直した文");
   expect(confirm).toContain("試しの受付係");

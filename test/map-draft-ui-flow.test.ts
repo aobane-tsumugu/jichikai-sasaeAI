@@ -76,8 +76,9 @@ it("資料のない一年目から仕事・質問・下書き・別の雨の知�
   expect(saved).toContain("保存しました。まだ知らせていません");
   expect(saved).toContain("前の下書きに戻す");
   const confirmed = await postForm(realApp, `${path}/draft/announcement/save`, { ...fields, after: "confirm" }, cookie);
-  expect(confirmed.status).toBe(200);
-  const confirmHtml = await confirmed.text();
+  expect(confirmed.status).toBe(303);
+  expect(confirmed.headers.get("location")).toContain(`/publish/${project.projectId}/confirm?`);
+  const confirmHtml = await (await get(realApp, confirmed.headers.get("location")!, cookie)).text();
   const value = (name: string) => {
     const found = new RegExp(`name="${name}" value="([^"]*)"`).exec(confirmHtml)?.[1];
     if (!found) throw new Error(`知らせる内容の${name}がありません`);

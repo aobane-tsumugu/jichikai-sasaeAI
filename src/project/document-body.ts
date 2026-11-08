@@ -87,9 +87,16 @@ export function reconcileDocumentBody(previous: DocumentBody, next: DocumentBody
       .map((content) => content.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
     const placeholder = new RegExp(`^([ \\t　]*(?:■[ \\t　]*)?(?:${labels})[ \\t　]*(?:[:：][ \\t　]*)?(?:\\r?\\n[ \\t　]*)?)(?:${previousValues})([ \\t　]*\\r?$)`, "gm");
     let filled = false;
-    text = text.replace(placeholder, (_match, heading: string, ending: string) => {
+    // AI は「■いつ」の下に「日時（確認中）」と項目名を重ねて書くことがある。重ねた項目名ごと中身に置き換え、「日時2026年…」と続けない。
+    const doubled = new RegExp(`^([ \\t　]*(?:■[ \\t　]*)?(?:${labels})[ \\t　]*(?:[:：][ \\t　]*)?\\r?\\n)[ \\t　]*(?:${labels})[ \\t　]*(?:[:：][ \\t　]*)?(?:${previousValues})([ \\t　]*\\r?$)`, "gm");
+    text = text.replace(doubled, (_match, heading: string, ending: string) => {
       filled = true;
       return heading + item.content + ending;
+    });
+    text = text.replace(placeholder, (_match, heading: string, ending: string) => {
+      filled = true;
+      // 項目名のすぐあとに（確認中）があった時は、区切りを入れて中身とくっつけない。
+      return heading + (/[^\s:：]$/.test(heading) ? "：" : "") + item.content + ending;
     });
     const replaced = !textChanged && !!old?.content && replacements.has(old.content);
     if (checks && previous.text.trim() && !filled && !replaced && (!textChanged || !text.includes(item.content))) checks.push(item.key);

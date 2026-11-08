@@ -176,8 +176,8 @@ admin.get("/close/:projectId", async (c) => {
       .bind(ward.wardId, id).all<CloseEntry>(),
     c.env.DB.prepare("SELECT scope, body FROM project_close_reports WHERE ward_id = ? AND project_id = ? ORDER BY scope")
       .bind(ward.wardId, id).all<{ scope: "public" | "staff"; body: string }>(),
-    c.env.DB.prepare("SELECT task, status FROM jobs WHERE ward_id = ? AND project_id = ? AND task IN ('report', 'map_draft') ORDER BY created_at DESC LIMIT 2")
-      .bind(ward.wardId, id).all<{ task: string; status: string }>(),
+    c.env.DB.prepare("SELECT task, status, created_at FROM jobs WHERE ward_id = ? AND project_id = ? AND task IN ('report', 'map_draft') ORDER BY created_at DESC LIMIT 2")
+      .bind(ward.wardId, id).all<{ task: string; status: string; created_at: string }>(),
     generatedReportText(c.env.DB, ward.wardId, id),
     c.env.DB.prepare("SELECT draft_body, published_at FROM project_activity_pages WHERE ward_id = ? AND project_id = ?")
       .bind(ward.wardId, id).first<{ draft_body: string; published_at: string | null }>(),
@@ -193,6 +193,15 @@ admin.get("/close/:projectId", async (c) => {
   const reportStarted = status.results.some((job) => job.task === "report" && job.status !== "failed");
   const autoStarted = !project.closedAt && !notYet && !activityView && !report(internalReport ? "staff" : "public") && !reportStarted
     && await startCloseDrafts(c, id);
+  // 下書きを作ったあとに質問に答えていたら、答えを入れて報告と来年への一言の下書きを作り直す。答えが下書きに届かないまま終わりにしないため。
+  // 役員が自分で保存した報告は上書きしない（保存した方を欄に出す）。
+  const lastDraftAt = status.results.map((job) => job.created_at).sort().at(-1);
+  const drafting = status.results.some((job) => job.status !== "done" && job.status !== "failed");
+  const answeredSince = !project.closedAt && !notYet && !activityView && !autoStarted && lastDraftAt && !drafting
+    ? (await c.env.DB.prepare("SELECT COUNT(*) AS n FROM project_questions WHERE ward_id = ? AND project_id = ? AND state = 'answered' AND answered_at > ?")
+      .bind(ward.wardId, id, lastDraftAt).first<{ n: number }>())?.n ?? 0 : 0;
+  const redrafted = answeredSince > 0 && await startCloseDrafts(c, id);
+  const jobStatus = redrafted ? status.results.map((job) => ({ ...job, status: "running" })) : status.results;
   // 消えるものが無い時に「消えるものがあります」と書かない（点検 B2-2）。
   const helpOffers = project.closedAt || activityView ? 0 : (await c.env.DB.prepare("SELECT COUNT(*) AS n FROM project_help_offers WHERE ward_id = ? AND project_id = ?").bind(ward.wardId, id).first<{ n: number }>())?.n ?? 0;
   // 報告づくりで AI が役員に聞きたいこと。終わりにしたあとは答えられなくなるので、先に見せる。
@@ -251,8 +260,8 @@ admin.get("/close/:projectId", async (c) => {
       <p class="lead">{internalReport ? pack.title : "報告"}と、来年への一言を残します。終わりにしたあとも取り消せます。</p>
       {internalReport ? <p><a class="button secondary" href={adminPath(ward, `/projects/${id}/draft/notice`)}>住民への連絡を作る</a></p> : null}
       {helpOffers ? <div class="notice warn"><strong>終わりにすると消えるものがあります</strong><p>手伝いだけの申し込み（{helpOffers}人）の名前と時間帯は消えます。終わりを取り消しても戻りません。</p></div> : null}
-      {status.results.map((job) => <p>{job.task === "report" ? pack.title : "やること"}: {job.status === "done" ? (job.task === "report" && !report(internalReport ? "staff" : "public") ? "下書きを書けませんでした。下の欄に直接書けます" : "できました") : job.status === "failed" ? "止まりました。下の欄に直接書けます" : "準備中"}</p>)}
-      {autoStarted || status.results.some((job) => job.status !== "done" && job.status !== "failed") ? <p class="muted">{autoStarted ? `集まった資料と返事から、${internalReport ? pack.title : "報告"}の下書きを作り始めました。` : ""}作っています。画面を閉じても続きます。少しあとに、もう一度開いてください。</p> : null}
+      {jobStatus.map((job) => <p>{job.task === "report" ? pack.title : "やること"}: {job.status === "done" ? (job.task === "report" && !report(internalReport ? "staff" : "public") ? "下書きを書けませんでした。下の欄に直接書けます" : "できました") : job.status === "failed" ? "止まりました。下の欄に直接書けます" : "準備中"}</p>)}
+      {autoStarted || redrafted || drafting ? <p class="muted">{autoStarted ? `集まった資料と返事から、${internalReport ? pack.title : "報告"}の下書きを作り始めました。` : redrafted ? `答えた質問を入れて、${internalReport ? pack.title : "報告"}と来年への一言の下書きを作り直し始めました。` : ""}作っています。画面を閉じても続きます。少しあとに、もう一度開いてください。</p> : null}
       {!autoStarted && !report(internalReport ? "staff" : "public") && !status.results.some((job) => job.task === "report" && job.status !== "failed") ? <form method="post" action={`${root}/prepare`}><button class="secondary">{internalReport ? pack.title : "報告"}の下書きをAIに頼む</button><p class="muted">集まった資料と出欠の返事から、下の欄に入る下書きを作ります。AIが止まっていても、下の欄に直接書けます。</p></form> : null}
       <form method="post" action={`${root}/finalize`}>
         {internalReport ? <input type="hidden" name="body" value="" /> : <div class="field"><label for="report-public">住民への報告</label><p class="help-text">{report("public") ? "保存した報告です。直してかまいません。" : "ここに直接書けます。"}終わりにすると住民向けのページに載ります。</p><textarea id="report-public" name="body" rows={7} maxlength={12000}>{report("public")}</textarea>
@@ -274,7 +283,7 @@ admin.get("/close/:projectId", async (c) => {
         </div></details>) : <p>残っている仕事はありません。報告だけでも終わりにできます。</p>}
         <h2>終わりにすると、こうなります</h2><ul><li>{internalReport ? `${pack.title}が役員の記録に残ります` : "報告が住民向けのページに載ります"}</li><li>実行委員と班長のページを開けないようにします</li><li>返事の受付が終わります</li></ul>
         {/* 質問の案内は、下に貼り付く「終わりにする」のすぐ上に置く。押す前に必ず目に入り、入力欄は一画面目から始まる。 */}
-        <div class="action-bar">{openQuestions ? <p>AIから役員への質問が{openQuestions < 10 ? `${openQuestions}つ` : `${openQuestions}件`}あります。答えると{internalReport ? pack.title : "報告"}に入ります。終わりにしたあとは、取り消すまで答えられません。<a href={adminPath(ward, `/projects/${id}/questions`)}>質問に答える</a></p> : null}<button class={notYet ? "secondary" : undefined}>終わりにする</button></div>
+        <div class="action-bar">{openQuestions ? <p>AIから役員への質問が{openQuestions < 10 ? `${openQuestions}つ` : `${openQuestions}件`}あります。答えてこの画面に戻ると、答えを入れて{internalReport ? pack.title : "報告"}と来年への一言の下書きを作り直します。終わりにしたあとは、取り消すまで答えられません。<a href={adminPath(ward, `/projects/${id}/questions`)}>質問に答える</a></p> : null}<button class={notYet ? "secondary" : undefined}>終わりにする</button></div>
       </form>
     </>}
   </AdminPage>);
