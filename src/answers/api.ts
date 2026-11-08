@@ -1,4 +1,5 @@
 import { newId, nowIso } from "../core/ids";
+import { parseEventDay } from "../core/time";
 import { SETTING_KEYS } from "../settings/keys";
 import { listHelpOffers } from "./help";
 import type { MeetingStatus } from "./meeting";
@@ -313,11 +314,12 @@ export function answerDeadlineFromDraft(body: string, projectYear: number): stri
     typeof (item as { content?: unknown }).content === "string");
   if (dueItems.length !== 1) return null;
   const dates = [...dueItems[0]!.content.normalize("NFKC").matchAll(
-    /(?<!\d)(?:(\d{4})\s*(?:年|[-/])\s*)?(\d{1,2})\s*(?:月|[-/])\s*(\d{1,2})(?:\s*日)?(?!\d)/g,
+    /(?<!\d)(?:(\d{4})\s*(?:年|[-/])\s*|((?:令和|平成|昭和)\s*(?:元|\d{1,2})\s*年)\s*)?(\d{1,2})\s*(?:月|[-/])\s*(\d{1,2})(?:\s*日)?(?!\d)/g,
   )];
   if (dates.length !== 1) return null;
   const date = dates[0]!;
-  const dueOn = `${date[1] ?? projectYear}-${date[2]!.padStart(2, "0")}-${date[3]!.padStart(2, "0")}`;
+  if (date[2]) return parseEventDay(date[0], projectYear);
+  const dueOn = `${date[1] ?? projectYear}-${date[3]!.padStart(2, "0")}-${date[4]!.padStart(2, "0")}`;
   const timestamp = Date.parse(`${dueOn}T00:00:00Z`);
   return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === dueOn ? dueOn : null;
 }
