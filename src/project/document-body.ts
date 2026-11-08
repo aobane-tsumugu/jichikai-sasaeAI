@@ -79,7 +79,7 @@ export function reconcileDocumentBody(previous: DocumentBody, next: DocumentBody
     if (!item.content.trim() || item.content === old?.content) continue;
     // 共通の文字は項目の見出しがある箇所だけを直す。確認中の欄も同じ形で埋める。
     const aliases: Partial<Record<ItemKey, string[]>> = {
-      date_time: ["いつ"], place: ["どこで"], rain_plan: ["雨天時"], content: ["内容"], public_contact: ["問い合わせ先", "連絡先"],
+      date_time: ["いつ", "日にち", "日程"], place: ["どこで", "どこに", "会場", "集合場所"], rain_plan: ["雨天時"], content: ["内容"], public_contact: ["問い合わせ先", "連絡先"],
     };
     const labels = [ITEM_LABEL[item.key], ...(aliases[item.key] ?? [])]
       .map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
@@ -90,6 +90,12 @@ export function reconcileDocumentBody(previous: DocumentBody, next: DocumentBody
     // AI は「■いつ」の下に「日時（確認中）」と項目名を重ねて書くことがある。重ねた項目名ごと中身に置き換え、「日時2026年…」と続けない。
     const doubled = new RegExp(`^([ \\t　]*(?:■[ \\t　]*)?(?:${labels})[ \\t　]*(?:[:：][ \\t　]*)?\\r?\\n)[ \\t　]*(?:${labels})[ \\t　]*(?:[:：][ \\t　]*)?(?:${previousValues})([ \\t　]*\\r?$)`, "gm");
     text = text.replace(doubled, (_match, heading: string, ending: string) => {
+      filled = true;
+      return heading + item.content + ending;
+    });
+    // AI は見出しを「■いつ行いますか」「■どこに集まりますか」のような問いの形で書くことがある。「■」で始まり項目の名前で始まる見出しの下の（確認中）も埋める。
+    const headed = new RegExp(`^([ \\t　]*■[ \\t　]*(?:${labels})[^\\n:：]{0,20}[:：]?[ \\t　]*\\r?\\n)[ \\t　]*(?:${previousValues})([ \\t　]*\\r?$)`, "gm");
+    text = text.replace(headed, (_match, heading: string, ending: string) => {
       filled = true;
       return heading + item.content + ending;
     });
