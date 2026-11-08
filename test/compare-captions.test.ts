@@ -35,3 +35,16 @@ it("比べた結果の文は「。」を重ねず、同じ時刻に同じ所か�
   const apart = comparisonText(pair(dated("a", "2025-09-12T10:00:00Z"), original("b", { ...dated("b", "2025-09-20T10:00:00Z"), via: "line_group" })));
   expect(apart).toContain("9月12日に保存したメモは、11月8日 07:00に役員の画面から届きました。");
 });
+
+it("比べの AI が違いや手がかりを多く返しても、役員が読む問いの文には違い三つ、手がかり二つまでしか出さない", () => {
+  const base = pair(original("a", { via: "line_group" }), original("b", { via: "line_direct" }));
+  const many: ComparedPair = { ...base, result: { ...base.result,
+    differences: ["収穫祭の日が10月18日と10月25日で違います", "集合の時刻が違います", "片付けの担当が違います", "行頭の記号が違います", "空白の入れ方が違います"],
+    clues: ["10月25日の方に「変更」とあります", "役員会のメモと合います", "保存の順では判断しません"] } };
+  const text = comparisonText(many);
+  expect(text).toContain("片付けの担当が違います。");
+  expect(text).not.toContain("行頭の記号");
+  expect(text).not.toContain("空白の入れ方");
+  expect(text).toContain("役員会のメモと合います。");
+  expect(text).not.toContain("保存の順では判断しません");
+});

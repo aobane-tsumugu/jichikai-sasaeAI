@@ -152,11 +152,17 @@ admin.get("/", async (c) => {
   })() : projects.length ? <section class="next">
       <p class="lead">{whenText(recent[0] ?? projects[0]!)}当日を入れると、準備を始める時期と、いつ何をするかが決まります。</p>
       <a class="button" href={adminPath(ward, `/projects/${(recent[0] ?? projects[0]!).projectId}/map`)}>{(recent[0] ?? projects[0]!).title}のやることを開く</a>
-    </section> : unseeded ? <section class="next">
-      <p class="lead">去年（{unseeded.year}年）は{unseeded.title}をしました。今年も行うなら、去年のやることをもとに、新しい日に合わせて始められます。</p>
-      <a class="button" href={adminPath(ward, `/archive/${unseeded.project_id}?view=seed`)}>今年の{unseeded.title}の準備を始める</a>
-      <p><a href={adminPath(ward, `/archive/${unseeded.project_id}`)}>去年の{unseeded.title}のやることと報告を見る</a></p>
-    </section> : null;
+    </section> : unseeded ? (() => {
+      // 終わった準備の年で呼ぶ。今年終えたばかりの物を「去年」と呼ばない（ささえ台自治会の撮影で気づいた）。
+      const thisYear = new Date(Date.now() + 9 * 3600_000).getUTCFullYear();
+      const when = unseeded.year === thisYear ? "今年" : unseeded.year === thisYear - 1 ? "去年" : `${unseeded.year}年`;
+      const next = unseeded.year === thisYear ? "次の" : "今年の";
+      return <section class="next">
+        <p class="lead">{when}{when.endsWith("年") && when !== `${unseeded.year}年` ? `（${unseeded.year}年）` : ""}は{unseeded.title}を{unseeded.year === thisYear ? "行い、終わりにしました" : "しました"}。{unseeded.year === thisYear ? "次も行うなら" : "今年も行うなら"}、{when}のやることをもとに、新しい日に合わせて始められます。</p>
+        <a class="button" href={adminPath(ward, `/archive/${unseeded.project_id}?view=seed`)}>{next}{unseeded.title}の準備を始める</a>
+        <p><a href={adminPath(ward, `/archive/${unseeded.project_id}`)}>{when}の{unseeded.title}のやることと報告を見る</a></p>
+      </section>;
+    })() : null;
   const numbers = await senderNumbers(c.env.DB, ward.wardId);
   // 住民向けのページに出す連絡先が無いと、加入していない人は自治会に連絡のしようがない。役員が気づけるようにトップで言う。
   const publicContact = await getPublicContact(c.env.DB, ward.wardId);
