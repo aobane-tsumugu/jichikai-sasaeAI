@@ -294,7 +294,8 @@ intakeAdmin.get("/intake/read", async (c) => {
       const reopenHref = template.seedYear === year && template.seedProjectId ? adminPath(ward, `/close/${template.seedProjectId}`) : undefined;
       return <section class="panel"><h2>{group.joins?.title ?? group.title}の資料のようです</h2>
         <dl class="facts"><dt>資料</dt><dd>{group.materials.length}件</dd>{date ? <><dt>資料の日付</dt><dd>{formatDateText(date)}</dd></> : null}{place ? <><dt>場所</dt><dd>{place}</dd></> : null}</dl>
-        {month ? <p>{monthNote(month)}</p> : null}
+        {/* 今年終えた行事の資料なら、「もう済んでいれば、準備を始めてから…」は今年終えたことの文と食い違うので出さない。 */}
+        {month && !reopenHref ? <p>{monthNote(month)}</p> : null}
         <WhichProject id={`group-${index}`} question="この資料は、次の準備のものですか？" projects={open} suggested={group.joins?.projectId} suggestedName={group.joins ? "" : plainProjectTitle(group.title)} startText={startTemplateText(group.title, template, "materials")} reopenHref={reopenHref} action={adminPath(ward, "/intake/start")} hidden={{ group: group.key }} withDay primary={index === 0} />
       </section>;
     }))}

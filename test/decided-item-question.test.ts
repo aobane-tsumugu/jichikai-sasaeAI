@@ -42,3 +42,31 @@ it("案内の下書きの「いつ」に日を書いて保存すると、日を�
   expect(page).toContain("今年はどこに集まりますか。");
   expect(page).not.toContain("何月何日の何時から何時までにしますか");
 });
+
+it("対象が空の日の質問も、文が日時だけを聞いていれば、案内の「いつ」を保存した時に閉じる。日時と場所の両方を聞く文は残す（三回目の通しの練習）", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "年末の見回り", year: 2026, accountId: account.accountId });
+  await addQuestion(env.DB, ward.wardId, project.projectId, { kind: "decide", text: "今年の年末の見回りは、何月何日の何時から何時までにしますか。去年の資料には2025年の日付があります。", packVersion: "test@1" });
+  await addQuestion(env.DB, ward.wardId, project.projectId, { kind: "decide", text: "今年の日時と集まる場所を教えてください。", packVersion: "test@1" });
+  expect(await saveAIDraft(env.DB, ward.wardId, project.projectId, "announcement", "test@1", {
+    title: "年末の見回りのご案内", text: "■いつ\n（確認中）", items: [],
+  })).toBe(true);
+  const root = `/${ward.slug}/admin/projects/${project.projectId}`;
+  const state = await getProjectState(env.DB, ward.wardId, project.projectId);
+  expect((await postForm(realApp, `${root}/draft/announcement/save`, {
+    title: "年末の見回りのご案内", scope: "public", based_on: String(state!.project.stateVersion), text: "■いつ\n（確認中）",
+    item_date_time: "2026年12月26日（土）から28日（月）まで",
+  }, cookie)).status).toBe(303);
+  const questions = await env.DB.prepare("SELECT text, state FROM project_questions WHERE ward_id = ? AND project_id = ? ORDER BY text").bind(ward.wardId, project.projectId).all<{ text: string; state: string }>();
+  expect(questions.results.find((row) => row.text.startsWith("今年の年末の見回りは"))?.state).toBe("answered");
+  expect(questions.results.find((row) => row.text.startsWith("今年の日時と集まる場所"))?.state).toBe("open");
+});
+
+it("文から項目を見分けるのは、一つの項目だけを聞いている時だけ", async () => {
+  const { questionItemKeyFromText } = await import("../src/project/question-target");
+  expect(questionItemKeyFromText("今年の年末の見回りは、何月何日の何時から何時までにしますか。")).toBe("date_time");
+  expect(questionItemKeyFromText("返事はいつまでに集めますか。")).toBe("due");
+  expect(questionItemKeyFromText("雨のときはどうしますか。")).toBe("rain_plan");
+  expect(questionItemKeyFromText("今年の日時と集まる場所を教えてください。")).toBeNull();
+  expect(questionItemKeyFromText("当番は誰にしますか。")).toBeNull();
+});
