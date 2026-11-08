@@ -36,6 +36,7 @@ const FLYER_KINDS: readonly string[] = MESSAGE_KINDS.map((entry) => entry.kind);
 const SEE_LABEL: Record<Scope, string> = { public: "だれでも読める", space: "実行委員と班長だけ", staff: "役員だけ" };
 const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   "restore_failed": "前の下書きに戻せませんでした",
+  "material_failed": "今年の資料として入れ直せませんでした。届いた資料と今年の内容の画面から、もう一度お試しください",
   "rain_input": "決まった連絡の文と会場、日時を入力してください",
   "rain_template": "決まった連絡の文に置き換えられない項目があります",
   "notice_save_failed": "連絡を保存できませんでした",
@@ -121,22 +122,55 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
     WHERE o.ward_id = ? AND j.project_id = ? AND o.withdrawn_at IS NULL`).bind(ward.wardId, id).all<{ original_id: string; filename: string }>();
   const labels: Record<string, string> = { date_time: "いつ", place: "どこで", rain_plan: "雨のとき", helper_slots: "手伝いの時間帯", belongings: "持ち物", due: features.submit ? "提出の締切" : kindRaw === "recruitment" ? "申し込みの締切" : "返事の締切", public_contact: "連絡先" };
   const relatedTask = tasks.find((task) => opensOf(taskDocumentKind(tasks, kindRaw), taskKeyOf(task.taskKey, task.name)).includes("draft") && taskDraftKind(taskKeyOf(task.taskKey, task.name)) === kindRaw);
+  // まだ決まっていない欄（空か（確認中））。何が決まっていないかと、どこで決めるかを欄の下に一文で書く。
+  const isPending = (text: string) => !text.trim() || text.includes(PENDING);
+  /** 欄の下に案内を出すか。「（確認中）」と書かれた欄と、空でも決める道（答えていない質問、年の分からない資料の値）がある欄だけ。 */
+  const pendingGuide = (key: ItemKey, value: string) => {
+    const item = state.items.find((entry) => entry.key === key);
+    const pending = isPending(value);
+    const question = pending ? state.questions.find((entry) => entry.target === key && (entry.state === "open" || entry.state === "later")) : undefined;
+    // 年の分からない資料にある値（L-215: AI は年を決めない）。押すと、その資料を今年の物として入れ直す。
+    const unknownYear = pending ? item?.references.find((ref) => ref.refYear === null && ref.source.kind === "original" && ref.source.ref && ref.content.trim() && !isPending(ref.content)) : undefined;
+    const unknownOriginal = unknownYear ? originals.results.find((entry) => entry.original_id === unknownYear.source.ref) : undefined;
+    return { show: value.includes(PENDING) || (pending && Boolean(question || unknownOriginal)), question, unknownYear, unknownOriginal };
+  };
   const field = (key: ItemKey) => {
-    const draftItem = body.items.find((item) => item.key === key); const value = draftItem?.content ?? "";
+    const draftItem = body.items.find((item) => item.key === key);
     const item = state.items.find((item) => item.key === key);
+    // 保存した下書きが（確認中）のままでも、あとから今年の内容が決まっていれば、それを入れて見せる（保存すると下書きにも残る）。
+    const filled = draftItem && isPending(draftItem.content) && item?.current?.content.trim() && !isPending(item.current.content) ? item.current.content : "";
+    const value = filled || (draftItem?.content ?? "");
     const sourceValue = item?.current?.content === value ? item.current : item?.references.find((ref) => ref.content === value);
     const source = sourceValue?.source;
     const original = source?.ref ? originals.results.find((entry) => entry.original_id === source.ref) : undefined;
     const previous = item?.references.find((ref) => ref.refYear === project.year - 1 && ref.content !== value);
     const conflict = state.questions.find((question) => question.kind === "conflict" && question.target === key && (question.state === "open" || question.state === "later"));
+    const guide = pendingGuide(key, value);
+    const { question, unknownYear, unknownOriginal } = guide;
+    const pendingNote = !guide.show || project.closedAt || kindRaw === "duty_roster" ? null : question
+      ? <p class="help-text">まだ決まっていません。AIからの質問に答えると、ここに入ります。<a href={adminPath(ward, `/projects/${id}/questions#question-${question.questionId}`)}>質問に答える</a></p>
+      : unknownYear && unknownOriginal ? <div class="pending-note"><p class="help-text">年の分からない資料（{unknownOriginal.filename || "送った資料"}）に「{unknownYear.content}」とあります。今年の資料なら、押すとこの欄に入ります。同じ資料のほかの欄も今年のものになります。</p>
+        <button class="secondary" type="submit" formnovalidate formaction={adminPath(ward, `/projects/${id}/materials/${unknownOriginal.original_id}/this-year`)} name="from" value={`draft:${kindRaw}`}>この資料の値を今年のものにする</button></div>
+      : <p class="help-text">まだ決まっていません。分かったら、この欄に書いてください。「{PENDING}」のまま送ると、住民向けのページと紙にはこの欄が出ません。</p>;
     return <div class="field"><label for={`item-${key}`}>{labels[key] ?? ITEM_LABEL[key]}</label>
       {key === "helper_slots" ? <textarea id={`item-${key}`} name={`item_${key}`} rows={3} maxlength={2000}>{value}</textarea> : <input id={`item-${key}`} name={`item_${key}`} value={value} maxlength={2000} />}
       {original ? <p class="help-text">{original.filename || "送った資料"}{source?.locator ? `（${source.locator}）` : ""}から入れました。{previous ? `去年は${previous.content}でした。` : ""}</p> : draftItem?.source ? <p class="help-text">{draftItem.source}から入れました。{draftItem.source.startsWith("今年") ? "" : "今年も同じか見てください。"}</p> : previous ? <p class="help-text">去年は{previous.content}でした。</p> : null}
       {original ? <a class="quiet" href={adminPath(ward, `/intake/originals/${original.original_id}`)}>元の資料を見る</a> : null}
       {conflict ? <p><a class="quiet" href={adminPath(ward, `/projects/${id}/questions/${conflict.questionId}/compare?from=draft`)}>資料によって違います。見比べる</a></p> : null}
+      {filled ? <p class="help-text">あとから決まった今年の内容を入れました。保存すると下書きにも残ります。</p> : null}
+      {pendingNote}
       {key === "public_contact" ? <p class="help-text">だれでも読める案内に出ます。</p> : null}
     </div>;
   };
+  // 一番上に、決まっていない欄の名前を一文で書く。どこで決めるかは各欄の下に書く。
+  const shownKeys: ItemKey[] = kindRaw === "duty_roster" ? ["date_time", "place", "helper_slots", "rain_plan"] : itemKeys.filter((key) => key !== "content");
+  const pendingLabels = project.closedAt ? [] : shownKeys.filter((key) => {
+    const draftItem = body.items.find((entry) => entry.key === key);
+    const current = state.items.find((entry) => entry.key === key)?.current?.content ?? "";
+    const value = draftItem && isPending(draftItem.content) && current.trim() && !isPending(current) ? current : draftItem?.content ?? "";
+    return pendingGuide(key, value).show;
+  }).map((key) => `「${labels[key] ?? ITEM_LABEL[key]}」`);
+  const pendingText = body.text.includes(PENDING);
   const dateValue = body.items.find((item) => item.key === "date_time")?.content ?? "";
   const oldDates = [...new Set(state.items.find((item) => item.key === "date_time")?.references.flatMap((ref) => ref.content.match(/\d{1,2}月\d{1,2}日/g) ?? []) ?? [])].filter((date) => body.text.includes(date) && !dateValue.includes(date));
   const bodyCheck = c.req.query("notice") === "saved" ? documentBodyCheckMessage(c.req.query("check_body")) : null;
@@ -158,6 +192,8 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
     {taskNotice && !(taskNotice.status === "done" && (project.closedAt || versions.results[0]?.published_at)) ? <Notice><span data-ai-status={taskNotice.status}>{taskNotice.message}</span>{["received", "reading", "read", "connecting"].includes(taskNotice.status) ? " 画面を閉じても続きます。ここで書いて保存することもできます。" : ""}</Notice> : null}
     {document?.stale ? <div class="notice warn"><strong>新しい資料が届きました</strong><p>このまま直して住民に知らせられます。</p><a class="quiet" href="#redo">新しい資料を入れて作り直す</a></div> : null}
     {project.closedAt ? <Notice>{project.title}は終わりにしました。終わりを取り消すと下書きを直せます。</Notice> : null}
+    {c.req.query("notice") === "this_year" ? <Notice>年の分からない資料を、今年の資料として入れ直しました。欄に入った値を見て、保存してください。</Notice> : null}
+    {(pendingLabels.length || pendingText) && kindRaw !== "duty_roster" ? <p class="notice">{pendingLabels.length ? `まだ決まっていない欄が${pendingLabels.length}つあります（${pendingLabels.join("、")}）。欄の下に、どこで決めるかを書きました。` : ""}{pendingText ? `${pack.title}の文の中にも「${PENDING}」があります。分かったら書き換えてください。（確認中）の文は、住民向けのページと紙には出ません。` : ""}</p> : null}
     <MeetingMaterialsView ward={ward} materials={meetingMaterials} />
     {minutes ? <a class="button secondary" href={adminPath(ward, `/close/${id}`)}>議事録を残して終わりにする</a> : null}
     {rota}

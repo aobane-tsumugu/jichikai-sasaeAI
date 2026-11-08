@@ -255,6 +255,10 @@ admin.post("/projects/:projectId/materials/:originalId/this-year", async (c) => 
     ok = await markMaterialThisYear(c.env.DB, ward.wardId, projectId, originalId, account.accountId) && ok;
   }
   const path = adminPath(ward, `/projects/${projectId}`);
+  // 下書きの欄から押した時は、下書きに戻る。
+  const from = String(form.get("from") ?? "");
+  const draftKind = from.startsWith("draft:") ? from.slice("draft:".length) : "";
+  if (draftKind && /^[a-z_]+$/.test(draftKind)) return c.redirect(`${adminPath(ward, `/projects/${projectId}/draft/${draftKind}`)}?${ok ? "notice=this_year" : "error=material_failed"}`, 303);
   return c.redirect(ok ? `${path}#materials` : `${path}?error=material_failed`, 303);
 });
 admin.post("/projects/:projectId/questions/:questionId", async (c) => {
