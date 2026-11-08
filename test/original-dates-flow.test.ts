@@ -182,3 +182,48 @@ it("去年の回答処理は参考だけを直し、今年の中身を保ち、�
     .bind(s.ward.wardId, s.project.projectId, question.questionId).first();
   expect(row).toMatchObject({ answered_by_account_id: account.accountId });
 });
+
+/** 構造化出力が受け付けない指定（配列の下限 2 以上、配列の上限、文字数、数の範囲）を探す。一つでもあると API は 400 を返す。 */
+function unsupportedSchemaKeys(node: unknown, path = "schema"): string[] {
+  if (!node || typeof node !== "object") return [];
+  const found: string[] = [];
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    if (key === "minItems" && typeof value === "number" && value > 1) found.push(`${path}.minItems`);
+    if (["maxItems", "minLength", "maxLength", "minimum", "maximum", "multipleOf"].includes(key)) found.push(`${path}.${key}`);
+    found.push(...unsupportedSchemaKeys(value, `${path}.${key}`));
+  }
+  return found;
+}
+
+it("二つの資料の比べは、構造化出力が受け付ける形の決まりだけで頼む", async () => {
+  const s = await setup();
+  const a = await s.send("10月5日");
+  const b = await s.send("10月3日");
+  let schema: unknown = null;
+  setClientFactory(() => new Anthropic({ apiKey: "fictional-schema-not-a-key", maxRetries: 0, fetch: async (_url, init) => {
+    schema = (JSON.parse(String(init?.body)) as { output_config?: { format?: { schema?: unknown } } }).output_config?.format?.schema;
+    return Response.json({ id: "fictional-schema", type: "message", role: "assistant", model: "claude-sonnet-5-5",
+      stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 10, output_tokens: 10 },
+      content: [{ type: "text", text: JSON.stringify({ descriptions: ["案内", "案内"], differences: ["締切が違います"],
+        clues: ["手がかりはありません"], newer: null, assessment: "中身からは、どちらが新しいか分かりません。" }) }] });
+  } }));
+  await s.apply(a, "10月5日");
+  await s.apply(b, "10月3日");
+  expect(schema).not.toBeNull();
+  expect(unsupportedSchemaKeys(schema)).toEqual([]);
+});
+
+it("比べの頼みが断られても、仕組みの事情を役員に見せず、二つの値を示して聞く", async () => {
+  const s = await setup();
+  const a = await s.send("10月5日");
+  const b = await s.send("10月3日");
+  setClientFactory(() => new Anthropic({ apiKey: "fictional-reject-not-a-key", maxRetries: 0, fetch: async () =>
+    Response.json({ type: "error", error: { type: "invalid_request_error", message: "試しの断り" } }, { status: 400 }) }));
+  await s.apply(a, "10月5日");
+  await s.apply(b, "10月3日");
+  const text = (await s.state())!.questions[0]!.text;
+  expect(text).toContain("「10月5日」");
+  expect(text).toContain("「10月3日」");
+  expect(text).toContain("どちらが最後の資料かは、中身からは分かりませんでした。");
+  expect(text).not.toMatch(/AI|手がかりを確認できていません/);
+});

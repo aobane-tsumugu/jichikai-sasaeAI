@@ -95,7 +95,7 @@ export function buildMatchSchema(candidates: MatchCandidate[], photo = false) {
     required: ["choice", "reason", "intent", "attendanceAnswer", "knowTopic", ...(photo ? ["confident"] : [])],
     properties: {
       choice: { type: "string", enum: [...candidates.map((c) => c.id), MATCH_NEW, MATCH_MULTIPLE, MATCH_UNRELATED, ...(photo ? [MATCH_UNCERTAIN] : [])] },
-      reason: { type: "string", minLength: 1 },
+      reason: { type: "string" },
       ...(photo ? { confident: { type: "boolean" } } : {}),
       intent: { type: "string", enum: ["inquiry", "material", "reference", "purpose_uncertain"] },
       attendanceAnswer: { type: "boolean" },

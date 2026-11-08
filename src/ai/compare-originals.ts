@@ -34,9 +34,10 @@ export interface ComparedPair {
   result: OriginalComparison;
 }
 
+/** 比べられなかった時。違う値は問いの文に既にあるので、仕組みの事情は書かず、分からなかったことだけを書く。 */
 function unknownComparison(): OriginalComparison {
-  return { descriptions: ["資料", "資料"], differences: ["二つの資料の違うところ全体は、AIで比べられていません。"],
-    clues: ["新しさの手がかりを確認できていません。"], newer: null, assessment: "中身からは、どちらが新しいか分かりません。" };
+  return { descriptions: ["資料", "資料"], differences: [], clues: [], newer: null,
+    assessment: "どちらが最後の資料かは、中身からは分かりませんでした。" };
 }
 
 /** 要約に含まれうるファイル名を使わず、原本ごとの本文、表、項目と決めたことを全部渡す。 */
@@ -115,7 +116,7 @@ function parseComparison(value: unknown, ids: string[]): OriginalComparison {
   if (!value || typeof value !== "object") throw new Error("比較の中身がありません");
   const data = value as Record<string, unknown>;
   const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every((part) => typeof part === "string" && part.trim().length > 0);
-  if (!strings(data.descriptions) || data.descriptions.length !== 2 || !strings(data.differences) || data.differences.length === 0
+  if (!strings(data.descriptions) || data.descriptions.length < 2 || !strings(data.differences) || data.differences.length === 0
     || !strings(data.clues) || data.clues.length === 0 || typeof data.assessment !== "string" || !data.assessment.trim()
     || (data.newer !== null && (typeof data.newer !== "string" || !ids.includes(data.newer)))) throw new Error("比較の形が合いません");
   return { descriptions: [data.descriptions[0]!, data.descriptions[1]!], differences: data.differences, clues: data.clues,
@@ -137,7 +138,10 @@ export async function compareOriginals(db: D1Database, wardId: string, projectId
   const saved = await db.prepare(`SELECT result FROM original_comparisons
     WHERE ward_id = ? AND project_id = ? AND first_original_id = ? AND second_original_id = ?`)
     .bind(wardId, projectId, ...ids).first<{ result: string | null }>();
-  if (saved) return pair(saved.result ? parseComparison(JSON.parse(saved.result) as unknown, ids) : unknownComparison());
+  if (saved) {
+    if (!saved.result) return pair(unknownComparison());
+    try { return pair(parseComparison(JSON.parse(saved.result) as unknown, ids)); } catch { return pair(unknownComparison()); }
+  }
 
   // プロジェクト内の直列処理に加え、再試行や同時要求でもAPIを二度呼ばない。
   const reserved = await db.prepare(`INSERT OR IGNORE INTO original_comparisons
@@ -167,7 +171,8 @@ assessmentは「中身から見ると、締切が10月3日の案内の方が新�
       }) }],
       output_config: { format: { type: "json_schema", schema: {
         type: "object", additionalProperties: false, required: ["descriptions", "differences", "clues", "newer", "assessment"],
-        properties: { descriptions: { type: "array", minItems: 2, maxItems: 2, items: { type: "string" } },
+        // 構造化出力は配列の下限を 0 か 1 しか受け付けず、上限も受け付けない。二つあることは parseComparison で確かめる。
+        properties: { descriptions: { type: "array", minItems: 1, items: { type: "string" } },
           differences: { type: "array", minItems: 1, items: { type: "string" } }, clues: { type: "array", minItems: 1, items: { type: "string" } },
           newer: { type: ["string", "null"], enum: [...ids, null] }, assessment: { type: "string" } },
       } } },
@@ -176,8 +181,10 @@ assessmentは「中身から見ると、締切が10月3日の案内の方が新�
     if (response.stop_reason !== "end_turn") throw new Error("比較を読み終わりませんでした");
     const text = response.content.find((block) => block.type === "text");
     result = parseComparison(JSON.parse(text?.text ?? "null") as unknown, ids);
-  } catch {
-    // 比べられないときも先の参考を残し、判断を一度聞く。下書きと配布は止めない。
+  } catch (error) {
+    // 比べられないときも先の参考を残し、判断を一度聞く。下書きと配布は止めない。失敗は運用の画面で追えるよう名前と状態だけ残す。
+    const status = error && typeof error === "object" && "status" in error ? String((error as { status: unknown }).status) : "";
+    console.error("資料の比べに失敗しました", error instanceof Error ? error.name : "", status);
   }
   await db.prepare(`UPDATE original_comparisons SET result = ?
     WHERE ward_id = ? AND project_id = ? AND first_original_id = ? AND second_original_id = ?`)
