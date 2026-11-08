@@ -143,7 +143,7 @@ export function exifOriginalDate(bytes: Uint8Array): OriginalDate | null {
 }
 
 export async function originalDate(media: MediaClass, bytes: Uint8Array, extracted: unknown, lastModified?: unknown): Promise<OriginalDate | null> {
-  const embedded = media === "word" || media === "excel" ? (isCompoundOffice(bytes) ? compoundOfficeDate(bytes) : officeDate(extracted))
+  const embedded = media === "word" || media === "excel" || media === "powerpoint" ? (isCompoundOffice(bytes) ? compoundOfficeDate(bytes) : officeDate(extracted))
     : media === "pdf" ? await pdfInfoDate(bytes) : media === "image" ? exifOriginalDate(bytes) : null;
   return embedded ?? (media !== "text" ? fileModifiedDate(lastModified) : null);
 }

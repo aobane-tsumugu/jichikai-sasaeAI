@@ -50,12 +50,14 @@ it("前提 1: 一度に送った資料のうち、名前の合う準備中のも
   expect(read).not.toContain('name="kind"');
 });
 
-it("古い形式の Word と Excel も選べ、送る画面は断らずに、古い形式も送れると書く。パソコンからファイルを落として送れる", async () => {
+it("Word、Excel、PowerPointは古い形式も選べ、送る画面で案内する。パソコンからファイルを落として送れる", async () => {
   const { SEND_SCRIPT } = await import("../src/intake/browser-script");
   const { ward, cookie } = await seedAdmin(env.DB);
   const page = await (await get(realApp, `/${ward.slug}/admin/intake`, cookie)).text();
   expect(page).toContain(".doc,.xls");
-  expect(page).toContain("写真、PDF、Word、Excel（古い形式の.docや.xlsも）を送れます。");
+  expect(page).toContain(".pptx");
+  expect(page).toContain(".doc,.xls,.ppt");
+  expect(page).toContain("写真、PDF、Word、Excel、PowerPoint（古い形式の.docや.xls、.pptも）を送れます。");
   expect(page).toContain('id="drop-zone"');
   expect(page).toContain("一度に30点、一つ25MB、合わせて80MBまでです。");
   expect(SEND_SCRIPT).not.toContain("古い形式のWordやExcelなので");

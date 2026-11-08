@@ -133,16 +133,17 @@ async function prepare(parts: ReceivePart[], projectId: string | null, env: Pick
       bytes,
       resizeFailed: photo?.resizeFailed,
     };
-    if (classified.mediaClass === "word" || classified.mediaClass === "excel") {
+    if (classified.mediaClass === "word" || classified.mediaClass === "excel" || classified.mediaClass === "powerpoint") {
       const legacyFormat = classified.mediaType === "application/msword" ? "doc"
-        : classified.mediaType === "application/vnd.ms-excel" ? "xls" : null;
+        : classified.mediaType === "application/vnd.ms-excel" ? "xls"
+        : classified.mediaType === "application/vnd.ms-powerpoint" ? "ppt" : null;
       if (legacyFormat) {
         const result = extractLegacyOffice(part.bytes, legacyFormat);
         item.extracted = result.extracted;
         item.unreadable = result.unreadable;
       } else {
         const extracted = parseExtracted(part.extracted);
-        if (!extracted || extracted.format !== (classified.mediaClass === "word" ? "docx" : "xlsx")) {
+        if (!extracted || extracted.format !== (classified.mediaClass === "word" ? "docx" : classified.mediaClass === "excel" ? "xlsx" : "pptx")) {
           throw new ReceiveError("needs_expansion", part.filename);
         }
         item.extracted = extracted;
@@ -233,7 +234,7 @@ export async function receive(
   let needsModelRead = false;
   for (const r of rows) {
     if (r.p.mediaClass === "image" || r.p.mediaClass === "pdf") needsModelRead = true;
-    else if (r.p.extracted) direct.push({ originalId: r.originalId, filename: r.p.part.filename, extracted: r.p.extracted });
+    else if (r.p.extracted) direct.push({ originalId: r.originalId, filename: r.p.part.filename, extracted: r.p.extracted, unreadable: r.p.unreadable });
     else direct.push({ originalId: r.originalId, filename: r.p.part.filename, text: r.p.text, unreadable: r.p.unreadable });
   }
   const readKind: ReadKind = input.readKind ?? "general";
