@@ -171,10 +171,10 @@ assessmentは「中身から見ると、締切が10月3日の案内の方が新�
       }) }],
       output_config: { format: { type: "json_schema", schema: {
         type: "object", additionalProperties: false, required: ["descriptions", "differences", "clues", "newer", "assessment"],
-        // 構造化出力は配列の下限を 0 か 1 しか受け付けず、上限も受け付けない。二つあることは parseComparison で確かめる。
-        properties: { descriptions: { type: "array", minItems: 1, items: { type: "string" } },
-          differences: { type: "array", minItems: 1, items: { type: "string" } }, clues: { type: "array", minItems: 1, items: { type: "string" } },
-          newer: { type: ["string", "null"], enum: [...ids, null] }, assessment: { type: "string" } },
+        // 構造化出力が受け付ける形だけを使う（配列の数の指定は付けず、null は読み取りと同じ anyOf で書く）。数と中身は parseComparison で確かめる。
+        properties: { descriptions: { type: "array", items: { type: "string" } },
+          differences: { type: "array", items: { type: "string" } }, clues: { type: "array", items: { type: "string" } },
+          newer: { anyOf: [{ type: "string", enum: ids }, { type: "null" }] }, assessment: { type: "string" } },
       } } },
     }, { maxRetries: 0 });
     await recordAiMatchUsage(db, wardId, response.usage);
@@ -184,7 +184,9 @@ assessmentは「中身から見ると、締切が10月3日の案内の方が新�
   } catch (error) {
     // 比べられないときも先の参考を残し、判断を一度聞く。下書きと配布は止めない。失敗は運用の画面で追えるよう名前と状態だけ残す。
     const status = error && typeof error === "object" && "status" in error ? String((error as { status: unknown }).status) : "";
-    console.error("資料の比べに失敗しました", error instanceof Error ? error.name : "", status);
+    // API が頼みの形を断った時の文は形の決まりについてだけで、資料の中身を含まないので、短く残す。
+    const detail = status === "400" && error instanceof Error ? error.message.slice(0, 200) : "";
+    console.error("資料の比べに失敗しました", error instanceof Error ? error.name : "", status, detail);
   }
   await db.prepare(`UPDATE original_comparisons SET result = ?
     WHERE ward_id = ? AND project_id = ? AND first_original_id = ? AND second_original_id = ?`)

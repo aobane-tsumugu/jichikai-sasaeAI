@@ -190,6 +190,8 @@ function unsupportedSchemaKeys(node: unknown, path = "schema"): string[] {
   for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
     if (key === "minItems" && typeof value === "number" && value > 1) found.push(`${path}.minItems`);
     if (["maxItems", "minLength", "maxLength", "minimum", "maximum", "multipleOf"].includes(key)) found.push(`${path}.${key}`);
+    // 型を並べた形（type: ["string", "null"]）と enum を一緒に使うと断られた（配備先で 400）。null は anyOf で書く。
+    if (key === "type" && Array.isArray(value)) found.push(`${path}.type`);
     found.push(...unsupportedSchemaKeys(value, `${path}.${key}`));
   }
   return found;
