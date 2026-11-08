@@ -10,8 +10,9 @@ import { photoCheckMessage } from "../intake/photo-check";
 import { sha256Hex } from "../intake/media";
 import { matchPendingLinePhotos, connectOfficerBundle } from "../intake/pipeline";
 import { isPurposeQuestion, jobBundleDecision, removeReferenceYearItems, type BundleDecision } from "./bundle-decisions";
-import { PHOTO_AFTER_MS, purgePhotoTexts, claimLineBundleReply } from "./photo-context";
+import { PHOTO_AFTER_MS, PHOTO_GROUP_GAP_MS, purgePhotoTexts, claimLineBundleReply } from "./photo-context";
 import { createLineIntakePorts, refreshLineBundleInquiry, removeLineInquiryYearItems } from "./intake";
+import { sendPendingInquiryNotices } from "./inquiry-notice";
 
 async function batchIsInquiry(db: D1Database, wardId: string, batchId: string): Promise<boolean> {
   return Boolean(await db.prepare(`SELECT 1 FROM line_photo_items p JOIN line_inbox_items i
@@ -22,7 +23,7 @@ async function batchIsInquiry(db: D1Database, wardId: string, batchId: string): 
 }
 
 // 実測前の仮の値。夜の質問、催促、無制限の通知を作らない。
-export const PHOTO_GROUP_GAP_MS = 5000;
+export { PHOTO_GROUP_GAP_MS } from "./photo-context";
 export const MAX_QUESTION_LENGTH = 800;
 export const MAX_MONTHLY_PUSH_RECIPIENTS = 50;
 
@@ -517,6 +518,7 @@ export async function processPhotoBatches(env: Env, wardId: string, deps: Questi
     if (batch.answer_reply_token && reply) await replyAfterClarification(env, wardId, batch.batch_id, reply, deps);
     else await deliverNextQuestion(env, wardId, batch, reply, deps);
   }
+  await sendPendingInquiryNotices(env, wardId, now, deps.fetch ?? fetch);
 }
 
 export async function sentQuestionsForSource(db: D1Database, wardId: string, destination: string, source: PhotoSource, context: { quotedMessageId?: string; clarificationId?: string; requireReference?: boolean; now?: Date } = {}): Promise<ClarificationRow[]> {

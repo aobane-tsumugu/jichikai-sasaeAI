@@ -10,6 +10,7 @@ import { matchClarificationAnswer } from "../ai/clarification";
 import { isUnknownAnswer, replyAfterClarification, PHOTO_GROUP_GAP_MS, processPhotoBatches, registerLinePhoto, replyPhotoReceipt, replyQuickPhotoChecks, saveClarificationAnswers, sentQuestionsForSource, type ClarificationRow, type PhotoSource } from "./clarifications";
 import { rememberPhotoSource, rememberPhotoText, purgePhotoTexts, rememberPhotoRetake, selectedPhotoRetake, forgetPhotoRetake, joinLineBundle, claimLineBundleReply, lineBundleContents, lineBundlePhotoSummaries } from "./photo-context";
 import { holdOfficerBundle, isOfficerSource, isPurposeQuestion } from "./bundle-decisions";
+import { sendPendingInquiryNotices } from "./inquiry-notice";
 
 const RECEIPT_RETENTION_DAYS = 30;
 
@@ -454,6 +455,7 @@ export async function acceptLineWebhook(
   if (receivedText && !(await getWardAiLimits(db, wardId, now)).monthlyBlocked) await processPhotoBatches(env, wardId, { fetch: fetcher, now }).catch(() => {
     console.error("後から届いた文で写真を確認できませんでした", wardId);
   });
+  await sendPendingInquiryNotices(env, wardId, dependencies ? now : new Date(), fetcher);
   };
   const work = processEvents();
   if (dependencies) await work;

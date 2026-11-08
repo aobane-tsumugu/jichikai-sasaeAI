@@ -124,7 +124,7 @@ export async function officerPushAllowance(token: string, groupId: string, reque
   return { limit: quota.type === "limited" ? quota.value! : null, used: consumption.totalUsage, recipients: group.count };
 }
 
-/** 一つの役員グループへのPush。問い合わせの本文は呼び出し側で含めない。 */
+/** 指定された一つの役員グループへ、問い合わせか朝の知らせを送る。 */
 export async function pushOfficerDigest(token: string, groupId: string, text: string, retryKey: string, request: typeof fetch = fetch): Promise<void> {
   const response = await request(`${LINE_API}/v2/bot/message/push`, {
     method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "X-Line-Retry-Key": retryKey },

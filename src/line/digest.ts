@@ -4,6 +4,7 @@ import { isOfficerDigestTime } from "../core/cron";
 import { lineAccessToken, officerGroupId, officerPushAllowance, pushOfficerDigest } from "./api";
 import { deliveryAlert } from "./delivery-alert";
 import { inquirySubject } from "../project/inquiry-send";
+import { inquiryNoticeKey, OFFICER_NOTICE_USAGE_SQL } from "./inquiry-notice";
 
 export const INQUIRY_NOTICE = inquiryNotice(DEFAULT_DIGEST);
 
@@ -48,9 +49,13 @@ export async function sendOfficerDigest(env: Env, wardId: string, slug: string, 
     .bind(wardId).first<{ cutoff_at: string | null }>();
   const since = last?.cutoff_at ?? new Date(cutoff.getTime() - 86400_000).toISOString();
   if (Date.parse(since) >= cutoff.getTime()) return;
-  const inquiries = await env.DB.prepare(`SELECT subject, received_at FROM inquiry_records
-    WHERE ward_id = ? AND kind IN ('inquiry', 'request') AND julianday(received_at) >= julianday(?) AND julianday(received_at) < julianday(?)
-    ORDER BY received_at, inquiry_id`).bind(wardId, since, cutoff.toISOString()).all<{ subject: string; received_at: string }>();
+  const inquiries = await env.DB.prepare(`SELECT q.inquiry_id, q.subject, q.received_at FROM inquiry_records q
+    LEFT JOIN ward_settings s ON s.ward_id = q.ward_id AND s.key = 'line.inquiry_notice:' || q.inquiry_id
+    WHERE q.ward_id = ? AND q.kind IN ('inquiry', 'request') AND julianday(q.received_at) < julianday(?)
+    AND (julianday(q.received_at) >= julianday(?) OR json_extract(s.value, '$.status') = 'fallback')
+    AND (s.value IS NULL OR json_extract(s.value, '$.status') = 'fallback')
+    ORDER BY q.received_at, q.inquiry_id`).bind(wardId, cutoff.toISOString(), since)
+    .all<{ inquiry_id: string; subject: string; received_at: string }>();
   if (!inquiries.results.length) return;
   const token = await lineAccessToken(env, wardId);
   if (!token) return;
@@ -60,9 +65,8 @@ export async function sendOfficerDigest(env: Env, wardId: string, slug: string, 
   if (!budget) { await deliveryAlert(env.DB, wardId, "digest", "問い合わせの通知を送れる通数を確かめられませんでした。"); return; }
   const month = day.slice(0, 7);
   // LINE側の通数の反映が遅れても、自分が送った人数を下回らせない。
-  const usage = await env.DB.prepare(`SELECT COALESCE(MAX(usage_before + recipients), 0) AS used
-    FROM line_officer_digests WHERE ward_id = ? AND substr(day, 1, 7) = ?`).bind(wardId, month).first<{ used: number }>();
-  const used = Math.max(budget.used, usage?.used ?? 0);
+  const usage = await env.DB.prepare(OFFICER_NOTICE_USAGE_SQL).bind(budget.used, wardId, month, wardId, month).first<{ used: number }>();
+  const used = usage?.used ?? budget.used;
   if (budget.limit !== null && used + budget.recipients > budget.limit) {
     await deliveryAlert(env.DB, wardId, "digest", "自治会のLINEの通数が足りないため、問い合わせの通知を止めました。問い合わせは役員の画面で見られます。"); return;
   }
@@ -70,17 +74,36 @@ export async function sendOfficerDigest(env: Env, wardId: string, slug: string, 
   if (base.protocol !== "https:") return;
   const url = new URL(`/${encodeURIComponent(slug)}/admin/inquiries`, base).toString();
   const claim = await env.DB.prepare(`INSERT OR IGNORE INTO line_officer_digests
-    (ward_id, day, claimed_at, recipients, usage_before, inquiry_count, cutoff_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-    .bind(wardId, day, now.toISOString(), budget.recipients, used, inquiries.results.length, cutoff.toISOString()).run();
+    (ward_id, day, claimed_at, recipients, usage_before, inquiry_count, cutoff_at)
+    SELECT ?, ?, ?, ?, (${OFFICER_NOTICE_USAGE_SQL}), ?, ?
+    WHERE (? IS NULL OR (${OFFICER_NOTICE_USAGE_SQL}) + ? <= ?)`)
+    .bind(wardId, day, now.toISOString(), budget.recipients, budget.used, wardId, month, wardId, month,
+      inquiries.results.length, cutoff.toISOString(), budget.limit, budget.used, wardId, month, wardId, month,
+      budget.recipients, budget.limit).run();
   if (!claim.meta.changes) return;
-  const receivedDays = inquiries.results.map((row) => new Date(Date.parse(row.received_at) + 9 * 3600_000).toISOString().slice(0, 10));
+  // 朝の送信中に即時送信が同じ問い合わせを取らないよう、問い合わせごとにも記録する。
+  const notices = [];
+  for (const row of inquiries.results) {
+    const key = inquiryNoticeKey(row.inquiry_id);
+    await env.DB.prepare(`INSERT OR IGNORE INTO ward_settings (ward_id, key, value)
+      VALUES (?, ?, '{"status":"fallback"}')`).bind(wardId, key).run();
+    const taken = await env.DB.prepare(`UPDATE ward_settings SET value = json_set(value, '$.status', 'digest_claimed')
+      WHERE ward_id = ? AND key = ? AND json_extract(value, '$.status') = 'fallback'`).bind(wardId, key).run();
+    if (taken.meta.changes) notices.push(row);
+  }
+  if (!notices.length) return;
+  const receivedDays = notices.map((row) => new Date(Date.parse(row.received_at) + 9 * 3600_000).toISOString().slice(0, 10));
   try {
-    await pushOfficerDigest(token, groupId, `${digestPeriodLabel(settings, cutoff)}の分です。\n` + officerDigestText(inquiries.results.map((row) => row.subject), url,
+    await pushOfficerDigest(token, groupId, `${digestPeriodLabel(settings, cutoff)}の分です。\n` + officerDigestText(notices.map((row) => row.subject), url,
       receivedDays.some((received) => received < day), receivedDays), crypto.randomUUID(), request);
   } catch (error) {
+    await env.DB.batch(notices.map((row) => env.DB.prepare(`UPDATE ward_settings SET value = json_set(value, '$.status', 'fallback')
+      WHERE ward_id = ? AND key = ?`).bind(wardId, inquiryNoticeKey(row.inquiry_id))));
     await deliveryAlert(env.DB, wardId, "digest", "問い合わせの通知を自治会のLINEに送れませんでした。問い合わせは役員の画面で見られます。");
     throw error;
   }
+  await env.DB.batch(notices.map((row) => env.DB.prepare(`UPDATE ward_settings SET value = json_set(value, '$.status', 'digest')
+    WHERE ward_id = ? AND key = ?`).bind(wardId, inquiryNoticeKey(row.inquiry_id))));
   await env.DB.prepare("UPDATE line_officer_digests SET sent_at = ? WHERE ward_id = ? AND day = ?")
     .bind(now.toISOString(), wardId, day).run();
   await deliveryAlert(env.DB, wardId, "digest", null);

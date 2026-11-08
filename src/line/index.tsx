@@ -7,6 +7,7 @@ import { adminResult } from "../core/admin-ui";
 import { answerQuestion } from "../project/actions";
 import { markRosterAnswered } from "../intake/store";
 import { sendOfficerDigest } from "./digest";
+import { sendPendingInquiryNotices } from "./inquiry-notice";
 import { completeScreenClarifications, listClarifications, processPhotoBatches } from "./clarifications";
 import { acceptLineWebhook } from "./webhook";
 import { purgePhotoTexts } from "./photo-context";
@@ -71,6 +72,7 @@ export const line: Bundle = {
     for (const ward of contextWards.results) await purgePhotoTexts(env.DB, ward.ward_id, now);
     for (const ward of wards.results) {
       try {
+        await sendPendingInquiryNotices(env, ward.ward_id, now);
         await sendOfficerDigest(env, ward.ward_id, ward.slug, now);
       }
       catch { console.error("役員への通知を送れませんでした", ward.ward_id); }
