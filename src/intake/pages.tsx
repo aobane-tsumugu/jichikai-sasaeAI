@@ -9,7 +9,7 @@ import { receiveOriginal, ReceiveError, retryJob, withdrawJob } from "./api";
 import { SEND_SCRIPT } from "./browser-script";
 import { photoSourceHash } from "./photo";
 import { projectDirectory } from "./project-port";
-import { getJob, getOriginal, getReadings, listJobs, type JobListItem, jobSummaries } from "./store";
+import { getJob, getOriginal, getReadings, listJobs, type JobListItem, jobSummaries, withdrawOriginal } from "./store";
 import type { JobStatus, OriginalKind } from "./types";
 import { WardBucket } from "../core/storage";
 import type { ReceivePart } from "./receive";
@@ -488,10 +488,49 @@ intakeAdmin.post("/intake/:jobId/retry", async (c) => {
 });
 
 // 元の資料は枠の中で読む。実体も同じ区の認証を通して返す。
+intakeAdmin.get("/intake/originals/:originalId/withdraw", async (c) => {
+  const { ward } = c.var;
+  const original = await getOriginal(c.env.DB, ward.wardId, c.req.param("originalId"));
+  const job = original ? await getJob(c.env.DB, ward.wardId, original.job_id) : null;
+  if (!original || original.withdrawn_at || !job || job.withdrawn_at) return c.notFound();
+  const back = returnPath(c, c.req.query("back"), adminPath(ward, `/intake/originals/${original.original_id}`));
+  return c.html(<Layout title="この資料を消しますか" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <h1>この資料を消しますか</h1>
+    <p class="lead">この資料の元のファイル、読み取った内容、この資料から入った今年の内容と去年の参考とAIからの質問、自治会の基本情報の文を消します。</p>
+    <p><strong>{original.filename || "書いたこと"}</strong></p>
+    <p>元に戻せません。送り直すには手元の写真やファイルが必要です。下書きと知らせた記録は残り、この資料から写した表の部分は消します。</p>
+    <form method="post" action={adminPath(ward, `/intake/originals/${original.original_id}/withdraw`)}>
+      <input type="hidden" name="back" value={back} />
+      <button class="danger">この資料を消す</button>
+    </form>
+    <a class="button secondary" href={back}>消さずに戻る</a>
+  </Layout>);
+});
+
+intakeAdmin.post("/intake/originals/:originalId/withdraw", async (c) => {
+  const { ward } = c.var;
+  const form = await c.req.formData();
+  const original = await getOriginal(c.env.DB, ward.wardId, c.req.param("originalId"));
+  const job = original ? await getJob(c.env.DB, ward.wardId, original.job_id) : null;
+  const fallback = adminPath(ward, job?.project_id ? `/projects/${job.project_id}` : "/intake/read");
+  let back = returnPath(c, String(form.get("back") ?? ""), fallback);
+  if (back.startsWith(adminPath(ward, `/intake/originals/${c.req.param("originalId")}`))) back = fallback;
+  let removed = false;
+  try { removed = await withdrawOriginal(c.env, ward.wardId, c.req.param("originalId")); }
+  catch { /* 競合時も本文や鍵を出さず、戻って選び直せるようにする。 */ }
+  return c.html(<Layout title={removed ? "資料を画面から外しました" : "資料を消せませんでした"} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <h1>{removed ? "資料を画面から外しました" : "資料を消せませんでした"}</h1>
+    <p class="lead">{removed ? "元のファイルと読み取った内容などは、順に消します。" : "すでに消したか、ほかの処理が進んでいます。戻って資料を確かめてから、もう一度お試しください。"}</p>
+    <a class="button" href={back}>資料の画面へ戻る</a>
+  </Layout>, removed ? 200 : 409);
+});
+
 intakeAdmin.get("/intake/originals/:originalId", async (c) => {
   const { ward } = c.var;
   const original = await getOriginal(c.env.DB, ward.wardId, c.req.param("originalId"));
-  if (!original || !original.r2_path) return c.notFound();
+  if (!original || original.withdrawn_at || !original.r2_path) return c.notFound();
+  const job = await getJob(c.env.DB, ward.wardId, original.job_id);
+  if (!job || job.withdrawn_at) return c.notFound();
   const object = await new WardBucket(c.env.ORIGINALS, ward.wardId).get(original.r2_path);
   if (!object) return c.notFound();
   c.header("Cache-Control", "private, no-store");
@@ -503,7 +542,6 @@ intakeAdmin.get("/intake/originals/:originalId", async (c) => {
       "cache-control": "private, no-store", "x-content-type-options": "nosniff",
     } });
   }
-  const job = await getJob(c.env.DB, ward.wardId, original.job_id);
   const project = job?.project_id ? (await getProjectState(c.env.DB, ward.wardId, job.project_id))?.project : null;
   const fallback = adminPath(ward, project ? `/projects/${project.projectId}/map` : "/intake/received");
   let back = returnPath(c, c.req.query("back") ?? c.req.header("referer"), fallback);
@@ -534,6 +572,7 @@ intakeAdmin.get("/intake/originals/:originalId", async (c) => {
       : original.media_type === "application/pdf" ? <iframe class="original-document" src={raw} title="元の資料のPDF" /> : readContent ? <><h2>AIが読み取った中身</h2>{readContent}</> : <p>このファイルは、下のボタンから開いて読めます。</p>}
     {viewable && readContent && original.media_type !== "text/plain" ? <details class="fold"><summary>AIが読み取った文</summary><div>{readContent}</div></details> : null}
     <a class="button secondary" href={raw}>元のファイルを開く</a>
+    <a class="button secondary danger" href={`${adminPath(ward, `/intake/originals/${original.original_id}/withdraw`)}?${new URLSearchParams({ back })}`}>この資料を消す</a>
     {project ? <p class="muted">読み取りが違っていたときは、<a href={adminPath(ward, `/projects/${project.projectId}`)}>{project.title}の届いた資料と今年の内容</a>で直せます。この画面の元の資料は変わりません。</p> : null}
     <a class="quiet" href={back}>前の画面へ戻る</a>
   </Layout>);

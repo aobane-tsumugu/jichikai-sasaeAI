@@ -1,4 +1,4 @@
-import { eraseCopiedContent, eraseSnapshotJob, eraseSnapshotRecord, WARD_TABLE_POLICY } from "../archive/snapshot";
+import { eraseCopiedContent, eraseReadingOriginals, eraseSnapshotJobs, eraseSnapshotRecord, eraseWardMaterialContent, listRecordWardIds, questionUsesOriginal, WARD_TABLE_POLICY } from "../archive/snapshot";
 import { CRON } from "../core/cron";
 import { newId, nowIso } from "../core/ids";
 import { WardBucket } from "../core/storage";
@@ -204,49 +204,122 @@ export async function inspectSnapshots(env: Env, wardId: string): Promise<Snapsh
 }
 
 
-async function rewriteJobSnapshots(env: Env, wardId: string, jobId: string, cursor: string | undefined): Promise<string | null> {
-  const page = await snapshotPage(env, wardId, cursor);
+interface SnapshotDeletionBatch {
+  items: Array<{ queue_id: string; target_type: "job" | "project"; target_id: string }>;
+  cursor?: string;
+}
+
+async function rewriteJobSnapshots(env: Env, item: QueueRow): Promise<void> {
+  const wardId = item.ward_id;
+  // 同じ写しの次のページにも同じ求めだけを当てる。途中から来た求めは次の一巡に回す。
+  const batch: SnapshotDeletionBatch = item.cursor?.startsWith("batch:")
+    ? JSON.parse(item.cursor.slice(6)) as SnapshotDeletionBatch
+    : { items: (await env.DB.prepare(`SELECT queue_id, target_type, target_id FROM ops_deletion_queue
+        WHERE ward_id = ? AND target_type IN ('job', 'project') AND state IN ('pending', 'running', 'error')
+          AND (cursor IS NULL OR cursor NOT IN ('record', 'records', 'mark')) ORDER BY requested_at, rowid`)
+        .bind(wardId).all<SnapshotDeletionBatch["items"][number]>()).results };
+  const saveCursor = (value: SnapshotDeletionBatch) => env.DB.prepare("UPDATE ops_deletion_queue SET cursor = ? WHERE ward_id = ? AND queue_id = ?")
+    .bind(`batch:${JSON.stringify(value)}`, wardId, item.queue_id).run();
+  if (!item.cursor?.startsWith("batch:")) await saveCursor(batch);
+  const jobIds = new Set(batch.items.filter((row) => row.target_type === "job").map((row) => row.target_id));
+  const projectIds = new Set(batch.items.filter((row) => row.target_type === "project").map((row) => row.target_id));
+  for (const projectId of projectIds) {
+    const jobs = await env.DB.prepare("SELECT job_id FROM jobs WHERE ward_id = ? AND project_id = ?").bind(wardId, projectId).all<{ job_id: string }>();
+    for (const job of jobs.results) jobIds.add(job.job_id);
+    await env.DB.prepare(`UPDATE jobs SET status = 'withdrawn', ticket_hash = NULL, lease_until = NULL,
+      withdrawn_at = COALESCE(withdrawn_at, ?), updated_at = ? WHERE ward_id = ? AND project_id = ?`)
+      .bind(nowIso(), nowIso(), wardId, projectId).run();
+  }
+  const originalIds = new Set<string>();
+  const currentPaths = new Set<string>();
+  const readingBodies = new Set<string>();
+  const ids = [...jobIds];
+  for (let offset = 0; offset < ids.length; offset += 50) {
+    const part = ids.slice(offset, offset + 50);
+    const places = part.map(() => "?").join(",");
+    const [originals, readings] = await Promise.all([
+      env.DB.prepare(`SELECT original_id, r2_path FROM originals WHERE ward_id = ? AND job_id IN (${places})`).bind(wardId, ...part).all<{ original_id: string; r2_path: string | null }>(),
+      env.DB.prepare(`SELECT body FROM readings WHERE ward_id = ? AND job_id IN (${places})`).bind(wardId, ...part).all<{ body: string }>(),
+    ]);
+    for (const row of originals.results) { originalIds.add(row.original_id); currentPaths.add(row.r2_path ?? `originals/${row.original_id}`); }
+    for (const row of readings.results) readingBodies.add(row.body);
+  }
+  const page = await snapshotPage(env, wardId, batch.cursor);
   const bucket = page.bucket;
-  const [originals, readings] = await Promise.all([
-    env.DB.prepare("SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?").bind(wardId, jobId).all<{ original_id: string }>(),
-    env.DB.prepare("SELECT body FROM readings WHERE ward_id = ? AND job_id = ?").bind(wardId, jobId).all<{ body: string }>(),
-  ]);
-  const originalIds = new Set(originals.results.map((row) => row.original_id));
-  const readingBodies = new Set(readings.results.map((row) => row.body));
+  const deletedPaths = new Set<string>();
   for (const entry of page.keys) {
     const object = await bucket.get(entry.key);
     if (!object) continue;
+    if (batch.cursor?.startsWith("backup:")) {
+      const primary = await new WardBucket(env.ORIGINALS, wardId).head(entry.key);
+      if (primary && object.customMetadata?.sourceVersion === primary.version) continue;
+    }
     let value: unknown;
     try { value = await object.json(); } catch { await deleteRecordObject(env, wardId, entry.key); continue; }
     // 取り下げで現在のr2_pathが空でも、過去の写しが持つ原本の所在を消す。
     if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-      const doc = value as { wardId?: unknown; tables?: { originals?: unknown } };
+      const doc = value as { wardId?: unknown; tables?: { originals?: unknown; jobs?: unknown } };
       if (doc.wardId === wardId && Array.isArray(doc.tables?.originals)) {
+        const snapshotJobs = new Set(jobIds);
+        if (Array.isArray(doc.tables.jobs)) for (const row of doc.tables.jobs as unknown[]) {
+          if (typeof row !== "object" || row === null) continue;
+          const job = row as { job_id?: unknown; project_id?: unknown };
+          if (typeof job.job_id === "string" && typeof job.project_id === "string" && projectIds.has(job.project_id)) snapshotJobs.add(job.job_id);
+        }
         for (const row of doc.tables.originals as unknown[]) {
           if (typeof row !== "object" || row === null) continue;
-          const original = row as { job_id?: unknown; r2_path?: unknown };
-          if (original.job_id === jobId && typeof original.r2_path === "string") await deleteRecordObject(env, wardId, original.r2_path);
+          const original = row as { original_id?: unknown; job_id?: unknown; r2_path?: unknown };
+          if (((typeof original.job_id === "string" && snapshotJobs.has(original.job_id)) ||
+            (typeof original.original_id === "string" && originalIds.has(original.original_id))) && typeof original.r2_path === "string" &&
+            !currentPaths.has(original.r2_path) && !deletedPaths.has(original.r2_path)) {
+            await deleteRecordObject(env, wardId, original.r2_path);
+            deletedPaths.add(original.r2_path);
+          }
         }
       }
     }
-    const rewritten = eraseSnapshotJob(value, wardId, jobId, originalIds, readingBodies);
+    const rewritten = eraseSnapshotJobs(value, wardId, jobIds, originalIds, readingBodies, projectIds);
     if (rewritten === null) { await deleteRecordObject(env, wardId, entry.key); continue; }
     await putRecordSnapshot(env, wardId, entry.key, rewritten);
   }
-  return page.next;
+  if (page.next) { await saveCursor({ ...batch, cursor: page.next }); return; }
+  // 全ページを書き終えた求めだけを次へ進める。失敗した場合は同じページからやり直す。
+  await env.DB.batch(batch.items.map((row) => env.DB.prepare("UPDATE ops_deletion_queue SET cursor = ? WHERE ward_id = ? AND queue_id = ?")
+    .bind(row.target_type === "job" ? "record" : "records", wardId, row.queue_id)));
 }
 
 async function eraseJobCopies(env: Env, wardId: string, jobId: string): Promise<void> {
   const originals = await env.DB.prepare("SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?")
     .bind(wardId, jobId).all<{ original_id: string }>();
   const tables: Record<string, Record<string, unknown>[]> = {};
-  for (const table of ["document_versions", "archive_search_entries", "project_rows", "project_changes"]) {
+  for (const table of ["document_versions", "archive_search_entries", "project_rows", "project_changes", "project_questions", "readings", "paper_reading_slices", "ward_know_items", "ward_material_links", "ward_year_items"]) {
     tables[table] = (await env.DB.prepare(`SELECT * FROM ${table} WHERE ward_id = ?`).bind(wardId).all<Record<string, unknown>>()).results;
   }
   const before = new Map(tables.document_versions?.map((row) => [row, row.tables_snapshot] as const));
+  const knowBefore = new Map(tables.ward_know_items?.map((row) => [row, JSON.stringify([row.body, row.proposed_text, row.proposed_original_id])] as const));
   const oldSearch = new Set(tables.archive_search_entries?.map((row) => Number(row.entry_id)));
-  eraseCopiedContent(tables, new Set(originals.results.map((row) => row.original_id)));
+  const originalIds = new Set(originals.results.map((row) => row.original_id));
+  eraseCopiedContent(tables, originalIds);
+  eraseWardMaterialContent(tables, originalIds);
   const statements: D1PreparedStatement[] = [];
+  for (const row of tables.project_questions ?? []) {
+    if (questionUsesOriginal(row.detail, originalIds)) statements.push(env.DB.prepare("DELETE FROM project_questions WHERE ward_id = ? AND question_id = ?")
+      .bind(wardId, String(row.question_id)));
+  }
+  for (const table of ["readings", "paper_reading_slices"]) for (const row of tables[table] ?? []) {
+    if (row.job_id === jobId || typeof row.body !== "string") continue;
+    const cleaned = eraseReadingOriginals(row.body, originalIds);
+    if (cleaned === row.body) continue;
+    statements.push(env.DB.prepare(`UPDATE ${table} SET body = ? WHERE ward_id = ? AND ${table === "readings" ? "reading_id" : "job_id"} = ?`)
+      .bind(cleaned, wardId, String(table === "readings" ? row.reading_id : row.job_id)));
+  }
+  for (const row of tables.ward_know_items ?? []) {
+    if (knowBefore.get(row) === JSON.stringify([row.body, row.proposed_text, row.proposed_original_id])) continue;
+    statements.push(env.DB.prepare(`UPDATE ward_know_items SET body = ?, proposed_text = ?, proposed_original_id = ? WHERE ward_id = ? AND item_id = ?`)
+      .bind(String(row.body), String(row.proposed_text), row.proposed_original_id as string | null, wardId, String(row.item_id)));
+  }
+  statements.push(env.DB.prepare(`DELETE FROM ward_year_items WHERE ward_id = ? AND source_original_id IN
+    (SELECT original_id FROM originals WHERE ward_id = ? AND job_id = ?)`).bind(wardId, wardId, jobId));
   for (const row of tables.document_versions ?? []) {
     if (before.get(row) !== row.tables_snapshot) statements.push(env.DB.prepare(`UPDATE document_versions
       SET tables_snapshot = ? WHERE ward_id = ? AND version_id = ?`)
@@ -260,24 +333,10 @@ async function eraseJobCopies(env: Env, wardId: string, jobId: string): Promise<
 async function eraseJob(env: Env, item: QueueRow, projectJob?: { jobId: string; cursor: string | null }): Promise<"continue" | "done"> {
   const wardId = item.ward_id;
   const jobId = projectJob?.jobId ?? item.target_id ?? "";
-  const cursor = projectJob ? projectJob.cursor : item.cursor;
-  const nextCursor = (value: string) => projectJob ? `job:${jobId}:${value}` : value;
-  if (cursor === null) {
-    for (const session of await pendingSessions(env.DB, wardId, jobId)) {
-      if (!(await deleteSession(env, wardId, jobId, session.session_id))) throw new Error("AI側の処理を消せませんでした");
-    }
-    if ((await pendingSessions(env.DB, wardId, jobId)).length) return "continue";
-    await env.DB.prepare("UPDATE ops_deletion_queue SET cursor = ?, state = 'running', last_error = '' WHERE queue_id = ? AND ward_id = ?")
-      .bind(nextCursor("snapshots"), item.queue_id, wardId).run();
-    return "continue";
+  for (const session of await pendingSessions(env.DB, wardId, jobId)) {
+    if (!(await deleteSession(env, wardId, jobId, session.session_id))) throw new Error("AI側の処理を消せませんでした");
   }
-  if (cursor === "snapshots" || cursor.startsWith("snapshots:")) {
-    const token = cursor.startsWith("snapshots:") ? cursor.slice("snapshots:".length) : undefined;
-    const next = await rewriteJobSnapshots(env, wardId, jobId, token);
-    await env.DB.prepare("UPDATE ops_deletion_queue SET cursor = ?, state = 'running', last_error = '' WHERE queue_id = ? AND ward_id = ?")
-      .bind(nextCursor(next ? `snapshots:${next}` : "record"), item.queue_id, wardId).run();
-    return "continue";
-  }
+  if ((await pendingSessions(env.DB, wardId, jobId)).length) return "continue";
 
   await eraseJobCopies(env, wardId, jobId);
   const originals = await env.DB.prepare("SELECT original_id, r2_path FROM originals WHERE ward_id = ? AND job_id = ?")
@@ -316,7 +375,7 @@ async function eraseJob(env: Env, item: QueueRow, projectJob?: { jobId: string; 
   ];
   await env.DB.batch(statements);
   if (projectJob) {
-    await env.DB.prepare("UPDATE ops_deletion_queue SET cursor = NULL WHERE ward_id = ? AND queue_id = ?")
+    await env.DB.prepare("UPDATE ops_deletion_queue SET cursor = 'records' WHERE ward_id = ? AND queue_id = ?")
       .bind(wardId, item.queue_id).run();
     return "done";
   }
@@ -338,14 +397,13 @@ const PROJECT_DELETE_TABLES = [
 async function eraseProject(env: Env, item: QueueRow): Promise<void> {
   const wardId = item.ward_id;
   const projectId = item.target_id ?? "";
-  if (item.cursor === null || item.cursor.startsWith("job:")) {
-    const resumed = /^job:([^:]+):(.*)$/s.exec(item.cursor ?? "");
-    const job = resumed ? { job_id: resumed[1]! } : await env.DB.prepare("SELECT job_id FROM jobs WHERE ward_id = ? AND project_id = ? ORDER BY created_at, job_id LIMIT 1")
+  if (item.cursor === "records") {
+    const job = await env.DB.prepare("SELECT job_id FROM jobs WHERE ward_id = ? AND project_id = ? ORDER BY created_at, job_id LIMIT 1")
       .bind(wardId, projectId).first<{ job_id: string }>();
     if (job) {
       await env.DB.prepare("UPDATE jobs SET status = 'withdrawn', ticket_hash = NULL, withdrawn_at = COALESCE(withdrawn_at, ?), updated_at = ? WHERE ward_id = ? AND job_id = ?")
         .bind(nowIso(), nowIso(), wardId, job.job_id).run();
-      await eraseJob(env, item, { jobId: job.job_id, cursor: resumed?.[2] ?? null });
+      await eraseJob(env, item, { jobId: job.job_id, cursor: "record" });
       return;
     }
     // 文書を消すとチラシの所在も連動して消えるため、先に画像本体と見本を消す。
@@ -357,31 +415,8 @@ async function eraseProject(env: Env, item: QueueRow): Promise<void> {
     await env.DB.batch([
       env.DB.prepare("UPDATE projects SET seed_project_id = NULL WHERE ward_id = ? AND seed_project_id = ?").bind(wardId, projectId),
       ...PROJECT_DELETE_TABLES.map((table) => env.DB.prepare(`DELETE FROM ${table} WHERE ward_id = ? AND project_id = ?`).bind(wardId, projectId)),
-      env.DB.prepare("UPDATE ops_deletion_queue SET cursor = 'snapshots' WHERE ward_id = ? AND queue_id = ?").bind(wardId, item.queue_id),
+      env.DB.prepare("UPDATE ops_deletion_queue SET cursor = 'mark' WHERE ward_id = ? AND queue_id = ?").bind(wardId, item.queue_id),
     ]);
-    return;
-  }
-  if (item.cursor === "snapshots" || item.cursor.startsWith("snapshots:")) {
-    const cursor = item.cursor.startsWith("snapshots:") ? item.cursor.slice("snapshots:".length) : undefined;
-    const page = await snapshotPage(env, wardId, cursor);
-    const bucket = page.bucket;
-    for (const entry of page.keys) {
-      const object = await bucket.get(entry.key);
-      if (!object) continue;
-      const value: unknown = await object.json().catch(() => null);
-      if (typeof value !== "object" || value === null || Array.isArray(value)) { await deleteRecordObject(env, wardId, entry.key); continue; }
-      const doc = value as { format?: unknown; wardId?: unknown; tables?: Record<string, unknown> };
-      if (doc.format !== 1 || doc.wardId !== wardId || typeof doc.tables !== "object" || doc.tables === null || Array.isArray(doc.tables)) { await deleteRecordObject(env, wardId, entry.key); continue; }
-      for (const [table, rows] of Object.entries(doc.tables)) {
-        if (!Array.isArray(rows)) continue;
-        doc.tables[table] = (rows as unknown[]).filter((row) => typeof row !== "object" || row === null || (row as Record<string, unknown>).project_id !== projectId)
-          .map((row) => table === "projects" && typeof row === "object" && row !== null && (row as Record<string, unknown>).seed_project_id === projectId
-            ? { ...row, seed_project_id: null } : row);
-      }
-      await putRecordSnapshot(env, wardId, entry.key, JSON.stringify(doc));
-    }
-    await env.DB.prepare("UPDATE ops_deletion_queue SET cursor = ? WHERE ward_id = ? AND queue_id = ?")
-      .bind(page.next ? `snapshots:${page.next}` : "mark", wardId, item.queue_id).run();
     return;
   }
   await env.DB.batch([
@@ -402,6 +437,11 @@ async function eraseWardData(env: Env, wardId: string, deletedAt: string): Promi
 
 async function finishDeletion(env: Env, item: QueueRow): Promise<void> {
   const at = nowIso();
+  if ((item.target_type === "job" || item.target_type === "project") &&
+    item.cursor !== "record" && item.cursor !== "records" && item.cursor !== "mark") {
+    await rewriteJobSnapshots(env, item);
+    return;
+  }
   if (item.target_type === "project" && item.target_id) {
     await eraseProject(env, item);
     return;
@@ -471,34 +511,53 @@ const DELETION_STEP_LIMIT = 60;
 export async function runDeletionCron(event: ScheduledController, env: Env): Promise<void> {
   if (event.cron !== CRON.EVERY_5_MIN) return;
   const started = Date.now();
-  for (let step = 0; step < DELETION_STEP_LIMIT && Date.now() - started < DELETION_STEP_BUDGET_MS; step++) {
-    if (!(await runDeletionStep(env))) return;
+  // 空のときは区ごとの読み取りをしない。全区から番号だけを得る既存の入口を使う。
+  const first = await env.DB.prepare(`SELECT queue_id, ward_id, target_type, target_id, cursor
+    FROM ops_deletion_queue WHERE ward_id IS NOT NULL AND state IN ('pending', 'running', 'error')
+    ORDER BY CASE state WHEN 'error' THEN 1 ELSE 0 END, requested_at LIMIT 1`).first<QueueRow>();
+  if (!first) return;
+  const wards = [...new Set([first.ward_id, ...(await listRecordWardIds(env.DB)).map((ward) => ward.ward_id), CONTACT_WARD])];
+  type Candidate = QueueRow & { state: string; requested_at: string; request_order: number };
+  const pages = await env.DB.batch<Candidate>(wards.map((wardId) => env.DB.prepare(`SELECT queue_id, ward_id, target_type, target_id, cursor, state, requested_at, rowid AS request_order
+    FROM ops_deletion_queue WHERE ward_id = ? AND state IN ('pending', 'running', 'error')`).bind(wardId)));
+  const priority = (state: string) => state === "running" ? 0 : state === "pending" ? 1 : 2;
+  const items = pages.flatMap((page) => page.results).sort((a, b) => priority(a.state) - priority(b.state) ||
+    a.requested_at.localeCompare(b.requested_at) || a.request_order - b.request_order);
+  let step = 0;
+  for (const item of items) {
+    while (step < DELETION_STEP_LIMIT && Date.now() - started < DELETION_STEP_BUDGET_MS) {
+      step++;
+      const result = await runDeletionStep(env, item);
+      if (result === "error") return;
+      if (result === "gone") break;
+    }
+    if (step >= DELETION_STEP_LIMIT || Date.now() - started >= DELETION_STEP_BUDGET_MS) return;
   }
 }
 
-/** 一歩進める。進めた時は true、待ちが無い時と、続けられなかった時（次の Cron で続きから）は false。 */
-async function runDeletionStep(env: Env): Promise<boolean> {
-  const item = await env.DB.prepare(`SELECT queue_id, ward_id, target_type, target_id, cursor
-    FROM ops_deletion_queue WHERE ward_id IS NOT NULL AND state IN ('pending', 'running', 'error')
-    ORDER BY CASE state WHEN 'error' THEN 1 ELSE 0 END, requested_at LIMIT 1`)
-    .first<QueueRow>();
-  if (!item) return false;
+/** 一つの項目を終えるまで、同じ途中位置を読み直して続ける。 */
+async function runDeletionStep(env: Env, item: QueueRow): Promise<"progress" | "gone" | "error"> {
   try {
-    await env.DB.prepare("UPDATE ops_deletion_queue SET state = 'running', last_error = '' WHERE queue_id = ? AND ward_id = ?")
-      .bind(item.queue_id, item.ward_id).run();
-    await withRecordLock(env, item.ward_id, async () => {
+    // 消去済みならロックを取らない。区の消去で消した管理用の行を作り直さないため。
+    const pending = await env.DB.prepare("SELECT 1 FROM ops_deletion_queue WHERE ward_id = ? AND queue_id = ?")
+      .bind(item.ward_id, item.queue_id).first();
+    if (!pending) return "gone";
+    return await withRecordLock(env, item.ward_id, async () => {
       // 同じ区を別のCronが先に進めた場合は、その途中位置から読む。
       const current = await env.DB.prepare(`SELECT queue_id, ward_id, target_type, target_id, cursor
         FROM ops_deletion_queue WHERE ward_id = ? AND queue_id = ?`)
         .bind(item.ward_id, item.queue_id).first<QueueRow>();
-      if (current) await finishDeletion(env, current);
+      if (!current) return "gone";
+      await env.DB.prepare("UPDATE ops_deletion_queue SET state = 'running', last_error = '' WHERE queue_id = ? AND ward_id = ?")
+        .bind(item.queue_id, item.ward_id).run();
+      await finishDeletion(env, current);
+      return "progress";
     });
   } catch (error) {
     const message = "処理を完了できませんでした。提供側で確認してください。";
     await env.DB.prepare("UPDATE ops_deletion_queue SET state = 'error', last_error = ? WHERE queue_id = ? AND ward_id = ?")
       .bind(message, item.queue_id, item.ward_id).run();
     console.error("消去処理を続けられませんでした", item.ward_id, item.queue_id, error instanceof Error ? error.name : "unknown");
-    return false;
+    return "error";
   }
-  return true;
 }

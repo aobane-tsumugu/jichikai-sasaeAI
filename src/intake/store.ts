@@ -6,6 +6,8 @@ import type { Env } from "../env";
 import { normalizeOriginalYears, type ReadingBody } from "../ai/schema";
 import type { JobRow, JobStatus, OriginalRow } from "./types";
 import { subset } from "./reading-subset";
+import { eraseReadingOriginals } from "../archive/snapshot";
+import { withRecordLock } from "../archive/backup";
 
 export const MAX_READ_ATTEMPTS = 3;
 
@@ -218,6 +220,66 @@ export async function withdrawJob(env: Pick<Env, "DB" | "ORIGINALS">, wardId: st
     env.DB.prepare("DELETE FROM readings WHERE ward_id = ? AND job_id = ?").bind(wardId, jobId),
   ]);
   return true;
+}
+
+/** 準備や基本情報に入った後も、元の資料の一件だけを画面から外して消す求めに積む。 */
+export async function withdrawOriginal(env: Env, wardId: string, originalId: string): Promise<boolean> {
+  return withRecordLock(env, wardId, async () => {
+    const original = await getOriginal(env.DB, wardId, originalId);
+    if (!original || original.withdrawn_at) return false;
+    const job = await getJob(env.DB, wardId, original.job_id);
+    if (!job || job.withdrawn_at) return false;
+    const originals = (await listOriginals(env.DB, wardId, job.job_id)).filter((row) => row.job_id === job.job_id);
+    const remaining = new Set(originals.filter((row) => row.original_id !== originalId).map((row) => row.original_id));
+    const at = nowIso();
+    if (!originals.some((row) => row.original_id !== originalId && !row.withdrawn_at)) {
+      await env.DB.batch([
+        env.DB.prepare("UPDATE originals SET withdrawn_at = ? WHERE ward_id = ? AND job_id = ? AND withdrawn_at IS NULL")
+          .bind(at, wardId, job.job_id),
+        env.DB.prepare(`UPDATE jobs SET status = 'withdrawn', ticket_hash = NULL, lease_until = NULL, withdrawn_at = ?, updated_at = ?
+          WHERE ward_id = ? AND job_id = ? AND withdrawn_at IS NULL`).bind(at, at, wardId, job.job_id),
+        env.DB.prepare(`INSERT INTO ops_deletion_queue (queue_id, ward_id, target_type, target_id, requested_at)
+          SELECT ?, ?, 'job', ?, ? WHERE NOT EXISTS (SELECT 1 FROM ops_deletion_queue
+            WHERE ward_id = ? AND target_type = 'job' AND target_id = ? AND state IN ('pending', 'running', 'error'))`)
+          .bind(newId(), wardId, job.job_id, at, wardId, job.job_id),
+      ]);
+      return true;
+    }
+    const childId = newId();
+    const statements: D1PreparedStatement[] = [env.DB.prepare(`INSERT INTO jobs
+      (job_id, ward_id, project_id, via, read_kind, sender_label, account_id, status, created_at, updated_at, read_at, withdrawn_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'withdrawn', ?, ?, ?, ?)`)
+      .bind(childId, wardId, job.project_id, job.via, job.read_kind, job.sender_label, job.account_id, job.created_at, at, job.read_at, at),
+      env.DB.prepare("INSERT INTO ops_deletion_queue (queue_id, ward_id, target_type, target_id, requested_at) VALUES (?, ?, 'job', ?, ?)")
+        .bind(newId(), wardId, childId, at)];
+    const selected = new Set([originalId]);
+    const readings = await env.DB.prepare("SELECT source, pack_version, model, body FROM readings WHERE ward_id = ? AND job_id = ?")
+      .bind(wardId, job.job_id).all<{ source: string; pack_version: string; model: string; body: string }>();
+    for (const row of readings.results) {
+      const body = row.body;
+      statements.push(env.DB.prepare(`INSERT INTO readings (reading_id, ward_id, job_id, source, pack_version, model, body, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(newId(), wardId, childId, row.source, row.pack_version, row.model, eraseReadingOriginals(body, remaining), at));
+      statements.push(env.DB.prepare("UPDATE readings SET body = ? WHERE ward_id = ? AND job_id = ? AND source = ?")
+        .bind(eraseReadingOriginals(body, selected), wardId, job.job_id, row.source));
+      // 受付全体を写した古い検索記録は外し、原本ごとの残す記録は保つ。
+      statements.push(env.DB.prepare("DELETE FROM archive_search_entries WHERE ward_id = ? AND record_type = 'reading' AND content = ?")
+        .bind(wardId, body));
+    }
+    statements.push(env.DB.prepare("UPDATE originals SET job_id = ?, withdrawn_at = ? WHERE ward_id = ? AND job_id = ? AND original_id = ?")
+      .bind(childId, at, wardId, job.job_id, originalId));
+    // 一緒に読んだAIの会話と処理の文も、消す側で回収する。残す読み取りは上で分けてある。
+    statements.push(env.DB.prepare("UPDATE jobs SET session_id = ?, session_deleted_at = ? WHERE ward_id = ? AND job_id = ?")
+      .bind(job.session_id, job.session_deleted_at, wardId, childId));
+    for (const table of ["job_runs", "job_tool_calls"]) statements.push(env.DB.prepare(`UPDATE ${table} SET job_id = ? WHERE ward_id = ? AND job_id = ?`)
+      .bind(childId, wardId, job.job_id));
+    // 元の受付のAIが、消す前の読み取りを使って書き戻さないよう入口を失効する。
+    statements.push(env.DB.prepare(`UPDATE jobs SET ticket_hash = NULL, session_id = NULL, session_deleted_at = NULL, lease_until = NULL, updated_at = ?,
+      status = CASE WHEN status = 'reading' THEN 'received' WHEN status = 'connecting' THEN 'read' ELSE status END
+      WHERE ward_id = ? AND job_id = ?`).bind(at, wardId, job.job_id));
+    await env.DB.batch(statements);
+    return true;
+  });
 }
 
 /**
