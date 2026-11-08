@@ -7,7 +7,7 @@
 /** 包みの版。どの版で読んだかを readings に残し、直した後に古い版で読んだ物を選んで読み直せるようにする。 */
 export const READ_PACK_VERSION = {
   general: "read-general@6",
-  answer_sheet: "read-answer-sheet@7",
+  answer_sheet: "read-answer-sheet@8",
   restore: "read-restore@6",
   /** モデルを通さない読み取り（Word、Excel、文字） */
   direct: "read-direct@2",
@@ -175,8 +175,10 @@ export interface AnswerSheetRow {
   household_name: string;
   /** 参加しないに印がある。古い読み取りには無い。 */
   not_attending?: boolean;
-  /** 紙に印字された班名 */
+  /** 紙に印字または記入された班名 */
   ward_group: string;
+  /** 足した欄の答え。欄が無い古い読み取りでは省略される。空欄や読めない印は含めない。 */
+  field_values?: { field_id: string; values: string[] }[];
   /** 確認できる空欄は0、判読できない人数はnull。 */
   adults: number | null;
   children: number | null;
@@ -330,6 +332,7 @@ export const ANSWER_SHEET_SCHEMA = {
           "meeting_status",
           "proxy_name",
           "ward_group",
+          "field_values",
           "adults",
           "children",
           "seniors",
@@ -347,6 +350,15 @@ export const ANSWER_SHEET_SCHEMA = {
           meeting_status: { anyOf: [{ type: "string", enum: ["attend", "proxy", "absent"] }, { type: "null" }] },
           proxy_name: { anyOf: [str, { type: "null" }] },
           ward_group: str,
+          field_values: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["field_id", "values"],
+              properties: { field_id: str, values: { type: "array", items: str } },
+            },
+          },
           adults: { anyOf: [{ type: "integer" }, { type: "null" }] },
           children: { anyOf: [{ type: "integer" }, { type: "null" }] },
           seniors: { anyOf: [{ type: "integer" }, { type: "null" }] },

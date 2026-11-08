@@ -14,6 +14,7 @@ import { Layout, Notice } from "../core/ui";
 import { AdminPage } from "../core/admin-ui";
 import type { AdminEnv, WardEnv } from "../env";
 import type { AnswerSheetReading } from "../ai/schema";
+import { sheetFieldValues } from "../ai/read";
 import type { Reading } from "../ai/schema";
 import type { Waitable } from "../intake/types";
 import { receiveOriginal, getReadings } from "../intake/api";
@@ -616,13 +617,13 @@ admin.post("/answers/:projectId/sheet/:originalId/row/:rowIndex", async (c) => {
   const rowIndex = Number(c.req.param("rowIndex"));
   if (!household || !Number.isInteger(peopleCount) || peopleCount < 0 || peopleCount > 1000 || !Number.isInteger(rowIndex) || rowIndex < 0) return adminResult(c, "読み取りを確認してください。", 400, { href: adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(c.req.param("projectId"))}`), label: "返事の画面に戻る" }, "返事の画面で内容を確かめてください。終わったものの返事を直すときは、先に終わりを取り消してください。");
   const originalId = c.req.param("originalId");
-  const link = await c.env.DB.prepare(`SELECT o.original_id, o.withdrawn_at AS original_withdrawn_at,
+  const link = await c.env.DB.prepare(`SELECT o.original_id, o.job_id, o.withdrawn_at AS original_withdrawn_at,
     j.withdrawn_at AS job_withdrawn_at, p.closed_at FROM originals o
     JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
     JOIN projects p ON p.ward_id = j.ward_id AND p.project_id = j.project_id
     WHERE o.ward_id = ? AND o.original_id = ? AND j.project_id = ? AND j.read_kind = 'answer_sheet'`)
     .bind(c.var.ward.wardId, originalId, c.req.param("projectId")).first<{
-      original_id: string; original_withdrawn_at: string | null; job_withdrawn_at: string | null; closed_at: string | null;
+      original_id: string; job_id: string; original_withdrawn_at: string | null; job_withdrawn_at: string | null; closed_at: string | null;
     }>();
   if (!link) return c.notFound();
   if (link.closed_at) {
@@ -633,9 +634,14 @@ admin.post("/answers/:projectId/sheet/:originalId/row/:rowIndex", async (c) => {
       { href: `${adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(c.req.param("projectId"))}`)}?view=list`, label: "返事の一覧に戻る" },
       "返事の一覧に戻って確認してください。");
   }
+  const readings = await getReadings(c.env.DB, c.var.ward.wardId, link.job_id);
+  const reading = readings.find((entry) => "rows" in entry.body)?.body;
+  const row = reading && "rows" in reading ? reading.rows[rowIndex] : undefined;
+  const { fields } = await getAnswerFields(c.env.DB, c.var.ward.wardId, c.req.param("projectId"), await getSquads(c.env.DB, c.var.ward.wardId));
   await addAnswer(c.env.DB, c.var.ward.wardId, {
     projectId: c.req.param("projectId"), household, district, ...counts!, helperName, helperTimes,
     source: "sheet", originalId, sheetRowIndex: rowIndex, accountId: c.var.account.accountId,
+    fieldValues: row?.original_id === originalId ? sheetFieldValues(row, fields) : {},
   });
   return c.redirect(`${adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(c.req.param("projectId"))}`)}?view=list&done=edit`, 303);
 });

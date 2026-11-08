@@ -108,7 +108,7 @@ it("初年度の出欠を紙とWebとLINEで受け、締切後は未回答を欠
     } })).toBe("read");
     expect((await listAnswers(env.DB, ward.wardId, project.projectId)).find((entry) => entry.originalId === originalId)?.peopleCount).toBe(0);
     expect(await read(`${answers}?view=list`)).toContain("直して入れ直す");
-    expect(READ_PACK_VERSION.answer_sheet).toBe("read-answer-sheet@7");
+    expect(READ_PACK_VERSION.answer_sheet).toBe("read-answer-sheet@8");
     expect(LINE_ANSWER_PACK.version).toBe("line-answer@2");
     const ports = createLineIntakePorts(env, { waitUntil: () => undefined });
     for (const [index, text] of [`${fixture.secondHousehold}です。参加しません。`, `${fixture.phoneHousehold}です。不参加です。`].entries()) {

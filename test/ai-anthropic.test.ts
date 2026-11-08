@@ -247,7 +247,7 @@ describe("読むの呼び出し", () => {
     expect(req.system).toContain("空欄だと確認できるときは0");
     expect(req.system).toContain("人数の文字や記入欄が読めないとき、欄がないときはnull");
     expect(req.output_config.format.schema.required).toContain("rows");
-    expect(result.packVersion).toBe("read-answer-sheet@7");
+    expect(result.packVersion).toBe("read-answer-sheet@8");
   });
 });
 
