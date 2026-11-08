@@ -22,7 +22,7 @@ import { formatDateText, formatJstDate } from "../core/time";
 import { WhichProject } from "./which-project";
 import { PROJECT_KINDS } from "../project/model";
 import { materialGroupTemplate, pendingMaterialGroups, startMaterialGroup } from "./groups";
-import { documentTitle } from "../project/heading";
+import { documentTitle, plainProjectTitle } from "../project/heading";
 import { PhotoCheckNotice, photoChecks } from "./photo-check";
 import { talkMark, talkPath } from "../line/talks";
 
@@ -184,12 +184,25 @@ intakeAdmin.get("/intake/received", async (c) => {
   </Layout>);
   // 送った物ごとに、今どこまで読んで、どこに入れたかを文で書く。札の一語にしない。
   const names = new Map((await c.env.DB.prepare("SELECT project_id, title FROM projects WHERE ward_id = ?").bind(ward.wardId).all<{ project_id: string; title: string }>()).results.map((row) => [row.project_id, row.title]));
+  // 準備に入っていない物は、どの準備のものか分かったか、基本情報と一年の予定に入れたか、分からなかったかを、読み終わったものの画面と同じ決まりで書く。
+  const groups = jobs.some((job) => job.status === "read" && !job.project_id) ? await pendingMaterialGroups(c.env.DB, ward.wardId) : [];
+  const readText = (jobId: string) => {
+    const materials = groups.flatMap((group) => group.materials.filter((m) => m.jobId === jobId).map((m) => ({ group, m })));
+    const titled = materials.find(({ group }) => group.title)?.group;
+    if (titled) return `読み終わりました。「${titled.joins?.title ?? titled.title}」の資料のようです。「読み終わったもの」から、その準備に入れられます。`;
+    const forWard = materials.some(({ m }) => m.readings.some((reading) => {
+      const body = reading.body as { ward_facts?: unknown[]; year_entries?: unknown[] };
+      return Boolean(body.ward_facts?.length || body.year_entries?.length);
+    }));
+    if (forWard) return "読み終わりました。どの準備のものでもなく、自治会の基本情報と一年の予定に入れました。";
+    return "読み終わりました。どの準備の資料か分かりませんでした。自治会の資料に入れて残します。間違えて送ったものなら、「読み終わったもの」から消せます。";
+  };
   const whereText = (job: (typeof jobs)[number]) => {
     const name = job.project_id ? names.get(job.project_id) : undefined;
     if (job.status === "received" || job.status === "reading") return "AIが読んでいます。";
     if (job.status === "connecting") return `読み終わりました。${name ? `${name}の中身に入れています。` : "どの準備の資料かを、AIが分けています。"}`;
     // AI が分け終わり、役員が決めるのを待っている物を「分けています」と書き続けない。
-    if (job.status === "read") return `読み終わりました。${name ? `${name}の中身に入れています。` : "どの準備の資料かは、「読み終わったもの」から決められます。"}`;
+    if (job.status === "read") return name ? `読み終わりました。${name}の中身に入れています。` : readText(job.job_id);
     // 通しの道具は「どれの資料か分けました」を見て読み終わりを待つので、この言葉は残す。
     if (job.status === "done") return name ? `読み終わり、どれの資料か分けました。${name}の資料に入れています。` : "読み終わりました。どの準備の資料かは、まだ決まっていません。";
     if (job.status === "attention") return "読み取りが遅れています。送ったものは預かっているので、送り直さなくてかまいません。";
@@ -279,7 +292,7 @@ intakeAdmin.get("/intake/read", async (c) => {
       return <section class="panel"><h2>{group.joins?.title ?? group.title}の資料のようです</h2>
         <dl class="facts"><dt>資料</dt><dd>{group.materials.length}件</dd>{date ? <><dt>資料の日付</dt><dd>{formatDateText(date)}</dd></> : null}{place ? <><dt>場所</dt><dd>{place}</dd></> : null}</dl>
         {month ? <p>{monthNote(month)}</p> : null}
-        <WhichProject id={`group-${index}`} question="この資料は、次の準備のものですか？" projects={open} suggested={group.joins?.projectId} suggestedName={group.joins ? "" : group.title} startText={startTemplateText(group.title, materialGroupTemplate(group, past, yearItems), "materials")} action={adminPath(ward, "/intake/start")} hidden={{ group: group.key }} withDay primary={index === 0} />
+        <WhichProject id={`group-${index}`} question="この資料は、次の準備のものですか？" projects={open} suggested={group.joins?.projectId} suggestedName={group.joins ? "" : plainProjectTitle(group.title)} startText={startTemplateText(group.title, materialGroupTemplate(group, past, yearItems), "materials")} action={adminPath(ward, "/intake/start")} hidden={{ group: group.key }} withDay primary={index === 0} />
       </section>;
     }))}
     {wardUsed.length ? <p>{wardUsed.map((name) => `「${name}」`).join("、")}は、どの準備のものでもなく、自治会の基本情報と一年の予定に入れました。<a href={adminPath(ward, "/know")}>自治会の基本情報を見る</a></p> : null}

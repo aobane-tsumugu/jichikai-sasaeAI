@@ -7,6 +7,7 @@ import { eventDayStatements, getProjectState } from "./state";
 import { isCalendarDay, parseEventDay } from "../core/time";
 import { PENDING, reconcileDocumentBody, type DocumentBody } from "./document-body";
 import { getDraftPack } from "../draft/packs";
+import { questionItemKey } from "./question-target";
 
 type MaterialTable = "duties" | "committee";
 const materialPack = (table: MaterialTable) => (table === "duties" ? "duty-roster-edit@1" : "committee-edit@1");
@@ -259,7 +260,7 @@ export async function answerQuestion(db: D1Database, wardId: string, projectId: 
           items: [...before.items.filter((item) => item.key !== itemKey), { key: itemKey, content }],
         });
         if (stableStringify(before) !== stableStringify(next) && !(await saveDocument(db, wardId, projectId, accountId, {
-          kind: draftKind, title: draft.title, scope: draft.scope, body: JSON.stringify(next), basedOn: current.project.stateVersion,
+          kind: draftKind, title: draft.title, scope: draft.scope, body: JSON.stringify(next), basedOn: current.project.stateVersion, answering: questionId,
         }))) return false;
       }
     }
@@ -337,7 +338,7 @@ export async function getEditableDocument(db: D1Database, wardId: string, projec
 }
 
 export const DOCUMENT_TEXT_LIMIT = 20000;
-export async function saveDocument(db: D1Database, wardId: string, projectId: string, accountId: string, input: { kind: DocumentKind; title: string; scope: Scope; body: string; basedOn: number }, bodyChecks?: ItemKey[]): Promise<boolean> {
+export async function saveDocument(db: D1Database, wardId: string, projectId: string, accountId: string, input: { kind: DocumentKind; title: string; scope: Scope; body: string; basedOn: number; answering?: string }, bodyChecks?: ItemKey[]): Promise<boolean> {
   if (!["announcement", "recruitment", "duty_roster", "procedure", "notice", "report"].includes(input.kind)) return false;
   if (!["public", "space", "staff"].includes(input.scope) || input.title.trim().length < 1 || input.title.length > 100) return false;
   let parsed: unknown;
@@ -376,16 +377,34 @@ export async function saveDocument(db: D1Database, wardId: string, projectId: st
   const statements: D1PreparedStatement[] = [db.prepare(`INSERT INTO document_versions
     (version_id, ward_id, project_id, document_id, version_no, scope, body, title, based_on_state_version, origin, created_at, created_by_account_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'person', ?, ?)`).bind(versionId, wardId, projectId, doc.document_id, (latest?.n ?? 0) + 1, input.scope, JSON.stringify(body), input.title.trim(), wasCurrent ? currentProject?.state_version ?? input.basedOn : input.basedOn, now, accountId)];
+  const decided: { key: ItemKey; content: string }[] = [];
   for (const item of body.items) {
     // 「（確認中）」は決まっていない印で、値ではない。今年の値として記録しない（資料の値と食い違う問いを作らない）。
     if (!item.content.trim() || item.content.includes(PENDING) || before.items.find((entry) => entry.key === item.key)?.content === item.content) continue;
     const change = await applyChange(db, wardId, projectId, { kind: "item", itemKey: item.key, value: item.content,
       source: { kind: "person", accountId }, confidence: "high", packVersion: "person-edit@1", requestId: versionId });
     if (change.status === "rejected") return false;
+    if (change.status === "applied" || change.status === "same") decided.push(item);
   }
   await db.batch(statements);
+  await closeDecidedItemQuestions(db, wardId, projectId, decided, accountId, now, input.answering);
   if (wasCurrent) await db.prepare("UPDATE documents SET stale_since_version = NULL WHERE ward_id = ? AND project_id = ? AND document_id = ?").bind(wardId, projectId, doc.document_id).run();
   return true;
+}
+
+/** 役員が欄に書いて決めた項目について、決めてほしいと聞いていた質問を答えた扱いにする。日を決めて知らせたあとに、日を聞く質問を開いたまま残さない。 */
+/** answering は、いま答えている質問。答えを下書きに入れる保存から呼ばれた時に、その質問を先に閉じない（答えの記録は答える側で行う）。 */
+async function closeDecidedItemQuestions(db: D1Database, wardId: string, projectId: string, decided: { key: ItemKey; content: string }[], accountId: string, now: string, answering?: string): Promise<void> {
+  if (!decided.length) return;
+  const open = await db.prepare("SELECT question_id, target FROM project_questions WHERE ward_id = ? AND project_id = ? AND kind = 'decide' AND state IN ('open', 'later') AND question_id <> ?")
+    .bind(wardId, projectId, answering ?? "").all<{ question_id: string; target: string | null }>();
+  const statements = open.results.flatMap((question) => {
+    const key = questionItemKey(question.target);
+    const item = key ? decided.find((entry) => entry.key === key) : undefined;
+    return item ? [db.prepare("UPDATE project_questions SET state = 'answered', answer = ?, answered_at = ?, answered_by_account_id = ? WHERE ward_id = ? AND question_id = ? AND state IN ('open', 'later')")
+      .bind(item.content.slice(0, 2000), now, accountId, wardId, question.question_id)] : [];
+  });
+  if (statements.length) await db.batch(statements);
 }
 
 /** 配った操作に記録を付ける。既に今年の中身があれば変えず、記録の失敗で配布を止めない。 */

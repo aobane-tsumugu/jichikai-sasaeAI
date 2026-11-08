@@ -10,7 +10,7 @@ import { AdminPage } from "../core/admin-ui";
 import { Layout } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { createProject, getProjectState, getProjectSummary, listProjects, ProjectInputError } from "../project/api";
-import { PROJECT_KINDS, PROJECT_KIND_LABEL, TABLES, displayFieldValue, type ProjectKind, type TableKey } from "../project/model";
+import { ITEM_SCREEN_LABEL, PROJECT_KINDS, PROJECT_KIND_LABEL, TABLES, displayFieldValue, type ProjectKind, type TableKey } from "../project/model";
 import type { ProjectSummary, RowView } from "../project/types";
 import { listAnswers } from "../answers/api";
 import { countMeetingAnswers } from "../answers/meeting-store";
@@ -215,7 +215,7 @@ admin.get("/archive/:projectId", async (c) => {
     <div class="action-links"><a class="button" href={`${root}?view=seed`}>これをもとに今年の{project.title}を始める</a></div>
     <div class="record-split"><section>
     {/* 終わったものの仕事に「これから」の札は付けない。日付の順に、いつ何をしたかを一行ずつ読めるようにする。 */}
-    <h2>{project.year}年の動き</h2><ul class="rows">{[...map.results].sort((a, b) => Number(!a.period) - Number(!b.period) || a.period.localeCompare(b.period)).map((task) => <li class="panel"><p><b>{task.period ? `${formatDateText(task.period)}　` : ""}{task.name}</b></p>
+    <h2>{project.year}年の動き</h2><ul class="rows">{[...map.results].sort((a, b) => Number(!periodKey(a.period, project.year)) - Number(!periodKey(b.period, project.year)) || periodKey(a.period, project.year).localeCompare(periodKey(b.period, project.year))).map((task) => <li class="panel"><p><b>{task.period ? `${formatDateText(task.period)}　` : ""}{task.name}</b></p>
       {task.requested_by ? <p>頼んだ人: {task.requested_by}</p> : null}{task.difficulty ? <p>困ったこと: {task.difficulty}</p> : null}{task.next_year ? <p>来年変えること: {task.next_year}</p> : null}</li>)}</ul>
 
     {!map.results.length ? <p>残っている仕事はありません。</p> : null}
@@ -255,7 +255,7 @@ admin.get("/archive/:projectId", async (c) => {
     {(["decisions", "sponsors"] as const).map((table) => <section>
       <h2>{TABLES[table].label}</h2><RecordedRows table={table} rows={(state?.tables[table] ?? []).filter((row) => row.scope === "current")} ward={ward} />
     </section>)}
-    <h2 id="orig">元の資料</h2>{originals.results?.map((o) => <p class="link-line"><a href={adminPath(ward, `/intake/originals/${o.original_id}`)}>{o.filename || "書いたこと"}（{o.kind === "photo" ? "写真" : o.kind === "file" ? "ファイル" : "文"}）</a></p>)}
+    <h2 id="orig">元の資料</h2>{originals.results?.map((o) => <p class="link-line"><a href={adminPath(ward, `/intake/originals/${o.original_id}`)}>{o.filename || (o.kind === "photo" ? "撮った写真" : "書いたこと")}</a></p>)}
     {originals.results?.length === 0 ? <p>元の資料はありません。</p> : null}
 
   </AdminPage>);
@@ -269,9 +269,32 @@ function RecordedPublicationTables({ raw }: { raw: string | null }) {
   </>;
 }
 
+/** 決めたことを「何を:」「いつ:」の札でなく文で出す。項目の答え（「いつ: 10月25日（日）」）と、質問への答え（「質問 → 答え」）は、読める形に直して出す。 */
+function DecisionRow({ row }: { row: RowView }) {
+  const what = String(row.data.what ?? "");
+  const decidedOn = String(row.data.decidedOn ?? "");
+  const item = what.match(/^([^:：\n]{1,12})[:：] (.+)$/s);
+  const asked = what.split(" → ");
+  const labels = Object.values(ITEM_SCREEN_LABEL) as string[];
+  return <>
+    {item && labels.includes(item[1]!) ? <p style="white-space:pre-wrap">「{item[1]}」は「{item[2]}」にしました。</p>
+      : asked.length === 2 ? <><p style="white-space:pre-wrap">{asked[0]}</p><p style="white-space:pre-wrap">答え: {asked[1]}</p></>
+      : <p style="white-space:pre-wrap">{what}</p>}
+    {decidedOn ? <p class="muted">{/^\d{4}-\d{2}-\d{2}$/.test(decidedOn) ? `${displayFieldValue("decisions", "decidedOn", decidedOn)}に決めました` : `決めたとき: ${decidedOn}`}</p> : null}
+  </>;
+}
+
+/** 動きの時期の文（「9月10日（木） 〜 9月25日（金）」や「2026-09-10」）から、並べるための日付を取る。年の無い文は行った年とする。 */
+function periodKey(period: string, year: number): string {
+  const iso = period.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const jp = period.match(/(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日/);
+  return jp ? `${jp[1] ?? year}-${jp[2]!.padStart(2, "0")}-${jp[3]!.padStart(2, "0")}` : "";
+}
+
 function RecordedRows({ table, rows, ward }: { table: TableKey; rows: RowView[]; ward: { slug: string } }) {
   return rows.length ? <>{rows.map((row) => <article class="panel">
-    {Object.entries(TABLES[table].fields).map(([key, field]) => row.data[key] !== undefined && row.data[key] !== "" ? <p style="white-space:pre-wrap"><strong>{field.label}:</strong> {displayFieldValue(table, key, row.data[key])}</p> : null)}
+    {table === "decisions" ? <DecisionRow row={row} /> : Object.entries(TABLES[table].fields).map(([key, field]) => row.data[key] !== undefined && row.data[key] !== "" ? <p style="white-space:pre-wrap"><strong>{field.label}:</strong> {displayFieldValue(table, key, row.data[key])}</p> : null)}
     {row.source.kind === "original" && row.source.ref ? <p><a href={adminPath(ward, `/intake/originals/${row.source.ref}`)}>元の資料を読む</a>{row.source.locator ? `（${row.source.locator}）` : ""}</p> : null}
   </article>)}</> : <p>記録はありません。</p>;
 }

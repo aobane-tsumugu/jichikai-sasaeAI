@@ -196,7 +196,7 @@ it("議事録の見出しが違っても、決まらなかったことだけを�
   for (const kind of ["board_meeting", "general_meeting"] as const) {
     const pack = getDraftPack("report", kind);
     expect(pack.instruction).toContain("見出しを必ず「■決まらなかったこと」");
-    expect(pack.version).toBe(`draft-report-${kind}@12`);
+    expect(pack.version).toBe(`draft-report-${kind}@13`);
   }
 
   const headings = ["決まらなかったこと", "継続して話し合うこと", "保留", "次回に回すこと", "未決"];

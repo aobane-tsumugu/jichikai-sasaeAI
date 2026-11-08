@@ -18,6 +18,7 @@ import { inquirySubject } from "./inquiry-send";
 import { questionPages, questionShort } from "./question-pages";
 import type { ProjectState } from "./types";
 import { markMaterialThisYear, unknownYearContents } from "./material-year";
+import { placeSource, type MaterialSource } from "./source";
 import { committeePages } from "./committee";
 import { startTemplate, startTemplateText, type StartTemplate } from "./start-template";
 import { addYearItem } from "../know/year";
@@ -68,7 +69,9 @@ admin.route("/", committeePages);
 admin.get("/projects", async (c) => {
   const { ward } = c.var;
   const allProjects = await listProjects(c.env.DB, ward.wardId, { includeClosed: true });
-  const seeds = allProjects.filter((project) => project.closedAt);
+  // 今年終わったものは「去年の終わったもの」に並べない（今年のものから今年の準備は始めない）。
+  const thisYear = Number(new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 4));
+  const seeds = allProjects.filter((project) => project.closedAt && project.year < thisYear);
   // 何の準備かは聞かない（決定ログ L-312、L-313）。一年の表の予定から来た時は名前が決まっているので、何を置くかを一文で書き、ボタンを一つにする。
   const presetTitle = c.req.query("title")?.slice(0, 100) ?? "";
   const template = presetTitle ? startTemplate(presetTitle, allProjects) : null;
@@ -187,9 +190,19 @@ admin.post("/projects", async (c) => {
   }
 });
 
+/** 入った値が今年の内容か、去年までの参考かを、記録した出どころから書き分ける（今年の内容の欄と食い違わないように）。 */
+function appliedText(change: { kind: string; source_kind: string | null; source_year: number | null; payload: string }, year: number): string {
+  if (change.source_kind !== "original" || (change.kind !== "item" && change.kind !== "row")) return "今年の内容に入れました";
+  let source: { reference?: unknown; qr?: unknown; year?: unknown } = {};
+  try { source = (JSON.parse(change.payload) as { source?: typeof source }).source ?? {}; } catch { /* 古い記録は年だけで決める */ }
+  const placement = placeSource({ kind: "original", ref: "", ...(source.reference ? { reference: true } : {}), ...(source.qr ? { qr: true } : {}), ...(change.source_year !== null ? { year: change.source_year } : {}) } as MaterialSource, year);
+  if (placement.scope === "current") return "今年の内容に入れました";
+  return placement.refYear === year - 1 ? "去年の参考として入れました" : placement.refYear === null ? "年の分からない資料の参考として入れました" : `${placement.refYear}年の参考として入れました`;
+}
+
 admin.get("/projects/:projectId", async (c) => {
   const { ward } = c.var; const projectId = c.req.param("projectId");
-  const [project, state, jobs, changes] = await Promise.all([getProjectSummary(c.env.DB, ward.wardId, projectId), getProjectState(c.env.DB, ward.wardId, projectId), listJobs(c.env.DB, ward.wardId, { projectId, limit: 40 }), c.env.DB.prepare("SELECT kind, target, status, reason, source_locator, source_kind FROM project_changes WHERE ward_id = ? AND project_id = ? AND pack_version <> 'close-map-edit@1' ORDER BY created_at DESC LIMIT 30").bind(ward.wardId, projectId).all<{ kind: string; target: string; status: string; reason: string | null; source_locator: string | null; source_kind: string | null }>()]);
+  const [project, state, jobs, changes] = await Promise.all([getProjectSummary(c.env.DB, ward.wardId, projectId), getProjectState(c.env.DB, ward.wardId, projectId), listJobs(c.env.DB, ward.wardId, { projectId, limit: 40 }), c.env.DB.prepare("SELECT kind, target, status, reason, source_locator, source_kind, source_year, payload FROM project_changes WHERE ward_id = ? AND project_id = ? AND pack_version <> 'close-map-edit@1' ORDER BY created_at DESC LIMIT 30").bind(ward.wardId, projectId).all<{ kind: string; target: string; status: string; reason: string | null; source_locator: string | null; source_kind: string | null; source_year: number | null; payload: string }>()]);
   if (!project || !state) return c.notFound();
   const features = taskFeatures(state.mapTasks);
   const visibleItems = new Set(taskItemKeys(state.mapTasks));
@@ -213,7 +226,9 @@ admin.get("/projects/:projectId", async (c) => {
       const originals = await listOriginals(c.env.DB, ward.wardId, job.job_id);
       const readings = await getReadings(c.env.DB, ward.wardId, job.job_id);
       const yearOriginals = originals.filter((original) => !project.closedAt && !original.withdrawn_at && unknownOriginalIds.has(original.original_id));
-      return <section class="panel"><b>{job.first_filename || "書いたこと"}</b><p class="muted">{job.status === "done" ? originals.some((original) => materialChangeText(state, original.original_id)) ? "読み終わりました。今年の内容に入れました" : "読み終わりました" : job.status === "failed" ? "読めませんでした" : "読み取りを進めています"}</p>
+      // 何を今年の内容に、何を参考に入れたかを、資料ごとに一文で書く（去年の資料を「今年の内容に入れました」と書かない）。
+      const changed = originals.map((original) => materialChangeText(state, original.original_id)).filter(Boolean).join("。");
+      return <section class="panel"><b>{job.first_filename || "書いたこと"}</b><p class="muted">{job.status === "done" ? changed ? `読み終わりました。${changed}。` : "読み終わりました" : job.status === "failed" ? "読めませんでした" : "読み取りを進めています"}</p>
         <div class="material-links">{originals.map((original, index) => <a class="quiet" href={adminPath(ward, `/intake/originals/${original.original_id}`)}>元の資料を見る{originals.length > 1 ? `（${index + 1}枚目）` : ""}</a>)}</div>
         {readings.length ? <details class="hint"><summary>読み取った内容</summary><div>{readings.map((r) => <><p>{r.body.summary}</p>
           {"fields" in r.body ? <>{r.body.fields.map((f) => <p>{f.name}: {f.value}（{f.locator}。{f.confidence === "high" ? "はっきり読めました" : f.confidence === "medium" ? "少し読みにくい字でした" : "読みにくい字でした"}）</p>)}{r.body.text_blocks.map((b) => <p>{b.text}（{b.locator}）</p>)}
@@ -230,7 +245,7 @@ admin.get("/projects/:projectId", async (c) => {
     {jobs.length === 0 ? <p>まだ資料は入っていません。</p> : null}
     {changes.results.length ? <><a class="quiet" href={adminPath(ward, `/projects/${projectId}/map`)}>やることで、変わった仕事を見る</a>
     <h2>資料から変わったところ</h2>
-    <ul class="rows">{changes.results.map((change) => <li class="panel"><b>{changeTargetLabel(change.kind, change.target, state)}</b><p>{change.status === "applied" ? change.reason === ROW_REMOVED ? "外しました" : change.kind === "map_task" ? "済みにしました" : "今年の内容に入れました" : change.status === "same" ? "同じでした" : change.status === "conflict" ? "食い違いとして並びました" : change.status === "kept" ? "今の内容を残しました" : change.status === "held" ? "確認待ちです" : change.status === "dropped" ? `取り込めませんでした${change.reason ? `: ${change.reason}` : ""}` : "記録しました"}{change.source_locator && change.source_kind === "original" ? `（${change.source_locator}）` : ""}</p></li>)}</ul>
+    <ul class="rows">{changes.results.map((change) => <li class="panel"><b>{changeTargetLabel(change.kind, change.target, state)}</b><p>{change.status === "applied" ? change.reason === ROW_REMOVED ? "外しました" : change.kind === "map_task" ? "済みにしました" : appliedText(change, project.year) : change.status === "same" ? "同じでした" : change.status === "conflict" ? "食い違いとして並びました" : change.status === "kept" ? "今の内容を残しました" : change.status === "held" ? "確認待ちです" : change.status === "dropped" ? `取り込めませんでした${change.reason ? `: ${change.reason}` : ""}` : "記録しました"}{change.source_locator && change.source_kind === "original" ? `（${change.source_locator}）` : ""}</p></li>)}</ul>
     </> : null}
     <h2>今年の内容</h2>
     <p class="lead">今年の内容がない項目には、去年までの資料を参考として並べます。</p>

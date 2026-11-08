@@ -140,7 +140,8 @@ it("今年の日を選ぶまで今年の中身は空で、選ぶと基本情報�
   expect(archive).toContain("10月4日（日） 〜 10月18日（日）　当番表と配置を決める");
   const decisions = archive.match(/<section><h2>決めたこと<\/h2>[\s\S]*?<\/section>/)?.[0];
   expect(decisions).toBeDefined();
-  expect(decisions).toContain("いつ: 10月25日");
+  expect(decisions).toContain("「いつ」は「10月25日（日）」にしました。");
+  expect(decisions).not.toContain("何を:");
   expect(decisions).not.toContain("10月18日");
 });
 

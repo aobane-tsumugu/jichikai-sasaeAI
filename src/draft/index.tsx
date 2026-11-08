@@ -18,7 +18,7 @@ import { formatJstDate } from "../core/time";
 import { openPublish } from "./publish-flow";
 import { rainDraft, rainSent, rainTemplate } from "./rain";
 import { checkPublicDraft } from "../publish/check";
-import { paperHeading } from "../project/heading";
+import { paperHeading, plainProjectTitle } from "../project/heading";
 import { opensOf, taskDraftKind, taskKeyOf } from "../map/template";
 import { getMeetingMaterials, MeetingMaterialsView } from "./meeting-materials";
 import { rotaPanel, rotaRowNotes } from "../rota";
@@ -28,6 +28,7 @@ import { mountMessageRoutes, MESSAGE_KINDS } from "./message";
 import { requestDraft } from "./request";
 import { Choices } from "../core/choice";
 import { PENDING } from "../project/document-body";
+import { questionItemKey } from "../project/question-target";
 import { canSendLine } from "../publish";
 
 /** 画像を付けられる下書き。住民へのメッセージの四つ（L-311）。 */
@@ -106,11 +107,13 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
   const minutes = kindRaw === "report" && features.meeting;
   const body: DraftBody = retry?.body ?? (document ? parseBody(document.body) : { text: "", items: (minutes ? [] : state.items).map((item) => {
     if (item.current?.content.trim()) return { key: item.key, content: item.current.content };
+    // 日と締切は、去年や年の分からない資料の値を今年の欄に入れない。欄の下に「去年は…でした」と書く（案内の下書きと同じ扱い）。
+    if (item.key === "date_time" || item.key === "due") return { key: item.key, content: "" };
     const reference = item.references.find((ref) => ref.content.trim());
     return { key: item.key, content: reference?.content ?? "", ...(reference ? { source: reference.refYear === null ? "年の分からない資料" : reference.refYear === project.year - 1 ? "去年の資料" : `${reference.refYear}年の資料` } : {}) };
   }) });
   const scope = retry?.scope ?? document?.scope ?? pack.scope; const baseVersion = retry?.basedOn ?? document?.stateVersion ?? project.stateVersion;
-  const title = retry?.title ?? (kindRaw === "announcement" && pack.title === "案内" && (document?.title ?? pack.title) === pack.title ? `${project.title}のご案内` : document?.title ?? pack.title);
+  const title = retry?.title ?? (kindRaw === "announcement" && pack.title === "案内" && (document?.title ?? pack.title) === pack.title ? `${plainProjectTitle(project.title)}のご案内` : document?.title ?? pack.title);
   const paperFirst = (features.meeting || features.submit || features.rota) && scope !== "public" && !(scope === "space" && ["duty_roster", "procedure"].includes(kindRaw));
   const task = await c.env.DB.prepare(`SELECT status FROM jobs WHERE ward_id = ? AND project_id = ? AND task = 'draft'
     AND instruction LIKE ? ORDER BY created_at DESC LIMIT 1`).bind(ward.wardId, id, `%対象の文書: ${kindRaw}。%`).first<{ status: string }>();
@@ -137,7 +140,7 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
   const pendingGuide = (key: ItemKey, value: string) => {
     const item = state.items.find((entry) => entry.key === key);
     const pending = isPending(value);
-    const question = pending ? state.questions.find((entry) => entry.target === key && (entry.state === "open" || entry.state === "later")) : undefined;
+    const question = pending ? state.questions.find((entry) => questionItemKey(entry.target) === key && (entry.state === "open" || entry.state === "later")) : undefined;
     // 年の分からない資料にある値（L-215: AI は年を決めない）。押すと、その資料を今年の物として入れ直す。
     const unknownYear = pending ? item?.references.find((ref) => ref.refYear === null && ref.source.kind === "original" && ref.source.ref && ref.content.trim() && !isPending(ref.content)) : undefined;
     const unknownOriginal = unknownYear ? originals.results.find((entry) => entry.original_id === unknownYear.source.ref) : undefined;
@@ -276,7 +279,9 @@ async function confirmDraft(c: import("hono").Context<AdminEnv>, kind: DocumentK
     const copies = await getDistrictCopies(c.env.DB, c.var.ward.wardId);
     fields.set("distribution", copies.map((row) => `${row.district} ${row.copies}`).join("\n"));
   }
-  return openPublish(c, `/publish/${id}/confirm?${query}`, fields);
+  // 保存は済んでいるので、確かめる画面を開き直す。アドレスが確かめる画面のものになり、読み直しても同じ画面が出る。値は文書の番号と部数と LINE の選択だけ。
+  for (const [key, value] of query) fields.set(key, value);
+  return c.redirect(adminPath(c.var.ward, `/publish/${id}/confirm?${fields}`), 303);
 }
 
 /**

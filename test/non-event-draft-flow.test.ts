@@ -180,6 +180,6 @@ it.each(cases)("$kindの仕事から資料と下書きへ進み、紙と同じ�
     expect(web).toContain(`<h2>${pack.title}</h2>`);
     expect(web).toContain(fixture.reportText);
   }
-  expect(getDraftPack("announcement").version).toBe("draft-announcement@12");
+  expect(getDraftPack("announcement").version).toBe("draft-announcement@13");
   expect(getDraftPack("announcement").instruction).toContain("住民向けの行事案内");
 });

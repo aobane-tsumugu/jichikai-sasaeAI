@@ -128,8 +128,8 @@ it("空の下書きを項目から整え、行事の日を直し、名簿なし�
   expect(mismatch.status).toBe(303);
   expect(await read(mismatch.headers.get("location")!)).toContain("本文の日時のところも確かめてください");
   const confirm = await changeDate(movedDay, "confirm");
-  expect(confirm.status).toBe(200);
-  expect(await confirm.text()).toContain("本文の日時のところも確かめてください");
+  expect(confirm.status).toBe(303);
+  expect(await read(confirm.headers.get("location")!)).toContain("本文の日時のところも確かめてください");
   expect(await read(paperPath)).toContain(renderedText);
 
   const ports = createLineIntakePorts(env, { waitUntil: () => undefined });
