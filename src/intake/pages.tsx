@@ -289,10 +289,13 @@ intakeAdmin.get("/intake/read", async (c) => {
       const date = oneValue([...fields.filter((f) => f.name === "日時").map((f) => f.value), ...suggestions.map((s) => s.date_text)]);
       const place = oneValue([...fields.filter((f) => f.name === "場所").map((f) => f.value), ...suggestions.map((s) => s.place)]);
       const month = group.joins ? null : await yearPlanMonth(c.env.DB, ward.wardId, group.title);
+      const template = materialGroupTemplate(group, past, yearItems);
+      const year = new Date(Date.now() + 9 * 3600_000).getUTCFullYear();
+      const reopenHref = template.seedYear === year && template.seedProjectId ? adminPath(ward, `/close/${template.seedProjectId}`) : undefined;
       return <section class="panel"><h2>{group.joins?.title ?? group.title}の資料のようです</h2>
         <dl class="facts"><dt>資料</dt><dd>{group.materials.length}件</dd>{date ? <><dt>資料の日付</dt><dd>{formatDateText(date)}</dd></> : null}{place ? <><dt>場所</dt><dd>{place}</dd></> : null}</dl>
         {month ? <p>{monthNote(month)}</p> : null}
-        <WhichProject id={`group-${index}`} question="この資料は、次の準備のものですか？" projects={open} suggested={group.joins?.projectId} suggestedName={group.joins ? "" : plainProjectTitle(group.title)} startText={startTemplateText(group.title, materialGroupTemplate(group, past, yearItems), "materials")} action={adminPath(ward, "/intake/start")} hidden={{ group: group.key }} withDay primary={index === 0} />
+        <WhichProject id={`group-${index}`} question="この資料は、次の準備のものですか？" projects={open} suggested={group.joins?.projectId} suggestedName={group.joins ? "" : plainProjectTitle(group.title)} startText={startTemplateText(group.title, template, "materials")} reopenHref={reopenHref} action={adminPath(ward, "/intake/start")} hidden={{ group: group.key }} withDay primary={index === 0} />
       </section>;
     }))}
     {wardUsed.length ? <p>{wardUsed.map((name) => `「${name}」`).join("、")}は、どの準備のものでもなく、自治会の基本情報と一年の予定に入れました。<a href={adminPath(ward, "/know")}>自治会の基本情報を見る</a></p> : null}
