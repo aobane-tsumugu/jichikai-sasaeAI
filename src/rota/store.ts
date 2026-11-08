@@ -182,8 +182,10 @@ export async function compareRota(db: D1Database, wardId: string, projectId: str
   };
   comparison.entries = rows.map((row, index) => {
     const slot = shift.shifted ? shift.slots[index]! : String(row.slot ?? "").replace(new RegExp(`\\b${project.year - 1}(?=[年/-])`, "g"), String(project.year));
-    const dates = [...slot.matchAll(/\b\d{4}-\d{2}-\d{2}\b/g)].map((match) => match[0]).filter(dateIsValid).sort();
     const on = project.deadlines.event_day;
+    // 今年へずらした月日の表記も読み、各行の日を免除の期間と照合する。
+    const dates = slotDates(slot, on ? Number(on.slice(0, 4)) : project.year, on ? Number(on.slice(5, 7)) : 1)
+      .map((date) => isoDay(date.time)).sort();
     const from = dates[0] ?? on ?? `${project.year}-01-01`, to = dates.at(-1) ?? on ?? `${project.year}-12-31`;
     const active = records.filter((record) => record.withdrawn_at === null && record.starts_on <= to && record.ends_on >= from);
     const explanations: string[] = [];

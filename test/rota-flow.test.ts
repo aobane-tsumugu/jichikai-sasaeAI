@@ -151,3 +151,39 @@ it("架空の名簿にある世帯は名前に各や班を含んでも免除を�
   expect(Object.fromEntries(state?.tables.duties.filter((row) => row.scope === "current")
     .map((row) => [row.data.slot, row.data.assignee]) ?? [])).toEqual(expected);
 });
+
+it.each([
+  {
+    example: "月日だけの表", slots: ["12月26日（金）", "12月27日（土）", "12月28日（日）"], eventDay: "2026-12-26",
+    exemptOn: "2026-12-27", exemptIndex: 1, expectedSlots: ["12月26日（土）", "12月27日（日）", "12月28日（月）"],
+  },
+  {
+    example: "年をまたぐ表", slots: ["2025年12月30日", "2025年12月31日", "2026年1月2日"], eventDay: "2026-12-29",
+    exemptOn: "2027-01-01", exemptIndex: 2, expectedSlots: ["12月29日（火）", "12月30日（水）", "1月1日（金）"],
+  },
+])("架空の$exampleを今年へずらし、当番から外す期間に当たる日だけ担当を空欄にする", async ({ slots, eventDay, exemptOn, exemptIndex, expectedSlots }) => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const household = { household: "架空の当番世帯", district: "1班" };
+  await replaceRoster(env.DB, ward.wardId, [household], { household: 0, district: 1 });
+  const project = await createProject(env.DB, ward.wardId, {
+    kind: "duty", title: "架空の日ごとの当番", year: 2026, eventDay, accountId: account.accountId,
+  });
+  for (const slot of slots) {
+    expect((await applyChange(env.DB, ward.wardId, project.projectId, {
+      kind: "row", table: "duties", data: { slot, task: "架空の見回り", assignee: household.household },
+      source: { kind: "original", ref: "fictional-exemption-dates", locator: slot, year: 2025 },
+      confidence: "high", packVersion: "rota-flow-fictional@1",
+    })).status).toBe("applied");
+  }
+  expect(await addExemption(env.DB, ward.wardId, account.accountId, {
+    ...household, reason: "架空の一日の免除", startsOn: exemptOn, endsOn: exemptOn,
+  })).toBe(true);
+  const expected = expectedSlots.map((slot, index) => [slot, index === exemptIndex ? "" : household.household]);
+  const proposal = await compareRota(env.DB, ward.wardId, project.projectId);
+  expect(proposal?.comparison.entries.map((entry) => [entry.data.slot, entry.data.assignee])).toEqual(expected);
+  const root = `/${ward.slug}/admin/projects/${project.projectId}/draft/duty_roster`;
+  expect((await postForm(realApp, `${root}/start`, {}, cookie)).headers.get("location")).toContain("notice=saved");
+  const state = await getProjectState(env.DB, ward.wardId, project.projectId);
+  expect(state?.tables.duties.filter((row) => row.scope === "current")
+    .map((row) => [row.data.slot, row.data.assignee])).toEqual(expected);
+});
