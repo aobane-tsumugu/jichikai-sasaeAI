@@ -41,6 +41,9 @@ it("下書きを作ったあとに質問に答えて終わりにする画面に�
   expect(await answerQuestion(env.DB, ward.wardId, project.projectId, asked.questionId, "answer", "3班の班長に頼みました。", account.accountId)).toBe(true);
   const page = await (await get(realApp, path, cookie)).text();
   expect(page).toContain("答えた質問を入れて、報告と来年への一言の下書きを作り直し始めました。");
+  // 作り直しの回は、新しい質問を足さないよう頼む（作り直すたびに質問が増えない。三回目の通し C-2）。
+  const redraftJobs = await env.DB.prepare("SELECT instruction FROM jobs WHERE ward_id = ? AND project_id = ? AND task IN ('report', 'map_draft') ORDER BY created_at DESC LIMIT 2").bind(ward.wardId, project.projectId).all<{ instruction: string }>();
+  for (const job of redraftJobs.results) expect(job.instruction).toContain("write_questionで新しい質問を書かない");
   expect(await count()).toBe((before ?? 0) + 2);
   // 作り直している間に開き直しても、もう一度は頼まない。
   await get(realApp, path, cookie);
@@ -57,4 +60,16 @@ it("終わりにする画面の来年への一言は、仕事ごとに時期と�
   expect(page).not.toContain("役員だけのメモ");
   expect(page).not.toContain('id="report-public"');
   expect(page).toContain(`href="/${ward.slug}/admin/projects/${project.projectId}/draft/report?edit=1">報告を見て送る</a>`);
+});
+
+it("答えを受けて済みになった仕事を、終わりにする画面を開き直しても「これから」に戻さない（三回目の通し C-2）", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭", year: 2026, accountId: account.accountId, eventDay: "2026-01-10" });
+  const path = `/${ward.slug}/admin/close/${project.projectId}`;
+  await get(realApp, path, cookie);
+  // AI が答えを受けて、案内の仕事を済みにした（来年への一言の下書き）。
+  await env.DB.prepare("UPDATE project_close_map SET progress = 'done' WHERE ward_id = ? AND project_id = ? AND name = '案内を住民に知らせる'").bind(ward.wardId, project.projectId).run();
+  const page = await (await get(realApp, path, cookie)).text();
+  expect(page).toMatch(/<summary>案内を住民に知らせる（.*、済み）<\/summary>/);
+  expect((await env.DB.prepare("SELECT progress FROM project_close_map WHERE ward_id = ? AND project_id = ? AND name = '案内を住民に知らせる'").bind(ward.wardId, project.projectId).first<{ progress: string }>())?.progress).toBe("done");
 });

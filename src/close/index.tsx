@@ -82,7 +82,10 @@ async function prepareDrafts(db: D1Database, wardId: string, projectId: string, 
     return db.prepare(`INSERT INTO project_close_map
     (ward_id, project_id, task_id, period, name, progress, requested_by, difficulty, next_year, updated_at, updated_by_account_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT (ward_id, project_id, task_id) DO UPDATE SET period = excluded.period, name = excluded.name, progress = excluded.progress,
+    ON CONFLICT (ward_id, project_id, task_id) DO UPDATE SET period = excluded.period, name = excluded.name,
+      -- 開くたびにやることの記録（「これから」のまま）で上書きしない。答えを受けて済み・進行中になった物は、進んだ方を残す。
+      progress = CASE WHEN project_close_map.progress = 'done' OR excluded.progress = 'done' THEN 'done'
+        WHEN project_close_map.progress = 'started' OR excluded.progress = 'started' THEN 'started' ELSE 'open' END,
       updated_at = excluded.updated_at, updated_by_account_id = excluded.updated_by_account_id`)
       .bind(wardId, projectId, task.task_id,
         edit?.period ?? [task.period_start, task.period_end].filter((date): date is string => !!date).map(formatJstDate).join(" 〜 "),
@@ -209,7 +212,7 @@ admin.get("/close/:projectId", async (c) => {
   const answeredSince = !project.closedAt && !notYet && !activityView && !autoStarted && lastDraftAt && !drafting
     ? (await c.env.DB.prepare("SELECT COUNT(*) AS n FROM project_questions WHERE ward_id = ? AND project_id = ? AND state = 'answered' AND answered_at > ?")
       .bind(ward.wardId, id, lastDraftAt).first<{ n: number }>())?.n ?? 0 : 0;
-  const redrafted = answeredSince > 0 && await startCloseDrafts(c, id);
+  const redrafted = answeredSince > 0 && await startCloseDrafts(c, id, true);
   const jobStatus = redrafted ? status.results.map((job) => ({ ...job, status: "running" })) : status.results;
   // 消えるものが無い時に「消えるものがあります」と書かない（点検 B2-2）。
   const helpOffers = project.closedAt || activityView ? 0 : (await c.env.DB.prepare("SELECT COUNT(*) AS n FROM project_help_offers WHERE ward_id = ? AND project_id = ?").bind(ward.wardId, id).first<{ n: number }>())?.n ?? 0;
@@ -358,7 +361,9 @@ admin.post("/close/:projectId/prepare", async (c) => {
 });
 
 /** 報告とやることの下書きを AI に頼む。終わりにする画面を開いた時と、「下書きを作る」を押した時に使う。 */
-async function startCloseDrafts(c: Context<AdminEnv>, id: string): Promise<boolean> {
+/** redraft は、役員が質問に答えたあとの作り直し。この回は新しい質問を足さず、答えた内容で埋める（作り直すたびに質問が増えないように）。 */
+async function startCloseDrafts(c: Context<AdminEnv>, id: string, redraft = false): Promise<boolean> {
+  const noMoreQuestions = redraft ? "役員が質問に答えたあとの作り直しなので、write_questionで新しい質問を書かない。答えた内容と状態から埋め、分からない欄は空のままにする。" : "";
   const { ward, account } = c.var;
   const contact = await getPublicContact(c.env.DB, ward.wardId);
   const project = await getProjectSummary(c.env.DB, ward.wardId, id);
@@ -370,9 +375,9 @@ async function startCloseDrafts(c: Context<AdminEnv>, id: string): Promise<boole
   try {
     await Promise.all([
       startTask(c.env, waitableContext(c), { wardId: ward.wardId, projectId: id, task: "report", accountId: account.accountId,
-        instruction: reportInstruction(taskDocumentKind(featureTasks, "report"), contact, meetingSummary) }),
+        instruction: reportInstruction(taskDocumentKind(featureTasks, "report"), contact, meetingSummary) + noMoreQuestions }),
       startTask(c.env, waitableContext(c), { wardId: ward.wardId, projectId: id, task: "map_draft", accountId: account.accountId,
-        instruction: "閉じるときの段取りの下書きを状態から作る。元の資料は読まない。状態にある仕事を一つずつ保ち、task_id、period、name、progress（open/started/done）、requested_by、difficulty、next_yearを記録する。時期、進み具合、頼んだ相手、困ったこと、来年変えることは状態にある内容だけを書き、分からない欄は空にして役員への質問にする。仕事を省いたり、過去の参考情報を今年の実績にしたり、内容を補って作らない。write_changeでkind=map_draft、target=map、data={tasks:[...] }を一度書く。" }),
+        instruction: "閉じるときの段取りの下書きを状態から作る。元の資料は読まない。状態にある仕事を一つずつ保ち、task_id、period、name、progress（open/started/done）、requested_by、difficulty、next_yearを記録する。時期、進み具合、頼んだ相手、困ったこと、来年変えることは状態にある内容だけを書き、分からない欄は空にして役員への質問にする。仕事を省いたり、過去の参考情報を今年の実績にしたり、内容を補って作らない。write_changeでkind=map_draft、target=map、data={tasks:[...] }を一度書く。" + noMoreQuestions }),
     ]);
   } catch (error) { console.error("閉じる下書きを起こせませんでした", error instanceof Error ? error.name : ""); }
   return true;

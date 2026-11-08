@@ -49,3 +49,16 @@ it("L-319: 終わりにする画面は報告を配らず、報告はほかの連
   expect(await published(ward.wardId, project.projectId)).toBe(0);
   expect(await (await get(realApp, `${root}/close/${project.projectId}`, cookie)).text()).toContain("住民への報告は送っていません。");
 });
+
+it("確かめの画面は、LINE で送らないときに「LINEで送った知らせは取り消せません」と書かない（三回目の通し C-5）", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const root = `/${ward.slug}/admin`;
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭", year: 2027, accountId: account.accountId, eventDay: "2027-10-25" });
+  await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, { kind: "notice", title: "持ち物のお知らせ", scope: "public", basedOn: 0, body: JSON.stringify({ text: "マイバッグを持ってきてください。", items: [] }) });
+  const doc = await env.DB.prepare("SELECT document_id FROM documents WHERE ward_id = ? AND project_id = ? AND kind = 'notice'").bind(ward.wardId, project.projectId).first<{ document_id: string }>();
+  const skip = await (await get(realApp, `${root}/publish/${project.projectId}/confirm?documentId=${doc!.document_id}&lineDelivery=skip`, cookie)).text();
+  expect(skip).toContain("読んで、よければ「住民に知らせる」を押してください。</p>");
+  expect(skip).toContain("今回は自治会のLINEに送りません。");
+  const send = await (await get(realApp, `${root}/publish/${project.projectId}/confirm?documentId=${doc!.document_id}`, cookie)).text();
+  expect(send).toContain("読んで、よければ「住民に知らせる」を押してください。LINEで送った知らせは取り消せません。");
+});

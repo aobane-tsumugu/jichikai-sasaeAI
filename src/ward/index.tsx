@@ -15,6 +15,8 @@ import { DOCUMENT_KIND_LABEL, type DocumentKind, type ProjectKind } from "../pro
 import { PUBLIC_PRIVACY_NOTICE } from "../settings/keys";
 import { activityFacts } from "./activity";
 import { wardContact } from "./contact";
+import { getAnswerFields } from "../answers/fields";
+import { askedText } from "../answers/field-parts";
 import { WardBucket } from "../core/storage";
 import { noticeFlyerPath } from "../publish/notice-flyers";
 
@@ -261,6 +263,8 @@ pub.get("/p/:projectId", async (c) => {
   const today = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date());
   const closed = !!items[0]!.closed_at || (deadline !== null && deadline < today);
   const squads = await getSquads(c.env.DB, c.var.ward.wardId);
+  // 返事で聞くことは、返事の画面と同じ欄の定義から書く（班を聞くか、足した欄。三回目の通し C-3）。
+  const answerFields = await getAnswerFields(c.env.DB, c.var.ward.wardId, projectId, squads);
   const squad = c.req.query("s") ?? "";
   const suffix = squad && squads.includes(squad) ? `?s=${encodeURIComponent(squad)}` : "";
   const ordered = [...documents.values()].sort((a, b) => Number(b.latest.kind === "notice") - Number(a.latest.kind === "notice"));
@@ -301,7 +305,7 @@ pub.get("/p/:projectId", async (c) => {
     {ordered.filter(({ latest }) => latest.kind === "notice").flatMap(({ latest, earlier }) => [latest, ...earlier].map((item) => renderDocument({ latest: item, earlier: [] })))}
     {activeAnnouncement ? <>
       {!newerNotice ? <EventDetails item={context.item} due={deadline} /> : deadline ? <p>返事の締切 {formatJstDate(deadline)}まで</p> : null}
-      {closed ? <ReceptionClosed closed={!!items[0]!.closed_at} due={deadline} /> : <><p><a class="button" href={`/${c.var.ward.slug}/answer/${encodeURIComponent(projectId)}${suffix}`}>出欠を答える</a></p><p>{features.delegation ? "出席、委任、欠席のどれかを答えてください。" : "参加しないときも、返事をもらえると、準備の数が正しく分かります。返事がないときは、欠席として数えます。"}代表者のお名前、班、人数を聞きます。紙の回答票を班長に渡しても答えられます。</p></>}
+      {closed ? <ReceptionClosed closed={!!items[0]!.closed_at} due={deadline} /> : <><p><a class="button" href={`/${c.var.ward.slug}/answer/${encodeURIComponent(projectId)}${suffix}`}>出欠を答える</a></p><p>{features.delegation ? "出席、委任、欠席のどれかを答えてください。" : "参加しないときも、返事をもらえると、準備の数が正しく分かります。返事がないときは、欠席として数えます。"}{features.delegation ? "代表者のお名前と班を聞きます。" : `${askedText(answerFields.fields, answerFields.districtAsked)}を聞きます。`}紙の回答票を班長に渡しても答えられます。</p></>}
     </> : null}
     {ordered.filter(({ latest }) => latest.kind !== "notice" && !reports.some((report) => report.latest.document_id === latest.document_id)).map(renderDocument)}
     {context.documents.some((document) => document.kind === "recruitment") && !closed ? <section><h2>手伝える方へ</h2><p>自治会に加入していない方も手伝えます。</p><a href={`/${c.var.ward.slug}/help/${encodeURIComponent(projectId)}`}>手伝いを申し込む</a></section> : null}

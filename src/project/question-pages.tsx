@@ -7,6 +7,7 @@ import { getProjectState } from "./api";
 import { DOCUMENT_KINDS, ITEM_SCREEN_LABEL, isItemKey, type DocumentKind } from "./model";
 import type { QuestionView } from "./types";
 import { referenceConflictItems, type ReferenceConflictDetail } from "./questions-original-reference";
+import { pairCaptions, savedComparison } from "../ai/compare-originals";
 import { answerMaterialExemption, EXEMPTION_TARGET, EXEMPTION_YES, EXEMPTION_NO, EXEMPTION_REASON_MAX, readMaterialExemption } from "../rota/material-exemptions";
 
 /** 保存済みの選択肢の値は保ち、資料の年を聞く言葉だけ揃える。 */
@@ -59,17 +60,31 @@ questionPages.get("/projects/:projectId/questions/:questionId/compare", async (c
   let draftKind: DocumentKind = "announcement";
   let reference = false;
   let referenceDetail: ReferenceConflictDetail = {};
+  let comparisonIds: string[] = [];
+  let comparisonText = "";
   try {
-    const detail = JSON.parse(stored?.detail ?? "{}") as ReferenceConflictDetail & { documentKind?: DocumentKind };
+    const detail = JSON.parse(stored?.detail ?? "{}") as ReferenceConflictDetail & { documentKind?: DocumentKind; comparisonKey?: string; comparisonText?: string };
     referenceDetail = detail;
+    try { comparisonIds = detail.comparisonKey ? (JSON.parse(detail.comparisonKey) as unknown[]).filter((id): id is string => typeof id === "string") : []; } catch { comparisonIds = []; }
+    comparisonText = typeof detail.comparisonText === "string" ? detail.comparisonText : "";
     reference = detail.scope === "reference";
     if (detail.documentKind && DOCUMENT_KINDS.includes(detail.documentKind)) draftKind = detail.documentKind;
   } catch { /* 古い質問は案内へ戻る。 */ }
   const fromDraft = c.req.query("from") === "draft";
   const back = adminPath(ward, fromDraft ? `/projects/${id}/draft/${draftKind}` : `/projects/${id}/questions`);
+  // 二つの資料を比べた結果があれば、違うところと手がかりを並べる（撮影の側の気づき）。問いの文に重ねていた比べの文は、ここでは外す。
+  const comparison = await savedComparison(c.env.DB, ward.wardId, id, comparisonIds);
+  const captions = comparison ? pairCaptions(comparison) : null;
+  const body = comparison && comparisonText ? questionTitle(question).body.replace(comparisonText, "").trim() : questionTitle(question).body;
   return c.html(<Layout title={(question.options?.length ?? 0) > 2 ? "資料を見比べる" : "二つを見比べる"} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={back}>← {fromDraft ? "下書きへ" : "質問へ"}</a><h1>{questionTitle(question).heading}</h1><p class="lead">{!isItemKey(question.target) ? "当てはまるものを選んでください。" : reference ? "過去の資料の中身に残すものを選んでください。今年の中身は変わりません。" : "今年使う内容を選んでください。答えるまで資料のどれかを今年の中身には入れません。"}</p>
-    <p>{questionTitle(question).body}</p>
+    <p>{body}</p>
+    {comparison && captions ? <section class="panel"><h2>二つの資料の違うところ</h2>
+      {comparison.result.differences.length ? <ul>{comparison.result.differences.map((difference) => <li>{difference}</li>)}</ul> : <p>違うところは、読み取りからは分かりませんでした。</p>}
+      {comparison.result.clues.length ? <><h3>どちらが新しいかの手がかり</h3><ul>{comparison.result.clues.map((clue) => <li>{clue}</li>)}</ul></> : null}
+      <p>{comparison.result.assessment}</p>
+      <ul class="links">{comparison.originals.map((original, index) => <li><a href={adminPath(ward, `/intake/originals/${encodeURIComponent(original.original_id)}`)}>{captions[index]}を見る</a></li>)}</ul>
+    </section> : null}
     {reference ? referenceConflictItems(referenceDetail).map((item) => <section class="panel">
       <h2>{ITEM_SCREEN_LABEL[item.itemKey]}</h2>
       <dl>{item.options.map((value, index) => <><dt>{referenceDetail.originals?.find((original) => original.originalId === item.sources[index]?.ref)?.description ?? `${index + 1}つ目の資料`}</dt><dd class="preserve-lines">{value}</dd></>)}</dl>
