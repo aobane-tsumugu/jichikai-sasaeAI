@@ -194,13 +194,12 @@ admin.get("/publish/:projectId", async (c) => {
         <div class={failed ? "notice warn" : "notice done"} role="status"><strong>{failed ? "自治会のLINEには送れませんでした" : "住民向けのページに載せました"}</strong>
           <p>{failed ? "住民向けのページには載っています。紙も配れます。LINEは送らないままでもかまいません。" : record.line_status === "sent" ? `自治会のLINE${record.line_recipients === null ? "に" : `の友だち${record.line_recipients}人に`}送りました。` : record.line_status === "pending" ? "自治会のLINEの送信結果はまだ分かりません。" : "今回は自治会のLINEに送りませんでした。"}{task ? `やることの「${task.name}」を済みにしました。` : ""}</p>
         </div>}
-      <section class="next"><strong>次は</strong>{lowered ? <><p>内容を直して、知らせ直せます。知らせ直す時に、下書きの画面で「今回はLINEで送らない」を選ぶと、自治会のLINEに同じ知らせが二度届きません。</p><a class="button" href={editHref}>直して知らせ直す</a></> : rain ? <p>班長に電話して伝えてください。掲示も張り替えてください。ここは画面では済みません。</p> : <><p>{paperLabel}{withAnswer ? "、班長への一枚" : ""}を印刷して、{withAnswer ? "班長に渡してください。" : "配ってください。"}</p><a class="button" href={printHref}>{paperLabel}を印刷する</a>{withAnswer ? <a class="quiet" href={`${printBase}/leader`}>班長への一枚を印刷する</a> : null}</>}</section>
+      <section class="next"><strong>次は</strong>{lowered ? <><p>内容を直して、知らせ直せます。知らせ直すときに、下書きの画面で「今回はLINEで送らない」を選ぶと、自治会のLINEに同じ知らせが二度届きません。</p><a class="button" href={editHref}>直して知らせ直す</a></> : rain ? <p>班長に電話して伝えてください。掲示も張り替えてください。ここは画面では済みません。</p> : <><p>{paperLabel}{withAnswer ? "、班長への一枚" : ""}を印刷して、{withAnswer ? "班長に渡してください。" : "配ってください。"}</p><a class="button" href={printHref}>{paperLabel}を印刷する</a>{withAnswer ? <a class="quiet" href={`${printBase}/leader`}>班長への一枚を印刷する</a> : null}</>}</section>
       {!rain && !lowered ? <DistributionFacts raw={record.distribution} /> : null}
       {!lowered ? <div class="action-links"><a class="button secondary" href={`/${ward.slug}/p/${encodeURIComponent(projectId)}`}>住民向けのページで見る</a></div> : null}
       <h2>間違えたときは</h2><p>{rain ? "直して知らせ直すと、住民向けのページは新しい内容に変わります。LINEで送った知らせは取り消せません。" : `直して知らせ直すと、住民向けのページは新しい${DOCUMENT_KIND_LABEL[kind]}に変わります。`}</p>
       <div class="action-links"><a class="button secondary" href={editHref}>直して知らせ直す</a></div>
       {!rain && !record.unpublished_at ? <LowerFold action={adminPath(ward, `/publish/${projectId}/lower/${record.publication_id}`)} label={DOCUMENT_KIND_LABEL[kind as DocumentKind]} /> : null}
-      <a class="quiet" href={adminPath(ward, `/publish/${projectId}`)}>知らせる画面へ</a>
     </AdminPage>);
   }
   const currentTables = await currentPublicationTables(c.env.DB, ward.wardId, projectId);
@@ -234,7 +233,7 @@ admin.get("/publish/:projectId", async (c) => {
         <a class="quiet" href={adminPath(ward, `/projects/${projectId}/draft/${draft.kind}`)}>下書きを直す</a>
       </section></>;
     })}
-    <h2>これまでに知らせたもの</h2>{!allRecords.length ? <p>まだありません。</p> : allRecords.map((record) => <section class="panel">
+    {allRecords.length ? <h2>これまでに知らせたもの</h2> : null}{allRecords.map((record) => <section class="panel">
       {drafts.some((row) => row.document_id === record.document_id) ? <b>{paperHeading(project.title, drafts.find((row) => row.document_id === record.document_id)!.title)}</b> : null}
       <p>{formatJst(record.published_at)}に知らせました。</p>{record.scope === "space" ? <p>実行委員と班長のページに載せました。</p> : <>
         <p>紙の配布先: {paperTargetLabel(record.distribution)}</p><p>自治会のLINE: {record.line_status === "sent" ? `${record.line_recipients ?? ""}人に送りました` : record.line_status === "failed" || record.line_status === "not_configured" ? "送れませんでした。住民向けのページには載っています。紙も配れます。" : record.line_status === "pending" ? "送信結果はまだ分かりません" : "今回は送っていません"}</p>
@@ -351,7 +350,9 @@ async function confirmPublication(c: Context<AdminEnv>) {
     <div class="publish-confirm"><h1>{publicScope ? draft.published_at ? "次の内容で知らせ直します" : "次の内容で住民に知らせます" : draft.published_at ? "次の内容で載せ直します" : "次の内容で実行委員と班長のページに載せます"}</h1><p class="lead">{publicScope ? "まだ知らせていません。" : "まだ載せていません。"}読んで、よければ「{sendLabel}」を押してください。{publicScope ? "LINEで送った知らせは取り消せません。" : ""}</p>
     {pastDue ? <Notice>本文の締切は過ぎているため、このまま知らせると返事の受付が続きますが、締切は知らせたあとに変えられます。</Notice> : null}
     {documentBodyCheckMessage(c.req.query("check_body")) ? <Notice>{documentBodyCheckMessage(c.req.query("check_body"))}</Notice> : null}
-    <dl class="facts"><dt>{publicScope ? "住民向けのページ" : "実行委員と班長のページ"}</dt><dd>載ります</dd>{publicScope ? <><dt>自治会のLINE</dt><dd>{lineDelivery === "skip" ? "今回は自治会のLINEに送りません。" : lineNotice || (friends === null ? "友だちに知らせます" : `友だち${friends}人に届きます`)}</dd></> : null}{!rain ? <><dt>紙</dt><dd>{copies ? `${copies}部を印刷できます` : "印刷して配れます"}</dd></> : null}</dl>
+    {/* 札の並びでなく、押すと一度に起きることを文で書く。 */}
+    <p>押すと、次のことが一度に起きます。</p>
+    <ul><li>{publicScope ? "住民向けのページに載ります。" : "実行委員と班長のページに載ります。"}</li>{publicScope ? <li>{lineDelivery === "skip" ? "今回は自治会のLINEに送りません。" : lineNotice || (friends === null ? "自治会のLINEの友だちに知らせます。LINEで送ったものは取り消せません。" : `自治会のLINEの友だち${friends}人に届きます。LINEで送ったものは取り消せません。`)}</li> : null}{!rain ? <li>{copies ? `紙を${copies}部印刷できます。` : "紙を印刷して配れます。"}</li> : null}</ul>
     <form method="post" action={adminPath(ward, `/publish/${projectId}/${publicScope ? "send" : "space"}`)}>
       <input type="hidden" name="documentId" value={draft.document_id} /><input type="hidden" name="versionId" value={draft.version_id} /><input type="hidden" name="versionNo" value={draft.version_no} />
       {publicScope && !rain ? <details class="fold"><summary>配る相手や部数を変える</summary><div>
@@ -546,7 +547,7 @@ interface PaperDistribution { mode: "district" | "household"; targets: Distribut
 /** 取り下げは、押すとすぐ住民向けのページから消える。何が起きるかを書いた畳みに入れ、確かめの窓を出す。 */
 function LowerFold({ action, label }: { action: string; label: string }) {
   return <details class="fold"><summary>住民向けのページから取り下げる</summary><div>
-    <p>取り下げると、住民向けのページからこの{label}が見えなくなります。知らせた記録は残ります。自治会のLINEで送ったものと、配った紙は取り消せません。もう一度載せる時は、直して知らせ直します。</p>
+    <p>取り下げると、住民向けのページからこの{label}が見えなくなります。知らせた記録は残ります。自治会のLINEで送ったものと、配った紙は取り消せません。もう一度載せるときは、直して知らせ直します。</p>
     <form method="post" action={action} onsubmit={`return confirm(${JSON.stringify(`住民向けのページからこの${label}を取り下げます。LINEで送ったものは取り消せません。続けますか？`)})`}><button class="secondary danger" type="submit">取り下げる</button></form>
   </div></details>;
 }

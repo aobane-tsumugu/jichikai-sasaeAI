@@ -33,7 +33,7 @@ import { canSendLine } from "../publish";
 /** 画像を付けられる下書き。住民へのメッセージの四つ（L-311）。 */
 const FLYER_KINDS: readonly string[] = MESSAGE_KINDS.map((entry) => entry.kind);
 
-const SEE_LABEL: Record<Scope, string> = { public: "だれでも読める", space: "実行委員と班長だけ", staff: "役員だけ" };
+const SEE_TEXT: Record<Scope, string> = { public: "住民向けのページと紙に出ます。", space: "実行委員と班長だけが見られます。", staff: "役員だけが読めます。" };
 const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   "restore_failed": "前の下書きに戻せませんでした",
   "material_failed": "今年の資料として入れ直せませんでした。届いた資料と今年の内容の画面から、もう一度お試しください",
@@ -67,17 +67,26 @@ admin.get("/projects/:projectId/draft", async (c) => {
   const written = await c.env.DB.prepare("SELECT DISTINCT kind FROM documents WHERE ward_id = ? AND project_id = ?").bind(ward.wardId, id).all<{ kind: string }>();
   const dutyWritten = features.rota && await c.env.DB.prepare(`SELECT 1 AS found FROM project_rows
     WHERE ward_id = ? AND project_id = ? AND table_key = 'duties' AND scope = 'current' AND removed_at IS NULL LIMIT 1`).bind(ward.wardId, id).first();
+  const packs = listDraftPacks().map((pack) => getDraftPack(pack.kind, taskDocumentKind(tasks, pack.kind)));
+  const hasDraft = (kind: string) => written.results.some((row) => row.kind === kind) || (kind === "duty_roster" && Boolean(dutyWritten));
+  // まだ書いていない最初の文書（ふつうは案内）の頼むボタンだけを大きくする。同じボタンが並んで、どれからか迷わないように。
+  const nextKind = packs.find((pack) => !hasDraft(pack.kind))?.kind;
   return c.html(<Layout title={`下書き: ${project.title}`} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {project.title}のやることへ</a>
-    <h1>{project.title}の下書き</h1><p class="lead">作りたい文書を選んでください。今ある資料からAIに下書きを頼むか、自分で書き始められます。</p><p>文書を選び、必要ならAIに下書きを起こさせます。AIが止まっているときも、ここで書いて保存できます。</p>
+    <h1>{project.title}の下書き</h1><p class="lead">住民に配る案内や、実行委員と班長に渡す当番表を、ここで書きます。AIに頼むと、届いた資料から下書きを作ります。AIが止まっているときも、自分で書いて保存できます。</p>
     {c.req.query("notice") === "saved" ? <Notice>保存しました。今年の内容にも入れました。</Notice> : null}
     {c.req.query("notice") === "started" ? <Notice>AIに下書きを頼みました。画面を閉じても続きます。</Notice> : null}
     {c.req.query("notice") === "restored" ? <Notice>前の下書きを戻して、新しい下書きとして保存しました。</Notice> : null}
     <ErrorNotice code={c.req.query("error")} messages={ERROR_MESSAGES} />
-    {listDraftPacks().map((pack) => getDraftPack(pack.kind, taskDocumentKind(tasks, pack.kind))).map((pack) => <section class="panel"><h2><a href={adminPath(ward, `/projects/${id}/draft/${pack.kind}`)}>{pack.title}</a></h2><p>{written.results.some((row) => row.kind === pack.kind) || (pack.kind === "duty_roster" && dutyWritten) ? "下書きがあります。" : "まだありません。"}{SEE_LABEL[pack.scope]}</p>
-      <form method="post" action={adminPath(ward, `/projects/${id}/draft/${pack.kind}/start`)}><button class="secondary">{features.rota && pack.kind === "duty_roster" ? "当番の下書きを作る" : "AIに下書きを頼む"}</button></form>
-    </section>)}
-    <div class="action-links"><a class="button secondary" href={adminPath(ward, `/publish/${id}`)}>知らせる画面へ</a></div>
+    {packs.map((pack) => {
+      const has = hasDraft(pack.kind);
+      return <section class="panel"><h2><a href={adminPath(ward, `/projects/${id}/draft/${pack.kind}`)}>{pack.title}</a></h2>
+        <p>{has ? `${pack.title}の下書きがあります。` : `${pack.title}はまだ書いていません。`}{SEE_TEXT[pack.scope]}</p>
+        <form method="post" action={adminPath(ward, `/projects/${id}/draft/${pack.kind}/start`)}><button class={pack.kind === nextKind ? undefined : "secondary"}>{features.rota && pack.kind === "duty_roster" ? "当番の下書きを作る" : `${pack.title}の下書きをAIに頼む`}</button></form>
+      </section>;
+    })}
+    {/* 下書きが無い時に、空の知らせる画面へ行かせない。 */}
+    {written.results.length ? <div class="action-links"><a class="button secondary" href={adminPath(ward, `/publish/${id}`)}>知らせる画面へ</a></div> : null}
   </Layout>);
 });
 
@@ -229,13 +238,12 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
         <fieldset><legend>出席</legend><div class="choice half">{([ ["no_change", "まだ記録しない"], ["present", "出席"], ["absent", "欠席"] ] as const).map(([value, label]) => <label><input type="radio" name="attendance" value={value} checked={value === (row.data.attendance || "no_change")} />{label}</label>)}</div></fieldset>
         <p><button type="submit" class="secondary">この行を保存する</button></p>
       </form>)}</div>
-      {state.tables.duties.filter((row) => row.scope === "current").length === 0 ? <p>当番表の行はまだありません。下の紙の欄に書き込めます。</p> : null}
-      <p>印刷した紙の当番表に、手で書き込むこともできます。</p>
+      {state.tables.duties.filter((row) => row.scope === "current").length === 0 ? <p>当番表の行はまだありません。下の紙の欄か、印刷した紙の当番表に、手で書き込めます。</p> : null}
     </section> : null}
     <details class="fold" id="previous-drafts"><summary>前の下書きに戻す</summary><div>
       {versions.results.length ? versions.results.map((version) => <section><p>{formatJstDate(version.created_at)}の{version.origin === "ai" ? "AIの下書き" : "下書き"}</p><pre>{parseBody(version.body).text}</pre>
         {!project.closedAt ? <form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/restore/${version.version_no}`)}><button class="secondary">この下書きに戻す</button></form> : null}
-      </section>) : <p>前の下書きはまだありません。</p>}<p class="muted">今の下書きも残ります。</p>
+      </section>) : <p>前の下書きはまだありません。</p>}{versions.results.length > 1 ? <p class="muted">今の下書きも残ります。</p> : null}
     </div></details>
     {!project.closedAt ? <>
       {features.rota && kindRaw === "duty_roster" ? null : <details class="fold" id="redo"><summary>AIに言葉で頼む</summary><div><form method="post" action={adminPath(ward, `/projects/${id}/draft/${kindRaw}/start`)}>

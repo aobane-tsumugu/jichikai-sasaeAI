@@ -49,7 +49,7 @@ it("資料も質問も仕事もない一年目に、案内を確認して配り�
     { district: FIRST_SLICE.district, household: FIRST_SLICE.secondHousehold },
   ], { household: 0, district: 1 });
   const confirmation = await (await get(realApp, `${path}/confirm?kind=announcement`, cookie)).text();
-  expect(confirmation).toContain("2部を印刷できます");
+  expect(confirmation).toContain("紙を2部印刷できます。");
   expect(confirmation).toContain('name="copies_0" min="1" value="2"');
   const sent = await postForm(realApp, `${path}/send`, {
     documentId: draft.document_id, versionId: draft.version_id, versionNo: String(draft.version_no),
