@@ -86,16 +86,19 @@ questionPages.get("/projects/:projectId/questions", async (c) => {
   const photos = new Set((await Promise.all(photoIds.map((photoId) => c.env.DB.prepare("SELECT original_id FROM originals WHERE ward_id = ? AND original_id = ? AND media_type LIKE 'image/%'").bind(ward.wardId, photoId).first<{ original_id: string }>()))).flatMap((row) => row ? [row.original_id] : []));
   let shownPhoto = "";
   const duty = taskFeatures(state.mapTasks).has("assign");
-  const draftHref = adminPath(ward, `/projects/${id}/draft/${duty ? "duty_roster" : "announcement"}`);
-  const draftLabel = duty ? "当番表の下書きを見る" : "案内の下書きを見る";
+  // 当日が過ぎた行事は、答えが報告に入る。次は案内や当番表でなく、報告をまとめて終わりにすること。
+  const today = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date());
+  const passed = !state.project.closedAt && Boolean(state.project.deadlines.event_day && state.project.deadlines.event_day < today);
+  const draftHref = adminPath(ward, passed ? `/close/${id}` : `/projects/${id}/draft/${duty ? "duty_roster" : "announcement"}`);
+  const draftLabel = passed ? "報告をまとめて終わりにする" : duty ? "当番表の下書きを見る" : "案内の下書きを見る";
   const answered = c.req.query("notice") === "answered";
   const next = <section class="next"><strong>{answered ? "答えを残しました" : "次は"}</strong>
-    <p>{questions.length ? "残りの質問に答えられます。" : answered ? "AIからの質問は、もうありません。答えは下書きに使われます。下書きであとから直せます。" : "AIが資料を読んで分からないところがあると、ここで聞きます。今は聞くことはありません。"}</p>
+    <p>{questions.length ? "残りの質問に答えられます。" : answered ? (passed ? "AIからの質問は、もうありません。答えは報告の下書きに使われます。終わりにする画面で直せます。" : "AIからの質問は、もうありません。答えは下書きに使われます。下書きであとから直せます。") : "AIが資料を読んで分からないところがあると、ここで聞きます。今は聞くことはありません。"}</p>
     <a class="button" href={questions[0] ? `#question-${questions[0].questionId}` : draftHref}>{questions.length ? "残りの質問に答える" : draftLabel}</a>
   </section>;
   return c.html(<Layout title="質問に答える" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
     <a class="back" href={adminPath(ward, `/projects/${id}/map`)}>← {state.project.title}のやることへ</a>
-    <h1>{questions.length ? `${state.project.title}について、AIからの質問が${questions.length}つあります` : `${state.project.title}について、AIからの質問はありません`}</h1>{questions.length ? <p class="lead">分かるものだけ答えてください。答えなくても、案内は住民に知らせられます。</p> : null}
+    <h1>{questions.length ? `${state.project.title}について、AIからの質問が${questions.length}つあります` : `${state.project.title}について、AIからの質問はありません`}</h1>{questions.length ? <p class="lead">分かるものだけ答えてください。{passed ? "答えると報告に入ります。答えなくても終わりにできます。" : "答えなくても、案内は住民に知らせられます。"}</p> : null}
     <ErrorNotice code={c.req.query("error")} messages={{ answer_failed: "答えを入れられませんでした。もう一度お試しください。", exemption_answer_failed: "免除の答えを入れられませんでした。理由は200文字までです。すでに答えていないか、下の質問を確かめてください。", exemption_draft_failed: "免除は記録しました。当番表の下書きを開き、「今の名簿と免除を下書きに反映する」を押してください。" }} />
     {c.req.query("notice") === "exempted" ? <Notice>今年の当番の免除を記録しました。役員が直した担当と知らせた内容はそのままです。下書きで担当を確かめられます。<p><a class="button secondary" href={adminPath(ward, "/rota/exemptions")}>免除の記録を見る・取り消す</a></p></Notice> : c.req.query("notice") === "kept" ? <Notice>当番から外さず、答えを残しました。</Notice> : null}
     {c.req.query("notice") === "unknown" ? <Notice>分からないとして残しました。あとから下書きで直せます。</Notice> : c.req.query("notice") === "later" ? <Notice>あとで答えられるように残しました。</Notice> : null}
@@ -129,6 +132,6 @@ questionPages.get("/projects/:projectId/questions", async (c) => {
       </form> : null}
     </section>;
     })}
-    {questions.length ? <><p class="muted">{exemptions.size ? "免除は免除の記録から取り消せます。" : "答えは下書きに入ります。あとから直せます。"}</p>{answered ? next : <div class="action-bar"><a class="button" href={draftHref}>{draftLabel}</a></div>}</> : null}
+    {questions.length ? <><p class="muted">{exemptions.size ? "免除は免除の記録から取り消せます。" : passed ? "答えは報告の下書きに入ります。あとから直せます。" : "答えは下書きに入ります。あとから直せます。"}</p>{answered ? next : <div class="action-bar"><a class="button" href={draftHref}>{draftLabel}</a></div>}</> : null}
   </Layout>);
 });

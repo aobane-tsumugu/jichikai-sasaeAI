@@ -85,10 +85,13 @@ export function eventDayStatements(
     .bind(wardId, projectId, kind, date, now, accountId));
   for (const task of state.mapTasks) {
     if (task.progress === "done") continue;
-    const offsets = template.find((entry) => entry.key === task.taskKey);
+    // 型に無い仕事（資料に当番表がある時に足す「担当を決める」など）は、同じ鍵の仕事をほかの型から探して日数を使う。
+    const offsets = template.find((entry) => entry.key === task.taskKey)
+      ?? (task.taskKey ? Object.values(MAP_TEMPLATES).flat().find((entry) => entry.key === task.taskKey) : undefined);
     const period = offsets ? templatePeriod(offsets, day, endDay) : null;
-    const start = oldDay ? task.periodStart ? addDays(task.periodStart, offsets && offsets.start > 0 ? endShift : shift) : null : task.periodStart ?? period?.start ?? null;
-    const end = oldDay ? task.periodEnd ? addDays(task.periodEnd, offsets && (offsets.end > 0 || (offsets.start === 0 && offsets.end === 0)) ? endShift : shift) : null : task.periodEnd ?? period?.end ?? null;
+    // 時期のある仕事は日の動いた分だけずらし、時期の無い仕事には型の目安を置く。
+    const start = task.periodStart ? oldDay ? addDays(task.periodStart, offsets && offsets.start > 0 ? endShift : shift) : task.periodStart : period?.start ?? null;
+    const end = task.periodEnd ? oldDay ? addDays(task.periodEnd, offsets && (offsets.end > 0 || (offsets.start === 0 && offsets.end === 0)) ? endShift : shift) : task.periodEnd : period?.end ?? null;
     statements.push(db.prepare(`UPDATE project_map_tasks SET period_start = ?, period_end = ?
       WHERE ward_id = ? AND project_id = ? AND task_id = ? AND progress <> 'done' AND removed_at IS NULL
         AND EXISTS (SELECT 1 FROM project_deadlines WHERE ward_id = ? AND project_id = ? AND kind = 'event_day' AND due_on = ?)

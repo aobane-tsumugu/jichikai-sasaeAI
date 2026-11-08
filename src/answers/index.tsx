@@ -332,7 +332,8 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
   return c.html(<AdminPage ward={c.var.ward} account={c.var.account} title={title}
     back={view === "summary" ? { href: adminPath(c.var.ward.slug, `/projects/${projectId}/map`), label: `← ${project.title}のやることへ` } : back}>
     <h1 class={view === "summary" || view === "list" || view === "helpers" ? "answers-wide" : undefined}>{title}</h1>
-    {closed ? <Notice>{project.title}は終わりにしました。返事を直すときは<a class="quiet" href={adminPath(c.var.ward.slug, `/close/${projectId}`)}>終わりにした画面で、終わりを取り消してください</a>。</Notice> : null}
+    {/* 文の途中のリンクは押しにくいので、文と分けて一行で置く。 */}
+    {closed ? <Notice><p>{project.title}は終わりにしました。返事を直すときは、終わりにした画面で、終わりを取り消してください。</p><p class="link-line"><a href={adminPath(c.var.ward.slug, `/close/${projectId}`)}>終わりにした画面を開く</a></p></Notice> : null}
     {view === "summary" ? <>
       {/* 数の札とリンクの要約に縮めず、締切と届いた返事を文で書く（管理の決定ログ L-300 のトップと同じ決まり）。 */}
       <p class="lead">{summaryText}</p>
