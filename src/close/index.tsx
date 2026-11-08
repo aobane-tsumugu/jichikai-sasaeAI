@@ -234,7 +234,7 @@ admin.get("/close/:projectId", async (c) => {
         </section> : null}
         <details class="fold"><summary>載せる仕事を選ぶ</summary><div>{tasks.results.length ? <div class="choice">{tasks.results.map((task) => {
           const saved = activity.tasks.find((entry) => entry.taskId === task.task_id);
-          return <label><input type="checkbox" name="taskId" value={task.task_id} checked={!!saved} /> {saved?.name ?? task.name}（{formatDateText(saved?.period ?? task.period) || "時期未定"}）
+          return <label><input type="checkbox" name="taskId" value={task.task_id} checked={!!saved} /> {saved?.name ?? task.name}（{formatDateText(saved?.period ?? task.period) || "時期は決まっていませんでした"}）
             <input type="hidden" name={`activityName_${task.task_id}`} value={saved?.name ?? task.name} /><input type="hidden" name={`activityPeriod_${task.task_id}`} value={saved?.period ?? task.period} /></label>;
         })}</div> : <p>残っている仕事はありません。</p>}</div></details>
         <div class="action-bar"><button name="action" value="publish">住民向けのページに載せる</button><button class="secondary" name="action" value="save">保存だけする</button></div>
@@ -253,18 +253,19 @@ admin.get("/close/:projectId", async (c) => {
       {helpOffers ? <div class="notice warn"><strong>終わりにすると消えるものがあります</strong><p>手伝いだけの申し込み（{helpOffers}人）の名前と時間帯は消えます。終わりを取り消しても戻りません。</p></div> : null}
       {status.results.map((job) => <p>{job.task === "report" ? pack.title : "やること"}: {job.status === "done" ? (job.task === "report" && !report(internalReport ? "staff" : "public") ? "下書きを書けませんでした。下の欄に直接書けます" : "できました") : job.status === "failed" ? "止まりました。下の欄に直接書けます" : "準備中"}</p>)}
       {autoStarted || status.results.some((job) => job.status !== "done" && job.status !== "failed") ? <p class="muted">{autoStarted ? `集まった資料と返事から、${internalReport ? pack.title : "報告"}の下書きを作り始めました。` : ""}作っています。画面を閉じても続きます。少しあとに、もう一度開いてください。</p> : null}
-      {!autoStarted && !report(internalReport ? "staff" : "public") && !status.results.some((job) => job.task === "report" && job.status !== "failed") ? <form method="post" action={`${root}/prepare`}><button class="secondary">{internalReport ? pack.title : "報告"}とやることの下書きを作る</button><p class="muted">AIが止まっていても、下の欄に直接書けます。</p></form> : null}
+      {!autoStarted && !report(internalReport ? "staff" : "public") && !status.results.some((job) => job.task === "report" && job.status !== "failed") ? <form method="post" action={`${root}/prepare`}><button class="secondary">{internalReport ? pack.title : "報告"}の下書きをAIに頼む</button><p class="muted">集まった資料と出欠の返事から、下の欄に入る下書きを作ります。AIが止まっていても、下の欄に直接書けます。</p></form> : null}
       <form method="post" action={`${root}/finalize`}>
         {internalReport ? <input type="hidden" name="body" value="" /> : <div class="field"><label for="report-public">住民への報告</label><p class="help-text">{report("public") ? "保存した報告です。直してかまいません。" : "ここに直接書けます。"}終わりにすると住民向けのページに載ります。</p><textarea id="report-public" name="body" rows={7} maxlength={12000}>{report("public")}</textarea>
         </div>}
         {warnings.length ? <div class="notice warn"><strong>報告の中に見つかったもの</strong><ul>{warnings.map((warning) => <li>{warning}</li>)}</ul><p>書き直せます。このまま終わりにすることもできます。</p></div> : null}
-        <div class="field"><label for="report-staff">{internalReport ? `${pack.title}（役員だけ）` : "役員だけの記録（書かなくてかまいません）"}</label><p class="help-text">住民向けのページには載りません。{minutes ? "下書きを直して終わりにすると、次の会議で読めます。" : internalReport ? "終わりにしても、提出したことにはなりません。" : ""}</p><textarea id="report-staff" name="body" rows={internalReport ? 8 : 4} maxlength={12000}>{report("staff")}</textarea></div>
+        <div class="field"><label for="report-staff">{internalReport ? `${pack.title}（役員だけ）` : "役員だけのメモ（書かなくてかまいません）"}</label><p class="help-text">住民向けのページには載りません。{minutes ? "下書きを直して終わりにすると、次の会議で読めます。" : internalReport ? "終わりにしても、提出したことにはなりません。" : ""}</p><textarea id="report-staff" name="body" rows={internalReport ? 8 : 4} maxlength={12000}>{report("staff")}</textarea></div>
         {decisions ? <div class="field"><label for="meeting-decisions">決めたこと</label><p class="help-text">{decisions.proposal ? "AIが資料から拾った下書きを含みます。" : ""}1行に一つずつ書けます。違うところは直すか消してください。終わりにすると、ここに書いたことが次の役員会と総会の資料に残ります。</p>
           <textarea id="meeting-decisions" name="decisions" rows={5} maxlength={12000}>{decisions.text}</textarea>
         </div> : null}
         <h2>来年への一言（書かなくてかまいません）</h2><p class="muted">仕事ごとに、頼んだ人、困ったこと、来年変えることを残せます。来年のやることに出ます。運営メモに書いたことも、そのまま残ります。ここで書き直さなくてかまいません。</p>
         <a class="quiet" href={adminPath(ward, `/projects/${id}/ledger`)}>運営メモを見る</a>
-        {tasks.results.length ? tasks.results.map((task) => <details class="fold" id={`task-${task.task_id}`}><summary>{task.name}</summary><div>
+        {/* どの仕事に書くかを選べるように、畳みの名前に時期と済んだかを書く。 */}
+        {tasks.results.length ? tasks.results.map((task) => <details class="fold" id={`task-${task.task_id}`}><summary>{task.name}（{[formatDateText(task.period), MAP_PROGRESS_LABEL[task.progress as MapProgress] ?? ""].filter(Boolean).join("、")}）</summary><div>
           <input type="hidden" name="taskId" value={task.task_id} />
           <input type="hidden" name="period" value={task.period} /><input type="hidden" name="name" value={task.name} /><input type="hidden" name="progress" value={task.progress} />
           <label for={`requested-${task.task_id}`}>頼んだ人</label><input id={`requested-${task.task_id}`} name="requestedBy" value={task.requested_by} maxlength={160} />
