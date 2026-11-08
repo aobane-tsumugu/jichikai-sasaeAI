@@ -19,9 +19,9 @@ it("記録に聞く抜粋は英字の大小によらず答えの箇所を含み�
   const other = await seedAdmin(env.DB);
   const padding = "去年の準備の経過を確認しました。\n".repeat(80);
   const records = [
-    { owner: local, title: "架空の長い議事録", content: padding + "テント代は8,000円でした。LINEで連絡しました。" + padding },
-    { owner: local, title: "架空の冒頭に答えがある記録", content: "テント代は3,000円でした。lineで連絡しました。" + padding },
-    { owner: other, title: "架空の別の自治会の記録", content: padding + "テント代は99,000円でした。Lineで連絡しました。" },
+    { owner: local, title: "試しの長い議事録", content: padding + "テント代は8,000円でした。LINEで連絡しました。" + padding },
+    { owner: local, title: "試しの冒頭に答えがある記録", content: "テント代は3,000円でした。lineで連絡しました。" + padding },
+    { owner: other, title: "試しの別の自治会の記録", content: padding + "テント代は99,000円でした。Lineで連絡しました。" },
   ];
   for (const { owner, title, content } of records) {
     const project = await createProject(env.DB, owner.ward.wardId, {
@@ -43,14 +43,14 @@ it("記録に聞く抜粋は英字の大小によらず答えの箇所を含み�
   }
 });
 
-it("架空の記録を二文字で探すと、一致した箇所を周りの文とともに読める", async () => {
+it("試しの記録を二文字で探すと、一致した箇所を周りの文とともに読める", async () => {
   const local = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
-  const padding = "架空の行事の準備の経過を記録しました。\n".repeat(80);
+  const padding = "試しの行事の準備の経過を記録しました。\n".repeat(80);
   const records = [
-    { owner: local, title: "架空の長い会計の記録", content: padding + "会費は1,200円でした。" + padding },
-    { owner: local, title: "架空の冒頭に会費がある記録", content: "会費は700円でした。" + padding },
-    { owner: other, title: "架空の別の自治会の会計", content: padding + "会費は99,000円でした。" },
+    { owner: local, title: "試しの長い会計の記録", content: padding + "会費は1,200円でした。" + padding },
+    { owner: local, title: "試しの冒頭に会費がある記録", content: "会費は700円でした。" + padding },
+    { owner: other, title: "試しの別の自治会の会計", content: padding + "会費は99,000円でした。" },
   ];
   for (const { owner, title, content } of records) {
     const project = await createProject(env.DB, owner.ward.wardId, {
@@ -58,7 +58,7 @@ it("架空の記録を二文字で探すと、一致した箇所を周りの文�
     });
     await env.DB.prepare(`INSERT INTO archive_search_entries
       (ward_id, project_id, record_type, year, counterpart, locator, content, created_at)
-      VALUES (?, ?, 'decision', 2026, '架空の会計係', '会費の記録', ?, '2026-11-06T00:00:00Z')`)
+      VALUES (?, ?, 'decision', 2026, '試しの会計係', '会費の記録', ?, '2026-11-06T00:00:00Z')`)
       .bind(owner.ward.wardId, project.projectId, content).run();
   }
   const results = await searchArchive(env.DB, local.ward.wardId, {

@@ -33,7 +33,7 @@ it("去年から下書きを作り、新しい資料が入っても全戸に配�
       parts: [{ kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode(FIRST_SLICE.previousMaterial) }],
     });
     const original = received.received[0];
-    if (!original) throw new Error("架空の資料を受け付けられませんでした");
+    if (!original) throw new Error("試しの資料を受け付けられませんでした");
     expect((await applyChange(env.DB, ward.wardId, project.projectId, {
       kind: "item", itemKey: "place", value: FIRST_SLICE.previousPlace,
       source: { kind: "original", ref: original.originalId, year: FIRST_SLICE.sourceYear, locator: FIRST_SLICE.previousLocator },

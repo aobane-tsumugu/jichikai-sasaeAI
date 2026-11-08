@@ -9,7 +9,7 @@ import type { RowData } from "../src/project/model";
 import { setSetting } from "../src/settings/store";
 import { get, postForm, realApp } from "./helpers";
 
-it("架空の行事を閉じ、紹介の下書きと公開に同じ事実を出し、名前を出さず来年の入口を残す", async () => {
+it("試しの行事を閉じ、紹介の下書きと公開に同じ事実を出し、名前を出さず来年の入口を残す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: FIRST_SLICE.nextYearTitle, year: FIRST_SLICE.eventYear,
@@ -32,11 +32,11 @@ it("架空の行事を閉じ、紹介の下書きと公開に同じ事実を出�
     source: { kind: "ai_proposal", year: FIRST_SLICE.sourceYear }, confidence: "high", packVersion: "activity-facts-test@1",
   })).status).toBe("applied");
   const state = await getProjectState(env.DB, ward.wardId, id);
-  if (!state) throw new Error("架空の行事がありません。");
+  if (!state) throw new Error("試しの行事がありません。");
   const task = state.mapTasks.find((entry) => entry.taskKey === "announcement");
   const untimed = state.mapTasks.find((entry) => entry.taskKey === "venue");
   const privateTask = state.mapTasks.find((entry) => entry.taskKey === "sponsors");
-  if (!task || !untimed || !privateTask) throw new Error("架空のやることがありません。");
+  if (!task || !untimed || !privateTask) throw new Error("試しのやることがありません。");
   for (const entry of [task, untimed, privateTask]) {
     expect(await setMapTask(env.DB, ward.wardId, id, entry.taskId, {
       name: entry === privateTask ? `${FIRST_SLICE.phoneHelper}に頼む` : entry.name,
@@ -50,7 +50,7 @@ it("架空の行事を閉じ、紹介の下書きと公開に同じ事実を出�
   })).toBe(true);
   const version = await env.DB.prepare("SELECT document_id, version_id, version_no FROM document_versions WHERE ward_id = ? AND project_id = ? ORDER BY version_no DESC LIMIT 1")
     .bind(ward.wardId, id).first<{ document_id: string; version_id: string; version_no: number }>();
-  if (!version) throw new Error("架空の案内がありません。");
+  if (!version) throw new Error("試しの案内がありません。");
   expect((await postForm(realApp, `${root}/admin/publish/${id}/send`, {
     documentId: version.document_id, versionId: version.version_id, versionNo: String(version.version_no), lineDelivery: "skip",
     recipientScope: "all_households", distribution: JSON.stringify({ mode: "district", targets: [{ district: "全戸", copies: 12 }] }),
@@ -64,8 +64,8 @@ it("架空の行事を閉じ、紹介の下書きと公開に同じ事実を出�
   for (const fact of expected) expect(preview).toContain(fact);
   const form = new FormData();
   form.set("action", "publish"); form.set("introduction", FIRST_SLICE.reportText);
-  form.set("membershipBurden", "行事の当番を受け持ちます（架空）。");
-  form.set("membershipBenefit", "地域の行事に参加できます（架空）。");
+  form.set("membershipBurden", "行事の当番を受け持ちます。");
+  form.set("membershipBenefit", "地域の行事に参加できます。");
   for (const entry of [task, untimed, privateTask]) form.append("taskId", entry.taskId);
   expect((await realApp.request(`${close}/activity`, {
     method: "POST", headers: { cookie, origin: "http://localhost" }, body: form,
@@ -83,7 +83,7 @@ it("架空の行事を閉じ、紹介の下書きと公開に同じ事実を出�
   // 前から載っていた紹介にも、保存し直さず同じ事実を補う。
   const published = await env.DB.prepare("SELECT published_body FROM project_activity_pages WHERE ward_id = ? AND project_id = ?")
     .bind(ward.wardId, id).first<{ published_body: string }>();
-  if (!published) throw new Error("架空の紹介がありません。");
+  if (!published) throw new Error("試しの紹介がありません。");
   const legacy = JSON.parse(published.published_body) as Record<string, unknown>;
   delete legacy.facts;
   await env.DB.prepare("UPDATE project_activity_pages SET published_body = ? WHERE ward_id = ? AND project_id = ?")

@@ -12,9 +12,9 @@ const docOf = (wardId: string, projectId: string, kind: string) => env.DB.prepar
 it("実行委員向けの文書の紙に、ページと同じ本文を出す", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "試しの行事", year: 2026, accountId: account.accountId });
   const id = project.projectId;
-  for (const [kind, title, text] of [["procedure", "進め方", "架空の手順を書いた文"], ["notice", "担当へのお知らせ", "架空の担当への知らせの文"], ["duty_roster", "当番表", "架空の当番の説明の文"]] as const) {
+  for (const [kind, title, text] of [["procedure", "進め方", "試しの手順を書いた文"], ["notice", "担当へのお知らせ", "試しの担当への知らせの文"], ["duty_roster", "当番表", "試しの当番の説明の文"]] as const) {
     await saveDocument(env.DB, ward.wardId, id, account.accountId, { kind, title, scope: "space", basedOn: (await getProjectState(env.DB, ward.wardId, id))!.project.stateVersion, body: JSON.stringify({ text, items: [] }) });
     const doc = await docOf(ward.wardId, id, kind);
     expect((await postForm(realApp, `${root}/publish/${id}/space`, { documentId: doc!.document_id, versionId: doc!.version_id, versionNo: String(doc!.version_no) }, cookie)).status).toBe(303);
@@ -26,10 +26,10 @@ it("実行委員向けの文書の紙に、ページと同じ本文を出す", a
 
 it("知らせは本文に書かれた場所を正にして、古い項目を足し戻さない", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "試しの行事", year: 2026, accountId: account.accountId });
   const id = project.projectId;
-  const old = JSON.stringify({ text: "架空の行事は屋内へ変更します。", items: [{ key: "place", content: "公民館前の広場" }] });
-  expect(articleParagraphs(old, undefined, "notice")).toEqual(["架空の行事は屋内へ変更します。"]);
+  const old = JSON.stringify({ text: "試しの行事は屋内へ変更します。", items: [{ key: "place", content: "公民館前の広場" }] });
+  expect(articleParagraphs(old, undefined, "notice")).toEqual(["試しの行事は屋内へ変更します。"]);
   expect(articleParagraphs(old).join("\n")).toContain("公民館前の広場");
   expect(articleParagraphs(JSON.stringify({ text: "", items: [{ key: "place", content: "公民館前の広場" }] }), undefined, "notice").join("\n")).toContain("公民館前の広場");
 

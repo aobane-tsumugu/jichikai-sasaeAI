@@ -23,7 +23,7 @@ async function setup() {
       bytes: new TextEncoder().encode(FIRST_SLICE.rainAnnouncement) }],
   });
   const originalId = input.received[0]?.originalId;
-  if (!input.jobId || !originalId) throw new Error("架空の資料を受け取れませんでした");
+  if (!input.jobId || !originalId) throw new Error("試しの資料を受け取れませんでした");
   const ticket = `tk_${crypto.randomUUID()}`;
   await env.DB.prepare("UPDATE jobs SET status = 'connecting', ticket_hash = ? WHERE ward_id = ? AND job_id = ?")
     .bind(await sha256Hex(ticket), ward.wardId, input.jobId).run();
@@ -36,7 +36,7 @@ async function setup() {
   };
   const state = async () => {
     const value = await getProjectState(env.DB, ward.wardId, project.projectId);
-    if (!value) throw new Error("架空の行事がありません");
+    if (!value) throw new Error("試しの行事がありません");
     return value;
   };
   return { ward, account, cookie, project, originalId, ticket, write, state, root: `/${ward.slug}/admin/projects/${project.projectId}` };
@@ -137,7 +137,7 @@ it("年のある元の資料とない元の資料を一緒に送っても、年�
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: FIRST_SLICE.nextYearTitle, year: FIRST_SLICE.eventYear, accountId: account.accountId,
   });
-  // 架空の写真二枚と、展開した Word と文字の資料を一度に送る。本物の AI は呼ばない。
+  // 試しの写真二枚と、展開した Word と文字の資料を一度に送る。本物の AI は呼ばない。
   const input = await receive(env, {
     wardId: ward.wardId, projectId: project.projectId, via: "admin", accountId: account.accountId,
     parts: [
@@ -151,7 +151,7 @@ it("年のある元の資料とない元の資料を一緒に送っても、年�
     ],
   });
   const [datedPhoto, undatedPhoto, datedWord, undatedText] = input.received;
-  if (!input.jobId || !datedPhoto || !undatedPhoto || !datedWord || !undatedText) throw new Error("架空の元の資料が足りません");
+  if (!input.jobId || !datedPhoto || !undatedPhoto || !datedWord || !undatedText) throw new Error("試しの元の資料が足りません");
   const modelReading: Reading = {
     document_kind: "memo", summary: FIRST_SLICE.dutyTitle,
     original_years: [{ original_id: datedPhoto.originalId, year: FIRST_SLICE.eventYear }, { original_id: undatedPhoto.originalId, year: null }],

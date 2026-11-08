@@ -1,4 +1,4 @@
-// U89のための架空資料。実在の資料は含まない。
+// U89のための試しの資料。実在の資料は含まない。
 function crc32(bytes: Uint8Array): number {
   let crc = 0xffffffff;
   for (const b of bytes) {
@@ -64,7 +64,7 @@ export async function makeOriginalDateZip(files: Record<string, string>, deflate
 
 export async function fictionalDatedWord(value: string, modified?: string, created?: string): Promise<Uint8Array> {
   return makeOriginalDateZip({
-    "word/document.xml": '<w:document xmlns:w="urn:fictional"><w:body><w:p><w:r><w:t>収穫祭の案内（架空）。2025年。返事の締切は' + value + '。' + (value === "10月3日" ? "抽選会はありません。変更しました。" : "抽選会があります。") + '</w:t></w:r></w:p></w:body></w:document>',
+    "word/document.xml": '<w:document xmlns:w="urn:fictional"><w:body><w:p><w:r><w:t>収穫祭の案内。2025年。返事の締切は' + value + '。' + (value === "10月3日" ? "抽選会はありません。変更しました。" : "抽選会があります。") + '</w:t></w:r></w:p></w:body></w:document>',
     "docProps/core.xml": '<cp:coreProperties xmlns:cp="urn:fictional" xmlns:dcterms="http://purl.org/dc/terms/">' + (modified ? '<dcterms:modified xsi:type="dcterms:W3CDTF">' + modified + '</dcterms:modified>' : '') + (created ? '<dcterms:created>' + created + '</dcterms:created>' : '') + '</cp:coreProperties>',
   }, true);
 }

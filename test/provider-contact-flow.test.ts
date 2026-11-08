@@ -137,11 +137,11 @@ it("登録なしで問い合わせ、書き足しと写真、提供側の確認�
   expect(Date.parse(newLink!.expires_at) - Date.parse(newLink!.created_at)).toBe(24 * 3600_000);
   expect((await postForm(realApp, `${nextOps}/close`, {}, cookie, bindings)).status).toBe(200);
   for (const kind of ["reply", "publish", "digest"]) await env.DB.prepare("INSERT INTO ward_settings (ward_id, key, value) VALUES (?, ?, ?)")
-    .bind(owner.ward.wardId, `line.delivery_alert.${kind}`, `${kind}を送れませんでした（架空）`).run();
+    .bind(owner.ward.wardId, `line.delivery_alert.${kind}`, `${kind}を送れませんでした`).run();
   const alerts = await (await get(realApp, "/ops/alerts", cookie, bindings)).text();
-  expect(alerts).toContain("replyを送れませんでした（架空）");
-  expect(alerts).toContain("publishを送れませんでした（架空）");
-  expect(alerts).toContain("digestを送れませんでした（架空）");
+  expect(alerts).toContain("replyを送れませんでした");
+  expect(alerts).toContain("publishを送れませんでした");
+  expect(alerts).toContain("digestを送れませんでした");
   for (let index = 0; index < 6; index++) {
     const limited = await postForm(realApp, path!, { body: sample.more }, undefined, bindings);
     expect(limited.status).toBe(index < 4 ? 303 : 429);

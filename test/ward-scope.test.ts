@@ -7,14 +7,14 @@ const sources = Object.fromEntries(Object.entries(import.meta.glob<string>("../s
 const migrations = import.meta.glob<string>("../migrations/**/*.sql", { eager: true, query: "?raw", import: "default" });
 
 // 全ソースの構文木と型の参照を二回組み立てるため、通常の単体試験より長い上限にする。
-it("全SQLとR2を検査し、架空の絞り漏れを足すと失敗する", () => {
+it("全SQLとR2を検査し、試しの絞り漏れを足すと失敗する", () => {
   const result = checkWardScope(sources, migrations);
   expect(result.prepared).toBeGreaterThan(0);
   expect(result.queries.length).toBeGreaterThanOrEqual(result.prepared);
   expect(result.r2References).toBeGreaterThan(0);
   expect(result.issues).toEqual([]);
 
-  // 架空のSQL。実在のデータは読み書きしない。同じ表名で入れ子になった場合も確認する。
+  // 試しのSQL。実在のデータは読み書きしない。同じ表名で入れ子になった場合も確認する。
   const scoped = "SELECT p.title FROM projects p JOIN jobs j ON j.ward_id = p.ward_id AND j.project_id = p.project_id WHERE p.ward_id = ? AND p.project_id = ?";
   const tables = new Set(["projects", "jobs"]);
   expect(inspectSql(scoped, tables)).toEqual([]);
@@ -33,7 +33,7 @@ it("全SQLとR2を検査し、架空の絞り漏れを足すと失敗する", ()
   ]) expect(inspectSql(broken, tables), broken).not.toEqual([]);
 
   const changed = checkWardScope({ ...sources, "src/ward-scope-fictional.ts": `
-    // 架空の検査用。実行はしない。
+    // 試しの検査用。実行はしない。
     const sql = ${JSON.stringify(scoped.replace("p.ward_id = ? AND ", ""))};
     db.prepare(sql);
     env.ORIGINALS.get("fictional-ward/original");

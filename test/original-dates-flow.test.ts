@@ -23,7 +23,7 @@ function browserOffice() {
 
 async function setup() {
   const ward = await seedWard(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "収穫祭（架空）", year: 2026 });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "収穫祭", year: 2026 });
   const office = browserOffice();
   const send = async (value: string, modified?: string, filename = "新しさの分からない名前.docx") => {
     const bytes = await fictionalDatedWord(value, modified);
@@ -31,7 +31,7 @@ async function setup() {
       parts: [{ kind: "file", filename, mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", bytes,
         extracted: await office.extractOffice(bytes) }] });
     const originalId = outcome.received[0]?.originalId;
-    if (!originalId) throw new Error("架空のWordを受け取れませんでした");
+    if (!originalId) throw new Error("試しのWordを受け取れませんでした");
     return originalId;
   };
   const apply = (ref: string, value: string, year = 2025, itemKey: ItemKey = "due", packVersion = "fictional-u89@1") =>
@@ -66,7 +66,7 @@ it("新しいWordを先、古いWordを後に送り、本文の見立てと保�
   const newer = await s.send("10月3日", "2025-09-20T10:00:00Z", "見分けられないA.docx");
   const older = await s.send("10月5日", "2025-09-12T10:00:00Z", "見分けられないB.docx");
   const memo = await receive(env, { wardId: s.ward.wardId, projectId: s.project.projectId, via: "admin",
-    parts: [{ kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode("4月の役員会のメモ（架空）。抽選会は取りやめ。") }] });
+    parts: [{ kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode("4月の役員会のメモ。抽選会は取りやめ。") }] });
   expect(memo.received).toHaveLength(1);
   const ai = mockComparison(() => newer);
   expect((await s.apply(newer, "10月3日")).status).toBe("applied");
@@ -109,7 +109,7 @@ it("日付が片方無いときは違うところと手がかりと見立てを�
   expect(state?.items.find((item) => item.key === "due")?.references[0]?.content).toBe("10月3日");
   const { saveAIDraft } = await import("../src/project/actions");
   expect(await saveAIDraft(env.DB, s.ward.wardId, s.project.projectId, "announcement", "fictional-draft@1", {
-    text: "収穫祭（架空）の返事は10月3日までです。", items: [{ key: "due", content: "10月3日" }],
+    text: "収穫祭の返事は10月3日までです。", items: [{ key: "due", content: "10月3日" }],
     based_on_state_version: state!.project.stateVersion,
   })).toBe(true);
   expect(ai.calls()).toBe(1);
@@ -158,14 +158,14 @@ it("比較の記録も区の写しと書き出しに含め、原本を消した�
   expect(WARD_TABLE_POLICY.find((entry) => entry.table === "original_comparisons")).toMatchObject({ snapshot: true, export: true, deletion: { cascade: "originals" } });
   const erased = eraseSnapshotJob({ format: 1, wardId: "fictional-ward", tables: {
     originals: [{ original_id: "fictional-a", job_id: "fictional-job" }],
-    original_comparisons: [{ first_original_id: "fictional-a", second_original_id: "fictional-b", result: "架空の比較" }],
+    original_comparisons: [{ first_original_id: "fictional-a", second_original_id: "fictional-b", result: "試しの比較" }],
   } }, "fictional-ward", "fictional-job");
   expect(JSON.parse(erased!).tables.original_comparisons).toHaveLength(0);
 });
 
 it("去年の回答処理は参考だけを直し、今年の中身を保ち、選んだ役員を残す", async () => {
   const s = await setup();
-  const account = await seedAccount(env.DB, s.ward.wardId, "架空の役員");
+  const account = await seedAccount(env.DB, s.ward.wardId, "試しの役員");
   const a = await s.send("10月5日");
   const b = await s.send("10月3日");
   mockComparison(() => b);

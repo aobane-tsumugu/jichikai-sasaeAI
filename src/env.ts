@@ -12,7 +12,7 @@ export interface Env {
 
   /** 区のページの固定 URL の根。空なら要求の origin。 */
   PUBLIC_BASE_URL: string;
-  /** デモの環境だけに置く、架空であることの断り。本番では置かない。 */
+  /** デモの環境だけに置く、デモ用自治会の案内。本番では置かない。 */
   DEMO_NOTICE?: string;
 
   // 束 2: Anthropic。API キーは使わず、署名鍵でトークンに交換する（実装は src/ai/）。ブラウザへは渡さない。

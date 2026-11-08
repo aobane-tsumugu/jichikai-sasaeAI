@@ -42,7 +42,7 @@ it.each(cases)("$kindの仕事から資料と下書きへ進み、紙と同じ�
   const project = await createProject(env.DB, ward.wardId, { kind: entry.kind, title: `${fixture.nextYearTitle} ${entry.kind}`, year: fixture.eventYear, accountId: account.accountId });
   const id = project.projectId; const path = `${root}/projects/${id}`;
   const state = await getProjectState(env.DB, ward.wardId, id);
-  if (!state) throw new Error("架空の仕事を作れませんでした");
+  if (!state) throw new Error("試しの仕事を作れませんでした");
   const read = async (url: string) => {
     const response = await get(realApp, url, cookie);
     expect(response.status).toBe(200);
@@ -85,8 +85,8 @@ it.each(cases)("$kindの仕事から資料と下書きへ進み、紙と同じ�
   { kind: "photo", filename: fixture.answerSheetFilename, mediaType: "image/jpeg", bytes: new Uint8Array(fixture.answerSheetPhotoBytes) },
   ] });
   const photo = received.received.find((original) => original.kind === "photo");
-  if (!received.jobId || !photo) throw new Error("架空の紙と文を受け付けられませんでした");
-  // 写真を読んだ応答だけを架空の読み取りに置き換える。文は受付が直接読んだもの。
+  if (!received.jobId || !photo) throw new Error("試しの紙と文を受け付けられませんでした");
+  // 写真を読んだ応答だけを試しの読み取りに置き換える。文は受付が直接読んだもの。
   const reading = buildDirectReading([{ originalId: photo.originalId, text: `${fixture.eventYear}年\n${fixture.reportText}\n${fixture.requestedBy}` }]);
   await env.DB.prepare(`INSERT INTO readings (reading_id, ward_id, job_id, source, pack_version, model, body, created_at)
     VALUES (?, ?, ?, 'model', ?, 'fictional-model', ?, ?)`)

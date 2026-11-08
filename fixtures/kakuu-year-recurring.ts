@@ -1,4 +1,4 @@
-// kakuuだけに足す見本。世帯と進め方は全てこの見本のために作った架空のデータ。
+// kakuuだけに足す見本。世帯と進め方は全てこの見本のために作った試しのデータ。
 import { getRoster, replaceRoster } from "../src/answers/api";
 import type { WardInfo } from "../src/env";
 import { addYearItem } from "../src/know/year";

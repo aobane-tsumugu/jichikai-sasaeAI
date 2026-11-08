@@ -8,15 +8,15 @@ import { get, postForm, realApp } from "./helpers";
 it("記録検索の題から進行中の行事を開け、閉じたあとは記録を開ける", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の防災の準備", year: 2026, accountId: account.accountId,
+    kind: "event", title: "試しの防災の準備", year: 2026, accountId: account.accountId,
   });
   await receive(env, {
     wardId: ward.wardId, projectId: project.projectId, via: "admin", accountId: account.accountId,
-    parts: [{ kind: "text", filename: "架空の備品.txt", mediaType: "text/plain", bytes: new TextEncoder().encode("架空の備品を確認しました。") }],
+    parts: [{ kind: "text", filename: "試しの備品.txt", mediaType: "text/plain", bytes: new TextEncoder().encode("試しの備品を確認しました。") }],
   });
   const root = `/${ward.slug}/admin`;
   const searchPath = `${root}/archive/search?q=${encodeURIComponent("備品")}`;
-  const titleLink = (html: string) => /<h2><a href="([^"]+)">架空の防災の準備<\/a><\/h2>/.exec(html)?.[1];
+  const titleLink = (html: string) => /<h2><a href="([^"]+)">試しの防災の準備<\/a><\/h2>/.exec(html)?.[1];
   const openPage = await get(realApp, searchPath, cookie);
   expect(openPage.status).toBe(200);
   const openLink = titleLink(await openPage.text());

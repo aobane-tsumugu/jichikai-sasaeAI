@@ -9,11 +9,11 @@ import { createProject } from "../src/project/api";
 it("LINEの返事で「子ども」「子供」のどちらも人数に含める", async () => {
   const { ward, account } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,
+    kind: "event", title: "試しの行事", year: 2026, accountId: account.accountId,
   });
   const replies = [
-    { household: "架空世帯（甲）", children: "子ども" },
-    { household: "架空世帯（乙）", children: "子供" },
+    { household: "世帯（甲）", children: "子ども" },
+    { household: "世帯（乙）", children: "子供" },
   ];
   await replaceRoster(env.DB, ward.wardId,
     replies.map(({ household }) => ({ household, district: "1班" })),
@@ -23,11 +23,11 @@ it("LINEの返事で「子ども」「子供」のどちらも人数に含める
     const text = `1班の${household}です。大人2人、${children}1人です。`;
     const received = await receive(env, {
       wardId: ward.wardId, projectId: project.projectId, via: "line_direct",
-      parts: [{ kind: "text", filename: "架空のLINEの文.txt", mediaType: "text/plain", bytes: new TextEncoder().encode(text) }],
+      parts: [{ kind: "text", filename: "試しのLINEの文.txt", mediaType: "text/plain", bytes: new TextEncoder().encode(text) }],
     });
-    if (!received.jobId) throw new Error("架空の答えの元の資料を受け付けられませんでした。");
+    if (!received.jobId) throw new Error("試しの答えの元の資料を受け付けられませんでした。");
     await ports.saveAnswerReply!(ward.wardId, project.projectId, {
-      eventId: crypto.randomUUID(), senderId: "架空の送信者", sourceType: "user",
+      eventId: crypto.randomUUID(), senderId: "試しの送信者", sourceType: "user",
       receivedAt: new Date().toISOString(), kind: "text", text,
     }, received.jobId);
   }
@@ -41,12 +41,12 @@ it("LINEの返事で「子ども」「子供」のどちらも人数に含める
 it("LINEの全角数字と半角数字が混じる人数を読み、手伝える時間の文は保つ", async () => {
   const { ward, account } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,
+    kind: "event", title: "試しの行事", year: 2026, accountId: account.accountId,
   });
   const replies = [
-    { household: "架空世帯（丙）", counts: "大人２人、子供1人" },
-    { household: "架空世帯（丁）", counts: "大人２人、子ども１人" },
-    { household: "架空世帯（戊）", counts: "来場は３人" },
+    { household: "世帯（丙）", counts: "大人２人、子供1人" },
+    { household: "世帯（丁）", counts: "大人２人、子ども１人" },
+    { household: "世帯（戊）", counts: "来場は３人" },
   ];
   await replaceRoster(env.DB, ward.wardId,
     replies.map(({ household }) => ({ household, district: "1班" })),
@@ -56,11 +56,11 @@ it("LINEの全角数字と半角数字が混じる人数を読み、手伝える
     const text = `1班の${household}です。${counts}。１２時なら手伝えます。`;
     const received = await receive(env, {
       wardId: ward.wardId, projectId: project.projectId, via: "line_direct",
-      parts: [{ kind: "text", filename: "架空のLINEの文.txt", mediaType: "text/plain", bytes: new TextEncoder().encode(text) }],
+      parts: [{ kind: "text", filename: "試しのLINEの文.txt", mediaType: "text/plain", bytes: new TextEncoder().encode(text) }],
     });
-    if (!received.jobId) throw new Error("架空の答えの元の資料を受け付けられませんでした。");
+    if (!received.jobId) throw new Error("試しの答えの元の資料を受け付けられませんでした。");
     await ports.saveAnswerReply!(ward.wardId, project.projectId, {
-      eventId: crypto.randomUUID(), senderId: "架空の送信者", sourceType: "user",
+      eventId: crypto.randomUUID(), senderId: "試しの送信者", sourceType: "user",
       receivedAt: new Date().toISOString(), kind: "text", text,
     }, received.jobId);
   }

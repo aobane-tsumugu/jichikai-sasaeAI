@@ -18,7 +18,7 @@ it("配る前の記入用紙から、班長の紙、閉じたあとの本文と�
   });
   const root = `/${ward.slug}/admin`;
   const source = { kind: "person" as const, accountId: account.accountId };
-  // 一枚に収まらない分も、既存の架空資料から作った行で確かめる。
+  // 一枚に収まらない分も、既存の試しの資料から作った行で確かめる。
   for (let index = 1; index <= 40; index++) {
     const result = await applyChange(env.DB, ward.wardId, project.projectId, {
       kind: "row", table: "sponsors", data: { name: `${fixture.sponsorName}${index}`, amount: fixture.sponsorAmount, reply: "yes" },

@@ -10,26 +10,26 @@ import { get, postForm, realApp } from "./helpers";
 it("回答票で人が直した内容が、開き直した入力欄とそのままの再送信でも残る", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の回答票の確認", year: 2026, accountId: account.accountId,
+    kind: "event", title: "試しの回答票の確認", year: 2026, accountId: account.accountId,
   });
   const received = await receive(env, {
     wardId: ward.wardId, projectId: project.projectId, via: "admin", readKind: "answer_sheet", accountId: account.accountId,
-    parts: [{ kind: "photo", filename: "架空の回答票.jpg", mediaType: "image/jpeg", bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 3]) }],
+    parts: [{ kind: "photo", filename: "試しの回答票.jpg", mediaType: "image/jpeg", bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 3]) }],
   });
   const originalId = received.received[0]!.originalId;
   const attempt = await claimRead(env.DB, ward.wardId, received.jobId!, 60_000);
   expect(attempt).not.toBeNull();
-  // AI は呼ばず、架空の写真の読み取り結果を置く。
+  // AI は呼ばず、試しの写真の読み取り結果を置く。
   expect(await finishRead(env.DB, {
     wardId: ward.wardId, jobId: received.jobId!, attempt: attempt!, source: "model", packVersion: "sheet-fields-test@1", model: "fixture",
-    body: { summary: "架空の回答票", unreadable: [], rows: [{
-      household_name: "架空の読み取り世帯", ward_group: "架空の一班", adults: 2, children: 1,
-      helper_names: ["架空の手伝う人"], helper_slots: ["受付"], note: "", confidence: "high", original_id: originalId, locator: "1行目",
+    body: { summary: "試しの回答票", unreadable: [], rows: [{
+      household_name: "試しの読み取り世帯", ward_group: "試しの一班", adults: 2, children: 1,
+      helper_names: ["試しの手伝う人"], helper_slots: ["受付"], note: "", confidence: "high", original_id: originalId, locator: "1行目",
     }] },
   })).toBe(true);
   const path = `/${ward.slug}/admin/answers/${project.projectId}`;
   const rowPath = `${path}/sheet/${originalId}/row/0`;
-  const corrected = { attend: "no", household: "架空の直した世帯", district: "架空の二班", children_count: "0", adults_count: "0", seniors_count: "0", helper_name: "", helper_times: "" };
+  const corrected = { attend: "no", household: "試しの直した世帯", district: "試しの二班", children_count: "0", adults_count: "0", seniors_count: "0", helper_name: "", helper_times: "" };
   expect((await postForm(realApp, rowPath, corrected, cookie)).status).toBe(303);
   const before = await listAnswers(env.DB, ward.wardId, project.projectId);
   const page = await get(realApp, `${path}?view=list`, cookie);

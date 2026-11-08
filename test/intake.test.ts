@@ -28,7 +28,7 @@ function ctxOf() {
   return { ctx, settle: async () => void (await Promise.all(pending.splice(0))) };
 }
 
-/** 同じ印なら同じバイト列になる、寸法を持つ架空のJPEG。 */
+/** 同じ印なら同じバイト列になる、寸法を持つ試しのJPEG。 */
 function jpeg(tag = crypto.randomUUID()): Uint8Array {
   return fictionalPaperPhoto(tag);
 }
@@ -505,7 +505,7 @@ describe("画面", () => {
   it("行事から開いた時だけ送る先が決まり、送る先を検査する", async () => {
     const { ward, cookie } = await seedAdmin(env.DB);
     setProjectDirectory({
-      listOpen: async () => [{ projectId: "p-1", title: "秋の収穫祭（架空）" }],
+      listOpen: async () => [{ projectId: "p-1", title: "秋の収穫祭" }],
       isOpen: async (_db, _w, id) => id === "p-1",
     });
     setPipelineDeps(fakeDeps(okRead()));
@@ -526,9 +526,9 @@ describe("送る先の行事の検査", () => {
     setProjectDirectory(null);
     const { createProject } = await import("../src/project/api");
     const ward = await seedWard(env.DB);
-    const open = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026 });
+    const open = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭", year: 2026 });
     const otherWard = await seedWard(env.DB);
-    const foreign = await createProject(env.DB, otherWard.wardId, { kind: "event", title: "別の区（架空）", year: 2026 });
+    const foreign = await createProject(env.DB, otherWard.wardId, { kind: "event", title: "別の区", year: 2026 });
     const send = (projectId: string) =>
       receive(env, { wardId: ward.wardId, via: "admin", projectId, parts: [{ kind: "text", filename: "", mediaType: "", bytes: new TextEncoder().encode(crypto.randomUUID()) }] }).catch((e: unknown) => e as ReceiveError);
     expect(await send("undefined")).toMatchObject({ code: "no_project" });

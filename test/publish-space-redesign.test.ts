@@ -32,7 +32,7 @@ it("資料も質問も仕事もない一年目に、案内を確認して配り�
   const draft = await env.DB.prepare(`SELECT document_id, version_id, version_no FROM document_versions
     WHERE ward_id = ? AND project_id = ? ORDER BY version_no DESC LIMIT 1`)
     .bind(ward.wardId, id).first<{ document_id: string; version_id: string; version_no: number }>();
-  if (!draft) throw new Error("架空の案内が保存されていません");
+  if (!draft) throw new Error("試しの案内が保存されていません");
   const first = await get(realApp, `${path}/confirm?kind=announcement`, cookie);
   expect(first.status).toBe(200);
   const firstHtml = await first.text();
@@ -76,7 +76,7 @@ it("資料も質問も仕事もない一年目に、案内を確認して配り�
   const leaderToken = await createInvite(env.DB, ward.wardId, id, "leader", FIRST_SLICE.district, account.accountId, true);
   const entrance = await get(realApp, `/${ward.slug}/space/${id}/person/${leaderToken}`);
   const leaderCookie = cookieFrom(entrance, `space_${id}`);
-  if (!leaderCookie) throw new Error("架空の班長が入れません");
+  if (!leaderCookie) throw new Error("試しの班長が入れません");
   const spacePath = `/${ward.slug}/space/${id}`;
   const leader = await (await get(realApp, spacePath, leaderCookie)).text();
   expect(leader).toContain(`${FIRST_SLICE.district}の班長さんへ`);
@@ -88,7 +88,7 @@ it("資料も質問も仕事もない一年目に、案内を確認して配り�
   expect(received).toContain("残りがなければ、これで終わりです。");
   expect(received).toContain("紙は名前が読めないようにして捨ててかまいません。");
   const latest = await getProjectState(env.DB, ward.wardId, id);
-  if (!latest) throw new Error("架空の行事がありません");
+  if (!latest) throw new Error("試しの行事がありません");
   expect(await saveDocument(env.DB, ward.wardId, id, account.accountId, {
     kind: "notice", title: "雨の変更", scope: "public", basedOn: latest.project.stateVersion,
     body: JSON.stringify({ text: FIRST_SLICE.rainAnnouncement, items: [{ key: "place", content: FIRST_SLICE.layoutPosition }] }),

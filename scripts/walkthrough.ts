@@ -258,7 +258,7 @@ async function runFull() {
   const opened = await post(admin + "/projects", { kind: "event", year: String(new Date().getFullYear()) });
   project = /\/projects\/([^/]+)\/map$/.exec(opened.headers.get("location") ?? "")?.[1] ?? "";
   if (opened.status !== 303 || !project) throw new Error("新しい行事を開けません");
-  projectTitle = "架空 秋の収穫祭 " + stamp.slice(0, 13);
+  projectTitle = "秋の収穫祭（通し） " + stamp.slice(0, 13);
   await post(admin + "/projects/" + project + "/title", { title: projectTitle });
   record("1", "通過", "新規行事「" + projectTitle + "」を作成。", start);
   } catch (error) {
@@ -289,7 +289,7 @@ async function runFull() {
     data.append("part_kind", type === "image/jpeg" ? "photo" : "file");
     const sent = await req(admin + "/intake", { method: "POST", headers: { accept: "application/json" }, body: data });
     const result = await sent.json().catch(() => null) as { ok?: boolean; jobId?: string | null; duplicates?: number } | null;
-    if (!sent.ok || !result?.ok) throw new Error("架空資料を送れません: " + filename);
+    if (!sent.ok || !result?.ok) throw new Error("試しの資料を送れません: " + filename);
     if (result.jobId) {
       try {
         if (!(await waitFor(filename, project))) unfinished.push(filename + "（読み取り・反映待ちの上限）");
@@ -307,7 +307,7 @@ async function runFull() {
   if (!draftResult.ready) {
     unfinished.push("案内の下書き（AI依頼の完了待ちの上限）");
     if (!draft.fields.text?.trim()) {
-      draft.fields.text = "架空の秋の収穫祭を開催します。日時と会場は今年の中身をご確認ください。";
+      draft.fields.text = "試しの秋の収穫祭を開催します。日時と会場は今年の中身をご確認ください。";
       if ((await post(draft.action, draft.fields)).status !== 303) throw new Error("手書きの案内を保存できません");
     }
   }
@@ -351,7 +351,7 @@ async function runFull() {
   publicPublished = true;
   intakeOk = unfinished.length === 0;
   if (!intakeOk) process.exitCode = 1;
-  record("2", intakeOk ? "通過" : "未完了", "架空の実ファイル4件を送信。同じものはそのまま利用。案内の紙に行事名・日時・場所、回答票に締切と班長か役員への渡し先を確認。自治会のLINEは送信なし。" + (unfinished.length ? " 未完了: " + unfinished.join("、") : " AIの読み取り・反映と案内作成を確認。"), start);
+  record("2", intakeOk ? "通過" : "未完了", "試しの実ファイル4件を送信。同じものはそのまま利用。案内の紙に行事名・日時・場所、回答票に締切と班長か役員への渡し先を確認。自治会のLINEは送信なし。" + (unfinished.length ? " 未完了: " + unfinished.join("、") : " AIの読み取り・反映と案内作成を確認。"), start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";
     record("2", "停止", message, start);
@@ -366,10 +366,10 @@ async function runFull() {
   const answerForm = await get(wardPath + "/answer/" + project);
   const district = /name="district"[^>]*value="([^"]+)"/.exec(answerForm.html)?.[1] ?? "";
   const answer = await post(wardPath + "/answer/" + project, {
-    attend: "yes", household: "架空 小林", district, children_count: "0", adults_count: "2", seniors_count: "0", helper_name: "架空 小林さと", helper_times: "受付10:30-12:00"
+    attend: "yes", household: "小林", district, children_count: "0", adults_count: "2", seniors_count: "0", helper_name: "小林さと", helper_times: "受付10:30-12:00"
   });
-  if (answer.status !== 200 || !(await answer.text()).includes("返事を受け付けました")) throw new Error("架空の答えを送れません");
-  record("3", "通過", "公開された案内から架空の答えを送信。", start);
+  if (answer.status !== 200 || !(await answer.text()).includes("返事を受け付けました")) throw new Error("試しの答えを送れません");
+  record("3", "通過", "公開された案内から試しの答えを送信。", start);
   } catch (error) {
     const message = error instanceof Error ? error.message : "処理に失敗しました";
     record("3", "停止", message, start);
@@ -381,7 +381,7 @@ async function runFull() {
   currentStage = "4";
   currentStarted = start;
   try {
-  const passphrase = "架空の合言葉-" + stamp.slice(0, 12);
+  const passphrase = "試しの合言葉-" + stamp.slice(0, 12);
   sensitiveValues.add(passphrase);
   if ((await post(admin + "/space/" + project + "/open", { passphrase })).status !== 200) throw new Error("実行委員と班長のページを開けません");
   if ((await post(admin + "/projects/" + project + "/draft/duty_roster/start", {})).status !== 303) throw new Error("当番表の下書きを頼めません");
@@ -441,7 +441,7 @@ async function runFull() {
   const close = readForm(closePage.html, "/close/" + project + "/finalize");
   const staffReport = close.values.getAll("body")[1] ?? "";
   close.values.delete("body");
-  close.values.append("body", "架空の秋の収穫祭を実施しました。雨会場に変更して開催しました。");
+  close.values.append("body", "試しの秋の収穫祭を実施しました。雨会場に変更して開催しました。");
   close.values.append("body", staffReport);
   if ((await post(close.action, close.values)).status !== 303) throw new Error("閉じる操作に失敗");
   if (!(await get(wardPath + "/p/" + project)).html.includes("実施しました")) throw new Error("公開ページに実施報告がありません");
@@ -449,7 +449,7 @@ async function runFull() {
   if (!archive.html.includes("これをもとに今年の")) throw new Error("記録から始める入口がありません");
   const seedPage = await get(admin + "/archive/" + project + "?view=seed");
   const seed = readForm(seedPage.html, "/archive/" + project + "/seed");
-  seed.fields.title = "架空 秋の収穫祭 " + (new Date().getFullYear() + 1);
+  seed.fields.title = "秋の収穫祭（通し） " + (new Date().getFullYear() + 1);
   seed.fields.year = String(new Date().getFullYear() + 1);
   seed.fields.eventDay = (new Date().getFullYear() + 1) + "-10-24";
   const next = await post(seed.action, seed.fields);

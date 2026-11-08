@@ -13,8 +13,8 @@ await build({ entryPoints: ["test/meeting-local-worker.ts"], outfile: output + "
 const mf = new Miniflare(convertV4MiniflareOptions({
   modules: true, scriptPath: output + "/worker.mjs", compatibilityDate: "2026-08-01", compatibilityFlags: ["nodejs_compat"],
   d1Databases: ["DB"], r2Buckets: ["ORIGINALS"],
-  bindings: { PUBLIC_BASE_URL: "http://localhost", DEMO_NOTICE: "この自治会の資料と名前はすべて架空です。" },
-  // 外へは一切接続しない。SDKのfetchは架空の応答に置き換えてある。
+  bindings: { PUBLIC_BASE_URL: "http://localhost", DEMO_NOTICE: "デモ用自治会です。" },
+  // 外へは一切接続しない。SDKのfetchは試しの応答に置き換えてある。
   outboundService: () => new Response("ローカル確認では外へ接続しません", { status: 503 }),
 }));
 try {
@@ -24,7 +24,7 @@ try {
     await db.exec(sql);
   }
   const response = await mf.dispatchFetch("http://localhost/__meeting_setup", { method: "POST" });
-  if (!response.ok) throw new Error("架空の区を準備できません");
+  if (!response.ok) throw new Error("試しの区を準備できません");
   const setup = await response.json();
   const result = await runMeetingWalkthrough({ base: "http://localhost", ...setup }, {
     fetch: (input, init) => mf.dispatchFetch(String(input), init),

@@ -47,7 +47,7 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
     parts: [{ kind: "text", filename: "案内", mediaType: "text/plain", bytes: new TextEncoder().encode(fixture.publicAnnouncement) }],
   });
   const original = received.received[0];
-  if (!original) throw new Error("架空の資料を受け取れませんでした");
+  if (!original) throw new Error("試しの資料を受け取れませんでした");
   const originalPath = `${root}/intake/originals/${original.originalId}`;
   const originalPage = await read(`${originalPath}?back=${encodeURIComponent(`${root}/projects/${id}/ledger`)}`);
   expect(originalPage).toContain(fixture.publicAnnouncement);
@@ -68,7 +68,7 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
   expect(inquiries).toContain("通知を待たずに、ときどき見てください");
   const inquiry = await env.DB.prepare("SELECT inquiry_id FROM inquiry_records WHERE ward_id = ? ORDER BY received_at LIMIT 1")
     .bind(ward.wardId).first<{ inquiry_id: string }>();
-  if (!inquiry) throw new Error("架空の問い合わせがありません");
+  if (!inquiry) throw new Error("試しの問い合わせがありません");
   const inquiryPath = `${root}/inquiries/${inquiry.inquiry_id}`;
   const inquiryPage = await read(inquiryPath);
   expect(inquiryPage).toContain("返事を書いて送ると、来たところへ届き");
@@ -107,7 +107,7 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
   })).status).toBe("applied");
   const state = await getProjectState(env.DB, ward.wardId, id);
   const sponsor = state?.tables.sponsors.find((r) => r.scope === "current");
-  if (!sponsor) throw new Error("架空の協賛の行がありません");
+  if (!sponsor) throw new Error("試しの協賛の行がありません");
   const ledgerPath = `${root}/projects/${id}/ledger`;
   expect(await read(ledgerPath)).toContain("額はまだ書いていません");
   const edited = await follow(await postForm(realApp, `${ledgerPath}/${sponsor.rowId}`, {
@@ -133,7 +133,7 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
   // 名簿を入れなくても、一般的な題の下書きを全種類で読める。
   for (const kind of DOCUMENT_KINDS) {
     const beforeDraft = await getProjectState(env.DB, ward.wardId, id);
-    if (!beforeDraft) throw new Error("架空の行事がありません");
+    if (!beforeDraft) throw new Error("試しの行事がありません");
     expect(await saveDocument(env.DB, ward.wardId, id, account.accountId, {
       kind, title: "案内", scope: kind === "duty_roster" ? "space" : "public", basedOn: beforeDraft.project.stateVersion,
       body: JSON.stringify({ text: fixture.publicAnnouncement, items: [{ key: "place", content: fixture.previousPlace }] }),
@@ -153,7 +153,7 @@ it("名簿のない一年目に資料を送り、問い合わせの答えと協�
   }
   const noticePath = `${root}/projects/${id}/draft/notice`;
   const beforeNotice = await getProjectState(env.DB, ward.wardId, id);
-  if (!beforeNotice) throw new Error("架空の行事がありません");
+  if (!beforeNotice) throw new Error("試しの行事がありません");
   const noticeSaved = await follow(await postForm(realApp, `${noticePath}/save`, {
     title: "知らせ", scope: "public", based_on: String(beforeNotice.project.stateVersion),
     text: fixture.rainAnnouncement, item_place: fixture.layoutSpot,

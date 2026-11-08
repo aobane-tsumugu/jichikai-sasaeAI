@@ -20,7 +20,7 @@ type RecordsFile = {
 };
 
 it("提供側が自治会を開いて入口を渡し、停止・再開・書き出しを経て、他の区を残して消せる", async () => {
-  // VitestのD1/R2だけを使う。LINEの鍵も架空で、外部への通信は通さない。
+  // VitestのD1/R2だけを使う。LINEの鍵もで、外部への通信は通さない。
   const external = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("提供側の一周の試験では外部へ通信しません"));
   try {
     const loggedIn = await postForm(realApp, "/ops/login", { id: OPS_ID, password: OPS_PASSWORD }, undefined, opsEnv);
@@ -35,7 +35,7 @@ it("提供側が自治会を開いて入口を渡し、停止・再開・書き�
     const destination = `fictional-${crypto.randomUUID()}`;
     const officialLineUrl = "https://example.invalid/fictional-line";
     const opened = await postForm(realApp, "/ops/wards", {
-      name: "提供側の一周の区（架空）", slug, firstAccountName: "最初の役員（架空）",
+      name: "提供側の一周の区", slug, firstAccountName: "最初の役員",
       lineDestination: destination, officialLineUrl,
     }, ops, opsEnv);
     expect(opened.status).toBe(201);
@@ -50,7 +50,7 @@ it("提供側が自治会を開いて入口を渡し、停止・再開・書き�
     expect(openedHtml).toContain(lineNames.channelSecretBinding);
     expect(openedHtml).toContain(lineNames.accessTokenBinding);
 
-    // Workers secretsを登録する操作自体はこの試験の外。表示された参照先に架空の鍵を接続する。
+    // Workers secretsを登録する操作自体はこの試験の外。表示された参照先に試しの鍵を接続する。
     const bindings = withEnv({
       OPS_ID, OPS_PASSWORD,
       [lineNames.channelSecretBinding]: "fictional-channel-secret",
@@ -78,24 +78,24 @@ it("提供側が自治会を開いて入口を渡し、停止・再開・書き�
 
     // 引き渡しと消去で空の表を確かめるだけにならないよう、実際の保存口から記録を入れる。
     const account = await env.DB.prepare("SELECT account_id FROM accounts WHERE ward_id = ?").bind(wardId).first<{ account_id: string }>();
-    const project = await createProject(env.DB, wardId, { kind: "event", title: "架空の行事", year: 2026, accountId: account!.account_id });
-    const entry = { household: "架空の世帯", district: "架空1班" };
+    const project = await createProject(env.DB, wardId, { kind: "event", title: "試しの行事", year: 2026, accountId: account!.account_id });
+    const entry = { household: "試しの世帯", district: "1班" };
     await replaceRoster(env.DB, wardId, [entry], { household: 0, district: 1 });
     const exemption = await postForm(realApp, `${admin}/rota/exemptions`, {
-      household: JSON.stringify(entry), reason: "架空の免除の理由", starts_on: "2026-01-01", ends_on: "2026-12-31",
+      household: JSON.stringify(entry), reason: "試しの免除の理由", starts_on: "2026-01-01", ends_on: "2026-12-31",
     }, officer, bindings);
     expect(exemption.status).toBe(303);
     expect(exemption.headers.get("location")).toContain("saved=1");
     const committee = await postForm(realApp, `${admin}/projects/${project.projectId}/committee`, {
-      name: "実行委員（架空）", role: "会場係（架空）", contact: "committee@example.invalid",
+      name: "実行委員", role: "会場係", contact: "committee@example.invalid",
     }, officer, bindings);
     expect(committee.status).toBe(303);
     expect(committee.headers.get("location")).toContain("saved=1");
     await addAnswer(env.DB, wardId, { ...entry, projectId: project.projectId, peopleCount: 2, source: "phone", accountId: account!.account_id });
-    const originalText = "架空の行事の元の資料";
+    const originalText = "試しの行事の元の資料";
     const received = await receive(bindings, {
       wardId, projectId: project.projectId, via: "admin", accountId: account!.account_id,
-      parts: [{ kind: "text", filename: "架空の資料.txt", mediaType: "text/plain", bytes: new TextEncoder().encode(originalText) }],
+      parts: [{ kind: "text", filename: "試しの資料.txt", mediaType: "text/plain", bytes: new TextEncoder().encode(originalText) }],
     });
     expect(received.received).toHaveLength(1);
     const original = await env.DB.prepare("SELECT original_id, r2_path FROM originals WHERE ward_id = ? AND job_id = ?")
@@ -104,14 +104,14 @@ it("提供側が自治会を開いて入口を渡し、停止・再開・書き�
     expect(await (await bucket.get(original!.r2_path))!.text()).toBe(originalText);
     const other = await seedWard(env.DB);
     const otherBucket = new WardBucket(env.ORIGINALS, other.wardId);
-    await otherBucket.put(original!.r2_path, "ほかの区の架空の資料");
+    await otherBucket.put(original!.r2_path, "ほかの区の試しの資料");
     await replaceRoster(env.DB, other.wardId, [entry], { household: 0, district: 1 });
     await writeDailyWardSnapshots(bindings, new Date("2026-11-06T00:00:00Z"));
     const snapshotPath = "snapshots/daily/2026-11-06.json";
     const snapshot = await (await bucket.get(snapshotPath))!.json<RecordsFile>();
     expect(snapshot.wardId).toBe(wardId);
     expect(snapshot.tables.project_answers).toContainEqual(expect.objectContaining({ household: entry.household, people_count: 2 }));
-    expect(snapshot.tables.rota_exemptions).toContainEqual(expect.objectContaining({ reason: "架空の免除の理由" }));
+    expect(snapshot.tables.rota_exemptions).toContainEqual(expect.objectContaining({ reason: "試しの免除の理由" }));
     expect(snapshot.tables.project_rows).toContainEqual(expect.objectContaining({ table_key: "committee" }));
 
     const lifecycle = `${opsRoot}/lifecycle`;
@@ -137,7 +137,7 @@ it("提供側が自治会を開いて入口を渡し、停止・再開・書き�
     expect(records.ward?.ward_id).toBe(wardId);
     expect(records.tables.originals).toContainEqual(expect.objectContaining({ original_id: original!.original_id }));
     expect(records.tables.project_answers).toContainEqual(expect.objectContaining({ household: entry.household, people_count: 2 }));
-    expect(records.tables.rota_exemptions).toContainEqual(expect.objectContaining({ reason: "架空の免除の理由" }));
+    expect(records.tables.rota_exemptions).toContainEqual(expect.objectContaining({ reason: "試しの免除の理由" }));
     expect(records.tables.project_rows).toContainEqual(expect.objectContaining({ table_key: "committee" }));
     expect(records.tables.accounts![0]).not.toHaveProperty("password_hash");
     expect(records.objects).toEqual([{ key: original!.r2_path, mediaType: "text/plain", base64: btoa(String.fromCharCode(...new TextEncoder().encode(originalText))) }]);
@@ -162,7 +162,7 @@ it("提供側が自治会を開いて入口を渡し、停止・再開・書き�
     const mark = await env.DB.prepare("SELECT scope FROM ops_deletion_marks WHERE ward_id = ?").bind(wardId).all();
     expect(mark.results).toEqual([{ scope: "ward" }]);
     expect(await (await get(realApp, "/ops/deletions", ops, bindings)).text()).toContain("消去が済んだ記録");
-    expect(await (await otherBucket.get(original!.r2_path))!.text()).toBe("ほかの区の架空の資料");
+    expect(await (await otherBucket.get(original!.r2_path))!.text()).toBe("ほかの区の試しの資料");
     expect(await otherBucket.head(snapshotPath)).not.toBeNull();
     expect(await env.DB.prepare("SELECT household, district FROM ward_roster_entries WHERE ward_id = ?").bind(other.wardId).all())
       .toMatchObject({ results: [entry] });

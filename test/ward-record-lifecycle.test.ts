@@ -42,17 +42,17 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
   async function records() {
     const { ward, account } = await seedAdmin(env.DB);
     const w = ward.wardId;
-    const seat = await seedSeat(env.DB, w, "架空の書記");
+    const seat = await seedSeat(env.DB, w, "試しの書記");
     await env.DB.prepare("UPDATE accounts SET seat_id = ? WHERE ward_id = ? AND account_id = ?").bind(seat, w, account.accountId).run();
-    const project = await createProject(env.DB, w, { kind: "event", title: "架空の控え確認会", year: 2026, accountId: account.accountId });
+    const project = await createProject(env.DB, w, { kind: "event", title: "試しの控え確認会", year: 2026, accountId: account.accountId });
     const p = project.projectId;
-    const duty = await createProject(env.DB, w, { kind: "duty", title: "架空のごみ当番", year: 2026, accountId: account.accountId });
+    const duty = await createProject(env.DB, w, { kind: "duty", title: "試しのごみ当番", year: 2026, accountId: account.accountId });
     const sourceBytes = Uint8Array.from(atob(SOURCE_PNG), (character) => character.charCodeAt(0));
     const sourceHash = "b".repeat(64);
     const comparisonOriginalId = `${w}-comparison`;
-    const comparisonText = "架空の確認会は午後に始めます。";
+    const comparisonText = "試しの確認会は午後に始めます。";
     const comparisonBytes = new TextEncoder().encode(comparisonText);
-    // ここで使うIDと本文と認証の値は全て試験用の架空のもの。
+    // ここで使うIDと本文と認証の値は全て試験用の試しのもの。
     await env.DB.batch([
       // 当番の曜日も両方の自治会に入れ、写し・書き出し・親からの連動消去を確かめる。
       env.DB.prepare("INSERT INTO rota_schedules (ward_id, project_id, weekday) VALUES (?, ?, 1)").bind(w, duty.projectId),
@@ -67,36 +67,36 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
       env.DB.prepare(`INSERT INTO original_comparisons (ward_id, project_id, first_original_id, second_original_id, result, created_at)
         VALUES (?, ?, ?, ?, ?, '2026-11-06')`)
         .bind(w, p, w, comparisonOriginalId, JSON.stringify({
-          descriptions: ["架空の案内の写真", "架空の確認会のメモ"],
+          descriptions: ["試しの案内の写真", "試しの確認会のメモ"],
           differences: ["メモには午後に始めると書いてあります。"],
           clues: ["どちらが新しいかを示す日付はありません。"],
           newer: null, assessment: "中身からは、どちらが新しいか分かりません。",
         })),
       env.DB.prepare(`INSERT INTO readings (ward_id, reading_id, job_id, source, pack_version, body, created_at)
         VALUES (?, ?, ?, 'direct', 'fixture@1', '{"text_blocks":[]}', '2026-11-06')`).bind(w, w, w),
-      env.DB.prepare("INSERT INTO ward_know_items (ward_id, item_id, body) VALUES (?, 'meeting', '架空の総会の決まり')").bind(w),
+      env.DB.prepare("INSERT INTO ward_know_items (ward_id, item_id, body) VALUES (?, 'meeting', '試しの総会の決まり')").bind(w),
       env.DB.prepare("INSERT INTO ward_year_items (ward_id, item_id, removed_at) VALUES (?, 'autumn-clean', '2026-11-06')").bind(w),
       env.DB.prepare("INSERT INTO ward_material_links (ward_id, link_id, original_id, target_kind, target_id, linked_by) VALUES (?, ?, ?, 'know_item', 'meeting', 'person')").bind(w, w, w),
       env.DB.prepare(`INSERT INTO paper_reading_slices (ward_id, job_id, source_job_id, body, created_at)
         VALUES (?, ?, ?, '{}', '2026-11-06')`).bind(w, w, w),
       env.DB.prepare(`INSERT INTO intake_photo_checks (ward_id, original_id, job_id, readability, paper_kind, reason)
-        VALUES (?, ?, ?, 'readable', 'unknown', '架空の確認')`).bind(w, w, w),
+        VALUES (?, ?, ?, 'readable', 'unknown', '試しの確認')`).bind(w, w, w),
       env.DB.prepare(`INSERT INTO line_photo_batches (ward_id, batch_id, destination, source_type, source_id, sender_id, created_at, last_received_at, reply_token)
         VALUES (?, ?, 'fictional-destination', 'user', 'fictional-user', 'fictional-user', '2026-11-06', '2026-11-06', 'fictional-reply-token')`).bind(w, w),
       env.DB.prepare(`INSERT INTO line_photo_items (ward_id, batch_id, job_id, message_id, quote_token, receipt_reply_token)
         VALUES (?, ?, ?, 'fictional-message', 'fictional-quote-token', 'fictional-receipt-token')`).bind(w, w, w),
       env.DB.prepare(`INSERT INTO line_clarifications (ward_id, clarification_id, batch_id, job_id, original_id, topic, text)
-        VALUES (?, ?, ?, ?, ?, 'year', '架空の年の質問')`).bind(w, w, w, w, w),
+        VALUES (?, ?, ?, ?, ?, 'year', '試しの年の質問')`).bind(w, w, w, w, w),
       env.DB.prepare(`INSERT INTO line_clarification_answers (ward_id, event_id, clarification_id, job_id, answer_text, sender_label)
-        VALUES (?, 'fictional-event', ?, ?, '架空の返事', '架空の役員')`).bind(w, w, w),
+        VALUES (?, 'fictional-event', ?, ?, '試しの返事', '試しの役員')`).bind(w, w, w),
       env.DB.prepare(`INSERT INTO line_bundle_decisions
         (ward_id, bundle_id, summary, action, project_id, decided_by, clarification_id, created_at, updated_at, decided_at)
-        VALUES (?, 'fictional-bundle', '架空の参考資料の判断', 'reference', ?, 'officer', ?, '2026-11-06', '2026-11-06', '2026-11-06')`).bind(w, p, w),
+        VALUES (?, 'fictional-bundle', '試しの参考資料の判断', 'reference', ?, 'officer', ?, '2026-11-06', '2026-11-06', '2026-11-06')`).bind(w, p, w),
       env.DB.prepare(`INSERT INTO line_talk_admin_topics (ward_id, job_id, bundle_id)
         VALUES (?, ?, 'fictional-admin-bundle')`).bind(w, w),
       env.DB.prepare(`INSERT INTO line_talk_inquiry_posts
         (ward_id, event_id, bundle_id, destination, source_type, source_id, sender_id, received_at, text)
-        VALUES (?, 'fictional-inquiry-event', 'fictional-inquiry-bundle', 'fictional-destination', 'user', 'fictional-user', 'fictional-user', '2026-11-06', '架空の問い合わせの元の文')`).bind(w),
+        VALUES (?, 'fictional-inquiry-event', 'fictional-inquiry-bundle', 'fictional-destination', 'user', 'fictional-user', 'fictional-user', '2026-11-06', '試しの問い合わせの元の文')`).bind(w),
       env.DB.prepare(`INSERT INTO line_talk_undo (ward_id, talk_id, undo_id, body)
         VALUES (?, 'fictional-talk', 'fictional-undo', ?)`)
         .bind(w, JSON.stringify({ posts: [], decisions: [], inquiries: [], links: [] })),
@@ -105,9 +105,9 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
       env.DB.prepare(`INSERT INTO line_photo_sources (ward_id, destination, source_type, source_id, project_id)
         VALUES (?, 'fictional-destination', 'group', 'fictional-group', ?)`).bind(w, p),
       env.DB.prepare(`INSERT INTO line_photo_context_texts (ward_id, destination, source_type, source_id, event_id, received_at, text, expires_at)
-        VALUES (?, 'fictional-destination', 'user', 'fictional-user', 'fictional-context-event', '2026-11-06T00:00:00Z', '架空の写真の前後の文', '2026-11-07T00:00:00Z')`).bind(w),
+        VALUES (?, 'fictional-destination', 'user', 'fictional-user', 'fictional-context-event', '2026-11-06T00:00:00Z', '試しの写真の前後の文', '2026-11-07T00:00:00Z')`).bind(w),
       env.DB.prepare(`INSERT INTO project_help_offers (ward_id, offer_id, project_id, name, times, created_at)
-        VALUES (?, ?, ?, '架空の手伝い', '架空の午後', '2026-11-06')`).bind(w, w, p),
+        VALUES (?, ?, ?, '試しの手伝い', '試しの午後', '2026-11-06')`).bind(w, w, p),
       env.DB.prepare(`INSERT INTO sign_in_links (ward_id, link_id, account_id, purpose, token_hash, expires_at, created_at, created_by_account_id)
         VALUES (?, ?, ?, 'invite', 'fictional-link-hash', '2026-11-07', '2026-11-06', ?)`).bind(w, w, account.accountId, account.accountId),
       env.DB.prepare(`INSERT INTO login_attempts (ward_id, attempt_key, attempt_id, attempted_at)
@@ -128,11 +128,11 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
       VALUES (?, 1, ?, '2026-11-06T00:00:00Z', ?, ?, ?, 'fictional-provider')`)
       .bind(w, w, "a".repeat(64), model, profile).run();
     expect(await saveDocument(env.DB, w, p, account.accountId, {
-      kind: "report", title: "架空の写真の報告", scope: "public", body: JSON.stringify({ text: "架空の報告です。", items: [] }), basedOn: 0,
+      kind: "report", title: "試しの写真の報告", scope: "public", body: JSON.stringify({ text: "試しの報告です。", items: [] }), basedOn: 0,
     })).toBe(true);
     const version = await env.DB.prepare("SELECT document_id, version_id, version_no FROM document_versions WHERE ward_id = ? AND project_id = ?")
       .bind(w, p).first<{ document_id: string; version_id: string; version_no: number }>();
-    if (!version) throw new Error("架空の報告を作れませんでした");
+    if (!version) throw new Error("試しの報告を作れませんでした");
     await env.DB.batch([
       env.DB.prepare("UPDATE document_versions SET published_at = '2026-11-06' WHERE ward_id = ? AND version_id = ?").bind(w, version.version_id),
       env.DB.prepare(`INSERT INTO publication_records
@@ -151,11 +151,11 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
     ]);
     // チラシも実際の行と画像を用意し、写し・書き出し・連動消去を空の表で済ませない。
     expect(await saveDocument(env.DB, w, p, account.accountId, {
-      kind: "announcement", title: "架空の確認会の案内", scope: "public",
-      body: JSON.stringify({ text: "架空の案内です。", items: [] }), basedOn: 0,
+      kind: "announcement", title: "試しの確認会の案内", scope: "public",
+      body: JSON.stringify({ text: "試しの案内です。", items: [] }), basedOn: 0,
     })).toBe(true);
     const announcement = await getEditableDocument(env.DB, w, p, "announcement");
-    if (!announcement?.versionId) throw new Error("架空の案内を作れませんでした");
+    if (!announcement?.versionId) throw new Error("試しの案内を作れませんでした");
     const flyerPaths = ["notice-flyers/fictional.jpg", "notice-flyers/fictional-preview.jpg"] as const;
     await env.DB.prepare(`INSERT INTO notice_flyers (ward_id, project_id, version_id, flyer_id, r2_path, preview_r2_path)
       VALUES (?, ?, ?, ?, ?, ?)`)
@@ -201,7 +201,7 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
   }
   expect(snapshot.tables.line_photo_items).toContainEqual(expect.objectContaining({ quote_token: "fictional-quote-token" }));
   expect(snapshot.tables.line_bundle_decisions).toEqual([expect.objectContaining({
-    ward_id: target.ward.wardId, bundle_id: "fictional-bundle", summary: "架空の参考資料の判断",
+    ward_id: target.ward.wardId, bundle_id: "fictional-bundle", summary: "試しの参考資料の判断",
     action: "reference", decided_by: "officer", clarification_id: target.ward.wardId,
   })]);
   expect(exported.tables.line_bundle_decisions).toEqual(snapshot.tables.line_bundle_decisions);
@@ -210,7 +210,7 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
     ward_id: target.ward.wardId, job_id: target.ward.wardId, bundle_id: "fictional-admin-bundle",
   })]);
   expect(snapshot.tables.line_talk_inquiry_posts).toEqual([expect.objectContaining({
-    ward_id: target.ward.wardId, event_id: "fictional-inquiry-event", text: "架空の問い合わせの元の文",
+    ward_id: target.ward.wardId, event_id: "fictional-inquiry-event", text: "試しの問い合わせの元の文",
   })]);
   for (const table of ["line_talk_admin_topics", "line_talk_inquiry_posts"]) {
     expect(exported.tables[table]).toEqual(snapshot.tables[table]);
@@ -258,7 +258,7 @@ it("区の全表を控えと写しの方針に含め、秘密を渡さず、他�
   expect((await target.bucket.list("")).keys.length).toBe(0);
   expect(new Uint8Array(await (await other.bucket.get("originals/fictional.jpg"))!.arrayBuffer()))
     .toEqual(Uint8Array.from(atob(SOURCE_PNG), (character) => character.charCodeAt(0)));
-  expect(await (await other.bucket.get("originals/fictional-comparison.txt"))!.text()).toBe("架空の確認会は午後に始めます。");
+  expect(await (await other.bucket.get("originals/fictional-comparison.txt"))!.text()).toBe("試しの確認会は午後に始めます。");
   for (const path of other.flyerPaths) {
     expect(new Uint8Array(await (await other.bucket.get(path))!.arrayBuffer())).toEqual(noticeFlyerJpeg());
   }

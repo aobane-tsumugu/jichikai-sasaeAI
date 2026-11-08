@@ -341,7 +341,7 @@ async function selfTest() {
   try {
     const page = await browser.newPage({ viewport: { width: 794, height: 1123 } });
     await page.emulateMedia({ media: "print" });
-    const html = (count: number, height: number) => `<style>@page{size:A4;margin:0}body{margin:0}.sheet{box-sizing:border-box;width:210mm;min-height:296mm;break-after:page}.sheet:last-child{break-after:auto}</style>${Array.from({ length: count }, () => `<section class="sheet"><div style="height:${height}px">架空の紙</div></section>`).join("")}`;
+    const html = (count: number, height: number) => `<style>@page{size:A4;margin:0}body{margin:0}.sheet{box-sizing:border-box;width:210mm;min-height:296mm;break-after:page}.sheet:last-child{break-after:auto}</style>${Array.from({ length: count }, () => `<section class="sheet"><div style="height:${height}px">試しの紙</div></section>`).join("")}`;
     for (const count of [1, 2]) {
       await page.setContent(html(count, 100));
       assert.deepEqual(await measurePaper(page), { pages: count, faces: count, fits: true });
@@ -349,8 +349,8 @@ async function selfTest() {
     await page.setContent(html(1, 1500));
     const long = await measurePaper(page);
     assert.ok(long && long.pages > 1 && !long.fits);
-    await page.setContent("<h1>架空の準備画面</h1>");
+    await page.setContent("<h1>試しの準備画面</h1>");
     assert.equal(await measurePaper(page), null);
-    console.log("架空の紙で一枚・二面・はみ出し・準備画面の測定を確認しました。");
+    console.log("試しの紙で一枚・二面・はみ出し・準備画面の測定を確認しました。");
   } finally { await browser.close(); }
 }

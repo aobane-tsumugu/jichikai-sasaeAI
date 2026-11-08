@@ -27,8 +27,8 @@ export function meetingMaterial(now = new Date()) {
   const decision = "清掃活動は年2回行うことに決めました";
   return {
     year: day.getUTCFullYear(), date: date(day), due: date(due), decision,
-    agenda: `すべて架空の総会の資料です。\n日時：${date(day)}10時\n場所：架空の集会室\n返事の締切：${date(due)}\n議案：清掃活動の回数、遊具の更新。いずれもまだ決めていません。\n住民の皆さまに総会への出席、委任、欠席を答えていただきます。回答票は班長か役員に渡してください。Webではこの案内のQRか住民向けのページから答えてください。`,
-    minutes: `すべて架空の総会の記録です。\n${date(day)}10時、架空の集会室で総会を開きました。\n${decision}。\n遊具の更新は話し合いを続けます。採決の数、議長、署名する人は記録していません。`,
+    agenda: `日時：${date(day)}10時\n場所：集会室\n返事の締切：${date(due)}\n議案：清掃活動の回数、遊具の更新。いずれもまだ決めていません。\n住民の皆さまに総会への出席、委任、欠席を答えていただきます。回答票は班長か役員に渡してください。Webではこの案内のQRか住民向けのページから答えてください。`,
+    minutes: `${date(day)}10時、集会室で総会を開きました。\n${decision}。\n遊具の更新は話し合いを続けます。採決の数、議長、署名する人は記録していません。`,
     announcement: "総会を開きます。出席、委任、欠席を教えてください。回答票は班長か役員に渡してください。Webではこの案内のQRか住民向けのページから答えてください。",
   };
 }
@@ -80,7 +80,7 @@ export function checkMeetingMinutes(text: string, source: ReturnType<typeof meet
   assert(compact(text).includes(compact(source.decision)), "議事録に送った決定がありません（言い換えはPMの確認が必要です）");
   assert(/遊具[^。\n]*(?:続け|継続|保留)/.test(text), "議事録で話し合いを続ける議案を確認できません");
   const sourceSentences = source.minutes.split(/[。\n]/).map(compact);
-  const knownFacts = new Set([...sourceSentences, compact(source.date + "10時"), "架空の集会室"]);
+  const knownFacts = new Set([...sourceSentences, compact(source.date + "10時"), "集会室"]);
   // 見出しの行は事実ではないので照合しない。句点の無い短い行も見出しとして扱う。
   const body = text.split("\n").filter((line) => !line.trim().startsWith("#") && (line.includes("。") || line.trim().length > 20)).join("\n");
   for (const sentence of body.split(/[。\n]/).map(compact).filter(Boolean)) {
@@ -96,7 +96,7 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
   assert(/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(options.ward) && !isJudgeWard(options.ward), "demokuとsasaedaiでは通し確認を実行しません。確認用の自治会のURL名を指定してください");
   const root = `/${options.ward}`;
   const admin = root + "/admin";
-  const projectTitle = "架空の総会 通し確認";
+  const projectTitle = "総会（通し）";
   const material = options.files ? meetingMaterial(new Date(MEETING_FIXTURE_NOW)) : meetingMaterial();
   const cookies = new Map<string, { pair: string; path: string }>();
   const secrets = new Set([options.name, options.password]);
@@ -153,7 +153,7 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
   const upload = async (filename: string, text: string, group: KindFileGroup) => {
     let form: FormData;
     if (options.files) {
-      assert(ports.loadFixture, "架空資料の読み込みを用意してください");
+      assert(ports.loadFixture, "試しの資料の読み込みを用意してください");
       form = await kindFilesForm(project, group, ports.loadFixture, await get(admin + "/intake?project=" + project));
     } else {
       form = new FormData();
@@ -164,7 +164,7 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
     const filenames = options.files ? [KIND_FILES[group][0]!.split("/").at(-1)!] : [filename];
     const sent = await req(admin + "/intake", { method: "POST", headers: { accept: "application/json" }, body: form });
     const result = await sent.json() as { ok?: boolean; jobId?: string };
-    assert(sent.ok && result.ok && result.jobId, "架空の資料を受け付けられません");
+    assert(sent.ok && result.ok && result.jobId, "試しの資料を受け付けられません");
     await wait(async () => {
       const html = await get(`${admin}/intake/received?project=${project}`);
       let done = true;
@@ -211,11 +211,11 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
       assert(project, "開いた総会を見つけられません");
       redirected(await post(`${admin}/projects/${project}/title`, { title: projectTitle }), "総会の題を保存できません");
       await get(location);
-      return "種類を総会にして新しく開きました。資料・名前・答えはすべて架空です。";
+      return "種類を総会にして新しく開きました。資料・名前・答えは通し確認のために用意したものです。";
     }],
     ["2 議案の資料を送る", async () => {
-      await upload(`架空の総会_議案_${project}.txt`, material.agenda, "meetingAgenda");
-      return options.files ? "去年の議案書・決算書・議事録の写真と今年の総会の資料を送り、読み取りと反映が終わりました。" : "架空の議案の文を送り、読み取りと反映が終わりました。";
+      await upload(`試しの総会_議案_${project}.txt`, material.agenda, "meetingAgenda");
+      return options.files ? "去年の議案書・決算書・議事録の写真と今年の総会の資料を送り、読み取りと反映が終わりました。" : "試しの議案の文を送り、読み取りと反映が終わりました。";
     }],
     ["3 招集を頼んで配る", async () => {
       const form = await draft("announcement");
@@ -224,7 +224,7 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
       const body = [...form.values].filter(([key]) => key === "text" || key.startsWith("item_")).map(([, value]) => value).join("\n");
       assert(/総会/.test(body) && /出席/.test(body) && /委任/.test(body) && /欠席/.test(body), "招集に総会の出欠の案内がありません");
       assert(!/派生|差分|冪等|セッション|包み|状態|参考|版|札|列|縁|参加する人数|手伝いの時間帯/.test(body), "招集に住民向けではない言葉があります");
-      for (const expected of [material.date, "架空の集会室", "清掃活動", "遊具"]) assert(visible(body).includes(expected), "招集に資料の日時・場所・議案がありません");
+      for (const expected of [material.date, "集会室", "清掃活動", "遊具"]) assert(visible(body).includes(expected), "招集に資料の日時・場所・議案がありません");
       const publishPage = await get(`${admin}/publish/${project}`);
       const section = [...publishPage.matchAll(/<section\b[^>]*>([\s\S]*?)<\/section>/gi)].find(s => /<h2>[^<]*総会の招集<\/h2>/.test(s[1] ?? ""));
       assert(section, "知らせる画面に総会の招集がありません");
@@ -254,7 +254,7 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
       const page = await get(`${root}/p/${project}`, true);
       const path = `${root}/answer/${project}`;
       assert(page.includes(path), "公開のページに答える入口がありません");
-      const answers = [["架空出席一郎", "attend", ""], ["架空委任二郎", "proxy", "架空代理花子"], ["架空委任三郎", "proxy", ""], ["架空欠席四郎", "absent", ""]];
+      const answers = [["出席一郎", "attend", ""], ["委任二郎", "proxy", "代理花子"], ["委任三郎", "proxy", ""], ["欠席四郎", "absent", ""]];
       for (const [household, status, proxy] of answers) {
         const answerPage = await get(path, true);
         const form = readForm(answerPage, path);
@@ -285,14 +285,14 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
       const handPage = await get(path + "?view=hand");
       const form = readForm(handPage, path + "/phone");
       const district = /name="district"[^>]*value="([^"]+)"/.exec(handPage)?.[1] ?? "";
-      form.values.set("household", "架空電話五郎"); form.values.set("district", district);
+      form.values.set("household", "電話五郎"); form.values.set("district", district);
       form.values.set("meeting_status", "attend"); form.values.set("proxy_name", "");
       redirected(await post(form.action, form.values), "電話の返事を入れられません");
       counts(await get(path));
       return "電話の出席を1件追加。答えた5世帯、出席2世帯、委任2世帯、欠席1世帯を画面で確認しました。";
     }],
     ["7 議事録を頼む", async () => {
-      await upload(`架空の総会_記録_${project}.txt`, material.minutes, "meetingMinutes");
+      await upload(`試しの総会_記録_${project}.txt`, material.minutes, "meetingMinutes");
       const form = await draft("report");
       assert(form.values.get("title") === "議事録", "AIの下書きの題が議事録ではありません");
       assert(form.values.get("scope") === "staff", "議事録が役員だけの下書きではありません");
@@ -302,9 +302,9 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
     ["8 閉じて記録を読む", async () => {
       const path = `${admin}/close/${project}`;
       const form = readForm(await get(path), path + "/finalize");
-      // 議事録は役員の下書きとして保存済み。住民には架空の開催報告だけを出す。
+      // 議事録は役員の下書きとして保存済み。住民には試しの開催報告だけを出す。
       form.values.delete("body");
-      form.values.append("body", "架空の総会を開きました。");
+      form.values.append("body", "試しの総会を開きました。");
       form.values.append("body", material.minutes);
       redirected(await post(form.action, form.values), "総会を閉じられません");
       assert((await get(path)).includes("終わりを取り消す"), "総会を閉じたことを確認できません");
@@ -329,8 +329,8 @@ export async function runMeetingWalkthrough(options: MeetingOptions, ports: Meet
     rows.push(`| ${stage} | ${result} | ${redact(detail)} | ${Math.round((Date.now() - start) / 1000)} |`);
     await ports.record([
       "# 総会の通し確認", "", `- 実行日時: ${new Date().toISOString()}`, `- 接続先: ${base.origin}`, `- 区: ${options.ward}`,
-      `- 総会: ${project || "まだ開いていません"}`, "- 資料と答え: すべて架空", "- 自治会のLINE: 実送信なし", "- 資格情報: 値は記録しません",
-      `- 入力: ${options.files ? "Word・Excel・紙の写真風（固定日付の架空資料）" : "文の架空資料"}`,
+      `- 総会: ${project || "まだ開いていません"}`, "- 資料と答え: 通し確認のために用意したもの", "- 自治会のLINE: 実送信なし", "- 資格情報: 値は記録しません",
+      `- 入力: ${options.files ? "Word・Excel・紙の写真風（固定日付の試しの資料）" : "文の試しの資料"}`,
       "- この記録はHTTPとHTMLの確認です。本物のAI・staging・紙の見え方の確認は、実行環境に応じてPMが別に判断します。", "",
       "| 段 | 結果 | 確認したこと | 秒 |", "|---|---|---|---:|", ...rows, "",
     ].join("\n"));

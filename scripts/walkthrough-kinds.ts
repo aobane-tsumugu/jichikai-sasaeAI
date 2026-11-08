@@ -1,4 +1,4 @@
-// U51。PMが架空の区へ流すHTTPの通し確認。引数はwalkthrough-meetingと同じ。
+// U51。PMが試しの区へ流すHTTPの通し確認。引数はwalkthrough-meetingと同じ。
 import { isJudgeWard, JUDGE_WARDS } from "./judge-wards.ts";
 import type { MeetingOptions, MeetingPorts } from "./walkthrough-meeting.ts";
 import { kindsMaterial } from "../test/fixtures/kinds.ts";
@@ -153,10 +153,10 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
     return id;
   };
   const upload = async (id: string, label: string, text: string, group: KindFileGroup) => {
-    const filename = `架空の${label}_${id}.txt`;
+    const filename = `試しの${label}_${id}.txt`;
     let form: FormData;
     if (options.files) {
-      assert(ports.loadFixture, "架空資料の読み込みを用意してください");
+      assert(ports.loadFixture, "試しの資料の読み込みを用意してください");
       form = await kindFilesForm(id, group, ports.loadFixture, await get(admin + "/intake?project=" + id));
     } else {
       form = new FormData();
@@ -165,7 +165,7 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
     const filenames = options.files ? [KIND_FILES[group][0]!.split("/").at(-1)!] : [filename];
     const res = await req(admin + "/intake", { method: "POST", headers: { accept: "application/json" }, body: form });
     const result = await res.json() as { ok?: boolean; jobId?: string };
-    assert(res.ok && result.ok && result.jobId, "架空の資料を受け付けられません");
+    assert(res.ok && result.ok && result.jobId, "試しの資料を受け付けられません");
     await wait(async () => {
       const html = await get(`${admin}/intake/received?project=${id}`);
       let done = true;
@@ -206,10 +206,10 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
     const form = new FormData();
     const cell = (value: string) => '"' + value.replaceAll('"', '""') + '"';
     const csv = [["代表者のお名前", "班"], ...names.map(name => [name, district])].map(row => row.map(cell).join(",")).join("\n");
-    form.append("part", new Blob([csv], { type: "text/csv" }), "架空の名簿.csv");
+    form.append("part", new Blob([csv], { type: "text/csv" }), "試しの名簿.csv");
     const res = await req(admin + "/answers/roster", { method: "POST", headers: { accept: "application/json" }, body: form });
     const result = await res.json() as { ok?: boolean };
-    assert(res.ok && result.ok, "架空の名簿を入れられません");
+    assert(res.ok && result.ok, "試しの名簿を入れられません");
   };
   const noReason = (html: string) => assert(![decode(html), visible(html)].some(text => compact(text).includes(compact(source.reason))), "免除の理由が公開・実行委員向けのページに出ています");
   const stages: [string, () => Promise<string>][] = [
@@ -218,16 +218,16 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
       assert(cookies.officer.has("device"), "役員の画面にログインするための応答がありません");
       // 区に前の試行の会議が残っていても、同じ日なら閉じた順で今回の一回目が「前回」になる。その年の最後の日に揃える。
       const today = `${source.year}-12-31`, tomorrow = today;
-      const first = await open("board1", "board_meeting", source.year, "役員会1回目（架空）", today);
+      const first = await open("board1", "board_meeting", source.year, "役員会1回目（通し）", today);
       await upload(first, "役員会の議題", source.agenda, "boardAgenda");
       await upload(first, "役員会の記録", source.minutes, "boardMinutes");
       const minutes = await draft(first, "report");
-      checkKindsFacts(draftText(minutes.form), [source.minutes, source.agenda, `${source.year}年1月10日`, "架空の集会室"], [source.decision, source.pending]);
+      checkKindsFacts(draftText(minutes.form), [source.minutes, source.agenda, `${source.year}年1月10日`, "集会室"], [source.decision, source.pending]);
       // AIが拾った決定を人が閉じる画面から残す。住民への報告は空欄にする。
       const closing = readForm(await get(`${admin}/close/${first}`), `/close/${first}/finalize`);
       checkClosingDecisions(closing.values.get("decisions") ?? "", source.decision);
       await close(first, minutes.form.values.get("text") ?? "", source.decision);
-      const second = await open("board2", "board_meeting", source.year, "役員会2回目（架空）", tomorrow);
+      const second = await open("board2", "board_meeting", source.year, "役員会2回目（通し）", tomorrow);
       const agenda = await draft(second, "procedure");
       assert(visible(agenda.html).includes("前回の役員会"), "議題の下書きに前回の役員会の資料がありません");
       checkKindsFacts(draftText(agenda.form), [source.minutes, source.agenda, source.decision, source.pending], [source.decision, source.pending]);
@@ -236,7 +236,7 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
       assert(compact(visible(questions)).includes(compact(source.pending)), "前回の未決が残っている質問にありません");
       await upload(second, "役員会2回目の記録", source.nextMinutes, "boardNextMinutes");
       const next = await draft(second, "report");
-      checkKindsFacts(draftText(next.form), [source.nextMinutes, `${source.year}年2月10日`, "架空の集会室"], [source.nextDecision]);
+      checkKindsFacts(draftText(next.form), [source.nextMinutes, `${source.year}年2月10日`, "集会室"], [source.nextDecision]);
       const nextClose = readForm(await get(`${admin}/close/${second}`), `/close/${second}/finalize`);
       checkClosingDecisions(nextClose.values.get("decisions") ?? "", source.nextDecision);
       await close(second, next.form.values.get("text") ?? "", source.nextDecision);
@@ -254,7 +254,7 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
       const oldDraft = await get(`${admin}/projects/${previous}/draft/duty_roster`);
       const oldNames = forms(oldDraft).filter(f => /\/draft\/duty-row\//.test(f.action)).map(f => f.values.get("assignee"));
       assert(oldNames.length === 3 && [source.names.retained, source.names.exempt, source.names.departed].every(name => oldNames.includes(name)), "去年の当番の表が担当に反映されていません");
-      await close(previous, "すべて架空の当番の記録です。");
+      await close(previous, "当番の記録です。");
       const seedPath = `${admin}/archive/${previous}/seed`;
       const seed = readForm(await get(`${admin}/archive/${previous}?view=seed`), seedPath);
       seed.values.set("year", String(source.year)); seed.values.set("title", source.dutyTitle);
@@ -288,13 +288,13 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
       vacant.values.set("assignee", source.names.arrived);
       redirected(await post(vacant.action, vacant.values), "転入した世帯の担当を保存できません");
       const save = readForm(await get(path), `/draft/duty_roster/save`);
-      save.values.set("text", "架空の集積所の当番表です。");
+      save.values.set("text", "試しの集積所の当番表です。");
       redirected(await post(save.action, save.values), "当番表を保存できません");
       // 今の配る確認画面の隠し項目を使い、実行委員向けだけに配る。
       const confirm = await get(`${admin}/publish/${current}/confirm?kind=duty_roster`);
       const send = readForm(confirm, `/publish/${current}/space`);
       redirected(await post(send.action, send.values), "当番表を実行委員向けに配れません");
-      const passphrase = "架空の通し確認" + current;
+      const passphrase = "試しの通し確認" + current;
       secrets.add(passphrase);
       assert((await post(`${admin}/space/${current}/open`, { passphrase })).ok, "実行委員のページを開けません");
       redirected(await post(`${root}/space/${current}/enter`, { passphrase }, "member"), "実行委員として入れません");
@@ -309,24 +309,24 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
       return "去年の表から翌年を開き、名簿の転入・転出と免除を反映。転入の担当を直して配り、公開・実行委員・紙に免除の理由が出ないことを確認しました。";
     }],
     ["3 市の依頼を配らずに閉じる", async () => {
-      const id = await open("city", "city_request", source.year, "設備の状況の回答（架空）");
+      const id = await open("city", "city_request", source.year, "設備の状況の回答");
       await upload(id, "市の通知", source.city, "city");
       const result = await draft(id, "procedure");
       assert(result.form.values.get("title") === "回答の資料", "市の依頼の下書きが回答の資料ではありません");
       const text = draftText(result.form);
-      for (const fact of ["架空の地域担当窓口", `${source.year}年3月31日`, "照明の数", "交換の希望"]) assert(compact(text).includes(compact(fact)), "回答の資料に通知の提出先・期限・様式がありません");
+      for (const fact of ["地域担当窓口", `${source.year}年3月31日`, "照明の数", "交換の希望"]) assert(compact(text).includes(compact(fact)), "回答の資料に通知の提出先・期限・様式がありません");
       assert(!/参加してください|ご参加|出欠|手伝いの募集|皆さま|みなさま/.test(text), "市の回答の資料が住民向けの案内になっています");
-      await close(id, "すべて架空の記録です。市へ回答するための資料を受け取りました。まだ提出していません。");
+      await close(id, "市へ回答するための資料を受け取りました。まだ提出していません。");
       assert((await req(`${root}/p/${id}`, {}, "public")).status === 404, "配っていない市の依頼が公開されています");
       return "通知の提出先・期限・様式が役員用の回答の資料にあり、住民向けの案内ではありません。配らず、住民への報告も空欄で閉じました。";
     }],
     ["4 総会に一年の決定を引き継ぐ", async () => {
-      const id = await open("general", "general_meeting", source.year, "一年の議案（架空）");
+      const id = await open("general", "general_meeting", source.year, "一年の議案");
       const html = await get(`${admin}/projects/${id}/draft/procedure`);
       const section = new RegExp(`<h3>${source.year}年の会議で決めたこと<\\/h3>([\\s\\S]*?)<\\/section>`).exec(html)?.[1] ?? "";
       const items = [...section.matchAll(/<li\b[^>]*>([\s\S]*?)<p>/g)].map(m => visible(m[1] ?? ""));
       assert(items.length >= 2, "総会の議案の資料に一年の決定がありません");
-      // 既にある別の架空の会議は許すが、今回の会議は送った決定だけでなければ止める。
+      // 既にある別の試しの会議は許すが、今回の会議は送った決定だけでなければ止める。
       for (const [key, decision] of [["board1", source.decision], ["board2", source.nextDecision]]) {
         const own = [...section.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].filter(m => m[1]?.includes(`/projects/${projects[key!]}/draft/report`));
         assert(own.length === 1, "今回の役員会の決定が増えているか、総会の資料から欠けています");
@@ -358,8 +358,8 @@ export async function runKindsWalkthrough(options: MeetingOptions, ports: Meetin
     await ports.record(scrub([
       "# 行事と総会の外の通し確認", "", `- 実行日時: ${new Date().toISOString()}`, `- 接続先: ${base.origin}`, `- 区: ${options.ward}`,
       ...Object.entries(projects).map(([kind, id]) => `- 作った仕事（${kind}）: ${id}`),
-      "- 資料・世帯・理由: すべて架空", "- 自治会のLINE: 実送信なし", "- 資格情報: 値は記録しません",
-      `- 入力: ${options.files ? "Word・Excel・PDF・紙の写真風（固定日付の架空資料）" : "文の架空資料"}`,
+      "- 資料・世帯・理由: 通し確認のために用意したもの", "- 自治会のLINE: 実送信なし", "- 資格情報: 値は記録しません",
+      `- 入力: ${options.files ? "Word・Excel・PDF・紙の写真風（固定日付の試しの資料）" : "文の試しの資料"}`,
       "- HTTPとHTMLの確認です。本物のAI・staging・紙の見え方の確認は実行環境に応じてPMが判断します。", "",
       "| 段 | 結果 | 確認したこと | 秒 |", "|---|---|---|---:|", ...rows, "",
     ].join("\n")));
@@ -376,7 +376,7 @@ async function main() {
   const arg = (key: string) => { const i = args.indexOf(key); return i < 0 ? undefined : args[i + 1]; };
   const base = arg("--base"), ward = arg("--ward"), creds = arg("--creds");
   if (!base || !ward || !creds || isJudgeWard(ward)) {
-    console.error("使い方: npm run walkthrough-kinds -- --base <URL> --ward <架空の自治会のURL名> --creds <資格情報ファイル> [--files]。demokuでは実行しません。");
+    console.error("使い方: npm run walkthrough-kinds -- --base <URL> --ward <試しの自治会のURL名> --creds <資格情報ファイル> [--files]。demokuでは実行しません。");
     process.exitCode = 2; return;
   }
   const text = readFileSync(resolve(creds), "utf8");

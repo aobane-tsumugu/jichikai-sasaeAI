@@ -9,7 +9,7 @@ import { createProject, getProjectState, listProjects } from "../src/project/api
 import { normalizeStartTitle, startTemplate } from "../src/project/start-template";
 import { get, postForm, realApp } from "./helpers";
 
-// このファイルの自治会、資料、名前、日付はすべて試験用の架空のデータ。
+// このファイルの自治会、資料、名前、日付はすべて試験用の試しのデータ。
 afterEach(() => setClientFactory(null));
 
 async function saveReading(wardId: string, accountId: string, sources: {

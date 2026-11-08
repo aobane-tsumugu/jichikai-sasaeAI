@@ -52,7 +52,7 @@ it("文の報告を閉じて残し、直して知らせ直し、五つの種類�
     started.push(task);
     if (task.task === "report") {
       const summary = await getProjectSummary(target.DB, task.wardId, task.projectId);
-      if (!summary) throw new Error("架空の仕事がありません");
+      if (!summary) throw new Error("試しの仕事がありません");
       const pack = getDraftPack("report", summary.kind);
       expect(task.instruction).toContain(pack.instruction);
       expect(task.instruction).toContain(`範囲: ${pack.scope}`);

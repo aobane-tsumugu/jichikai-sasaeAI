@@ -42,7 +42,7 @@ it("当番の下書きと記入用紙から実行委員のページを開き、�
   expect(sponsors).toContain(fixture.sponsorName);
 
   const state = await getProjectState(env.DB, ward.wardId, id);
-  if (!state) throw new Error("架空の行事がありません。");
+  if (!state) throw new Error("試しの行事がありません。");
   expect((await postForm(realApp, `${root}/projects/${id}/draft/duty_roster/save`, {
     title: fixture.dutyTitle, scope: "space", based_on: String(state.project.stateVersion),
     text: fixture.dutyText, item_date_time: fixture.publicDayText, item_place: fixture.previousPlace,

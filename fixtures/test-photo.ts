@@ -1,5 +1,5 @@
-// プログラムで描いた640x800pxの架空の紙。実在の資料や筆跡は使わない。
-// Pillowで白地に架空の印と横線を描き、JPEG（品質85）として保存したもの。
+// プログラムで描いた640x800pxの試しの紙。実在の資料や筆跡は使わない。
+// Pillowで白地に試しの印と横線を描き、JPEG（品質85）として保存したもの。
 // AI通信を代える試験用で、文字や答えを読み取れた証拠にはしない。
 const JPEG =
   "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0d" +
@@ -114,7 +114,7 @@ export function fictionalPaperPhoto(tag = ""): Uint8Array {
   const jpeg = Uint8Array.from(atob(JPEG), (character) => character.charCodeAt(0));
   const comment = new TextEncoder().encode(tag);
   // tagはJPEGのコメントに置き、画像の形式と寸法を保ってハッシュだけを変える。
-  if (comment.length > 65533) throw new Error("架空写真の印が長すぎます");
+  if (comment.length > 65533) throw new Error("写真の印が長すぎます");
   const result = new Uint8Array(jpeg.length + comment.length + 4);
   result.set(jpeg.subarray(0, 2));
   result.set([0xff, 0xfe, (comment.length + 2) >>> 8, (comment.length + 2) & 255], 2);

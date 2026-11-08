@@ -1,166 +1,166 @@
 {
-  "fictional": true,
-  "notice": "この一覧の区、行事、人名、会話、LINEの識別子はすべて架空です。実在の資料や住民の情報は使っていません。",
-  "projectTitle": "架空の秋の収穫祭",
+  "sampleData": true,
+  "provenance": "この試験の区、行事、人名、会話は期間中に作った試しの内容で、実在の資料や住民の情報は使っていません。",
+  "projectTitle": "試しの秋の収穫祭",
   "roster": [
     {
-      "household": "架空参加一郎",
+      "household": "参加一郎",
       "district": "1班"
     },
     {
-      "household": "架空参加二郎",
+      "household": "参加二郎",
       "district": "2班"
     },
     {
-      "household": "架空参加三郎",
+      "household": "参加三郎",
       "district": "3班"
     },
     {
-      "household": "架空参加四郎",
+      "household": "参加四郎",
       "district": "4班"
     },
     {
-      "household": "架空参加五郎",
+      "household": "参加五郎",
       "district": "5班"
     },
     {
-      "household": "架空参加六郎",
+      "household": "参加六郎",
       "district": "6班"
     },
     {
-      "household": "架空参加七郎",
+      "household": "参加七郎",
       "district": "7班"
     },
     {
-      "household": "架空参加八郎",
+      "household": "参加八郎",
       "district": "8班"
     },
     {
-      "household": "架空参加九郎",
+      "household": "参加九郎",
       "district": "9班"
     },
     {
-      "household": "架空参加十郎",
+      "household": "参加十郎",
       "district": "10班"
     },
     {
-      "household": "架空同名一郎",
+      "household": "同名一郎",
       "district": "1班"
     },
     {
-      "household": "架空同名一郎",
+      "household": "同名一郎",
       "district": "2班"
     },
     {
-      "household": "架空同名二郎",
+      "household": "同名二郎",
       "district": "1班"
     },
     {
-      "household": "架空同名二郎",
+      "household": "同名二郎",
       "district": "2班"
     },
     {
-      "household": "架空同名三郎",
+      "household": "同名三郎",
       "district": "1班"
     },
     {
-      "household": "架空同名三郎",
+      "household": "同名三郎",
       "district": "2班"
     },
     {
-      "household": "架空同名四郎",
+      "household": "同名四郎",
       "district": "1班"
     },
     {
-      "household": "架空同名四郎",
+      "household": "同名四郎",
       "district": "2班"
     },
     {
-      "household": "架空同名五郎",
+      "household": "同名五郎",
       "district": "1班"
     },
     {
-      "household": "架空同名五郎",
+      "household": "同名五郎",
       "district": "2班"
     },
     {
-      "household": "架空同名六郎",
+      "household": "同名六郎",
       "district": "1班"
     },
     {
-      "household": "架空同名六郎",
+      "household": "同名六郎",
       "district": "2班"
     },
     {
-      "household": "架空同名七郎",
+      "household": "同名七郎",
       "district": "1班"
     },
     {
-      "household": "架空同名七郎",
+      "household": "同名七郎",
       "district": "2班"
     },
     {
-      "household": "架空同名八郎",
+      "household": "同名八郎",
       "district": "1班"
     },
     {
-      "household": "架空同名八郎",
+      "household": "同名八郎",
       "district": "2班"
     },
     {
-      "household": "架空同名九郎",
+      "household": "同名九郎",
       "district": "1班"
     },
     {
-      "household": "架空同名九郎",
+      "household": "同名九郎",
       "district": "2班"
     },
     {
-      "household": "架空同名十郎",
+      "household": "同名十郎",
       "district": "1班"
     },
     {
-      "household": "架空同名十郎",
+      "household": "同名十郎",
       "district": "2班"
     },
     {
-      "household": "架空欠席一郎",
+      "household": "欠席一郎",
       "district": "1班"
     },
     {
-      "household": "架空欠席二郎",
+      "household": "欠席二郎",
       "district": "2班"
     },
     {
-      "household": "架空欠席三郎",
+      "household": "欠席三郎",
       "district": "3班"
     },
     {
-      "household": "架空欠席四郎",
+      "household": "欠席四郎",
       "district": "4班"
     },
     {
-      "household": "架空欠席五郎",
+      "household": "欠席五郎",
       "district": "5班"
     },
     {
-      "household": "架空欠席六郎",
+      "household": "欠席六郎",
       "district": "6班"
     },
     {
-      "household": "架空欠席七郎",
+      "household": "欠席七郎",
       "district": "7班"
     },
     {
-      "household": "架空欠席八郎",
+      "household": "欠席八郎",
       "district": "8班"
     },
     {
-      "household": "架空欠席九郎",
+      "household": "欠席九郎",
       "district": "9班"
     },
     {
-      "household": "架空欠席十郎",
+      "household": "欠席十郎",
       "district": "10班"
     }
   ],
@@ -172,7 +172,7 @@
       "group": true,
       "messages": [
         {
-          "text": "架空の秋の収穫祭の連絡です。設営は3人で進めます。机を12台出します。",
+          "text": "試しの秋の収穫祭の連絡です。設営は3人で進めます。机を12台出します。",
           "expected": {
             "kind": "資料に入る"
           }
@@ -186,13 +186,13 @@
       "group": false,
       "messages": [
         {
-          "text": "架空の秋の収穫祭の連絡です。公民館を予約しました。",
+          "text": "試しの秋の収穫祭の連絡です。公民館を予約しました。",
           "expected": {
             "kind": "資料に入る"
           }
         },
         {
-          "text": "架空の秋の収穫祭のホールは午前9時から使えます。",
+          "text": "試しの秋の収穫祭のホールは午前9時から使えます。",
           "expected": {
             "kind": "資料に入る"
           }
@@ -206,7 +206,7 @@
       "group": true,
       "messages": [
         {
-          "text": "架空の秋の収穫祭の連絡です。受付の担当を2人に増やしました。",
+          "text": "試しの秋の収穫祭の連絡です。受付の担当を2人に増やしました。",
           "expected": {
             "kind": "資料に入る"
           }
@@ -220,7 +220,7 @@
       "group": false,
       "messages": [
         {
-          "text": "架空の秋の収穫祭の連絡です。買い出しは4人で行きます。",
+          "text": "試しの秋の収穫祭の連絡です。買い出しは4人で行きます。",
           "expected": {
             "kind": "資料に入る"
           }
@@ -234,7 +234,7 @@
       "group": true,
       "messages": [
         {
-          "text": "架空の秋の収穫祭の連絡です。片付けの当番を5人にお願いしました。",
+          "text": "試しの秋の収穫祭の連絡です。片付けの当番を5人にお願いしました。",
           "expected": {
             "kind": "資料に入る"
           }
@@ -248,7 +248,7 @@
       "group": false,
       "messages": [
         {
-          "text": "架空の秋の収穫祭の連絡です。抽選の景品を20個受け取りました。",
+          "text": "試しの秋の収穫祭の連絡です。抽選の景品を20個受け取りました。",
           "expected": {
             "kind": "資料に入る"
           }
@@ -262,7 +262,7 @@
       "group": true,
       "messages": [
         {
-          "text": "架空の秋の収穫祭の連絡です。雨のときの机の配置を変えました。",
+          "text": "試しの秋の収穫祭の連絡です。雨のときの机の配置を変えました。",
           "expected": {
             "kind": "資料に入る"
           }
@@ -276,7 +276,7 @@
       "group": false,
       "messages": [
         {
-          "text": "架空の秋の収穫祭の連絡です。班長3人に回答票を渡しました。",
+          "text": "試しの秋の収穫祭の連絡です。班長3人に回答票を渡しました。",
           "expected": {
             "kind": "資料に入る"
           }
@@ -290,7 +290,7 @@
       "group": true,
       "messages": [
         {
-          "text": "架空の秋の収穫祭の連絡です。豚汁の鍋を2個借りました。",
+          "text": "試しの秋の収穫祭の連絡です。豚汁の鍋を2個借りました。",
           "expected": {
             "kind": "資料に入る"
           }
@@ -304,7 +304,7 @@
       "group": false,
       "messages": [
         {
-          "text": "架空の秋の収穫祭の連絡です。運ぶ係は3人で、朝9時に集合します。",
+          "text": "試しの秋の収穫祭の連絡です。運ぶ係は3人で、朝9時に集合します。",
           "expected": {
             "kind": "資料に入る"
           }
@@ -318,10 +318,10 @@
       "group": false,
       "messages": [
         {
-          "text": "架空参加一郎です。1班です。架空の秋の収穫祭に大人2人で参加します。",
+          "text": "参加一郎です。1班です。試しの秋の収穫祭に大人2人で参加します。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空参加一郎",
+            "household": "参加一郎",
             "district": "1班",
             "people": 2
           }
@@ -335,10 +335,10 @@
       "group": true,
       "messages": [
         {
-          "text": "架空参加二郎です。2班です。架空の秋の収穫祭に大人3人で参加します。",
+          "text": "参加二郎です。2班です。試しの秋の収穫祭に大人3人で参加します。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空参加二郎",
+            "household": "参加二郎",
             "district": "2班",
             "people": 3
           }
@@ -352,10 +352,10 @@
       "group": false,
       "messages": [
         {
-          "text": "架空参加三郎です。3班です。架空の秋の収穫祭に大人4人で参加します。",
+          "text": "参加三郎です。3班です。試しの秋の収穫祭に大人4人で参加します。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空参加三郎",
+            "household": "参加三郎",
             "district": "3班",
             "people": 4
           }
@@ -369,10 +369,10 @@
       "group": true,
       "messages": [
         {
-          "text": "架空参加四郎です。4班です。架空の秋の収穫祭に大人1人で参加します。",
+          "text": "参加四郎です。4班です。試しの秋の収穫祭に大人1人で参加します。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空参加四郎",
+            "household": "参加四郎",
             "district": "4班",
             "people": 1
           }
@@ -386,10 +386,10 @@
       "group": false,
       "messages": [
         {
-          "text": "架空参加五郎です。5班です。架空の秋の収穫祭に大人2人で参加します。",
+          "text": "参加五郎です。5班です。試しの秋の収穫祭に大人2人で参加します。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空参加五郎",
+            "household": "参加五郎",
             "district": "5班",
             "people": 2
           }
@@ -403,10 +403,10 @@
       "group": true,
       "messages": [
         {
-          "text": "架空参加六郎です。6班です。架空の秋の収穫祭に大人3人で参加します。",
+          "text": "参加六郎です。6班です。試しの秋の収穫祭に大人3人で参加します。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空参加六郎",
+            "household": "参加六郎",
             "district": "6班",
             "people": 3
           }
@@ -420,10 +420,10 @@
       "group": false,
       "messages": [
         {
-          "text": "架空参加七郎です。7班です。架空の秋の収穫祭に大人4人で参加します。",
+          "text": "参加七郎です。7班です。試しの秋の収穫祭に大人4人で参加します。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空参加七郎",
+            "household": "参加七郎",
             "district": "7班",
             "people": 4
           }
@@ -437,10 +437,10 @@
       "group": true,
       "messages": [
         {
-          "text": "架空参加八郎です。8班です。架空の秋の収穫祭に大人1人で参加します。",
+          "text": "参加八郎です。8班です。試しの秋の収穫祭に大人1人で参加します。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空参加八郎",
+            "household": "参加八郎",
             "district": "8班",
             "people": 1
           }
@@ -454,10 +454,10 @@
       "group": false,
       "messages": [
         {
-          "text": "架空参加九郎です。9班です。架空の秋の収穫祭に大人2人で参加します。",
+          "text": "参加九郎です。9班です。試しの秋の収穫祭に大人2人で参加します。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空参加九郎",
+            "household": "参加九郎",
             "district": "9班",
             "people": 2
           }
@@ -471,10 +471,10 @@
       "group": true,
       "messages": [
         {
-          "text": "架空参加十郎です。10班です。架空の秋の収穫祭に大人3人で参加します。",
+          "text": "参加十郎です。10班です。試しの秋の収穫祭に大人3人で参加します。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空参加十郎",
+            "household": "参加十郎",
             "district": "10班",
             "people": 3
           }
@@ -488,10 +488,10 @@
       "group": true,
       "messages": [
         {
-          "text": "架空同名一郎です。1班です。架空の秋の収穫祭へ2人で行きます。",
+          "text": "同名一郎です。1班です。試しの秋の収穫祭へ2人で行きます。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空同名一郎",
+            "household": "同名一郎",
             "district": "1班",
             "people": 2
           }
@@ -505,10 +505,10 @@
       "group": false,
       "messages": [
         {
-          "text": "架空同名二郎です。2班です。架空の秋の収穫祭へ3人で行きます。",
+          "text": "同名二郎です。2班です。試しの秋の収穫祭へ3人で行きます。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空同名二郎",
+            "household": "同名二郎",
             "district": "2班",
             "people": 3
           }
@@ -522,10 +522,10 @@
       "group": true,
       "messages": [
         {
-          "text": "架空同名三郎です。架空の秋の収穫祭へ1人で行きます。",
+          "text": "同名三郎です。試しの秋の収穫祭へ1人で行きます。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空同名三郎",
+            "household": "同名三郎",
             "district": "",
             "people": 1
           }
@@ -539,10 +539,10 @@
       "group": false,
       "messages": [
         {
-          "text": "架空同名四郎です。2班です。架空の秋の収穫祭へ2人で行きます。",
+          "text": "同名四郎です。2班です。試しの秋の収穫祭へ2人で行きます。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空同名四郎",
+            "household": "同名四郎",
             "district": "2班",
             "people": 2
           }
@@ -556,10 +556,10 @@
       "group": true,
       "messages": [
         {
-          "text": "架空同名五郎です。1班です。架空の秋の収穫祭へ3人で行きます。",
+          "text": "同名五郎です。1班です。試しの秋の収穫祭へ3人で行きます。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空同名五郎",
+            "household": "同名五郎",
             "district": "1班",
             "people": 3
           }
@@ -573,10 +573,10 @@
       "group": false,
       "messages": [
         {
-          "text": "架空同名六郎です。架空の秋の収穫祭へ1人で行きます。",
+          "text": "同名六郎です。試しの秋の収穫祭へ1人で行きます。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空同名六郎",
+            "household": "同名六郎",
             "district": "",
             "people": 1
           }
@@ -590,10 +590,10 @@
       "group": true,
       "messages": [
         {
-          "text": "架空同名七郎です。1班です。架空の秋の収穫祭へ2人で行きます。",
+          "text": "同名七郎です。1班です。試しの秋の収穫祭へ2人で行きます。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空同名七郎",
+            "household": "同名七郎",
             "district": "1班",
             "people": 2
           }
@@ -607,10 +607,10 @@
       "group": false,
       "messages": [
         {
-          "text": "架空同名八郎です。2班です。架空の秋の収穫祭へ3人で行きます。",
+          "text": "同名八郎です。2班です。試しの秋の収穫祭へ3人で行きます。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空同名八郎",
+            "household": "同名八郎",
             "district": "2班",
             "people": 3
           }
@@ -624,10 +624,10 @@
       "group": true,
       "messages": [
         {
-          "text": "架空同名九郎です。架空の秋の収穫祭へ1人で行きます。",
+          "text": "同名九郎です。試しの秋の収穫祭へ1人で行きます。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空同名九郎",
+            "household": "同名九郎",
             "district": "",
             "people": 1
           }
@@ -641,10 +641,10 @@
       "group": false,
       "messages": [
         {
-          "text": "架空同名十郎です。2班です。架空の秋の収穫祭へ2人で行きます。",
+          "text": "同名十郎です。2班です。試しの秋の収穫祭へ2人で行きます。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空同名十郎",
+            "household": "同名十郎",
             "district": "2班",
             "people": 2
           }
@@ -658,10 +658,10 @@
       "group": true,
       "messages": [
         {
-          "text": "架空欠席一郎です。1班です。架空の秋の収穫祭は参加しません。",
+          "text": "欠席一郎です。1班です。試しの秋の収穫祭は参加しません。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空欠席一郎",
+            "household": "欠席一郎",
             "district": "1班",
             "people": 0
           }
@@ -675,10 +675,10 @@
       "group": false,
       "messages": [
         {
-          "text": "架空欠席二郎です。2班です。架空の秋の収穫祭は今回は欠席します。",
+          "text": "欠席二郎です。2班です。試しの秋の収穫祭は今回は欠席します。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空欠席二郎",
+            "household": "欠席二郎",
             "district": "2班",
             "people": 0
           }
@@ -692,10 +692,10 @@
       "group": true,
       "messages": [
         {
-          "text": "架空欠席三郎です。3班です。架空の秋の収穫祭は参加しない予定です。",
+          "text": "欠席三郎です。3班です。試しの秋の収穫祭は参加しない予定です。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空欠席三郎",
+            "household": "欠席三郎",
             "district": "3班",
             "people": 0
           }
@@ -709,10 +709,10 @@
       "group": false,
       "messages": [
         {
-          "text": "架空欠席四郎です。4班です。架空の秋の収穫祭は不参加です。",
+          "text": "欠席四郎です。4班です。試しの秋の収穫祭は不参加です。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空欠席四郎",
+            "household": "欠席四郎",
             "district": "4班",
             "people": 0
           }
@@ -726,10 +726,10 @@
       "group": true,
       "messages": [
         {
-          "text": "架空欠席五郎です。5班です。架空の秋の収穫祭は都合がつかず参加しません。",
+          "text": "欠席五郎です。5班です。試しの秋の収穫祭は都合がつかず参加しません。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空欠席五郎",
+            "household": "欠席五郎",
             "district": "5班",
             "people": 0
           }
@@ -743,10 +743,10 @@
       "group": false,
       "messages": [
         {
-          "text": "架空欠席六郎です。6班です。架空の秋の収穫祭は家族全員が欠席です。",
+          "text": "欠席六郎です。6班です。試しの秋の収穫祭は家族全員が欠席です。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空欠席六郎",
+            "household": "欠席六郎",
             "district": "6班",
             "people": 0
           }
@@ -760,10 +760,10 @@
       "group": true,
       "messages": [
         {
-          "text": "架空欠席七郎です。7班です。架空の秋の収穫祭は今年は参加しません。",
+          "text": "欠席七郎です。7班です。試しの秋の収穫祭は今年は参加しません。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空欠席七郎",
+            "household": "欠席七郎",
             "district": "7班",
             "people": 0
           }
@@ -777,10 +777,10 @@
       "group": false,
       "messages": [
         {
-          "text": "架空欠席八郎です。8班です。架空の秋の収穫祭は今回は不参加にします。",
+          "text": "欠席八郎です。8班です。試しの秋の収穫祭は今回は不参加にします。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空欠席八郎",
+            "household": "欠席八郎",
             "district": "8班",
             "people": 0
           }
@@ -794,10 +794,10 @@
       "group": true,
       "messages": [
         {
-          "text": "架空欠席九郎です。9班です。架空の秋の収穫祭は参加しないので人数は0人です。",
+          "text": "欠席九郎です。9班です。試しの秋の収穫祭は参加しないので人数は0人です。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空欠席九郎",
+            "household": "欠席九郎",
             "district": "9班",
             "people": 0
           }
@@ -811,10 +811,10 @@
       "group": false,
       "messages": [
         {
-          "text": "架空欠席十郎です。10班です。架空の秋の収穫祭は欠席でお願いします。",
+          "text": "欠席十郎です。10班です。試しの秋の収穫祭は欠席でお願いします。",
           "expected": {
             "kind": "答えに数える",
-            "household": "架空欠席十郎",
+            "household": "欠席十郎",
             "district": "10班",
             "people": 0
           }
@@ -974,7 +974,7 @@
       "group": true,
       "messages": [
         {
-          "text": "公式へ。架空の秋の収穫祭について、何時からですか。",
+          "text": "公式へ。試しの秋の収穫祭について、何時からですか。",
           "expected": {
             "kind": "問い合わせ"
           }
@@ -988,7 +988,7 @@
       "group": false,
       "messages": [
         {
-          "text": "架空の秋の収穫祭について、雨のときはどこに行けばよいですか。",
+          "text": "試しの秋の収穫祭について、雨のときはどこに行けばよいですか。",
           "expected": {
             "kind": "問い合わせ"
           }
@@ -1002,7 +1002,7 @@
       "group": true,
       "messages": [
         {
-          "text": "公式へ。架空の秋の収穫祭について、車いすでも入れますか。",
+          "text": "公式へ。試しの秋の収穫祭について、車いすでも入れますか。",
           "expected": {
             "kind": "問い合わせ"
           }
@@ -1016,7 +1016,7 @@
       "group": false,
       "messages": [
         {
-          "text": "架空の秋の収穫祭について、食べ物の持ち込みはできますか。",
+          "text": "試しの秋の収穫祭について、食べ物の持ち込みはできますか。",
           "expected": {
             "kind": "問い合わせ"
           }
@@ -1030,7 +1030,7 @@
       "group": true,
       "messages": [
         {
-          "text": "公式へ。架空の秋の収穫祭について、忘れ物をしたらどこへ連絡すればよいですか。",
+          "text": "公式へ。試しの秋の収穫祭について、忘れ物をしたらどこへ連絡すればよいですか。",
           "expected": {
             "kind": "問い合わせ"
           }
@@ -1044,7 +1044,7 @@
       "group": false,
       "messages": [
         {
-          "text": "架空の秋の収穫祭について、トイレの場所を教えてください。",
+          "text": "試しの秋の収穫祭について、トイレの場所を教えてください。",
           "expected": {
             "kind": "問い合わせ"
           }
@@ -1058,7 +1058,7 @@
       "group": true,
       "messages": [
         {
-          "text": "公式へ。架空の秋の収穫祭について、手伝いは初めてでもできますか。",
+          "text": "公式へ。試しの秋の収穫祭について、手伝いは初めてでもできますか。",
           "expected": {
             "kind": "問い合わせ"
           }
@@ -1072,7 +1072,7 @@
       "group": false,
       "messages": [
         {
-          "text": "架空の秋の収穫祭について、案内の紙をもう一枚もらえますか。",
+          "text": "試しの秋の収穫祭について、案内の紙をもう一枚もらえますか。",
           "expected": {
             "kind": "問い合わせ"
           }
@@ -1086,7 +1086,7 @@
       "group": true,
       "messages": [
         {
-          "text": "公式へ。架空の秋の収穫祭について、駐輪する場所を教えてください。",
+          "text": "公式へ。試しの秋の収穫祭について、駐輪する場所を教えてください。",
           "expected": {
             "kind": "問い合わせ"
           }
@@ -1100,7 +1100,7 @@
       "group": false,
       "messages": [
         {
-          "text": "架空の秋の収穫祭について、食事の相談をしたいです。",
+          "text": "試しの秋の収穫祭について、食事の相談をしたいです。",
           "expected": {
             "kind": "問い合わせ"
           }

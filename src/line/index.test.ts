@@ -48,7 +48,7 @@ describe("自治会のLINEと届いたもの", () => {
     expect(await verifyLineSignature(body, `${signature.slice(0, -2)}AA`, secret)).toBe(false);
   });
 
-  it("署名済みwebhookの重複を一度だけ受け、届いたもの一覧に架空の文を出す", async () => {
+  it("署名済みwebhookの重複を一度だけ受け、届いたもの一覧に試しの文を出す", async () => {
     const ward = await seedWard(env.DB, uniqueSlug("line-test"));
     const destination = `U-fixture-${crypto.randomUUID()}`;
     const body = fixtureBody(destination);
@@ -102,10 +102,10 @@ describe("自治会のLINEと届いたもの", () => {
     const secret = "fictional-line-secret";
     const payload = JSON.parse(fixtureBody(destination)) as FixtureBody;
     const groupEvent = payload.events[0];
-    if (!groupEvent) throw new Error("架空のLINE事例がありません");
+    if (!groupEvent) throw new Error("試しのLINE事例がありません");
     groupEvent.webhookEventId = `group-${crypto.randomUUID()}`;
     groupEvent.source = { type: "group", userId: "U-fixture-user", groupId: "C-fixture-group" };
-    groupEvent.message.text = "架空の実行委員会からの連絡";
+    groupEvent.message.text = "試しの実行委員会からの連絡";
     payload.events = [groupEvent];
     const body = JSON.stringify(payload);
     const runtime = { ...env, LINE_CHANNEL_SECRET: secret, LINE_CHANNEL_ACCESS_TOKEN: "fictional-token" } as Env;
@@ -116,7 +116,7 @@ describe("自治会のLINEと届いたもの", () => {
     }));
     const response = await acceptLineWebhook(new Request("https://unit.test/hooks/line", {
       method: "POST", headers: { "x-line-signature": await sign(body, secret) }, body,
-    }), runtime, env.DB, { fetch: async () => Response.json({ displayName: "架空の表示名" }), ports }, new Date(), ctx);
+    }), runtime, env.DB, { fetch: async () => Response.json({ displayName: "試しの表示名" }), ports }, new Date(), ctx);
     expect(response.status).toBe(200);
     const job = await env.DB.prepare("SELECT via, sender_label FROM jobs WHERE ward_id = ? ORDER BY created_at DESC LIMIT 1")
       .bind(ward.wardId).first<{ via: string; sender_label: string }>();
@@ -124,7 +124,7 @@ describe("自治会のLINEと届いたもの", () => {
     expect(await listInboxItems(env.DB, ward.wardId)).toHaveLength(1);
     const sender = await env.DB.prepare("SELECT sender_display_name, sender_label FROM line_inbox_items WHERE ward_id = ? LIMIT 1")
       .bind(ward.wardId).first<{ sender_display_name: string; sender_label: string }>();
-    expect(sender).toMatchObject({ sender_display_name: "架空の表示名", sender_label: "LINEグループ" });
+    expect(sender).toMatchObject({ sender_display_name: "試しの表示名", sender_label: "LINEグループ" });
     await Promise.all(pending);
   });
 
@@ -135,7 +135,7 @@ describe("自治会のLINEと届いたもの", () => {
     const secret = "fictional-line-secret";
     const payload = JSON.parse(fixtureBody(destination)) as FixtureBody;
     const event = payload.events[0];
-    if (!event) throw new Error("架空のLINE事例がありません");
+    if (!event) throw new Error("試しのLINE事例がありません");
     event.type = "join";
     event.webhookEventId = `join-${crypto.randomUUID()}`;
     event.replyToken = "fictional-reply-token";

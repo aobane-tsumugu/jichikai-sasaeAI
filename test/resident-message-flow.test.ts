@@ -7,8 +7,8 @@ import { get, postForm, realApp } from "./helpers";
 it("L-311: 住民へのメッセージを、トップから選ぶ二つと下書きの一つのボタンで住民に送る", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の秋の収穫祭", year: 2026, eventDay: "2026-11-23", accountId: account.accountId });
-  await createProject(env.DB, ward.wardId, { kind: "board_meeting", title: "架空の年末の役員会", year: 2026, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "試しの秋の収穫祭", year: 2026, eventDay: "2026-11-23", accountId: account.accountId });
+  await createProject(env.DB, ward.wardId, { kind: "board_meeting", title: "試しの年末の役員会", year: 2026, accountId: account.accountId });
 
   // トップとやることに入口が一つずつある
   expect(await (await get(realApp, `${root}/`, cookie)).text()).toContain(`href="${root}/messages/new">住民へのメッセージを作る</a>`);
@@ -20,8 +20,8 @@ it("L-311: 住民へのメッセージを、トップから選ぶ二つと下書
   expect(picker).toContain("行事の案内や宣伝");
   expect(picker).toContain("当日の手伝いなど、一回だけ関われる仕事を募ります。");
   expect(picker).toContain("どの準備のことですか");
-  expect(picker).toContain("架空の秋の収穫祭");
-  expect(picker).not.toContain("架空の年末の役員会");
+  expect(picker).toContain("試しの秋の収穫祭");
+  expect(picker).not.toContain("試しの年末の役員会");
   expect(picker).toContain("まだ住民には送りません。");
   const fixed = await (await get(realApp, `${root}/messages/new?project=${project.projectId}`, cookie)).text();
   expect(fixed).not.toContain("どの準備のことですか");
@@ -41,7 +41,7 @@ it("L-311: 住民へのメッセージを、トップから選ぶ二つと下書
   // 「住民に送る」で、保存して、そのまま住民向けのページに載せる
   const stateVersion = (await getProjectSummary(env.DB, ward.wardId, project.projectId))!.stateVersion;
   const sent = await postForm(realApp, `${root}/projects/${project.projectId}/draft/notice/save`, {
-    title: "架空の収穫祭の持ち物のお知らせ", text: "当日は、架空の収穫祭の会場に、マイバッグを持ってきてください。", scope: "public",
+    title: "試しの収穫祭の持ち物のお知らせ", text: "当日は、試しの収穫祭の会場に、マイバッグを持ってきてください。", scope: "public",
     based_on: String(stateVersion), after: "send", lineDelivery: "skip", flyer_choice: "none",
   }, cookie);
   expect(sent.status).toBe(303);
@@ -53,11 +53,11 @@ it("L-311: 住民へのメッセージを、トップから選ぶ二つと下書
 
   // まだ送っていない下書きは、どの準備の下書きかを名前で並べる
   const saveVersion = (await getProjectSummary(env.DB, ward.wardId, project.projectId))!.stateVersion;
-  expect((await postForm(realApp, `${root}/projects/${project.projectId}/draft/recruitment/save`, { title: "架空の手伝いの募集", text: "架空の手伝いを募ります。", scope: "public", based_on: String(saveVersion), flyer_choice: "none" }, cookie)).status).toBe(303);
-  expect(await (await get(realApp, `${root}/messages/new`, cookie)).text()).toContain("架空の秋の収穫祭の下書き「架空の手伝いの募集」");
+  expect((await postForm(realApp, `${root}/projects/${project.projectId}/draft/recruitment/save`, { title: "試しの手伝いの募集", text: "試しの手伝いを募ります。", scope: "public", based_on: String(saveVersion), flyer_choice: "none" }, cookie)).status).toBe(303);
+  expect(await (await get(realApp, `${root}/messages/new`, cookie)).text()).toContain("試しの秋の収穫祭の下書き「試しの手伝いの募集」");
 
   // 住民向けにならない組み合わせは、理由を書いて選び直してもらう
-  const duty = await createProject(env.DB, ward.wardId, { kind: "duty", title: "架空のごみ当番", year: 2026, accountId: account.accountId });
+  const duty = await createProject(env.DB, ward.wardId, { kind: "duty", title: "試しのごみ当番", year: 2026, accountId: account.accountId });
   const refused = await postForm(realApp, `${root}/messages`, { kind: "notice", projectId: duty.projectId }, cookie);
   expect(refused.status).toBe(400);
   expect(await refused.text()).toContain("住民ではなく役員や当番の担当に向けたものなので、ここでは作れません。");
@@ -75,11 +75,11 @@ it("L-312: 準備を始める時に種類を聞かず、一年の予定ごとの
   expect(fromYear).toContain("よくある自治会の春の清掃のやることを置きます。あとで足したり外したりできます。");
   expect(fromYear).toContain("今年の春の清掃を始める</button>");
   // 去年もやった予定は、去年の当日と、去年のやることを置き直すことを書く
-  const last = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の秋の収穫祭", year: 2025, eventDay: "2025-10-19" });
+  const last = await createProject(env.DB, ward.wardId, { kind: "event", title: "試しの秋の収穫祭", year: 2025, eventDay: "2025-10-19" });
   await env.DB.prepare("UPDATE projects SET closed_at = ? WHERE ward_id = ? AND project_id = ?").bind("2025-11-01T00:00:00.000Z", ward.wardId, last.projectId).run();
-  const again = await (await get(realApp, `${root}/projects?title=${encodeURIComponent("架空の秋の収穫祭")}`, cookie)).text();
+  const again = await (await get(realApp, `${root}/projects?title=${encodeURIComponent("試しの秋の収穫祭")}`, cookie)).text();
   expect(again).toContain("去年は10月19日に行いました。去年のやることを、今年の日に合わせて置き直します。");
-  expect(again).toContain("今年の架空の秋の収穫祭を始める</button>");
+  expect(again).toContain("今年の試しの秋の収穫祭を始める</button>");
 
   const start = async (title: string) => {
     const response = await postForm(realApp, `${root}/projects`, { title, year: "2026" }, cookie);
@@ -91,9 +91,9 @@ it("L-312: 準備を始める時に種類を聞かず、一年の予定ごとの
     return { kind: row?.kind, tasks: tasks.results.map((task) => task.task_key) };
   };
   // 表に無い物は、名前の言葉から種類を当てず、短い一般の型。行事でない物に会場、協賛、当番表を付けない
-  expect(await start("架空の会費の集め直し")).toEqual({ kind: "event", tasks: ["announcement", "day", "report"] });
+  expect(await start("試しの会費の集め直し")).toEqual({ kind: "event", tasks: ["announcement", "day", "report"] });
   // 予定に無い物は、一年の予定に足す
-  expect(await env.DB.prepare("SELECT title FROM ward_year_items WHERE ward_id = ? AND title = ?").bind(ward.wardId, "架空の会費の集め直し").first()).not.toBeNull();
+  expect(await env.DB.prepare("SELECT title FROM ward_year_items WHERE ward_id = ? AND title = ?").bind(ward.wardId, "試しの会費の集め直し").first()).not.toBeNull();
   // 一年の予定の物は、その予定の型
   expect((await start("定期総会")).kind).toBe("general_meeting");
   expect((await start("会費の集金")).tasks).toEqual(["announcement", "day", "report"]);

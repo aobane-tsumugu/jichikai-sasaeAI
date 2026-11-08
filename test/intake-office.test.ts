@@ -143,14 +143,14 @@ describe("Excelの展開", () => {
   }
 
   it("インラインのセルも共有文字列と同じ本文を読み、ふりがなを混ぜない", async () => {
-    const text = `<r><t>架空</t></r><r><rPr><b/></rPr><t>花子 &amp; 担当</t></r><rPh sb="0" eb="2"><t>カクウ</t></rPh><rPh sb="2" eb="4"><t>ハナコ</t></rPh><phoneticPr fontId="1"/>`;
+    const text = `<r><t></t></r><r><rPr><b/></rPr><t>花子 &amp; 担当</t></r><rPh sb="0" eb="2"><t>カクウ</t></rPh><rPh sb="2" eb="4"><t>ハナコ</t></rPh><phoneticPr fontId="1"/>`;
     const workbook = {
       ...XLSX,
       "xl/sharedStrings.xml": `<sst><si>${text}</si></sst>`,
       "xl/worksheets/sheet1.xml": `<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="inlineStr"><is>${text}</is></c></row></sheetData></worksheet>`,
     };
     const result = await extractOffice(await makeZip(workbook, false)) as { tables: { rows: string[][] }[] };
-    expect(result.tables[0]!.rows).toEqual([["架空花子 & 担当", "架空花子 & 担当"]]);
+    expect(result.tables[0]!.rows).toEqual([["花子 & 担当", "花子 & 担当"]]);
   });
 
   it("要素に接頭辞が付いたExcelも同じに読む", async () => {
@@ -160,7 +160,7 @@ describe("Excelの展開", () => {
   });
 
   it("1904年日付システムのExcelも、同じ日付を書いた通常のExcelと同じに読む", async () => {
-    // 架空の表の2026年10月24日を、1904年からの日数で保存したブックにする。
+    // 試しの表の2026年10月24日を、1904年からの日数で保存したブックにする。
     const date1904 = {
       ...XLSX,
       "xl/workbook.xml": XLSX["xl/workbook.xml"].replace("<workbook>", '<workbook><workbookPr date1904="1"/>'),
@@ -182,15 +182,15 @@ describe("Excelの展開", () => {
       ...XLSX,
       "xl/styles.xml": `<styleSheet><numFmts><numFmt numFmtId="164" formatCode="yyyy/m/d h:mm:ss"/></numFmts><cellXfs><xf numFmtId="0"/><xf numFmtId="164"/></cellXfs></styleSheet>`,
       "xl/worksheets/sheet1.xml": `<worksheet><sheetData>
-        <row r="1"><c r="A1" t="inlineStr"><is><t>架空の日程</t></is></c></row>
+        <row r="1"><c r="A1" t="inlineStr"><is><t>試しの日程</t></is></c></row>
         ${values.map((value, index) => `<row r="${index + 2}"><c r="A${index + 2}" t="d" s="1"><v>${value}</v></c></row>`).join("")}
       </sheetData></worksheet>`,
     };
     const result = await extractOffice(await makeZip(workbook, false)) as { tables: { rows: string[][] }[] };
-    expect(result.tables[0]!.rows).toEqual([["架空の日程"], ...values.map((value) => [value])]);
+    expect(result.tables[0]!.rows).toEqual([["試しの日程"], ...values.map((value) => [value])]);
   });
 
-  it("当番表の時刻には架空の日付を付けず、年月日と日ときはそのまま読む", async () => {
+  it("当番表の時刻には試しの日付を付けず、年月日と日ときはそのまま読む", async () => {
     const workbook = {
       ...XLSX,
       "xl/styles.xml": `<styleSheet><numFmts>
@@ -230,11 +230,11 @@ describe("展開した結果の検査と読み取りへの変換", () => {
     "20260110-1000-4455-9e2e-350b530de48c",
   ])("ファイル名のUUIDを資料の年として拾わない: %s", (id) => {
     const parts = [
-      { originalId: "dated", filename: `架空の役員会の記録_${id}.txt`, text: "2026年1月10日の架空の役員会の記録" },
-      { originalId: "undated", filename: `架空の記録_${id}.txt`, text: "架空の年のない記録" },
-      { originalId: "filename-year", filename: `架空の記録_2025_${id}.txt`, text: "架空の記録" },
-      { originalId: "conflict", filename: `架空の記録_2025_${id}.txt`, text: "2026年の架空の記録" },
-      { originalId: "two-years", filename: `架空の記録_${id}.txt`, text: "2025年と2026年の架空の記録" },
+      { originalId: "dated", filename: `試しの役員会の記録_${id}.txt`, text: "2026年1月10日の試しの役員会の記録" },
+      { originalId: "undated", filename: `試しの記録_${id}.txt`, text: "試しの年のない記録" },
+      { originalId: "filename-year", filename: `試しの記録_2025_${id}.txt`, text: "試しの記録" },
+      { originalId: "conflict", filename: `試しの記録_2025_${id}.txt`, text: "2026年の試しの記録" },
+      { originalId: "two-years", filename: `試しの記録_${id}.txt`, text: "2025年と2026年の試しの記録" },
     ];
     expect(buildDirectReading(parts).original_years).toEqual([
       { original_id: "dated", year: 2026 },

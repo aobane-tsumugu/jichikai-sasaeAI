@@ -6,11 +6,11 @@ import { listTalks, talkPath } from "../src/line/talks";
 import { recordLineInquiry } from "../src/project/followup";
 import { get, realApp } from "./helpers";
 
-// 名前、文、ID、時刻は全て架空。実際のLINEへの通信は行わない。
+// 名前、文、ID、時刻は全て。実際のLINEへの通信は行わない。
 const first = "fictional-u88-first";
 const second = "fictional-u88-second";
 const named = "fictional-u88-named";
-const namedText = "架空の名前のある人";
+const namedText = "試しの名前のある人";
 const firstAlias = "個別に送ってきた方 1";
 const secondAlias = "個別に送ってきた方 2";
 
@@ -19,7 +19,7 @@ async function inbox(wardId: string, eventId: string, senderId: string, at: stri
     (ward_id, item_id, event_id, sender_id, sender_display_name, sender_label, source_type, source_id,
       line_destination, original_kind, original_text, received_at, bundle_id)
     VALUES (?, ?, ?, ?, ?, 'LINE個別', 'user', ?, 'fictional-u88-destination', 'text', ?, ?, ?)`)
-    .bind(wardId, eventId, eventId, senderId, name, senderId, `架空の連絡です（${eventId}）。`, at, eventId).run();
+    .bind(wardId, eventId, eventId, senderId, name, senderId, `試しの連絡です（${eventId}）。`, at, eventId).run();
 }
 
 async function page(path: string, cookie: string) {
@@ -36,7 +36,7 @@ it("U88: 同じ人の届いたものと問い合わせを同じ番号で見分�
   await inbox(ward.wardId, "fictional-u88-first-1", first, "2026-11-01T08:02:00.000Z");
   await inbox(ward.wardId, "fictional-u88-named-1", named, "2026-11-01T07:00:00.000Z", namedText);
   await recordLineInquiry(env.DB, ward.wardId, { eventId: "fictional-u88-question", receivedAt: "2026-11-01T08:00:00.000Z",
-    text: "架空の集まりの開始時刻を教えてください。", sourceType: "user", sourceId: first, senderLabel: null });
+    text: "試しの集まりの開始時刻を教えてください。", sourceType: "user", sourceId: first, senderLabel: null });
   let talks = await listTalks(env.DB, ward.wardId);
   expect(talks).toHaveLength(3);
   expect(talks.find((talk) => talk.posts.some((post) => post.senderId === first))?.name).toBe(firstAlias);
@@ -48,7 +48,7 @@ it("U88: 同じ人の届いたものと問い合わせを同じ番号で見分�
   await env.DB.prepare(`INSERT INTO line_talk_inquiry_posts
     (ward_id, event_id, bundle_id, destination, source_type, source_id, sender_id, sender_name, received_at, text)
     VALUES (?, 'fictional-u88-group-post', 'fictional-u88-group-bundle', 'fictional-u88-destination',
-      'group', 'fictional-u88-group', ?, NULL, '2026-11-01T08:04:00.000Z', '架空のグループの連絡です。')`)
+      'group', 'fictional-u88-group', ?, NULL, '2026-11-01T08:04:00.000Z', '試しのグループの連絡です。')`)
     .bind(ward.wardId, second).run();
   talks = await listTalks(env.DB, ward.wardId);
   expect(talks).toHaveLength(4);
@@ -71,7 +71,7 @@ it("U88: 同じ人の届いたものと問い合わせを同じ番号で見分�
   }
   const inquiry = await env.DB.prepare("SELECT inquiry_id FROM inquiry_records WHERE ward_id = ? AND line_event_id = ?")
     .bind(ward.wardId, "fictional-u88-question").first<{ inquiry_id: string }>();
-  if (!inquiry) throw new Error("架空の問い合わせがありません");
+  if (!inquiry) throw new Error("試しの問い合わせがありません");
   for (const path of ["/inquiries", `/inquiries/${inquiry.inquiry_id}`, `/inquiries/${inquiry.inquiry_id}/original`, "/", "/projects/today"]) {
     const html = await page(`${root}${path}`, cookie);
     expect(html).toContain(firstAlias);
@@ -95,12 +95,12 @@ it("U88: 三つの記録を利用者IDでまとめ、同時刻と自治会の境
   // 同時刻は、別々の表にあっても利用者ID順。同じIDの重複は一人。
   await inbox(ward.wardId, "fictional-u88-c-inbox", "fictional-u88-c", at);
   await recordLineInquiry(env.DB, ward.wardId, { eventId: "fictional-u88-b-inquiry", receivedAt: at,
-    text: "架空のグループからの質問です。", sourceType: "group", sourceId: "fictional-u88-group",
+    text: "試しのグループからの質問です。", sourceType: "group", sourceId: "fictional-u88-group",
     userId: "fictional-u88-b", senderLabel: "LINEグループ" });
   await env.DB.prepare(`INSERT INTO line_talk_inquiry_posts
     (ward_id, event_id, bundle_id, destination, source_type, source_id, sender_id, sender_name, received_at, text)
     VALUES (?, 'fictional-u88-a-post', 'fictional-u88-a-bundle', 'fictional-u88-destination', 'room',
-      'fictional-u88-room', 'fictional-u88-a', NULL, ?, '架空の複数人の連絡です。')`)
+      'fictional-u88-room', 'fictional-u88-a', NULL, ?, '試しの複数人の連絡です。')`)
     .bind(ward.wardId, at).run();
   await inbox(ward.wardId, "fictional-u88-a-later", "fictional-u88-a", "2026-11-02T08:00:00.000Z");
   await inbox(other.ward.wardId, "fictional-u88-c-other", "fictional-u88-c", "2026-10-01T08:00:00.000Z");

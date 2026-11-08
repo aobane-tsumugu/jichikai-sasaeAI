@@ -47,20 +47,20 @@ it("見出しに名前と行き止まりの行事一覧を出さず、自治会�
 
 it("配っていない行事の返事の画面は、開けない案内へ戻さない", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の配る前の行事", year: 2026, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "試しの配る前の行事", year: 2026, accountId: account.accountId });
   const form = await (await get(realApp, `/${ward.slug}/answer/${project.projectId}`)).text();
   expect(form).toContain(`← ${ward.name}のお知らせへ`);
   expect(form).not.toContain(`/${ward.slug}/p/${project.projectId}"`);
   expect(form).not.toMatch(/<input[^>]*name="district"[^>]*checked/);
   const list = await (await get(realApp, `/${ward.slug}/admin/answers`, cookie)).text();
-  expect(list).toContain("2026年の架空の配る前の行事");
+  expect(list).toContain("2026年の試しの配る前の行事");
   expect(list).toContain("返事はまだ届いていません。");
 });
 
 it("質問の一行は短くし、年を聞く質問は見本の見出しにする", async () => {
   const { questionShort } = await import("../src/project/question-pages");
   const base = { questionId: "q", state: "open", source: null, answer: null, detail: null };
-  expect(questionShort({ ...base, kind: "conflict", target: "place", text: "「場所」が食い違っています。今は「架空の広場」です。", options: ["架空の広場", "架空の集会所"] } as never)).toBe("「どこで」が資料によって違います");
+  expect(questionShort({ ...base, kind: "conflict", target: "place", text: "「場所」が食い違っています。今は「試しの広場」です。", options: ["試しの広場", "試しの集会所"] } as never)).toBe("「どこで」が資料によって違います");
   expect(questionShort({ ...base, kind: "unreadable", target: null, text: "協賛先の金額が読めませんでした", options: null } as never)).toBe("協賛先の金額が読めませんでした");
   expect(questionShort({ ...base, kind: "unreadable", target: null, text: "1枚目は、今年のものでしょうか。", options: ["今年のもの", "去年か、それより前のもの"] } as never)).toBe("この資料は今年のものですか");
 });

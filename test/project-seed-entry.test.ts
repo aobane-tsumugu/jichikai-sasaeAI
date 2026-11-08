@@ -8,10 +8,10 @@ it("閉じたやることがある時だけ、新しい年の順にこれをも�
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   expect(await (await get(realApp, `${root}/projects`, cookie)).text()).not.toContain("去年の終わったものから始める");
-  const open = await createProject(env.DB, ward.wardId, { kind: "event", title: "開いている行事（架空）", year: 2026, accountId: account.accountId });
+  const open = await createProject(env.DB, ward.wardId, { kind: "event", title: "開いている行事", year: 2026, accountId: account.accountId });
   const closed = [];
   for (const year of [2024, 2025]) {
-    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: `${year}年の行事（架空）`, year, accountId: account.accountId });
+    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: `${year}年の行事`, year, accountId: account.accountId });
     await env.DB.prepare("UPDATE projects SET closed_at = ? WHERE ward_id = ? AND project_id = ?")
       .bind("2026-11-05T00:00:00Z", ward.wardId, project.projectId).run();
     closed.push(project);

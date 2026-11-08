@@ -45,7 +45,7 @@ it("混ざった送り先の返事を残った場所へだけ送り直し、時�
       calls.push({ to: body.to, text: body.messages[0]!.text, key });
       if (accepted.has(key)) return new Response(null, { status: 409, headers: { "x-line-accepted-request-id": "fictional-u13-accepted" } });
       accepted.add(key);
-      if (body.to === group && lostReply) { lostReply = false; throw new TypeError("架空の応答切断"); }
+      if (body.to === group && lostReply) { lostReply = false; throw new TypeError("試しの応答切断"); }
       return Response.json({ sentMessages: [{ id: crypto.randomUUID() }] });
     }
     throw new Error(`試験にない外への呼び出し: ${url}`);

@@ -13,19 +13,19 @@ import { get, realApp } from "./helpers";
 it("前提 1: 一度に送った資料のうち、名前の合う準備中のものの分は押さなくても入り、合わない分は読み終わったものに残る。始める時に種類を聞かない", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の秋の収穫祭", year: 2026, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "試しの秋の収穫祭", year: 2026, accountId: account.accountId });
   const got = await receive(env, { wardId: ward.wardId, projectId: null, via: "admin", parts: [
-    { kind: "text", filename: "収穫祭の案内.txt", mediaType: "text/plain", bytes: new TextEncoder().encode("架空の秋の収穫祭の案内") },
-    { kind: "text", filename: "訓練の案内.txt", mediaType: "text/plain", bytes: new TextEncoder().encode("架空の防災の集まりの案内") },
+    { kind: "text", filename: "収穫祭の案内.txt", mediaType: "text/plain", bytes: new TextEncoder().encode("試しの秋の収穫祭の案内") },
+    { kind: "text", filename: "訓練の案内.txt", mediaType: "text/plain", bytes: new TextEncoder().encode("試しの防災の集まりの案内") },
   ] });
-  if (!got.jobId) throw new Error("架空の資料を受け付けられませんでした");
+  if (!got.jobId) throw new Error("試しの資料を受け付けられませんでした");
   const originals = await listOriginals(env.DB, ward.wardId, got.jobId);
   const [harvest, drill] = originals;
-  if (!harvest || !drill) throw new Error("架空の原本がありません");
-  const body = { document_kind: "notice", original_years: [], summary: "架空の二つの案内", text_blocks: [], fields: [], tables: [], decisions: [], unreadable: [],
+  if (!harvest || !drill) throw new Error("試しの原本がありません");
+  const body = { document_kind: "notice", original_years: [], summary: "試しの二つの案内", text_blocks: [], fields: [], tables: [], decisions: [], unreadable: [],
     project_suggestions: [
       { original_id: harvest.original_id, title: "秋の収穫祭", kind: "event", date_text: "", place: "" },
-      { original_id: drill.original_id, title: "架空の防災の集まり", kind: "event", date_text: "", place: "" },
+      { original_id: drill.original_id, title: "試しの防災の集まり", kind: "event", date_text: "", place: "" },
     ] };
   const now = new Date().toISOString();
   await env.DB.prepare("UPDATE jobs SET status = 'read', read_at = ? WHERE ward_id = ? AND job_id = ?").bind(now, ward.wardId, got.jobId).run();
@@ -38,10 +38,10 @@ it("前提 1: 一度に送った資料のうち、名前の合う準備中のも
     .bind(ward.wardId, project.projectId).all<{ original_id: string }>();
   expect(placed.results.map((row) => row.original_id)).toEqual([harvest.original_id]);
   const left = await pendingMaterialGroups(env.DB, ward.wardId);
-  expect(left.map((group) => group.title)).toEqual(["架空の防災の集まり"]);
+  expect(left.map((group) => group.title)).toEqual(["試しの防災の集まり"]);
   // トップは、まだ始めていない予定の資料として書き、どの準備に入れるかとは聞かない
   const top = await (await get(realApp, `${root}/`, cookie)).text();
-  expect(top).toContain("「架空の防災の集まり」の資料を、AIが読み終わりました。まだ準備を始めていません。");
+  expect(top).toContain("「試しの防災の集まり」の資料を、AIが読み終わりました。まだ準備を始めていません。");
   expect(top).not.toContain("準備に入れられそうな資料");
   // 残った分を新しく始める時も、種類は聞かない
   const read = await (await get(realApp, `${root}/intake/read`, cookie)).text();
@@ -71,12 +71,12 @@ it.each(["doc", "xls"])("古い形式の%sは選べ、壊れていても原本�
   expect(page).toContain(".doc,.xls");
   const form = new FormData();
   form.set("project_id", "");
-  const filename = `架空の資料.${format}`;
+  const filename = `試しの資料.${format}`;
   const mediaType = format === "doc" ? "application/msword" : "application/vnd.ms-excel";
   const bytes = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 1, 2, 3]);
   form.append("part", new File([bytes], filename, { type: mediaType }));
   form.append("part_kind", "file");
-  // 題の見立てだけを架空の応答に替え、受付・原本保存・読み取りは実物を通す。
+  // 題の見立てだけを試しの応答に替え、受付・原本保存・読み取りは実物を通す。
   const client = new Anthropic({ apiKey: "fixture-not-a-real-key", maxRetries: 0, fetch: async () => Response.json({
     id: "fixture-suggestions", type: "message", role: "assistant", model: "claude-sonnet-5-5", stop_reason: "end_turn", stop_sequence: null,
     content: [{ type: "text", text: JSON.stringify({ project_suggestions: [], ward_facts: [], year_entries: [] }) }],

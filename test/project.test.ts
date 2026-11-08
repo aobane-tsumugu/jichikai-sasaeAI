@@ -18,10 +18,10 @@ const db = env.DB;
 
 async function setup(kind: "event" | "board_meeting" = "event") {
   const ward = await seedWard(db);
-  const account = await seedAccount(db, ward.wardId, "試験の書記（架空）");
+  const account = await seedAccount(db, ward.wardId, "試験の書記");
   const project = await createProject(db, ward.wardId, {
     kind,
-    title: "秋の収穫祭（架空）",
+    title: "秋の収穫祭",
     year: 2026,
     eventDay: "2026-10-24",
     accountId: account.accountId,
@@ -51,7 +51,7 @@ async function insertDocument(wardId: string, projectId: string, kind: string) {
   const documentId = newId();
   await db
     .prepare("INSERT INTO documents (document_id, ward_id, project_id, kind, title, scope) VALUES (?, ?, ?, ?, ?, 'public')")
-    .bind(documentId, wardId, projectId, kind, `${kind}（架空）`)
+    .bind(documentId, wardId, projectId, kind, `${kind}`)
     .run();
   return documentId;
 }
@@ -142,7 +142,7 @@ describe("出どころの検査", () => {
   it("人の入力は、同じ区のアカウントでなければ捨てる", async () => {
     const { ward, project } = await setup();
     const other = await seedWard(db);
-    const stranger = await seedAccount(db, other.wardId, "別の区の人（架空）");
+    const stranger = await seedAccount(db, other.wardId, "別の区の人");
     const result = await applyChange(db, ward.wardId, project.projectId, item(person(stranger.accountId), "10月24日"));
     expectStatus(result, "dropped");
   });

@@ -12,7 +12,7 @@ import { createInvite } from "../src/space/api";
 import { MATERIAL_EXEMPTION_FIXTURE as material, ROTA_REVIEW_FIXTURE as fixture } from "./fixtures/rota";
 import { cookieFrom, get, postForm, realApp } from "./helpers";
 
-it("架空の免除資料から一問だけ出し、答えるまでは担当を保ち、理由を直して答えると今年だけ外して理由を配らない", async () => {
+it("試しの免除資料から一問だけ出し、答えるまでは担当を保ち、理由を直して答えると今年だけ外して理由を配らない", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   await replaceRoster(env.DB, ward.wardId, [fixture.first, fixture.exempt]
@@ -26,19 +26,19 @@ it("架空の免除資料から一問だけ出し、答えるまでは担当を�
   expect((await postForm(realApp, `${draft}/start`, {}, cookie)).headers.get("location")).toContain("notice=saved");
   const state = async () => {
     const value = await getProjectState(env.DB, ward.wardId, id);
-    if (!value) throw new Error("架空の当番がありません。");
+    if (!value) throw new Error("試しの当番がありません。");
     return value;
   };
   const before = (await state()).tables.duties.filter((row) => row.scope === "current");
   const exemptRow = before.find((row) => row.data.assignee === fixture.exempt);
-  if (!exemptRow) throw new Error("架空の対象者の担当がありません。");
+  if (!exemptRow) throw new Error("試しの対象者の担当がありません。");
   // 実際の受付で文字の資料を受け、同じ読み取りとMCPの書き込みを使う。AIの接続判断だけを模す。
   const input = await receive(env, {
     wardId: ward.wardId, projectId: id, via: "admin", accountId: account.accountId,
     parts: [{ kind: "text", filename: material.filename, mediaType: "text/plain", bytes: new TextEncoder().encode(material.text) }],
   });
   const originalId = input.received[0]?.originalId;
-  if (!input.jobId || !originalId) throw new Error("架空の免除資料を送れませんでした。");
+  if (!input.jobId || !originalId) throw new Error("試しの免除資料を送れませんでした。");
   const ticket = `tk_${crypto.randomUUID()}`;
   await env.DB.prepare("UPDATE jobs SET status = 'connecting', ticket_hash = ? WHERE ward_id = ? AND job_id = ?")
     .bind(await sha256Hex(ticket), ward.wardId, input.jobId).run();
@@ -92,7 +92,7 @@ it("架空の免除資料から一問だけ出し、答えるまでは担当を�
   const document = await env.DB.prepare(`SELECT document_id, version_id, version_no FROM document_versions
     WHERE ward_id = ? AND project_id = ? ORDER BY version_no DESC LIMIT 1`).bind(ward.wardId, id)
     .first<{ document_id: string; version_id: string; version_no: number }>();
-  if (!document) throw new Error("架空の当番表の下書きがありません。");
+  if (!document) throw new Error("試しの当番表の下書きがありません。");
   expect((await postForm(realApp, `${root}/publish/${id}/space`, {
     documentId: document.document_id, versionId: document.version_id, versionNo: String(document.version_no),
   }, cookie)).status).toBe(303);
@@ -100,7 +100,7 @@ it("架空の免除資料から一問だけ出し、答えるまでは担当を�
   const invite = await createInvite(env.DB, ward.wardId, id, "member", null, account.accountId, true);
   const entered = await get(realApp, `/${ward.slug}/space/${id}/person/${invite}`);
   const memberCookie = cookieFrom(entered, `space_${id}`);
-  if (!memberCookie) throw new Error("架空の実行委員のページに入れません。");
+  if (!memberCookie) throw new Error("試しの実行委員のページに入れません。");
   for (const page of [await (await get(realApp, `/${ward.slug}/space/${id}`, memberCookie)).text(),
     await (await get(realApp, `/${ward.slug}/`)).text(),
     await (await get(realApp, `${root}/print/${id}/${document.document_id}/${document.version_no}/preview`, cookie)).text()]) {
@@ -110,24 +110,24 @@ it("架空の免除資料から一問だけ出し、答えるまでは担当を�
   }
 });
 
-it("架空の通年の当番で今年の免除を答えると、翌年1月から3月も対象の世帯を割り当てない", async () => {
+it("試しの通年の当番で今年の免除を答えると、翌年1月から3月も対象の世帯を割り当てない", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   await replaceRoster(env.DB, ward.wardId, [fixture.first, fixture.exempt]
     .map((household) => ({ household, district: fixture.district })), { household: 0, district: 1 });
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "duty", title: "架空の通年のごみ当番", year: 2026, accountId: account.accountId,
+    kind: "duty", title: "試しの通年のごみ当番", year: 2026, accountId: account.accountId,
   });
   const root = `/${ward.slug}/admin`;
   expect((await postForm(realApp, `${root}/rota/${project.projectId}/weekly`, { weekday: "1" }, cookie)).status).toBe(303);
-  // 架空の資料の免除を読み取った変更から、役員への質問を作る。
+  // 試しの資料の免除を読み取った変更から、役員への質問を作る。
   expect((await applyChange(env.DB, ward.wardId, project.projectId, {
     kind: "row", table: "decisions", data: { what: material.sentence },
-    source: { kind: "original", ref: "fictional-annual-exemption", locator: "架空の引き継ぎメモ", year: 2026 },
+    source: { kind: "original", ref: "fictional-annual-exemption", locator: "試しの引き継ぎメモ", year: 2026 },
     confidence: "high", packVersion: "rota-annual-exemption-fictional@1",
   })).status).toBe("held");
   const before = await getProjectState(env.DB, ward.wardId, project.projectId);
   const question = before?.questions.find((entry) => entry.target?.startsWith("rota_exemption:"));
-  if (!question) throw new Error("架空の免除の質問がありません。");
+  if (!question) throw new Error("試しの免除の質問がありません。");
   expect((await postForm(realApp, `${root}/projects/${project.projectId}/questions/${question.questionId}/exemption`, {
     action: "今年の当番から外す", reason: material.editedReason,
   }, cookie)).headers.get("location")).toContain("notice=exempted");

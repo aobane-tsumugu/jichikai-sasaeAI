@@ -458,7 +458,7 @@ describe("束3のAPIとの繋ぎ", () => {
   it("札から割り出した行事に、項目、表の行、決めたこと、質問を書き、実在しない出どころと不正な鍵は書かない", async () => {
     setProjectDirectory(null);
     const ward = await seedWard(env.DB);
-    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026 });
+    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭", year: 2026 });
     const out = await receive(env, {
       wardId: ward.wardId,
       via: "admin",

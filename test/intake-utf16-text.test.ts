@@ -8,11 +8,11 @@ import { createProject } from "../src/project/api";
 it("ExcelのUnicodeテキストを、UTF-16のどちらのバイト順でも同じ本文として受け取る", async () => {
   const { ward, account } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,
+    kind: "event", title: "試しの行事", year: 2026, accountId: account.accountId,
   });
-  const text = "代表者のお名前\t班\r\n架空世帯\t1班\r\n";
+  const text = "代表者のお名前\t班\r\n世帯\t1班\r\n";
   for (const littleEndian of [true, false]) {
-    // Excel の「Unicode テキスト」と同じく、BOM とタブを含む架空の資料。
+    // Excel の「Unicode テキスト」と同じく、BOM とタブを含む試しの資料。
     const bytes = new Uint8Array(2 + text.length * 2);
     const view = new DataView(bytes.buffer);
     view.setUint16(0, 0xfeff, littleEndian);
@@ -21,7 +21,7 @@ it("ExcelのUnicodeテキストを、UTF-16のどちらのバイト順でも同�
     }
     const received = await receive(env, {
       wardId: ward.wardId, projectId: project.projectId, via: "admin", accountId: account.accountId,
-      parts: [{ kind: "file", filename: "架空の世帯.txt", mediaType: "text/plain", bytes }],
+      parts: [{ kind: "file", filename: "試しの世帯.txt", mediaType: "text/plain", bytes }],
     });
     expect(received.received).toHaveLength(1);
     expect(received.needsModelRead).toBe(false);
@@ -29,7 +29,7 @@ it("ExcelのUnicodeテキストを、UTF-16のどちらのバイト順でも同�
     expect(await getReadings(env.DB, ward.wardId, received.jobId)).toMatchObject([
       { source: "direct", body: { text_blocks: [
         { locator: "1行目", text: "代表者のお名前\t班" },
-        { locator: "2行目", text: "架空世帯\t1班" },
+        { locator: "2行目", text: "世帯\t1班" },
       ] } },
     ]);
   }

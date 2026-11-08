@@ -121,7 +121,7 @@ it("U29: 一対一とグループの作業連絡を残し、出欠だけ数え�
         sourceType: group ? "group" : "user", receivedAt: new Date(now.getTime() - 1000).toISOString(), kind: "image",
         bytes: new Uint8Array([...fixture.answerSheetPhotoBytes, group ? 2 : 1]).buffer, contentType: "image/jpeg" };
       const jobId = await ports.receiveOriginal(ward.wardId, photo);
-      if (!jobId) throw new Error("架空の写真を受け付けられません");
+      if (!jobId) throw new Error("試しの写真を受け付けられません");
       await registerLinePhoto(env.DB, ward.wardId, { destination, source: {
         type: photo.sourceType, id: group ? "fictional-u29-group" : photo.senderId, senderId: photo.senderId,
       }, jobId, messageId: photo.eventId, now: new Date(now.getTime() - 1000) });

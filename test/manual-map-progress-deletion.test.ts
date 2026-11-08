@@ -12,11 +12,11 @@ import { postForm, realApp } from "./helpers";
 it("やることで人が保存した進み具合は、元の資料を消しても毎日の写しと一緒に残る", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,
+    kind: "event", title: "試しの行事", year: 2026, accountId: account.accountId,
   });
   const received = await receive(env, {
     wardId: ward.wardId, projectId: project.projectId, via: "admin", accountId: account.accountId,
-    parts: [{ kind: "text", filename: "架空の会場の連絡.txt", mediaType: "text/plain", bytes: new TextEncoder().encode("架空の会場の手配を始めました。") }],
+    parts: [{ kind: "text", filename: "試しの会場の連絡.txt", mediaType: "text/plain", bytes: new TextEncoder().encode("試しの会場の手配を始めました。") }],
   });
   expect((await applyChange(env.DB, ward.wardId, project.projectId, {
     kind: "map_task", taskKey: "venue", progress: "started",

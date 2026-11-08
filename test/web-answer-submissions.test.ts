@@ -5,7 +5,7 @@ import { seedAdmin } from "../src/core/testing";
 import { createProject } from "../src/project/api";
 import { get, postForm, realApp } from "./helpers";
 
-const input = { attend: "yes", household: "架空 送信確認世帯", district: "", children_count: "", adults_count: "2", seniors_count: "" };
+const input = { attend: "yes", household: "送信確認世帯", district: "", children_count: "", adults_count: "2", seniors_count: "" };
 function number(html: string): string {
   const value = /name="submission_id" value="([^"]+)"/.exec(html)?.[1];
   if (!value) throw new Error("返事の画面に送信番号がありません。");
@@ -13,7 +13,7 @@ function number(html: string): string {
 }
 async function fixture() {
   const admin = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, admin.ward.wardId, { kind: "event", title: "架空の送信確認会", year: 2026, accountId: admin.account.accountId });
+  const project = await createProject(env.DB, admin.ward.wardId, { kind: "event", title: "試しの送信確認会", year: 2026, accountId: admin.account.accountId });
   return { ...admin, project, path: `/${admin.ward.slug}/answer/${project.projectId}` };
 }
 
@@ -67,7 +67,7 @@ it("入力のやり直しは同じ番号を使い、受け付けた答えの訂�
 it("送信番号が同じでも別の区や別の行事の答えをまとめない", async () => {
   const first = await fixture();
   const second = await fixture();
-  const project = await createProject(env.DB, first.ward.wardId, { kind: "event", title: "架空の別の確認会", year: 2026, accountId: first.account.accountId });
+  const project = await createProject(env.DB, first.ward.wardId, { kind: "event", title: "試しの別の確認会", year: 2026, accountId: first.account.accountId });
   const key = number(await (await get(realApp, first.path)).text());
   for (const target of [first, second, { ward: first.ward, project, path: `/${first.ward.slug}/answer/${project.projectId}` }]) {
     expect((await postForm(realApp, target.path, { ...input, submission_id: key })).status).toBe(200);

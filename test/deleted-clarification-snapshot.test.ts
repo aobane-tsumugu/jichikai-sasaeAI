@@ -10,7 +10,7 @@ import { requestJobDeletion, runDeletionCron } from "../src/ops/lifecycle";
 it("写真を消した日次の写しを戻すとき、別の受付で届いた確認の返事も連動して外す", async () => {
   const { ward } = await seedAdmin(env.DB);
   const w = ward.wardId;
-  // 写真、受付、確認と返事はすべて架空。AIやLINEには接続しない。
+  // 写真、受付、確認と返事はすべて。AIやLINEには接続しない。
   const deletedJob = crypto.randomUUID(), keptJob = crypto.randomUUID(), answerJob = crypto.randomUUID();
   for (const job of [deletedJob, keptJob, answerJob]) {
     await env.DB.prepare(`INSERT INTO jobs (ward_id, job_id, via, task, status, created_at, updated_at)
@@ -25,15 +25,15 @@ it("写真を消した日次の写しを戻すとき、別の受付で届いた�
   for (const [index, row] of records.entries()) {
     await env.DB.prepare(`INSERT INTO originals
       (ward_id, original_id, job_id, position, kind, content_hash, media_type, filename, byte_size, received_at)
-      VALUES (?, ?, ?, 1, 'photo', ?, 'image/jpeg', '架空の写真.jpg', 1, '2026-11-07')`)
+      VALUES (?, ?, ?, 1, 'photo', ?, 'image/jpeg', '試しの写真.jpg', 1, '2026-11-07')`)
       .bind(w, row.original, row.job, String(index + 1).repeat(64)).run();
     await env.DB.prepare(`INSERT INTO line_clarifications
       (ward_id, clarification_id, batch_id, job_id, original_id, topic, text)
-      VALUES (?, ?, ?, ?, ?, 'year', '架空の写真は何年のものですか')`)
+      VALUES (?, ?, ?, ?, ?, 'year', '試しの写真は何年のものですか')`)
       .bind(w, row.clarification, batch, row.job, row.original).run();
     await env.DB.prepare(`INSERT INTO line_clarification_answers
       (ward_id, event_id, clarification_id, job_id, answer_text, sender_label)
-      VALUES (?, ?, ?, ?, '架空の2026年の写真です。', '架空の送信者')`)
+      VALUES (?, ?, ?, ?, '試しの2026年の写真です。', '試しの送信者')`)
       .bind(w, row.event, row.clarification, answerJob).run();
   }
   const answers = () => env.DB.prepare("SELECT event_id FROM line_clarification_answers WHERE ward_id = ?").bind(w).all<{ event_id: string }>();
@@ -47,7 +47,7 @@ it("写真を消した日次の写しを戻すとき、別の受付で届いた�
   const kept = records[1]!;
   expect((await answers()).results).toEqual([{ event_id: kept.event }]);
   const object = await new WardBucket(env.ORIGINALS, w).get("snapshots/daily/2026-11-07.json");
-  if (!object) throw new Error("架空の日次の写しがありません");
+  if (!object) throw new Error("試しの日次の写しがありません");
   const snapshot = await object.json();
   // 同じ試験用の自治会だけを空にして、消去を反映した写しから復旧する。
   for (const table of [...SNAPSHOT_TABLES].reverse()) await env.DB.prepare(`DELETE FROM ${table} WHERE ward_id = ?`).bind(w).run();

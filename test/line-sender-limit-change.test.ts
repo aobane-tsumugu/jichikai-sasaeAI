@@ -22,18 +22,18 @@ it("一日の上限を増やすと断った受信を除いて新しい文を処�
   await env.DB.prepare("INSERT INTO line_channels (ward_id, destination, channel_secret_binding, access_token_binding) VALUES (?, ?, 'LINE_CHANNEL_SECRET', 'LINE_CHANNEL_ACCESS_TOKEN')")
     .bind(ward.wardId, destination).run();
   let matches = 0;
-  const ports = createLineIntakePorts(runtime, { waitUntil: () => { throw new Error("架空の試験でAIの読み取りを始めてはいけません。"); } }, async () => {
+  const ports = createLineIntakePorts(runtime, { waitUntil: () => { throw new Error("試しの試験でAIの読み取りを始めてはいけません。"); } }, async () => {
     matches++;
-    return { choice: MATCH_UNRELATED, reason: "架空の文の確認です。", usage: { input_tokens: 10, output_tokens: 1 } };
+    return { choice: MATCH_UNRELATED, reason: "試しの文の確認です。", usage: { input_tokens: 10, output_tokens: 1 } };
   });
   const fakeLine: typeof fetch = async (url) => {
     if (String(url).endsWith("/message/reply")) return Response.json({ sentMessages: [{ id: "fictional-limit-change-reply" }] });
-    throw new Error("架空のLINE以外へは接続しません。");
+    throw new Error("試しのLINE以外へは接続しません。");
   };
   const now = new Date();
   const send = async (id = crypto.randomUUID()) => {
     const body = JSON.stringify({ destination, events: [{ type: "message", webhookEventId: id, timestamp: now.getTime(), replyToken: id,
-      source: { type: "user", userId: "fictional-limit-change-sender" }, message: { type: "text", id, text: `架空の文${id}` } }] });
+      source: { type: "user", userId: "fictional-limit-change-sender" }, message: { type: "text", id, text: `試しの文${id}` } }] });
     const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(runtime.LINE_CHANNEL_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
     const signature = btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body)))));
     const response = await acceptLineWebhook(new Request("https://unit.test/hooks/line", {

@@ -20,12 +20,12 @@ it("一日と二日間と集金期間を持ち、旬の目安と決まった日�
   });
   const state = async (id: string) => {
     const value = await getProjectState(env.DB, ward.wardId, id);
-    if (!value) throw new Error("架空の予定が見つかりません");
+    if (!value) throw new Error("試しの予定が見つかりません");
     return value;
   };
   const task = (tasks: MapTaskView[], key: string) => {
     const value = tasks.find((entry) => entry.taskKey === key);
-    if (!value) throw new Error(`架空の仕事${key}がありません`);
+    if (!value) throw new Error(`試しの仕事${key}がありません`);
     return value;
   };
 
@@ -115,7 +115,7 @@ it("一日と二日間と集金期間を持ち、旬の目安と決まった日�
     const input = await receive(env, { wardId: ward.wardId, projectId: project.projectId, via: "admin",
       parts: [{ kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode(`${project.title}\n${text}`) }] });
     const originalId = input.received[0]?.originalId;
-    if (!originalId) throw new Error("架空の日程の資料がありません");
+    if (!originalId) throw new Error("試しの日程の資料がありません");
     expect((await applyChange(env.DB, ward.wardId, project.projectId, {
       kind: "item", itemKey: "date_time", value: text, source: { kind: "original", ref: originalId, locator: "1行目", year: 2026 },
       confidence: "high", packVersion: "event-period-test@1",
@@ -131,7 +131,7 @@ it("一日と二日間と集金期間を持ち、旬の目安と決まった日�
         { kind: "text", filename: "", mediaType: "text/plain", bytes: new TextEncoder().encode("10月1日から12月30日まで") },
       ] });
       const correctionId = correction.received[0]?.originalId;
-      if (!correctionId) throw new Error("架空の変更の資料がありません");
+      if (!correctionId) throw new Error("試しの変更の資料がありません");
       expect((await applyChange(env.DB, ward.wardId, project.projectId, {
         kind: "item", itemKey: "date_time", value: "10月1日から12月30日まで",
         source: { kind: "original", ref: correctionId, locator: "1行目", year: 2026 }, confidence: "high", packVersion: "event-period-test@1",

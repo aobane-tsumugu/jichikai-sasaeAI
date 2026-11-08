@@ -111,7 +111,7 @@ it("読み手ごとに題が揺れ、当番や役員会の資料が混ざって�
   const jobId = crypto.randomUUID();
   const now = new Date().toISOString();
   await env.DB.prepare(`INSERT INTO jobs (job_id, ward_id, via, read_kind, sender_label, account_id, status, created_at, updated_at, read_at)
-    VALUES (?, ?, 'admin', 'general', '架空', ?, 'read', ?, ?, ?)`).bind(jobId, ward.wardId, account.accountId, now, now, now).run();
+    VALUES (?, ?, 'admin', 'general', '試し', ?, 'read', ?, ?, ?)`).bind(jobId, ward.wardId, account.accountId, now, now, now).run();
   const ids = Array.from({ length: 5 }, (_, index) => `original-${index}`);
   for (const [index, id] of ids.entries()) {
     await env.DB.prepare(`INSERT INTO originals (original_id, ward_id, job_id, position, filename, kind, media_type, content_hash, byte_size, received_at)

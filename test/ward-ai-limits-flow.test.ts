@@ -18,18 +18,18 @@ import { createOpsSession, OPS_COOKIE } from "../src/ops/session";
 import { createProject } from "../src/project/api";
 import { get, opsEnv, postForm, realApp, withEnv } from "./helpers";
 
-it("U74: 制限なしの受付、月の上限で待って解除後に再開、LINEの超過分の原本保管を通す（架空）", async () => {
+it("U74: 制限なしの受付、月の上限で待って解除後に再開、LINEの超過分の原本保管を通す", async () => {
   const { ward, account } = await seedAdmin(env.DB);
   const other = await seedWard(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の資料確認", year: 2026, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "試しの資料確認", year: 2026, accountId: account.accountId });
   const cookie = `${OPS_COOKIE}=${await createOpsSession(opsEnv)}`;
   let readCalls = 0;
   let connectCalls = 0;
   const client = new Anthropic({ apiKey: "fictional-u74-key", maxRetries: 0, fetch: async (url, init) => {
-    if (!String(url).endsWith("/messages")) throw new Error("架空のMessages以外へは接続しません");
+    if (!String(url).endsWith("/messages")) throw new Error("試しのMessages以外へは接続しません");
     const request = JSON.parse(String(init?.body)) as { model: string };
     if (request.model === "claude-haiku-5-5") return Response.json({ id: "fictional-u74-match", type: "message", role: "assistant", model: request.model,
-      content: [{ type: "text", text: JSON.stringify({ choice: MATCH_UNRELATED, reason: "架空の写真の確認です" }) }],
+      content: [{ type: "text", text: JSON.stringify({ choice: MATCH_UNRELATED, reason: "試しの写真の確認です" }) }],
       stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 1 } });
     connectCalls++;
     return Response.json({ id: "fictional-u74-message", type: "message", role: "assistant", model: "claude-sonnet-5-5",
@@ -38,14 +38,14 @@ it("U74: 制限なしの受付、月の上限で待って解除後に再開、LI
   const deps: PipelineDeps = { createClient: () => client, readImpl: async (_client, input) => {
     readCalls++;
     return { body: { document_kind: "photo", original_years: input.originals.map((o) => ({ original_id: o.originalId, year: 2026 })),
-      summary: "架空の写真です", text_blocks: input.originals.map((o) => ({ original_id: o.originalId, locator: "全体", text: "架空の写真" })),
+      summary: "試しの写真です", text_blocks: input.originals.map((o) => ({ original_id: o.originalId, locator: "全体", text: "試しの写真" })),
       fields: [], tables: [], decisions: [], unreadable: [] }, packVersion: "read-general@2", model: "claude-sonnet-5-5",
       usage: { input_tokens: 1000, output_tokens: 200, cache_read_input_tokens: 0 } };
   } };
   const photo = async () => {
-    const result = await receive(env, { wardId: ward.wardId, via: "admin", parts: [{ kind: "photo", filename: "架空の写真.jpg",
+    const result = await receive(env, { wardId: ward.wardId, via: "admin", parts: [{ kind: "photo", filename: "試しの写真.jpg",
       mediaType: "image/jpeg", bytes: fictionalPaperPhoto(crypto.randomUUID()) }] });
-    if (!result.jobId) throw new Error("架空の写真を受け取れませんでした");
+    if (!result.jobId) throw new Error("試しの写真を受け取れませんでした");
     return result.jobId;
   };
   const save = async (values: Record<string, string>) => {
@@ -69,7 +69,7 @@ it("U74: 制限なしの受付、月の上限で待って解除後に再開、LI
     if (!original?.r2_path) throw new Error("待っている写真の原本がありません");
     expect(await new WardBucket(env.ORIGINALS, ward.wardId).get(original.r2_path)).not.toBeNull();
     const direct = await receive(env, { wardId: ward.wardId, via: "admin", projectId: project.projectId,
-      parts: [{ kind: "text", filename: "架空の文.txt", mediaType: "text/plain", bytes: new TextEncoder().encode("架空の準備の報告") }] });
+      parts: [{ kind: "text", filename: "試しの文.txt", mediaType: "text/plain", bytes: new TextEncoder().encode("試しの準備の報告") }] });
     expect(await dispatchProject(env, ward.wardId, project.projectId)).toBe("limited");
     expect(connectCalls).toBe(0);
     expect(readCalls).toBe(1);
@@ -97,20 +97,20 @@ it("U74: 制限なしの受付、月の上限で待って解除後に再開、LI
     const replies: string[] = [];
     const ports = createLineIntakePorts(runtime, { waitUntil: () => { throw new Error("超過分のAIを始めてはいけません"); } }, async () => {
       matches++;
-      return { choice: MATCH_UNRELATED, reason: "架空の雑談です", usage: { input_tokens: 10, output_tokens: 1 } };
+      return { choice: MATCH_UNRELATED, reason: "試しの雑談です", usage: { input_tokens: 10, output_tokens: 1 } };
     });
     const fakeLine: typeof fetch = async (url, init) => {
-      if (String(url).includes("/content")) return new Response(fictionalPaperPhoto("架空のLINEの写真"), { headers: { "content-type": "image/jpeg" } });
+      if (String(url).includes("/content")) return new Response(fictionalPaperPhoto("試しのLINEの写真"), { headers: { "content-type": "image/jpeg" } });
       if (String(url).endsWith("/message/reply")) {
         const value = JSON.parse(String(init?.body)) as { messages: Array<{ text: string }> };
         replies.push(...value.messages.map((message) => message.text));
         return Response.json({ sentMessages: [{ id: "fictional-receipt" }] });
       }
-      throw new Error("架空のLINE以外へは接続しません");
+      throw new Error("試しのLINE以外へは接続しません");
     };
     const send = async (kind: "text" | "image", now: Date, id = crypto.randomUUID(), sender = "fictional-u74-sender") => {
       const body = JSON.stringify({ destination, events: [{ type: "message", webhookEventId: id, timestamp: now.getTime(), replyToken: id,
-        source: { type: "user", userId: sender }, message: { type: kind, id, text: `架空の文${id}` } }] });
+        source: { type: "user", userId: sender }, message: { type: kind, id, text: `試しの文${id}` } }] });
       const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(runtime.LINE_CHANNEL_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
       const signature = btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body)))));
       const response = await acceptLineWebhook(new Request("https://unit.test/hooks/line", { method: "POST", headers: { "x-line-signature": signature }, body }),

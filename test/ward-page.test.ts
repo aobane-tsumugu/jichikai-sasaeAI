@@ -5,13 +5,13 @@ import { createProject } from "../src/project/api";
 import { saveDocument } from "../src/project/actions";
 import { get, postForm, realApp } from "./helpers";
 
-// 架空の区で、同じ案内を二度配った後の区のページを確かめる。
+// 試しの区で、同じ案内を二度配った後の区のページを確かめる。
 async function publishTwice() {
   const { ward, account } = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
-  for (const text of ["場所は広場です（変更前の架空の案内）", "場所はホールです（変更後の架空の案内）"]) {
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭", year: 2026, accountId: account.accountId });
+  for (const text of ["場所は広場です（変更前の試しの案内）", "場所はホールです（変更後の試しの案内）"]) {
     await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
-      kind: "announcement", title: "架空の案内", scope: "public", body: JSON.stringify({ text, items: [] }), basedOn: project.stateVersion,
+      kind: "announcement", title: "試しの案内", scope: "public", body: JSON.stringify({ text, items: [] }), basedOn: project.stateVersion,
     });
   }
   const versions = await env.DB.prepare(`SELECT v.document_id, v.version_id, v.version_no FROM documents d
@@ -32,11 +32,11 @@ describe("住民向けのページ", () => {
   it("知らせ直したときは今の案内を先に出し、変更前の案内は畳んで後ろに置く", async () => {
     const { ward, project } = await publishTwice();
     const html = await (await get(realApp, `/${ward.slug}/p/${project.projectId}`)).text();
-    const current = html.indexOf("変更後の架空の案内");
+    const current = html.indexOf("変更後の試しの案内");
     const folded = html.indexOf("<details>");
     expect(current).toBeGreaterThan(0);
     expect(folded).toBeGreaterThan(current);
-    expect(html.indexOf("変更前の架空の案内")).toBeGreaterThan(folded);
+    expect(html.indexOf("変更前の試しの案内")).toBeGreaterThan(folded);
   });
 
   it("今の案内を下げると、今の案内も変更前の案内も中身を出さない", async () => {
@@ -47,29 +47,29 @@ describe("住民向けのページ", () => {
     expect(response.status).toBe(200);
     const html = await response.text();
     expect(html).toContain("住民向けのページから取り下げました");
-    expect(html).not.toContain("変更後の架空の案内");
-    expect(html).not.toContain("変更前の架空の案内");
+    expect(html).not.toContain("変更後の試しの案内");
+    expect(html).not.toContain("変更前の試しの案内");
   });
 });
 
 describe("報告と閉じる", () => {
   it("報告を別に保存しなくても、閉じたときに欄に出ていた報告が記録に残る", async () => {
     const { ward, account, cookie } = await seedAdmin(env.DB);
-    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
+    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭", year: 2026, accountId: account.accountId });
     const closePage = `/${ward.slug}/admin/close/${project.projectId}`;
     await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
-      kind: "report", title: "実施報告", scope: "public", body: JSON.stringify({ text: "架空の報告の下書き", items: [] }), basedOn: 0,
+      kind: "report", title: "実施報告", scope: "public", body: JSON.stringify({ text: "試しの報告の下書き", items: [] }), basedOn: 0,
     });
-    expect(await (await get(realApp, closePage, cookie)).text()).toContain("架空の報告の下書き");
+    expect(await (await get(realApp, closePage, cookie)).text()).toContain("試しの報告の下書き");
     expect((await postForm(realApp, `${closePage}/finalize`, {}, cookie)).status).toBe(303);
     const saved = await env.DB.prepare("SELECT body FROM project_close_reports WHERE ward_id = ? AND project_id = ? AND scope = 'public'")
       .bind(ward.wardId, project.projectId).first<{ body: string }>();
-    expect(saved?.body).toBe("架空の報告の下書き");
+    expect(saved?.body).toBe("試しの報告の下書き");
   });
 
   it("報告の下書きを頼むときは、保存できる下書きの形と元にした状態の番号をAIに伝える", async () => {
     const { ward, account, cookie } = await seedAdmin(env.DB);
-    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
+    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭", year: 2026, accountId: account.accountId });
     const response = await postForm(realApp, `/${ward.slug}/admin/close/${project.projectId}/prepare`, {}, cookie);
     expect(response.status).toBe(303);
     const job = await env.DB.prepare("SELECT instruction FROM jobs WHERE ward_id = ? AND project_id = ? AND task = 'report'")
@@ -83,7 +83,7 @@ describe("報告と閉じる", () => {
 describe("役員の仕事と活動の紹介", () => {
   it("閉じたあとに、選んだ仕事と役員が直した文だけを住民向けのページに載せる", async () => {
     const { ward, account, cookie } = await seedAdmin(env.DB);
-    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
+    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭", year: 2026, accountId: account.accountId });
     const closePage = `/${ward.slug}/admin/close/${project.projectId}`;
     expect((await get(realApp, closePage, cookie)).status).toBe(200);
     const tasks = await env.DB.prepare("SELECT task_id, name FROM project_close_map WHERE ward_id = ? AND project_id = ? ORDER BY period, task_id")
@@ -91,13 +91,13 @@ describe("役員の仕事と活動の紹介", () => {
     expect(tasks.results.length).toBeGreaterThan(1);
     const [chosen, skipped] = tasks.results;
     const form = {
-      action: "publish", introduction: "会場の予約と案内を役員が受け持ちました（架空）。", membershipBurden: "年に一度の当番があります（架空）。",
-      membershipBenefit: "行事の案内が早く届きます（架空）。", taskId: chosen!.task_id,
+      action: "publish", introduction: "会場の予約と案内を役員が受け持ちました。", membershipBurden: "年に一度の当番があります。",
+      membershipBenefit: "行事の案内が早く届きます。", taskId: chosen!.task_id,
     };
     await env.DB.prepare("UPDATE projects SET closed_at = ? WHERE ward_id = ? AND project_id = ?").bind("2026-11-01T00:00:00.000Z", ward.wardId, project.projectId).run();
     expect((await postForm(realApp, `${closePage}/activity`, form, cookie)).status).toBe(303);
     const html = await (await get(realApp, `/${ward.slug}/work/${project.projectId}`)).text();
-    expect(html).toContain("会場の予約と案内を役員が受け持ちました（架空）。");
+    expect(html).toContain("会場の予約と案内を役員が受け持ちました。");
     expect(html).toContain("仕事の記録から作りました");
     expect(html).toContain(chosen!.name);
     expect(html).not.toContain(skipped!.name);

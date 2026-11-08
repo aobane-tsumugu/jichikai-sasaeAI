@@ -31,7 +31,7 @@ it("U78の続き: 外の催しを知らせる頼みは写真付きの問い合�
   const fakeLine: typeof fetch = async (url, init) => {
     if (String(url).includes("api-data.line.me")) {
       const tag = Number(/\/message\/(\d+)\//.exec(String(url))?.[1]);
-      if (!Number.isInteger(tag)) throw new Error("架空の写真番号がありません");
+      if (!Number.isInteger(tag)) throw new Error("試しの写真番号がありません");
       return new Response(new Uint8Array([...fixture.answerSheetPhotoBytes, tag]), { headers: { "content-type": "image/jpeg" } });
     }
     if (String(url).endsWith("/message/reply")) {
@@ -52,7 +52,7 @@ it("U78の続き: 外の催しを知らせる頼みは写真付きの問い合�
       const inquiry = sharing.requests.some((r) => prompt.includes(`受け取った物の要約: ${r.text}`));
       // 外の催しで行事の候補に当たらなくても、対応を頼む目的を先に使う。
       result = { choice: inquiry ? MATCH_NEW : MATCH_UNCERTAIN, intent: inquiry ? "inquiry" : "material",
-        confident: false, attendanceAnswer: false, knowTopic: "none", reason: "架空の外の催しを知らせる頼みです。" };
+        confident: false, attendanceAnswer: false, knowTopic: "none", reason: "試しの外の催しを知らせる頼みです。" };
     } else throw new Error("この試験にないAIの呼び出しです");
     return Response.json({ id: "fictional-sharing-ai", type: "message", role: "assistant", model: "claude-haiku-5-5",
       content: [{ type: "text", text: JSON.stringify(result) }], stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 } });

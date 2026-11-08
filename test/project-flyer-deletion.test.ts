@@ -14,23 +14,23 @@ import { noticeFlyerJpeg } from "./fixtures/notice-flyer";
 it("丸ごとの削除でチラシの画像と見本も消し、別の準備のチラシは保つ", async () => {
   const { ward, account } = await seedAdmin(env.DB);
   const bucket = new WardBucket(env.ORIGINALS, ward.wardId);
-  // 名前も画像も架空。既存の保存処理だけを使い、LINEやAIには接続しない。
+  // 名前も画像も。既存の保存処理だけを使い、LINEやAIには接続しない。
   const records = [];
-  for (const title of ["消す準備（架空）", "残す準備（架空）"]) {
+  for (const title of ["消す準備", "残す準備"]) {
     const project = await createProject(env.DB, ward.wardId, { kind: "event", title, year: 2026, accountId: account.accountId });
     expect(await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
-      kind: "announcement", title: "架空の案内", scope: "public", basedOn: project.stateVersion,
-      body: JSON.stringify({ text: "試験用の架空の案内です。", items: [] }),
+      kind: "announcement", title: "試しの案内", scope: "public", basedOn: project.stateVersion,
+      body: JSON.stringify({ text: "試験用の試しの案内です。", items: [] }),
     })).toBe(true);
     const version = await env.DB.prepare("SELECT version_id FROM document_versions WHERE ward_id = ? AND project_id = ?")
       .bind(ward.wardId, project.projectId).first<{ version_id: string }>();
-    if (!version) throw new Error("架空の案内がありません");
+    if (!version) throw new Error("試しの案内がありません");
     // 本体と小さい見本を別々に保管する場合も消去する。
     await saveFlyer(env, ward.wardId, project.projectId, version.version_id, {
       current: null, image: noticeFlyerJpeg().buffer, preview: noticeFlyerJpeg().buffer,
     });
     const flyer = await getNoticeFlyer(env.DB, ward.wardId, version.version_id);
-    if (!flyer?.r2_path || !flyer.preview_r2_path) throw new Error("架空のチラシがありません");
+    if (!flyer?.r2_path || !flyer.preview_r2_path) throw new Error("試しのチラシがありません");
     expect(flyer.preview_r2_path).not.toBe(flyer.r2_path);
     for (const path of [flyer.r2_path, flyer.preview_r2_path]) expect(await bucket.head(path)).not.toBeNull();
     records.push({ project, flyer });

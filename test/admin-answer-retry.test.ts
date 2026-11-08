@@ -8,14 +8,14 @@ import { setSetting } from "../src/settings/store";
 import { postForm, realApp } from "./helpers";
 
 const input = {
-  household: "架空の電話の代表", district: "架空の一班", attend: "yes",
+  household: "試しの電話の代表", district: "試しの一班", attend: "yes",
   children_count: "", adults_count: "", seniors_count: "",
-  helper_name: "架空の手伝いさん", helper_times: "9時から10時",
+  helper_name: "試しの手伝いさん", helper_times: "9時から10時",
 };
 
 async function fixture() {
   const { ward, account, cookie } = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "架空の手入力確認会", year: 2099, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "試しの手入力確認会", year: 2099, accountId: account.accountId });
   await setSetting(env.DB, ward.wardId, SETTING_KEYS.squads, JSON.stringify([input.district]), account.accountId);
   return { ward, account, cookie, project, root: `/${ward.slug}/admin/answers/${project.projectId}` };
 }
@@ -48,7 +48,7 @@ it("電話や紙の手入力で人数を忘れてもほかの入力を残し、�
 
 it("答えの訂正で人数を間違えても書き直した名前や希望を残し、保存は成功したときだけ変える", async () => {
   const f = await fixture();
-  const id = await addAnswer(env.DB, f.ward.wardId, { projectId: f.project.projectId, household: "架空の訂正前の代表", district: "", peopleCount: 2,
+  const id = await addAnswer(env.DB, f.ward.wardId, { projectId: f.project.projectId, household: "試しの訂正前の代表", district: "", peopleCount: 2,
     childrenCount: 0, adultsCount: 2, seniorsCount: 0, source: "phone", accountId: f.account.accountId });
   const saved = await listAnswers(env.DB, f.ward.wardId, f.project.projectId);
   const path = `${f.root}/${id}/edit`;

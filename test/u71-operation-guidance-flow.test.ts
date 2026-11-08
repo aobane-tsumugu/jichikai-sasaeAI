@@ -34,7 +34,7 @@ it("長い下書きを残して保存し直し、知らせたあとの班長へ�
   // 送った本文の改行形式も保ち、項目の置き換えの試験と同じ扱いにする。
   expect((await postForm(realApp, `${draftPath}/save`, { ...fields, text: submittedText }, cookie)).status).toBe(303);
   const accepted = await getEditableDocument(env.DB, ward.wardId, project.projectId, "announcement");
-  if (!accepted) throw new Error("架空の下書きが保存されていません");
+  if (!accepted) throw new Error("試しの下書きが保存されていません");
   expect(JSON.parse(accepted.body)).toMatchObject({ text: submittedText, items: [{ key: "place", content: fields.item_place }] });
   expect(accepted.body.length).toBeGreaterThan(20000);
   const editHtml = await (await get(realApp, draftPath, cookie)).text();
@@ -42,12 +42,12 @@ it("長い下書きを残して保存し直し、知らせたあとの班長へ�
   expect(editHtml).toContain(submittedText);
 
   const state = await getProjectState(env.DB, ward.wardId, project.projectId);
-  if (!state) throw new Error("架空の行事がありません");
+  if (!state) throw new Error("試しの行事がありません");
   expect((await postForm(realApp, `${draftPath}/save`, {
     ...fields, text: FIRST_SLICE.publicAnnouncement, based_on: String(state.project.stateVersion),
   }, cookie)).status).toBe(303);
   const latest = await getEditableDocument(env.DB, ward.wardId, project.projectId, "announcement");
-  if (!latest?.versionId) throw new Error("配る架空の下書きがありません");
+  if (!latest?.versionId) throw new Error("配る試しの下書きがありません");
   const sent = await postForm(realApp, `${root}/publish/${project.projectId}/send`, {
     documentId: latest.documentId, versionId: latest.versionId, versionNo: "2", lineDelivery: "skip",
   }, cookie);

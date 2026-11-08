@@ -13,7 +13,7 @@ it("一対一で届いた物にも送った人の名前を付け、取れない�
   const destination = crypto.randomUUID();
   const named = crypto.randomUUID();
   const unnamed = crypto.randomUUID();
-  const directName = "架空の一対一の送り手";
+  const directName = "試しの一対一の送り手";
   await env.DB.prepare("INSERT INTO line_channels (ward_id, destination, channel_secret_binding, access_token_binding) VALUES (?, ?, 'LINE_CHANNEL_SECRET', 'LINE_CHANNEL_ACCESS_TOKEN')")
     .bind(ward.wardId, destination).run();
   const ports: LineIntakePorts = {

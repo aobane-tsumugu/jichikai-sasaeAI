@@ -47,7 +47,7 @@ it("U91: 準備がない自治会で連絡事項を作って送り、同じ年�
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toContain(`${root}/publish/${id}`);
   };
-  await send("架空のごみの出し方のお知らせ", "架空のごみの出し方が変わります。指定の袋を使ってください。");
+  await send("試しのごみの出し方のお知らせ", "試しのごみの出し方が変わります。指定の袋を使ってください。");
   const publicPage = await (await get(realApp, `/${ward.slug}/p/${id}`)).text();
   expect(publicPage).toContain("自治会からの連絡");
   expect(publicPage).toContain("指定の袋を使ってください");
@@ -77,7 +77,7 @@ it("U91: 準備がない自治会で連絡事項を作って送り、同じ年�
 
   const again = await postForm(realApp, `${root}/messages`, { kind: "notice", projectId: "ward-notices" }, cookie);
   expect(again.headers.get("location")).toContain(`/projects/${id}/draft/notice?edit=1`);
-  await send("架空の鍵の預け先のお知らせ", "架空の集会所の鍵の預け先が変わりました。利用する前に役員に聞いてください。");
+  await send("試しの鍵の預け先のお知らせ", "試しの集会所の鍵の預け先が変わりました。利用する前に役員に聞いてください。");
   expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM projects WHERE ward_id = ? AND year = ? AND is_ward_notices = 1")
     .bind(ward.wardId, year).first<{ n: number }>())?.n).toBe(1);
   const nextPage = await (await get(realApp, `/${ward.slug}/p/${id}`)).text();
@@ -94,9 +94,9 @@ it("U91: 準備がない自治会で連絡事項を作って送り、同じ年�
 it("U91: 検索にも残す連絡事項を一度だけ知らせ、古い下書きは知らせない", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await getOrCreateWardNotices(env.DB, ward.wardId, 2026, account.accountId);
-  for (const text of ["架空の変更前の連絡です。", "架空の変更後の連絡です。"]) {
+  for (const text of ["試しの変更前の連絡です。", "試しの変更後の連絡です。"]) {
     expect(await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
-      kind: "notice", title: "架空の連絡事項", scope: "public", basedOn: project.stateVersion,
+      kind: "notice", title: "試しの連絡事項", scope: "public", basedOn: project.stateVersion,
       body: JSON.stringify({ text, items: [] }),
     })).toBe(true);
   }
@@ -122,7 +122,7 @@ it("U91: 検索にも残す連絡事項を一度だけ知らせ、古い下書�
   expect((await records()).results).toEqual([{ version_id: latest.version_id, line_status: "not_sent" }]);
   const indexed = (await entries()).results;
   expect(indexed).toHaveLength(1);
-  expect(indexed[0]!.content).toContain("架空の変更後の連絡です。");
+  expect(indexed[0]!.content).toContain("試しの変更後の連絡です。");
   expect((await send(latest)).status).toBe(404);
   expect((await records()).results).toEqual([{ version_id: latest.version_id, line_status: "not_sent" }]);
   expect((await entries()).results).toEqual(indexed);
@@ -131,7 +131,7 @@ it("U91: 検索にも残す連絡事項を一度だけ知らせ、古い下書�
 it("U91: 同時作成でも自治会と年ごとに一つだけ持ち、通常の準備は一覧に残す", async () => {
   const local = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
-  const normal = await createProject(env.DB, local.ward.wardId, { kind: "event", title: "架空の秋の清掃", year: 2026 });
+  const normal = await createProject(env.DB, local.ward.wardId, { kind: "event", title: "試しの秋の清掃", year: 2026 });
   const [first, second] = await Promise.all([
     getOrCreateWardNotices(env.DB, local.ward.wardId, 2026, local.account.accountId),
     getOrCreateWardNotices(env.DB, local.ward.wardId, 2026, local.account.accountId),

@@ -28,7 +28,7 @@ it("開いている行事だけの区で案内を配り、説明を一項目ず�
   })).toBe(true);
   const version = await env.DB.prepare("SELECT document_id, version_id, version_no FROM document_versions WHERE ward_id = ? AND project_id = ? ORDER BY version_no DESC LIMIT 1")
     .bind(ward.wardId, project.projectId).first<{ document_id: string; version_id: string; version_no: number }>();
-  if (!version) throw new Error("架空の案内がありません。");
+  if (!version) throw new Error("試しの案内がありません。");
   const notice = await postForm(realApp, `${root}/admin/publish/${project.projectId}/send`, {
     documentId: version.document_id, versionId: version.version_id, versionNo: String(version.version_no), lineDelivery: "skip",
     recipientScope: "all_households", distribution: JSON.stringify({ mode: "district", targets: [{ district: "全戸", copies: 12 }] }),

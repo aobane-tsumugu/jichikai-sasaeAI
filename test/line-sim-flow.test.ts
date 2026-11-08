@@ -16,7 +16,7 @@ import { acceptLineWebhook } from "../src/line/webhook";
 import { createProject } from "../src/project/api";
 import { withEnv } from "./helpers";
 
-it("U38: 署名した架空の文をローカルのWorkersへ送り、D1と原文を読み、返事が失敗しても次の文を受ける", async () => {
+it("U38: 署名した試しの文をローカルのWorkersへ送り、D1と原文を読み、返事が失敗しても次の文を受ける", async () => {
   const { ward, account } = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, { kind: "event", title: LOCAL_FLOW.projectTitle, year: 2026, accountId: account.accountId });
@@ -38,7 +38,7 @@ it("U38: 署名した架空の文をローカルのWorkersへ送り、D1と原�
   };
   const intake = createLineIntakePorts(runtime, ctx, async (_wardId, original) => ({
     choice: original.text === "おはようございます。" ? MATCH_UNRELATED : project.projectId,
-    reason: "架空のAIの判断です。", intent: /何時からですか/.test(original.text ?? "") ? "inquiry" : "material", attendanceAnswer: /参加します|行きます|参加しません/.test(original.text ?? ""),
+    reason: "試しのAIの判断です。", intent: /何時からですか/.test(original.text ?? "") ? "inquiry" : "material", attendanceAnswer: /参加します|行きます|参加しません/.test(original.text ?? ""),
     usage: { input_tokens: 1, output_tokens: 1 },
   }));
   const hooks = new Hono<AppEnv>();
@@ -80,7 +80,7 @@ it("U38: 署名した架空の文をローカルのWorkersへ送り、D1と原�
     const answers = await listAnswers(env.DB, ward.wardId, project.projectId);
     expect(answers).toHaveLength(4);
     expect(answers.map((a) => [a.household, a.district, a.peopleCount])).toEqual(expect.arrayContaining([
-      ["架空同名一郎", "2班", 3], ["架空同名一郎", "", 1], ["架空欠席一郎", "1班", 0],
+      ["同名一郎", "2班", 3], ["同名一郎", "", 1], ["欠席一郎", "1班", 0],
     ]));
     const originals = await env.DB.prepare("SELECT r2_path FROM originals WHERE ward_id = ? AND withdrawn_at IS NULL").bind(ward.wardId).all<{ r2_path: string }>();
     const bucket = new WardBucket(env.ORIGINALS, ward.wardId);
@@ -93,8 +93,8 @@ it("U38: 署名した架空の文をローカルのWorkersへ送り、D1と原�
     if (!answerSql) throw new Error("答えの確認記録がありません。");
     const row = (await query(answerSql))[0];
     if (!row) throw new Error("答えの保存結果がありません。");
-    expect(outcomeMatches({ kind: "答えに数える", household: "架空参加一郎", district: "1班", people: 99 }, row, project.projectId, false)).toBe(false);
-    expect(outcomeMatches({ kind: "答えに数える", household: "架空参加一郎", district: "1班", people: 2 }, { receipt: 1 }, project.projectId, false)).toBe(false);
+    expect(outcomeMatches({ kind: "答えに数える", household: "参加一郎", district: "1班", people: 99 }, row, project.projectId, false)).toBe(false);
+    expect(outcomeMatches({ kind: "答えに数える", household: "参加一郎", district: "1班", people: 2 }, { receipt: 1 }, project.projectId, false)).toBe(false);
     await Promise.all(pending);
   } finally {
     await Promise.allSettled(pending);
@@ -107,7 +107,7 @@ it.each([302, 307])("U38: HTTP%sなら転送先へ送らず、後の文も送ら
     destination: `U${"0".repeat(32)}`, secret: "fictional-redirect-secret", accessToken: "fictional-redirect-token", remote: false, waitMs: 1000 };
   const reportCopies: string[] = [];
   const query: Query = async (sql) => {
-    if (sql.includes("AS prior_answers")) return [{ slug: options.ward, name: "架空の区", channel_secret_binding: "LINE_SIM_CHANNEL_SECRET",
+    if (sql.includes("AS prior_answers")) return [{ slug: options.ward, name: "試しの区", channel_secret_binding: "LINE_SIM_CHANNEL_SECRET",
       access_token_binding: "LINE_SIM_CHANNEL_ACCESS_TOKEN", project_id: "fictional-project", prior_answers: 0 }];
     if (sql.includes("FROM ward_roster_entries")) return LOCAL_FLOW.roster;
     if (sql.includes("FROM line_unrelated_daily_counts")) return [{ count: 0 }];

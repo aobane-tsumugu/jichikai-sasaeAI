@@ -8,14 +8,14 @@ import type { ItemKey } from "../src/project/model";
 import { get, postForm, realApp } from "./helpers";
 
 it.each([
-  { caseName: "別々の会場を順に置き換える", place: "架空会場(A)", rain: "架空会場(B)", nextPlace: "架空会場(B)", nextRain: "架空会場(C)" },
-  { caseName: "同じ会場から雨のときだけ変える", place: "架空公民館", rain: "架空公民館", nextPlace: "架空公民館", nextRain: "架空体育館" },
-  { caseName: "同じ会場を別々の会場に変える", place: "架空公民館", rain: "架空公民館", nextPlace: "架空集会所", nextRain: "架空体育館" },
-  { caseName: "会場名の含まれる別館を保つ", place: "架空公民館", rain: "架空公民館別館", nextPlace: "架空体育館", nextRain: "架空公民館別館" },
+  { caseName: "別々の会場を順に置き換える", place: "会場(A)", rain: "会場(B)", nextPlace: "会場(B)", nextRain: "会場(C)" },
+  { caseName: "同じ会場から雨のときだけ変える", place: "公民館", rain: "公民館", nextPlace: "公民館", nextRain: "体育館" },
+  { caseName: "同じ会場を別々の会場に変える", place: "公民館", rain: "公民館", nextPlace: "集会所", nextRain: "体育館" },
+  { caseName: "会場名の含まれる別館を保つ", place: "公民館", rain: "公民館別館", nextPlace: "体育館", nextRain: "公民館別館" },
 ])("$caseNameとき、別の会場を書き換えず保存・配布する", async ({ place, rain, nextPlace, nextRain }) => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,
+    kind: "event", title: "試しの行事", year: 2026, accountId: account.accountId,
   });
   for (const [itemKey, value] of [["place", place], ["rain_plan", rain]] as const) {
     await applyChange(env.DB, ward.wardId, project.projectId, {
@@ -25,17 +25,17 @@ it.each([
   }
   const before = `場所: ${place}\n\n雨のとき: ${rain}`;
   expect(await saveAIDraft(env.DB, ward.wardId, project.projectId, "announcement", "replacement-test@1", {
-    title: "架空の案内", text: before, items: [
+    title: "試しの案内", text: before, items: [
       { key: "place", content: place },
       { key: "rain_plan", content: rain },
     ],
   })).toBe(true);
   const root = `/${ward.slug}/admin`;
   const state = await getProjectState(env.DB, ward.wardId, project.projectId);
-  if (!state) throw new Error("架空の行事がありません。");
+  if (!state) throw new Error("試しの行事がありません。");
   expect((await postForm(realApp, `${root}/projects/${project.projectId}/draft/announcement/save`, {
     // ブラウザの通常のフォーム送信と同じ改行形式にする。
-    title: "架空の案内", scope: "public", based_on: String(state.project.stateVersion), text: before.replace(/\n/g, "\r\n"),
+    title: "試しの案内", scope: "public", based_on: String(state.project.stateVersion), text: before.replace(/\n/g, "\r\n"),
     item_place: nextPlace, item_rain_plan: nextRain,
   }, cookie)).status).toBe(303);
 
@@ -70,26 +70,26 @@ it.each([
 });
 
 it("同じ会場名のどちらを指すか分からない本文は変えず、直した項目だけを既存の案内に渡す", () => {
-  const previous = { text: "架空公民館で開きます。雨でも架空公民館を使います。", items: [
-    { key: "place" as const, content: "架空公民館" }, { key: "rain_plan" as const, content: "架空公民館" },
+  const previous = { text: "公民館で開きます。雨でも公民館を使います。", items: [
+    { key: "place" as const, content: "公民館" }, { key: "rain_plan" as const, content: "公民館" },
   ] };
   const checks: ItemKey[] = [];
   const result = reconcileDocumentBody(previous, { text: previous.text, items: [
-    { key: "place", content: "架空公民館" }, { key: "rain_plan", content: "架空体育館" },
+    { key: "place", content: "公民館" }, { key: "rain_plan", content: "体育館" },
   ] }, checks);
   expect(result.text).toBe(previous.text);
-  expect(result.items[1]?.content).toBe("架空体育館");
+  expect(result.items[1]?.content).toBe("体育館");
   expect(checks).toEqual(["rain_plan"]);
 });
 
 it("同じ元の会場があっても、手で直した本文の会場と説明をそのまま保つ", () => {
-  const previous = { text: "場所: 架空公民館\n雨のとき: 架空公民館", items: [
-    { key: "place" as const, content: "架空公民館" }, { key: "rain_plan" as const, content: "架空公民館" },
+  const previous = { text: "場所: 公民館\n雨のとき: 公民館", items: [
+    { key: "place" as const, content: "公民館" }, { key: "rain_plan" as const, content: "公民館" },
   ] };
-  const text = "場所: 架空公民館\n雨のとき: 架空体育館\n入口は東側です。";
+  const text = "場所: 公民館\n雨のとき: 体育館\n入口は東側です。";
   const checks: ItemKey[] = [];
   const result = reconcileDocumentBody(previous, { text, items: [
-    { key: "place", content: "架空公民館" }, { key: "rain_plan", content: "架空体育館" },
+    { key: "place", content: "公民館" }, { key: "rain_plan", content: "体育館" },
   ] }, checks);
   expect(result.text).toBe(text);
   expect(result.items).toHaveLength(2);

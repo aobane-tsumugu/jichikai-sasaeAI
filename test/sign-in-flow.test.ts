@@ -18,7 +18,7 @@ it("役員にリンクを渡し、本人がログインの方法を作り、足�
   const anotherWard = await seedAdmin(env.DB);
   const base = `/${owner.ward.slug}/admin`;
   const people = `${base}/settings/people`;
-  const name = `招待の役員（架空）${crypto.randomUUID().slice(0, 6)}`;
+  const name = `招待の役員${crypto.randomUUID().slice(0, 6)}`;
 
   // 本物の経路とD1を通し、値は毎回作る。LINEへは接続せず、本人確認の接続だけを偽物にする。
   const pending = new Map<string, { wardId: string; intent: SignInIntent }>();

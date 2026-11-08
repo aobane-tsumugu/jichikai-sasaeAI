@@ -11,11 +11,11 @@ import { addQuestion, applyChange, createProject, getProjectState } from "../src
 it("資料を消すとやることの進み具合と質問も元の資料由来の分だけ消え、毎日の写しにも残らない", async () => {
   const { ward, account } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,
+    kind: "event", title: "試しの行事", year: 2026, accountId: account.accountId,
   });
   const received = await receive(env, {
     wardId: ward.wardId, projectId: project.projectId, via: "admin", accountId: account.accountId,
-    parts: [{ kind: "text", filename: "架空の連絡.txt", mediaType: "text/plain", bytes: new TextEncoder().encode("架空の会場の手配と持ち物の連絡") }],
+    parts: [{ kind: "text", filename: "試しの連絡.txt", mediaType: "text/plain", bytes: new TextEncoder().encode("試しの会場の手配と持ち物の連絡") }],
   });
   const originalId = received.received[0]!.originalId;
   const source = { kind: "original" as const, ref: originalId, year: 2026 };
@@ -23,17 +23,17 @@ it("資料を消すとやることの進み具合と質問も元の資料由来�
     kind: "map_task", taskKey: "venue", progress: "done", source, confidence: "high", packVersion: "deletion-test@1",
   })).status).toBe("applied");
   expect((await applyChange(env.DB, ward.wardId, project.projectId, {
-    kind: "item", itemKey: "belongings", value: "架空の読めない持ち物", source, confidence: "low", packVersion: "deletion-test@1",
+    kind: "item", itemKey: "belongings", value: "試しの読めない持ち物", source, confidence: "low", packVersion: "deletion-test@1",
   })).status).toBe("applied");
   expect((await addQuestion(env.DB, ward.wardId, project.projectId, {
-    kind: "decide", text: "架空の元の資料に書かれた質問", source, packVersion: "deletion-test@1",
+    kind: "decide", text: "試しの元の資料に書かれた質問", source, packVersion: "deletion-test@1",
   })).status).toBe("added");
   expect((await applyChange(env.DB, ward.wardId, project.projectId, {
     kind: "map_task", taskKey: "committee", progress: "done", source: { kind: "person", accountId: account.accountId },
     confidence: "high", packVersion: "deletion-test@1",
   })).status).toBe("applied");
   expect((await addQuestion(env.DB, ward.wardId, project.projectId, {
-    kind: "decide", text: "架空の役員が書いた質問", source: { kind: "person", accountId: account.accountId }, packVersion: "deletion-test@1",
+    kind: "decide", text: "試しの役員が書いた質問", source: { kind: "person", accountId: account.accountId }, packVersion: "deletion-test@1",
   })).status).toBe("added");
   await writeDailyWardSnapshots(env, new Date("2026-11-05T00:00:00.000Z"));
   const queueId = await requestJobDeletion(env.DB, ward.wardId, received.jobId!);
@@ -51,9 +51,9 @@ it("資料を消すとやることの進み具合と質問も元の資料由来�
   const state = await getProjectState(env.DB, ward.wardId, project.projectId);
   expect(state?.mapTasks.find((task) => task.taskKey === "venue")).toMatchObject({ progress: "open", progressSource: null });
   expect(state?.mapTasks.find((task) => task.taskKey === "committee")?.progress).toBe("done");
-  expect(state?.questions.map((question) => question.text)).toEqual(["架空の役員が書いた質問"]);
+  expect(state?.questions.map((question) => question.text)).toEqual(["試しの役員が書いた質問"]);
   const snapshot = await (await bucket.get("snapshots/daily/2026-11-05.json"))!.text();
   expect(snapshot).not.toContain(originalId);
-  expect(snapshot).not.toContain("架空の元の資料に書かれた質問");
-  expect(snapshot).toContain("架空の役員が書いた質問");
+  expect(snapshot).not.toContain("試しの元の資料に書かれた質問");
+  expect(snapshot).toContain("試しの役員が書いた質問");
 });

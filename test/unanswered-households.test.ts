@@ -8,19 +8,19 @@ import { get, postForm, realApp } from "./helpers";
 it("別の班の同名世帯はそれぞれ答えを照合し、全員答え後も名簿にある班を表示する", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の行事", year: 2026, accountId: account.accountId,
+    kind: "event", title: "試しの行事", year: 2026, accountId: account.accountId,
   });
   await replaceRoster(env.DB, ward.wardId, [
-    { household: "架空の同名世帯", district: "1班" },
-    { household: "架空の同名世帯", district: "2班" },
+    { household: "試しの同名世帯", district: "1班" },
+    { household: "試しの同名世帯", district: "2班" },
   ], { household: 0, district: 1 });
   const path = `/${ward.slug}/answer/${project.projectId}`;
-  expect((await postForm(realApp, path, { household: "架空の同名世帯", district: "1班", people_count: "2" })).status).toBe(200);
+  expect((await postForm(realApp, path, { household: "試しの同名世帯", district: "1班", people_count: "2" })).status).toBe(200);
   expect(await listUnansweredByDistrict(env.DB, ward.wardId, project.projectId)).toEqual([
     { district: "1班", households: [] },
-    { district: "2班", households: ["架空の同名世帯"] },
+    { district: "2班", households: ["試しの同名世帯"] },
   ]);
-  expect((await postForm(realApp, path, { household: "架空の同名世帯", district: "2班", people_count: "3" })).status).toBe(200);
+  expect((await postForm(realApp, path, { household: "試しの同名世帯", district: "2班", people_count: "3" })).status).toBe(200);
   const page = await (await get(realApp, `/${ward.slug}/admin/answers/${project.projectId}?view=unanswered`, cookie)).text();
   expect(page).not.toContain("名簿はまだありません。");
   expect(page.match(/まだ返事のない世帯はありません。/g)).toHaveLength(2);
@@ -29,9 +29,9 @@ it("別の班の同名世帯はそれぞれ答えを照合し、全員答え後�
 it.each(["event", "general_meeting"] as const)("%s: 同じ班の同名2世帯を答え1件で両方消さず、班が不明な答えで推定しない", async (kind) => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind, title: "架空の同名世帯の確認会", year: 2026, accountId: account.accountId,
+    kind, title: "試しの同名世帯の確認会", year: 2026, accountId: account.accountId,
   });
-  const household = "架空の同名代表者";
+  const household = "試しの同名代表者";
   await replaceRoster(env.DB, ward.wardId, [
     { household, district: "1班" }, { household, district: "1班" },
   ], { household: 0, district: 1 });
@@ -58,12 +58,12 @@ it.each(["event", "general_meeting"] as const)("%s: 同じ班の同名2世帯を
 });
 
 it.each(["event", "general_meeting"] as const)("%s: 紙の答えと名簿の班が全角半角でも、一世帯ずつ照合する", async (kind) => {
-  // 班名と代表者名、紙の識別子は試験用の架空のもの。
+  // 班名と代表者名、紙の識別子は試験用の試しのもの。
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind, title: "架空の班の照合", year: 2026, accountId: account.accountId,
+    kind, title: "試しの班の照合", year: 2026, accountId: account.accountId,
   });
-  const household = "架空の同名代表者";
+  const household = "試しの同名代表者";
   await replaceRoster(env.DB, ward.wardId, [
     { household, district: "１班" }, { household, district: "１班" }, { household, district: "２班" },
   ], { household: 0, district: 1 });

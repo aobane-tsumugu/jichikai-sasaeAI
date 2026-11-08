@@ -12,16 +12,16 @@ import { get, postForm, realApp } from "./helpers";
 describe("知らせる画面と住民向けのページ", () => {
   it("班・名簿・公開用の連絡先が空の一年目でも、確認結果を読んで配れる", async () => {
     const { ward, account, cookie } = await seedAdmin(env.DB);
-    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
+    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭", year: 2026, accountId: account.accountId });
     expect(await getSquads(env.DB, ward.wardId)).toEqual([]);
     expect(await getRoster(env.DB, ward.wardId)).toEqual([]);
     expect(await getPublicContact(env.DB, ward.wardId)).toBe("");
     await applyChange(env.DB, ward.wardId, project.projectId, {
-      kind: "row", table: "sponsors", data: { name: "協賛先A（架空）", amount: 6500 },
+      kind: "row", table: "sponsors", data: { name: "協賛先A", amount: 6500 },
       source: { kind: "person", accountId: account.accountId }, confidence: "high", packVersion: "publish-test@1",
     });
-    const body = JSON.stringify({ text: "協賛先A（架空）から6500円の協賛があります", items: [
-      { key: "date_time", content: "2026年11月14日10時" }, { key: "place", content: "架空の公民館" },
+    const body = JSON.stringify({ text: "協賛先Aから6500円の協賛があります", items: [
+      { key: "date_time", content: "2026年11月14日10時" }, { key: "place", content: "試しの公民館" },
     ] });
     await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
       kind: "announcement", title: "案内", scope: "public", body, basedOn: project.stateVersion + 1,
@@ -52,7 +52,7 @@ describe("知らせる画面と住民向けのページ", () => {
 
   it("公開用の連絡先に載せたメールは混入として知らせない", async () => {
     const { ward, account } = await seedAdmin(env.DB);
-    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
+    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭", year: 2026, accountId: account.accountId });
     await setSetting(env.DB, ward.wardId, SETTING_KEYS.publicContact, "fixture@example.test", account.accountId);
     const body = JSON.stringify({ text: "連絡先fixture@example.test", items: [{ key: "public_contact", content: "fixture@example.test" }] });
     await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
@@ -66,7 +66,7 @@ describe("名簿の取り込み", () => {
   it("54世帯のCSVを画面の送信形式で保存できる", async () => {
     const { ward, cookie } = await seedAdmin(env.DB);
     const csv = ["番号,班,世帯名,氏名", ...Array.from({ length: 54 }, (_, index) =>
-      `${index + 1},${Math.floor(index / 18) + 1}班,架空世帯${index + 1},架空の氏名${index + 1}`,
+      `${index + 1},${Math.floor(index / 18) + 1}班,世帯${index + 1},試しの氏名${index + 1}`,
     )].join("\n");
     const form = new FormData();
     form.set("part", new File([csv], "加入世帯_2026秋.csv", { type: "text/csv" }));
@@ -88,7 +88,7 @@ describe("名簿の取り込み", () => {
   it("JSONの行を受け取り、54世帯を自治会ごとに保存できる", async () => {
     const { ward, cookie } = await seedAdmin(env.DB);
     const rows = [["番号", "班", "世帯名"], ...Array.from({ length: 54 }, (_, index) => [
-      String(index + 1), `${Math.floor(index / 18) + 1}班`, `架空世帯${index + 1}`,
+      String(index + 1), `${Math.floor(index / 18) + 1}班`, `世帯${index + 1}`,
     ])];
     const response = await realApp.request(`/${ward.slug}/admin/answers/roster`, {
       method: "POST",
@@ -110,15 +110,15 @@ describe("名簿の取り込み", () => {
 describe("答えの入口と一覧", () => {
   it("Webと電話の返事を数え、名簿からまだ答えていないを出す", async () => {
     const { ward, account, cookie } = await seedAdmin(env.DB);
-    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭（架空）", year: 2026, accountId: account.accountId });
+    const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "秋の収穫祭", year: 2026, accountId: account.accountId });
     await replaceRoster(env.DB, ward.wardId, [
-      { household: "一世帯（架空）", district: "一班" },
-      { household: "二世帯（架空）", district: "一班" },
+      { household: "一世帯", district: "一班" },
+      { household: "二世帯", district: "一班" },
     ], { household: 0, district: 1 });
     expect(await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
       kind: "announcement", title: "案内", scope: "public", basedOn: project.stateVersion,
-      body: JSON.stringify({ text: "架空の秋の収穫祭に参加する人数を答えてください。", items: [
-        { key: "date_time", content: "2026年11月14日10時" }, { key: "place", content: "架空の公民館" },
+      body: JSON.stringify({ text: "試しの秋の収穫祭に参加する人数を答えてください。", items: [
+        { key: "date_time", content: "2026年11月14日10時" }, { key: "place", content: "試しの公民館" },
       ] }),
     })).toBe(true);
     const version = await env.DB.prepare(`SELECT v.document_id, v.version_id, v.version_no, p.state_version
@@ -133,18 +133,18 @@ describe("答えの入口と一覧", () => {
     const publicPage = await get(realApp, `/${ward.slug}/answer/${project.projectId}`);
     expect(publicPage.status).toBe(200);
     const web = await postForm(realApp, `/${ward.slug}/answer/${project.projectId}`, {
-      household: "一世帯（架空）", district: "一班", children_count: "1", adults_count: "2", seniors_count: "0", helper_name: "", helper_times: "",
+      household: "一世帯", district: "一班", children_count: "1", adults_count: "2", seniors_count: "0", helper_name: "", helper_times: "",
     });
     expect(web.status).toBe(200);
     const phone = await postForm(realApp, `/${ward.slug}/admin/answers/${project.projectId}/phone`, {
-      household: "電話世帯（架空）", district: "一班", children_count: "0", adults_count: "2", seniors_count: "0", helper_name: "手伝い希望者（架空）", helper_times: "受付",
+      household: "電話世帯", district: "一班", children_count: "0", adults_count: "2", seniors_count: "0", helper_name: "手伝い希望者", helper_times: "受付",
     }, cookie);
     expect(phone.status).toBe(303);
     const answers = await listAnswers(env.DB, ward.wardId, project.projectId);
     expect(answers.map((answer) => answer.source).sort()).toEqual(["phone", "web"]);
     expect(await getAnswerTotals(env.DB, ward.wardId, project.projectId)).toEqual({ people: 5, helperRequests: 1 });
     expect(await listUnansweredByDistrict(env.DB, ward.wardId, project.projectId)).toEqual([
-      { district: "一班", households: ["二世帯（架空）"] },
+      { district: "一班", households: ["二世帯"] },
     ]);
     const adminPage = await get(realApp, `/${ward.slug}/admin/answers/${project.projectId}`, cookie);
     expect(adminPage.status).toBe(200);

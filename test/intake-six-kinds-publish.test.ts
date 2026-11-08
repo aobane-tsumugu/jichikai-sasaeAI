@@ -12,14 +12,14 @@ import type { DocumentKind, ProjectKind, Scope } from "../src/project/model";
 import { documentTitle } from "../src/project/heading";
 import { get, postForm, realApp } from "./helpers";
 
-// 資料の題と本文はすべてこの試験のための架空のもの。
+// 資料の題と本文はすべてこの試験のための試しのもの。
 const cases: { kind: ProjectKind; title: string; first: DocumentKind; scope: Scope; distributed: DocumentKind; task: string; public: boolean }[] = [
-  { kind: "event", title: "収穫祭（架空）", first: "announcement", scope: "public", distributed: "announcement", task: "announcement", public: true },
-  { kind: "general_meeting", title: "定期総会（架空）", first: "procedure", scope: "staff", distributed: "announcement", task: "notice", public: true },
-  { kind: "board_meeting", title: "役員会（架空）", first: "procedure", scope: "staff", distributed: "report", task: "minutes", public: false },
-  { kind: "duty", title: "集積所の清掃（架空）", first: "duty_roster", scope: "space", distributed: "notice", task: "notify", public: false },
-  { kind: "city_request", title: "設備の状況の依頼（架空）", first: "procedure", scope: "staff", distributed: "report", task: "submit", public: false },
-  { kind: "request", title: "街灯の修理の要望（架空）", first: "procedure", scope: "staff", distributed: "report", task: "submit", public: false },
+  { kind: "event", title: "収穫祭", first: "announcement", scope: "public", distributed: "announcement", task: "announcement", public: true },
+  { kind: "general_meeting", title: "定期総会", first: "procedure", scope: "staff", distributed: "announcement", task: "notice", public: true },
+  { kind: "board_meeting", title: "役員会", first: "procedure", scope: "staff", distributed: "report", task: "minutes", public: false },
+  { kind: "duty", title: "集積所の清掃", first: "duty_roster", scope: "space", distributed: "notice", task: "notify", public: false },
+  { kind: "city_request", title: "設備の状況の依頼", first: "procedure", scope: "staff", distributed: "report", task: "submit", public: false },
+  { kind: "request", title: "街灯の修理の要望", first: "procedure", scope: "staff", distributed: "report", task: "submit", public: false },
 ];
 
 // 六種類の受付から複数の配布までを実際のD1・R2で順に通すため、この試験だけ30秒待つ。
@@ -27,7 +27,7 @@ it("去年の仕事を持つ六つの予定の資料から適切な下書きに�
   const { ward, cookie } = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
-  await env.DB.prepare("INSERT INTO ward_year_items (ward_id, item_id, title, added) VALUES (?, 'other-only', '別の自治会の予定（架空）', 1)")
+  await env.DB.prepare("INSERT INTO ward_year_items (ward_id, item_id, title, added) VALUES (?, 'other-only', '別の自治会の予定', 1)")
     .bind(other.ward.wardId).run();
   // 種類はAIに当てさせず、去年の同じ予定に残った仕事を今年へ写す。
   for (const entry of cases) {
@@ -48,7 +48,7 @@ it("去年の仕事を持つ六つの予定の資料から適切な下書きに�
     return Response.json({ id: "fixture-six-kinds", type: "message", role: "assistant", model: "claude-sonnet-5-5", stop_reason: "end_turn", stop_sequence: null,
       content: [{ type: "text", text: JSON.stringify({ project_suggestions: content.originals.map((original) => {
         const fixture = cases.find((entry) => original.filename === `${entry.kind}.txt`);
-        if (!fixture) throw new Error("種類の架空資料がありません");
+        if (!fixture) throw new Error("種類の試しの資料がありません");
         return { original_id: original.original_id, year_item: `year-${fixture.kind}`, title: fixture.title, date_text: "", place: "" };
       }) }) }], usage: { input_tokens: 100, output_tokens: 100 } });
   } });
@@ -57,7 +57,7 @@ it("去年の仕事を持つ六つの予定の資料から適切な下書きに�
   try {
     const form = new FormData();
     form.set("project_id", "");
-    for (const entry of cases) form.append("part", new File([`${entry.title}\nすべて架空の資料です。`], `${entry.kind}.txt`, { type: "text/plain" }));
+    for (const entry of cases) form.append("part", new File([`${entry.title}\nすべて試しの資料です。`], `${entry.kind}.txt`, { type: "text/plain" }));
     const received = await realApp.fetch(new Request(`http://localhost${root}/intake`, {
       method: "POST", headers: { cookie, origin: "http://localhost", accept: "application/json" }, body: form,
     }), env, ctx);
@@ -103,7 +103,7 @@ it("去年の仕事を持つ六つの予定の資料から適切な下書きに�
         if (!before) throw new Error("配る仕事がありません");
         const saved = await postForm(realApp, `${root}/projects/${id}/draft/${kind}/save`, {
           title: documentTitle(entry.kind, kind), scope, based_on: String(before.project.stateVersion),
-          text: "すべて架空の文書です。設備を確認します。", item_content: "設備を確認します。", item_due: "2099年12月31日",
+          text: "すべて試しの文書です。設備を確認します。", item_content: "設備を確認します。", item_due: "2099年12月31日",
         }, cookie);
         expect(saved.status).toBe(303);
         expect(saved.headers.get("location")).toContain("notice=saved");

@@ -13,26 +13,26 @@ import { createProject } from "../src/project/api";
 import { saveTemplates } from "../src/settings/store";
 import { get, postForm, realApp } from "./helpers";
 
-it("架空の総会の案内からWebで答え、読めた紙・手入力・読み取りの訂正を世帯の同じ数に入れる", async () => {
+it("試しの総会の案内からWebで答え、読めた紙・手入力・読み取りの訂正を世帯の同じ数に入れる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "general_meeting", title: "総会（架空）", year: FIRST_SLICE.eventYear, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "general_meeting", title: "総会", year: FIRST_SLICE.eventYear, accountId: account.accountId });
   const base = `/${ward.slug}`;
   const pub = `${base}/answer/${project.projectId}`;
   const admin = `${base}/admin/answers/${project.projectId}`;
   const district = FIRST_SLICE.district;
-  // 名前は既存fixturesの架空の入力を使う。最後の世帯は未回答のまま残す。
+  // 名前は既存fixturesの試しの入力を使う。最後の世帯は未回答のまま残す。
   await replaceRoster(env.DB, ward.wardId, [FIRST_SLICE.firstHousehold, FIRST_SLICE.secondHousehold, FIRST_SLICE.phoneHousehold, FIRST_SLICE.rosterName]
     .map((household) => ({ household, district })), { household: 0, district: 1 });
   const note = "署名・押印については、案内の連絡先にお尋ねください。";
   await saveTemplates(env.DB, ward.wardId, [{ id: "meeting", name: MEETING_NOTE_NAME, body: note }], account.accountId);
   expect(await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, {
-    kind: "announcement", title: "総会の案内（架空）", scope: "public", basedOn: project.stateVersion,
-    body: JSON.stringify({ text: "総会を開きます（架空）。", items: [{ key: "place", content: FIRST_SLICE.previousPlace }] }),
+    kind: "announcement", title: "総会の案内", scope: "public", basedOn: project.stateVersion,
+    body: JSON.stringify({ text: "総会を開きます。", items: [{ key: "place", content: FIRST_SLICE.previousPlace }] }),
   })).toBe(true);
   const version = await env.DB.prepare(`SELECT v.document_id, v.version_id, v.version_no FROM document_versions v
     JOIN documents d ON d.ward_id = v.ward_id AND d.document_id = v.document_id WHERE v.ward_id = ? AND v.project_id = ? AND d.kind = 'announcement'`)
     .bind(ward.wardId, project.projectId).first<{ document_id: string; version_id: string; version_no: number }>();
-  if (!version) throw new Error("架空の案内が保存されていません。");
+  if (!version) throw new Error("試しの案内が保存されていません。");
   expect((await postForm(realApp, `${base}/admin/publish/${project.projectId}/send`, {
     documentId: version.document_id, versionId: version.version_id, versionNo: String(version.version_no), lineDelivery: "skip",
   }, cookie)).status).toBe(303);
@@ -45,7 +45,7 @@ it("架空の総会の案内からWebで答え、読めた紙・手入力・読�
   for (const label of ["出席する", "委任する", "欠席する"]) expect(html).toContain(label);
   expect(html).not.toContain('name="adults_count"');
   const submission = /name="submission_id" value="([^"]+)"/.exec(html)?.[1];
-  if (!submission) throw new Error("架空のWeb回答の送信番号がありません。");
+  if (!submission) throw new Error("試しのWeb回答の送信番号がありません。");
   const web = { household: FIRST_SLICE.firstHousehold, district, meeting_status: "proxy", proxy_name: "", submission_id: submission };
   const invalid = await postForm(realApp, pub, { ...web, meeting_status: "" });
   expect(invalid.status).toBe(400);
@@ -67,9 +67,9 @@ it("架空の総会の案内からWebで答え、読めた紙・手入力・読�
     wardId: ward.wardId, projectId: project.projectId, via: "admin", readKind: "answer_sheet", accountId: account.accountId,
     parts: [{ kind: "photo", filename: FIRST_SLICE.answerSheetFilename, mediaType: "image/jpeg", bytes: new Uint8Array(FIRST_SLICE.answerSheetPhotoBytes) }],
   });
-  if (!received.jobId || !received.received[0]) throw new Error("架空の回答票が受け付けられていません。");
+  if (!received.jobId || !received.received[0]) throw new Error("試しの回答票が受け付けられていません。");
   const originalId = received.received[0].originalId;
-  // 読み取りの外部APIだけを架空の応答にする。受付、R2、D1、集計、画面は製品の経路を使う。
+  // 読み取りの外部APIだけを試しの応答にする。受付、R2、D1、集計、画面は製品の経路を使う。
   setPipelineDeps({
     createClient: () => Object.create(null) as Anthropic,
     readImpl: async (_client, options) => {
@@ -77,7 +77,7 @@ it("架空の総会の案内からWebで答え、読めた紙・手入力・読�
       const row = { ...FIRST_SLICE.answerSheetReading.rows[0]!, original_id: originalId, adults: null, children: null, seniors: null,
         helper_names: [], helper_slots: [], proxy_name: "", ward_group: district };
       return { packVersion: "read-answer-sheet@7", model: "fixture", usage: { input_tokens: 10, output_tokens: 10, cache_read_input_tokens: 0 },
-        body: { summary: "架空の総会の回答票", rows: [
+        body: { summary: "試しの総会の回答票", rows: [
           { ...row, household_name: FIRST_SLICE.secondHousehold, meeting_status: "attend", locator: "1枚目" },
           { ...row, household_name: FIRST_SLICE.rosterName, meeting_status: null, confidence: "low", locator: "2枚目", note: "出欠の印が読めませんでした" },
         ], unreadable: [{ original_id: originalId, locator: "2枚目", note: "出欠の印が読めませんでした" }] } };
@@ -110,7 +110,7 @@ it("架空の総会の案内からWebで答え、読めた紙・手入力・読�
   expect(answers).toHaveLength(4);
   expect(answers.filter((answer) => answer.meetingStatus === "proxy")).toHaveLength(2);
   const fromWeb = answers.find((answer) => answer.source === "web");
-  if (!fromWeb) throw new Error("架空のWeb回答がありません。");
+  if (!fromWeb) throw new Error("試しのWeb回答がありません。");
   const editPath = `${admin}/${fromWeb.answerId}/edit`;
   const edit = await (await get(realApp, editPath, cookie)).text();
   expect(edit).toContain("委任する");

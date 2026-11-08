@@ -10,7 +10,7 @@ import { createInvite } from "../src/space/api";
 import { activityFacts } from "../src/ward/activity";
 import { cookieFrom, get, postForm, realApp } from "./helpers";
 
-it("架空の初年度の名簿から始め、翌年は残る担当を保ち、同じ返事の数と配った名簿を画面と紙で読む", async () => {
+it("試しの初年度の名簿から始め、翌年は残る担当を保ち、同じ返事の数と配った名簿を画面と紙で読む", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   const roster = [fixture.first, fixture.exempt, fixture.removed, fixture.fourth]
@@ -23,7 +23,7 @@ it("架空の初年度の名簿から始め、翌年は残る担当を保ち、�
   expect(await (await get(realApp, previousDraft, cookie)).text()).toContain("名簿の順です");
   expect((await postForm(realApp, `${previousDraft}/start`, {}, cookie)).headers.get("location")).toContain("notice=saved");
   const initial = await getProjectState(env.DB, ward.wardId, previous.projectId);
-  if (!initial) throw new Error("架空の初年度の当番がありません。");
+  if (!initial) throw new Error("試しの初年度の当番がありません。");
   const initialRows = initial.tables.duties.filter((row) => row.scope === "current");
   expect(initialRows.map((row) => row.data.assignee)).toEqual((await getRoster(env.DB, ward.wardId)).map((entry) => entry.household));
   expect(initialRows).toHaveLength(4);
@@ -47,7 +47,7 @@ it("架空の初年度の名簿から始め、翌年は残る担当を保ち、�
   }, cookie)).headers.get("location")).toContain("saved=1");
   expect((await postForm(realApp, `${draft}/start`, {}, cookie)).headers.get("location")).toContain("notice=saved");
   let state = await getProjectState(env.DB, ward.wardId, id);
-  if (!state) throw new Error("架空の翌年の当番がありません。");
+  if (!state) throw new Error("試しの翌年の当番がありません。");
   const current = state.tables.duties.filter((row) => row.scope === "current");
   expect(current.map((row) => row.data.assignee)).toEqual([fixture.first, ...fixture.groups]);
   for (const row of current) {
@@ -69,7 +69,7 @@ it("架空の初年度の名簿から始め、翌年は残る担当を保ち、�
     source, confidence: "high", packVersion: "rota-review-fictional@1",
   })).status).toBe("applied");
   state = await getProjectState(env.DB, ward.wardId, id);
-  if (!state) throw new Error("架空の下書きがありません。");
+  if (!state) throw new Error("試しの下書きがありません。");
   expect(await saveDocument(env.DB, ward.wardId, id, account.accountId, {
     kind: "duty_roster", scope: "space", title: FIRST_SLICE.dutyTitle, basedOn: state.project.stateVersion,
     body: JSON.stringify({ text: FIRST_SLICE.dutyText, items: [] }),
@@ -77,7 +77,7 @@ it("架空の初年度の名簿から始め、翌年は残る担当を保ち、�
   const version = await env.DB.prepare(`SELECT document_id, version_id, version_no FROM document_versions
     WHERE ward_id = ? AND project_id = ? ORDER BY version_no DESC LIMIT 1`).bind(ward.wardId, id)
     .first<{ document_id: string; version_id: string; version_no: number }>();
-  if (!version) throw new Error("架空の当番表の下書きがありません。");
+  if (!version) throw new Error("試しの当番表の下書きがありません。");
   const paper = `${root}/print/${id}/${version.document_id}/${version.version_no}`;
   const preview = await get(realApp, `${paper}/preview`, cookie);
   expect(preview.status).toBe(200);
@@ -91,7 +91,7 @@ it("架空の初年度の名簿から始め、翌年は残る担当を保ち、�
     documentId: version.document_id, versionId: version.version_id, versionNo: String(version.version_no),
   }, cookie)).status).toBe(303);
   const committee = state.tables.committee.find((row) => row.scope === "current");
-  if (!committee) throw new Error("架空の実行委員がありません。");
+  if (!committee) throw new Error("試しの実行委員がありません。");
   expect(await saveCommitteeRow(env.DB, ward.wardId, id, committee.rowId, account.accountId, {
     name: fixture.fourth, role: fixture.committeeRole, contact: fixture.contact,
   })).toBe(true);
@@ -121,7 +121,7 @@ it("架空の初年度の名簿から始め、翌年は残る担当を保ち、�
   const token = await createInvite(env.DB, ward.wardId, id, "member", null, account.accountId, true);
   const entered = await get(realApp, `${space}/person/${token}`);
   const memberCookie = cookieFrom(entered, `space_${id}`);
-  if (!memberCookie) throw new Error("架空の実行委員の入口に入れません。");
+  if (!memberCookie) throw new Error("試しの実行委員の入口に入れません。");
   const memberHtml = await (await get(realApp, space, memberCookie)).text();
   const officerHtml = await (await get(realApp, `${root}/answers/${id}`, cookie)).text();
   expect(memberHtml).toContain("<b>3<small>世帯</small></b>");

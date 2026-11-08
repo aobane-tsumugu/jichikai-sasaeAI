@@ -18,10 +18,10 @@ it("取り下げた回答票の古い画面からは追加も入れ直しもで�
     parts: [{ kind: "photo", filename: fixture.answerSheetFilename, mediaType: "image/jpeg", bytes: new Uint8Array(fixture.answerSheetPhotoBytes) }],
   });
   const original = received.received[0];
-  if (!original || !received.jobId) throw new Error("架空の回答票を受け付けられませんでした");
+  if (!original || !received.jobId) throw new Error("試しの回答票を受け付けられませんでした");
   const attempt = await claimRead(env.DB, ward.wardId, received.jobId, 60_000);
-  if (attempt === null) throw new Error("架空の回答票を読み取れませんでした");
-  // AIは呼ばず、fixturesの架空の世帯と読み取りを使う。
+  if (attempt === null) throw new Error("試しの回答票を読み取れませんでした");
+  // AIは呼ばず、fixturesの試しの世帯と読み取りを使う。
   expect(await finishRead(env.DB, {
     wardId: ward.wardId, jobId: received.jobId, attempt, source: "model", packVersion: "withdrawn-sheet-test@1", model: "fixture",
     body: { ...fixture.answerSheetReading, rows: [fixture.firstHousehold, fixture.secondHousehold].flatMap((household) =>

@@ -10,7 +10,7 @@ import { PROJECT_KINDS } from "../src/project/model";
 import { cookieFrom, get, postForm, realApp } from "./helpers";
 
 it("初年度の空欄を仕事にせず、入口を相手に渡し、途中で閉じる画面を見ても最後のやることと手直しを記録に残す", async () => {
-  // データはすべてfixturesの架空の行事から取る。実際のHonoの入口とD1で通し、外部のAIは呼ばない。
+  // データはすべてfixturesの試しの行事から取る。実際のHonoの入口とD1で通し、外部のAIは呼ばない。
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
     kind: "event", title: FIRST_SLICE.nextYearTitle, year: FIRST_SLICE.eventYear,
@@ -68,7 +68,7 @@ it("初年度の空欄を仕事にせず、入口を相手に渡し、途中で�
   const live = state?.mapTasks.find((task) => task.taskKey === "venue");
   const edited = state?.mapTasks.find((task) => task.taskKey === "day");
   const removed = state?.mapTasks.find((task) => task.taskKey !== "venue" && task.taskKey !== "day");
-  if (!live || !edited || !removed) throw new Error("架空のやることが足りません");
+  if (!live || !edited || !removed) throw new Error("試しのやることが足りません");
   await read(close);
   expect((await postForm(realApp, `${close}/map/${edited.taskId}`, {
     name: FIRST_SLICE.nextYearTask, period: FIRST_SLICE.nextYearPeriod, progress: "done",

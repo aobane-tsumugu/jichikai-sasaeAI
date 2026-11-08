@@ -8,11 +8,11 @@ import { postForm, realApp } from "./helpers";
 it("参加すると返事をした人数の入力漏れを不参加にせず、人数を直して同じ返事を保存できる", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const project = await createProject(env.DB, ward.wardId, {
-    kind: "event", title: "架空の人数確認会", year: 2026, accountId: account.accountId,
+    kind: "event", title: "試しの人数確認会", year: 2026, accountId: account.accountId,
   });
   const publicPath = `/${ward.slug}/answer/${project.projectId}`;
   const adminPath = `/${ward.slug}/admin/answers/${project.projectId}`;
-  const input = { attend: "yes", household: "架空 入力確認世帯", district: "", children_count: "", adults_count: "", seniors_count: "" };
+  const input = { attend: "yes", household: "入力確認世帯", district: "", children_count: "", adults_count: "", seniors_count: "" };
 
   for (const count of ["", "0"]) {
     const form = { ...input, adults_count: count };

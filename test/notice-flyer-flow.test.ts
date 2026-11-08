@@ -18,7 +18,7 @@ async function latest(wardId: string, projectId: string, kind = "announcement"):
     JOIN documents d ON d.ward_id = v.ward_id AND d.document_id = v.document_id
     WHERE v.ward_id = ? AND v.project_id = ? AND d.kind = ? ORDER BY v.version_no DESC LIMIT 1`)
     .bind(wardId, projectId, kind).first<Version>();
-  if (!row) throw new Error("架空の下書きが保存されていません");
+  if (!row) throw new Error("試しの下書きが保存されていません");
   return row;
 }
 function form(basedOn: number, choice = "attach") {
@@ -35,17 +35,22 @@ async function upload(path: string, data: FormData, cookie: string) {
   return realApp.request(path, { method: "POST", headers: { origin: "http://localhost", cookie }, body: data }, env);
 }
 
-it("架空の下書きにチラシを付けて知らせ、文と画像を一度で送り、雨の変更では画像を引き継がない", async () => {
+it.each([
+  { title: fixture.title, heading: fixture.title },
+  { title: "案内", heading: "広場で遊ぶ日のご案内" },
+])("試しの下書きにチラシを付けて知らせ、文と画像を一度で送り、雨の変更では画像を引き継がない（題: $title）", async ({ title, heading }) => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
   const other = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "広場で遊ぶ日（架空）", year: 2027, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "広場で遊ぶ日", year: 2027, accountId: account.accountId });
   const admin = `/${ward.slug}/admin`;
   const draft = `${admin}/projects/${project.projectId}/draft`;
-  const save = await upload(`${draft}/announcement/save`, form(project.stateVersion), cookie);
+  const data = form(project.stateVersion);
+  data.set("title", title);
+  const save = await upload(`${draft}/announcement/save`, data, cookie);
   expect(save.status).toBe(303);
   const version = await latest(ward.wardId, project.projectId);
   const flyer = await getNoticeFlyer(env.DB, ward.wardId, version.version_id);
-  if (!flyer?.flyer_id || !flyer.r2_path) throw new Error("架空のチラシがありません");
+  if (!flyer?.flyer_id || !flyer.r2_path) throw new Error("試しのチラシがありません");
   const path = noticeFlyerPath(ward.slug, version.version_id, flyer.flyer_id);
   expect((await get(realApp, path)).status).toBe(404);
   expect((await get(realApp, `${admin}/projects/${project.projectId}/flyer/${version.version_id}`, cookie)).status).toBe(200);
@@ -77,7 +82,7 @@ it("架空の下書きにチラシを付けて知らせ、文と画像を一度�
     expect((await publish()).status).toBe(303);
     expect(sent).toHaveLength(1);
     expect(sent[0]?.messages).toEqual([
-      { type: "text", text: `${project.title} ${fixture.title}\n${fixture.date}\n${fixture.place}\nhttps://example.invalid/${ward.slug}/answer/${project.projectId}` },
+      { type: "text", text: `${heading}\n${fixture.date}\n${fixture.place}\nhttps://example.invalid/${ward.slug}/answer/${project.projectId}` },
       { type: "image", originalContentUrl: `https://example.invalid${path}`,
         previewImageUrl: `https://example.invalid${noticeFlyerPath(ward.slug, version.version_id, flyer.flyer_id, true)}` },
     ]);
@@ -88,7 +93,7 @@ it("架空の下書きにチラシを付けて知らせ、文と画像を一度�
   const publicPage = await get(realApp, `/${ward.slug}/p/${project.projectId}`);
   const html = await publicPage.text();
   expect(html).toContain(`src="${path}"`);
-  expect(html).toContain(`alt="${fixture.title}"`);
+  expect(html).toContain(`alt="${title}"`);
   expect(html).toContain(fixture.date);
   const image = await get(realApp, path);
   expect(image.status).toBe(200);
@@ -104,7 +109,7 @@ it("架空の下書きにチラシを付けて知らせ、文と画像を一度�
 
   const rain = await get(realApp, `${draft}/notice`, cookie);
   expect(await rain.text()).toContain("前の知らせにはチラシの画像が付いていました。付け直しますか");
-  const rainFields = { templateId: "rain", eventName: project.title, place: "架空の雨の日会館", dateTime: fixture.date, lineDelivery: "skip" };
+  const rainFields = { templateId: "rain", eventName: project.title, place: "試しの雨の日会館", dateTime: fixture.date, lineDelivery: "skip" };
   const undecided = await postForm(realApp, `${draft}/rain-notice`, rainFields, cookie);
   expect(await undecided.text()).toContain("付け直すか、付けないかを選んでください");
   const rainSend = await postForm(realApp, `${draft}/rain-notice`, { ...rainFields, flyer_choice: "none" }, cookie);
@@ -117,7 +122,7 @@ it("架空の下書きにチラシを付けて知らせ、文と画像を一度�
   expect(await draftFlyer(env.DB, ward.wardId, project.projectId, "announcement")).toBeNull();
   expect(await (await get(realApp, `${draft}/announcement`, cookie)).text()).toContain("付け直しますか");
   const state = await getProjectSummary(env.DB, ward.wardId, project.projectId);
-  if (!state) throw new Error("架空の準備がありません");
+  if (!state) throw new Error("試しの準備がありません");
   expect((await upload(`${draft}/announcement/save`, form(state.stateVersion), cookie)).status).toBe(303);
   const replaced = await latest(ward.wardId, project.projectId);
   const replacement = await getNoticeFlyer(env.DB, ward.wardId, replaced.version_id);
@@ -128,14 +133,14 @@ it("架空の下書きにチラシを付けて知らせ、文と画像を一度�
     .bind(ward.wardId, version.version_id).first<{ line_status: string }>())?.line_status).toBe("sent");
   const record = await env.DB.prepare("SELECT publication_id FROM publication_records WHERE ward_id = ? AND version_id = ?")
     .bind(ward.wardId, version.version_id).first<{ publication_id: string }>();
-  if (!record) throw new Error("架空の知らせの記録がありません");
+  if (!record) throw new Error("試しの知らせの記録がありません");
   expect((await postForm(realApp, `${admin}/publish/${project.projectId}/lower/${record.publication_id}`, {}, cookie)).status).toBe(303);
   expect((await get(realApp, path)).status).toBe(404);
 });
 
 it("届いたものから選べるのは役員グループに届いた写真で、問い合わせと住民の写真は入れず、原本のURLは公開しない", async () => {
   const { ward, account, cookie } = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "資料の確認（架空）", year: 2027, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "資料の確認", year: 2027, accountId: account.accountId });
   const group = "fictional-notice-officer-group";
   await env.DB.prepare("INSERT INTO ward_settings (ward_id, key, value) VALUES (?, 'line.officer_group', ?)").bind(ward.wardId, group).run();
   const originals: Record<string, string> = {};
@@ -148,12 +153,12 @@ it("届いたものから選べるのは役員グループに届いた写真で�
       .bind(ward.wardId, job, project.projectId, now, now).run();
     await env.DB.prepare(`INSERT INTO originals (ward_id, original_id, job_id, position, kind, content_hash, media_type, filename, byte_size, r2_path, received_at)
       VALUES (?, ?, ?, 1, 'photo', ?, 'image/jpeg', ?, ?, ?, ?)`)
-      .bind(ward.wardId, original, job, original, `${action}（架空）.jpg`, noticeFlyerJpeg().byteLength, path, now).run();
+      .bind(ward.wardId, original, job, original, `${action}.jpg`, noticeFlyerJpeg().byteLength, path, now).run();
     await env.DB.prepare(`INSERT INTO line_inbox_items (ward_id, item_id, event_id, sender_id, original_kind, received_at, job_id, bundle_id, source_type, source_id)
       VALUES (?, ?, ?, 'fictional-sender', 'image', ?, ?, ?, ?, ?)`)
       .bind(ward.wardId, crypto.randomUUID(), crypto.randomUUID(), now, job, bundle, action === "resident" ? "user" : "group", action === "resident" ? "fictional-resident" : group).run();
     await env.DB.prepare(`INSERT INTO line_bundle_decisions (ward_id, bundle_id, summary, action, project_id, decided_by, created_at, updated_at, decided_at)
-      VALUES (?, ?, '架空の写真', ?, ?, 'officer', ?, ?, ?)`)
+      VALUES (?, ?, '試しの写真', ?, ?, 'officer', ?, ?, ?)`)
       .bind(ward.wardId, bundle, action === "resident" ? "material" : action, project.projectId, now, now, now).run();
   }
   const materials = await flyerMaterials(env, ward.wardId, project.projectId);
@@ -178,9 +183,9 @@ it("届いたものから選べるのは役員グループに届いた写真で�
 
 it("Word・PDF・整えていない画像を拒み、画像をAIや保存済みの知らせから自動で選ばない", async () => {
   const { ward, account } = await seedAdmin(env.DB);
-  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "画像の受付（架空）", year: 2027, accountId: account.accountId });
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "画像の受付", year: 2027, accountId: account.accountId });
   for (const type of ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]) {
-    const data = form(project.stateVersion); data.set("flyer_file", new File(["架空の文書"], "flyer.jpg", { type }));
+    const data = form(project.stateVersion); data.set("flyer_file", new File(["試しの文書"], "flyer.jpg", { type }));
     expect(typeof await readFlyerInput(env, ward.wardId, project.projectId, "announcement", data)).toBe("string");
   }
   const unprepared = form(project.stateVersion); unprepared.delete("flyer_prepared");
@@ -201,10 +206,10 @@ it("Word・PDF・整えていない画像を拒み、画像をAIや保存済み�
   expect((await getNoticeFlyer(env.DB, ward.wardId, version.version_id))?.flyer_id).toBe(flyer?.flyer_id);
   expect(WARD_TABLE_POLICY.find((entry) => entry.table === "notice_flyers")).toEqual({ table: "notice_flyers", snapshot: true, export: true, deletion: { cascade: "projects" } });
   const request: typeof fetch = async () => { throw new Error("HTTPの画像で送信してはいけません"); };
-  await expect(broadcastLineText("fictional-token", "架空の知らせ", request, { originalContentUrl: "http://example.invalid/image.jpg", previewImageUrl: "https://example.invalid/preview.jpg" })).rejects.toThrow("HTTPS");
+  await expect(broadcastLineText("fictional-token", "試しの知らせ", request, { originalContentUrl: "http://example.invalid/image.jpg", previewImageUrl: "https://example.invalid/preview.jpg" })).rejects.toThrow("HTTPS");
   const summary = noticeLineText(fixture.title, JSON.stringify({ text: "日時: 新しい日時\n場所: 新しい会場\n連絡先: 出さない連絡先", items: [{ key: "place", content: "古い会場" }] }), "https://example.invalid/answer");
   expect(summary).toBe(`${fixture.title}\n新しい日時\n新しい会場\nhttps://example.invalid/answer`);
-  expect(noticeLineText(fixture.title, JSON.stringify({ text: "架空の遊ぶ日の案内です。", items: [
+  expect(noticeLineText(fixture.title, JSON.stringify({ text: "試しの遊ぶ日の案内です。", items: [
     { key: "date_time", content: fixture.date }, { key: "place", content: fixture.place },
   ] }), "https://example.invalid/answer")).toBe(`${fixture.title}\n${fixture.date}\n${fixture.place}\nhttps://example.invalid/answer`);
 });
