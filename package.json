@@ -9,7 +9,6 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc --noEmit -p scripts/tsconfig.json",
     "check:ward": "node scripts/check-ward-scope.ts",
-    "check:public": "node scripts/check-public.ts",
     "deploy": "wrangler deploy",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:staging": "wrangler d1 migrations apply DB --remote",
