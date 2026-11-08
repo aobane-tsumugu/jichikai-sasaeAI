@@ -1,4 +1,5 @@
 import { newId, nowIso } from "../core/ids";
+import { parseFieldValues, type FieldValues } from "./fields";
 import { parseEventDay } from "../core/time";
 import { SETTING_KEYS } from "../settings/keys";
 import { listHelpOffers } from "./help";
@@ -24,6 +25,8 @@ export interface AnswerInput extends RosterEntry {
   accountId?: string | null;
   originalId?: string | null;
   sheetRowIndex?: number;
+  /** 足した欄への答え（L-317）。足す前の返事と、答えていない欄は空。 */
+  fieldValues?: FieldValues;
 }
 
 export interface AnswerRow extends AnswerInput {
@@ -226,8 +229,8 @@ export async function addAnswer(db: D1Database, wardId: string, input: AnswerInp
   const answerId = newId();
   await db
     .prepare(
-      `INSERT INTO project_answers (answer_id, ward_id, project_id, household, district, people_count, children_count, adults_count, seniors_count, helper_name, helper_times, source, original_id, sheet_row_index, created_at, created_by_account_id)
-       SELECT ?, ?, p.project_id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM projects p
+      `INSERT INTO project_answers (answer_id, ward_id, project_id, household, district, people_count, children_count, adults_count, seniors_count, helper_name, helper_times, source, original_id, sheet_row_index, created_at, created_by_account_id, field_values)
+       SELECT ?, ?, p.project_id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM projects p
        WHERE p.ward_id = ? AND p.project_id = ? AND p.closed_at IS NULL`,
     )
     .bind(
@@ -246,6 +249,7 @@ export async function addAnswer(db: D1Database, wardId: string, input: AnswerInp
       input.sheetRowIndex ?? null,
       nowIso(),
       input.accountId ?? null,
+      JSON.stringify(input.fieldValues ?? {}),
       wardId,
       input.projectId,
     )
@@ -260,38 +264,44 @@ export async function listAnswers(db: D1Database, wardId: string, projectId: str
     .prepare(
       `SELECT answer_id AS answerId, project_id AS projectId, household, district, people_count AS peopleCount, children_count AS childrenCount, adults_count AS adultsCount, seniors_count AS seniorsCount,
         meeting_status AS meetingStatus, proxy_name AS proxyName,
-        helper_name AS helperName, helper_times AS helperTimes, source, original_id AS originalId, sheet_row_index AS sheetRowIndex, created_at AS createdAt
+        helper_name AS helperName, helper_times AS helperTimes, source, original_id AS originalId, sheet_row_index AS sheetRowIndex, created_at AS createdAt,
+        field_values AS fieldValuesRaw
        FROM project_answers WHERE ward_id = ? AND project_id = ? ORDER BY created_at, answer_id`,
     )
     .bind(wardId, projectId)
-    .all<AnswerRow>();
-  return result.results;
+    .all<AnswerRow & { fieldValuesRaw: string }>();
+  return result.results.map(withFieldValues);
 }
 
 export async function getAnswer(db: D1Database, wardId: string, projectId: string, answerId: string): Promise<AnswerRow | null> {
   return db.prepare(`SELECT answer_id AS answerId, project_id AS projectId, household, district, people_count AS peopleCount, children_count AS childrenCount, adults_count AS adultsCount, seniors_count AS seniorsCount,
       meeting_status AS meetingStatus, proxy_name AS proxyName,
       helper_name AS helperName, helper_times AS helperTimes, source, original_id AS originalId,
-      sheet_row_index AS sheetRowIndex, created_at AS createdAt
+      sheet_row_index AS sheetRowIndex, created_at AS createdAt, field_values AS fieldValuesRaw
     FROM project_answers WHERE ward_id = ? AND project_id = ? AND answer_id = ?`)
-    .bind(wardId, projectId, answerId).first<AnswerRow>();
+    .bind(wardId, projectId, answerId).first<AnswerRow & { fieldValuesRaw: string }>().then((row) => row ? withFieldValues(row) : null);
+}
+
+function withFieldValues({ fieldValuesRaw, ...row }: AnswerRow & { fieldValuesRaw: string }): AnswerRow {
+  return { ...row, fieldValues: parseFieldValues(fieldValuesRaw) };
 }
 
 /** 受け取った時の情報は残し、役員が直した回答を同じ一件に保存する。 */
 export async function updateAnswer(
   db: D1Database, wardId: string, projectId: string, answerId: string,
-  input: Pick<AnswerInput, "household" | "district" | "peopleCount" | "childrenCount" | "adultsCount" | "seniorsCount" | "helperName" | "helperTimes">,
+  input: Pick<AnswerInput, "household" | "district" | "peopleCount" | "childrenCount" | "adultsCount" | "seniorsCount" | "helperName" | "helperTimes" | "fieldValues">,
 ): Promise<boolean> {
   const breakdown = [input.childrenCount, input.adultsCount, input.seniorsCount];
   const peopleCount = breakdown.some((value) => value != null) ? breakdown.reduce<number>((sum, value) => sum + (value ?? 0), 0) : input.peopleCount;
   if (breakdown.some((value) => value != null && (!Number.isInteger(value) || value < 0)) || !Number.isInteger(peopleCount) || peopleCount < 0) return false;
   const result = await db.prepare(`UPDATE project_answers
-    SET household = ?, district = ?, people_count = ?, children_count = ?, adults_count = ?, seniors_count = ?, helper_name = ?, helper_times = ?
+    SET household = ?, district = ?, people_count = ?, children_count = ?, adults_count = ?, seniors_count = ?, helper_name = ?, helper_times = ?,
+      field_values = COALESCE(?, field_values)
     WHERE ward_id = ? AND project_id = ? AND answer_id = ?
       AND EXISTS (SELECT 1 FROM projects p WHERE p.ward_id = project_answers.ward_id
         AND p.project_id = project_answers.project_id AND p.closed_at IS NULL)`)
     .bind(input.household.trim(), input.district.trim(), peopleCount, input.childrenCount ?? null, input.adultsCount ?? null, input.seniorsCount ?? null, input.helperName?.trim() ?? "",
-      input.helperTimes?.trim() ?? "", wardId, projectId, answerId).run();
+      input.helperTimes?.trim() ?? "", input.fieldValues ? JSON.stringify(input.fieldValues) : null, wardId, projectId, answerId).run();
   return result.meta.changes === 1;
 }
 
