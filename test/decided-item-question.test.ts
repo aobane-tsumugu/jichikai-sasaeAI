@@ -66,7 +66,8 @@ it("文から項目を見分けるのは、一つの項目だけを聞いてい�
   const { questionItemKeyFromText } = await import("../src/project/question-target");
   expect(questionItemKeyFromText("今年の年末の見回りは、何月何日の何時から何時までにしますか。")).toBe("date_time");
   expect(questionItemKeyFromText("返事はいつまでに集めますか。")).toBe("due");
-  expect(questionItemKeyFromText("雨のときはどうしますか。")).toBe("rain_plan");
+  expect(questionItemKeyFromText("雨のときはどうしますか。")).toBeNull();
+  expect(questionItemKeyFromText("会場を押さえる（来年向け）は、誰が頼みますか。")).toBeNull();
   expect(questionItemKeyFromText("今年の日時と集まる場所を教えてください。")).toBeNull();
   expect(questionItemKeyFromText("当番は誰にしますか。")).toBeNull();
 });

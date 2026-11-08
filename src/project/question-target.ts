@@ -28,11 +28,11 @@ export function questionItemKey(target: string | null | undefined): ItemKey | nu
  * AI は質問の対象を書かないことがあり（三回目の通しの練習で、日を決めて知らせても「何月何日の何時から…」が閉じなかった）、
  * 役員が下書きの欄で決めた項目の質問を閉じるのに使う。二つ以上の項目を聞く文、どれにも当たらない文は null。
  */
+// 場所や雨は「会場を押さえる（来年向け）」のような仕事の質問にも出て取り違えるので、文からは見分けない（対象が書いてある時だけ）。
+// 日時と締切は、日や時刻を聞く言い方がはっきりしている物だけを見る。
 const TEXT_SIGNS: [ItemKey, RegExp][] = [
   ["due", /締切|しめきり|いつまでに/],
-  ["rain_plan", /雨/],
-  ["place", /どこで|場所|会場/],
-  ["date_time", /何月何日|何日|日時|日にち|開催日|何時から/],
+  ["date_time", /何月何日|何時から何時|日時は|日時を|日にちは|開催日は/],
 ];
 
 export function questionItemKeyFromText(text: string | null | undefined): ItemKey | null {
