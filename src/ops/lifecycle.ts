@@ -330,7 +330,7 @@ async function eraseJob(env: Env, item: QueueRow, projectJob?: { jobId: string; 
 
 const PROJECT_DELETE_TABLES = [
   "archive_search_entries", "project_activity_pages", "project_close_reports", "project_close_map",
-  "project_answers", "project_space_members", "project_space_invites", "project_spaces", "city_request_details",
+  "project_answers", "project_answer_fields", "project_space_members", "project_space_invites", "project_spaces", "city_request_details",
   "publication_records", "document_versions", "documents", "project_questions", "project_rows", "project_item_values",
   "project_map_tasks", "project_changes", "project_deadlines", "projects",
 ] as const;

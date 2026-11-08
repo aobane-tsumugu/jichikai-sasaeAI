@@ -1,4 +1,6 @@
-import { taskFeatures, projectTasks, taskDocumentKind, taskItemKeys } from "../project/task-features";
+import { taskFeatures, projectTasks, taskDocumentKind, taskItemKeys, taskCollectsAttendance } from "../project/task-features";
+import { fieldSuggestions, getAnswerFields } from "../answers/fields";
+import { askedText } from "../answers/field-parts";
 import { Hono } from "hono";
 import type { Bundle } from "../core/bundle";
 import { adminPath } from "../core/auth";
@@ -11,7 +13,7 @@ import { documentBodyCheckMessage } from "../project/document-body";
 import { getDraftPack, listDraftPacks } from "./packs";
 import type { DraftBody } from "./packs/types";
 import { getDistrictCopies } from "../answers/api";
-import { getTemplates } from "../settings/store";
+import { getSquads, getTemplates } from "../settings/store";
 import { renderTemplate } from "../settings/keys";
 import { saveDutyRow } from "../project/actions";
 import { formatJstDate } from "../core/time";
@@ -183,6 +185,12 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
     return pendingGuide(key, value).show;
   }).map((key) => `「${labels[key] ?? ITEM_LABEL[key]}」`);
   const pendingText = body.text.includes(PENDING);
+  // 返事を集める文書では、返事で聞くことを一文で書き、欄の候補があれば知らせる（総会の返事は別）。
+  const answerAsk = taskCollectsAttendance(tasks, kindRaw) && !features.delegation && !minutes ? await (async () => {
+    const squads = await getSquads(c.env.DB, ward.wardId);
+    const current = await getAnswerFields(c.env.DB, ward.wardId, id, squads);
+    return { asked: askedText(current.fields, current.districtAsked), suggestions: project.closedAt ? [] : await fieldSuggestions(c.env.DB, ward.wardId, id, current, squads) };
+  })() : null;
   const dateValue = body.items.find((item) => item.key === "date_time")?.content ?? "";
   const oldDates = [...new Set(state.items.find((item) => item.key === "date_time")?.references.flatMap((ref) => ref.content.match(/\d{1,2}月\d{1,2}日/g) ?? []) ?? [])].filter((date) => body.text.includes(date) && !dateValue.includes(date));
   const bodyCheck = c.req.query("notice") === "saved" ? documentBodyCheckMessage(c.req.query("check_body")) : null;
@@ -219,6 +227,9 @@ async function renderDraft(c: import("hono").Context<AdminEnv>, retry?: DraftRet
       {kindRaw === "duty_roster" ? (["date_time", "place", "helper_slots", "rain_plan"] as const).map(field) : null}
       <input type="hidden" name="item_content" value={body.items.find((item) => item.key === "content")?.content ?? ""} />
       {kindRaw === "duty_roster" ? body.items.filter((item) => !["date_time", "place", "helper_slots", "rain_plan", "content"].includes(item.key)).map((item) => <input type="hidden" name={`item_${item.key}`} value={item.content} />) : [...itemKeys].filter((key) => !["date_time", "place", "rain_plan", "content"].includes(key)).sort((a, b) => Number(b === "helper_slots") - Number(a === "helper_slots")).map(field)}
+      {answerAsk ? <section class="panel"><b>住民に返事で聞くこと</b><p>{answerAsk.asked}です。住民のスマホの返事と紙の回答票に、同じ欄が出ます。</p>
+        {answerAsk.suggestions.map((suggestion) => <p>{suggestion.text}返事に{suggestion.kinds.map((kind) => kind === "days" ? "日を選ぶ欄" : "班を聞く欄").join("と")}を足せます。</p>)}
+        <p class="link-line"><a href={adminPath(ward, `/answers/${id}?view=fields`)}>返事で聞くことを見る・足す</a></p></section> : null}
       {flyerState && !project.closedAt ? <FlyerPanel c={c} projectId={id} state={flyerState} /> : null}
       <p><button class="secondary" name="after" value="paper">保存して紙の見え方を見る</button></p><p class="muted">紙の見え方を撮って役員のグループへ送ると、見てもらえます。まだ住民には送りません。</p>
       {sendable && canSendLine(kindRaw) && !project.closedAt ? <Choices name="lineDelivery" legend="自治会のLINE" items={[

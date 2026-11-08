@@ -66,6 +66,7 @@ export const WARD_TABLE_POLICY: readonly WardTablePolicy[] = [
   { table: "rota_seat_changes", snapshot: true, export: true, deletion: true },
   { table: "project_answers", snapshot: true, export: true, deletion: true },
   { table: "project_answer_submissions", snapshot: true, export: "同じ送信の再処理を見分ける内部の番号で、区へ渡す記録ではない。", deletion: true },
+  { table: "project_answer_fields", snapshot: true, export: true, deletion: true },
   { table: "project_help_offers", snapshot: true, export: true, deletion: { cascade: "projects" } },
   { table: "project_spaces", snapshot: true, export: true, deletion: true, omitExportColumns: ["passphrase_salt", "passphrase_hash"] },
   { table: "project_space_invites", snapshot: true, export: true, deletion: true, omitExportColumns: ["token_hash"] },

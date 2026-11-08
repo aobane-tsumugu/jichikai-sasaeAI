@@ -13,6 +13,8 @@ import { adminPath } from "../../core/auth";
 import type { Bundle } from "../../core/bundle";
 import { getPublicContact, getSquads } from "../../settings/store";
 import { getAnswerDeadline } from "../../answers/api";
+import { getAnswerFields } from "../../answers/fields";
+import { PaperAnswerFields, paperFieldsText } from "../../answers/field-parts";
 import { helpTimeChoices } from "../../answers/help";
 import { HelpSlip } from "../../answers/help-slip";
 import { ArticleBody, articleParagraphs } from "../../publish";
@@ -145,6 +147,7 @@ admin.get("/print/:projectId/:documentId/:versionNo/preview", async (c) => {
     tables={tables}
     back={adminPath(ward, `/projects/${c.req.param("projectId")}/draft/${row.kind}`)} wardName={ward.name}
     squads={await getSquads(c.env.DB, ward.wardId)} labels={await getAnswerLabels(c.env.DB, ward.wardId)} answerOnly={taskCollectsAttendance(tasks, row.kind) && c.req.query("paper") === "answer"}
+    answerFields={features.delegation ? [] : (await getAnswerFields(c.env.DB, ward.wardId, c.req.param("projectId")!, await getSquads(c.env.DB, ward.wardId))).fields}
     generalMeeting={features.delegation} meetingNote={features.delegation ? row.published_at ? meetingNoteFromBody(row.body) : await meetingNote(c.env.DB, ward.wardId) : ""} />);
 });
 
@@ -184,6 +187,8 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   }
   const squads = await getSquads(c.env.DB, ward.wardId);
   const paperSquads = squads.length ? squads : [""];
+  // 返事で聞く欄（L-317）。Web の返事と同じ定義から紙にも出す。総会の返事には足さない。
+  const answerFields = features.delegation ? [] : (await getAnswerFields(c.env.DB, ward.wardId, projectId, squads)).fields;
   const leaderUrls = new Map<string, string>();
   if (kind === "leader") {
     if (row.closed_at) return c.html(<AdminPage ward={ward} account={c.var.account} title="班長への一枚" back={{ href: back, label: "印刷用ページへ戻る" }}><h1>受付は終わりました</h1><p>班長の専用QRは使えません。</p></AdminPage>);
@@ -217,10 +222,11 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
       {standalone ? <p>{[publishedItem(row.body, "date_time"), publishedItem(row.body, "place"), publishedItem(row.body, "rain_plan")].filter(Boolean).join("。")}</p> : null}
       {generalMeeting ? <MeetingSlipFields note={note} squad={squad} /> : <><p>参加しないときも、返事をもらえると、準備の数が正しく分かります。返事がないときは、欠席として数えます。</p>
       <FieldBox label="代表者のお名前" heightMm={standalone ? 30 : 19} />
-      {!squad ? <FieldBox label="班（分からないときは空けてかまいません）" heightMm={10} /> : null}
+      {/* 班は、班の名前がある自治会では班ごとに刷り分けるので紙では聞かない。班の名前が無い自治会では Web と同じく聞かない。 */}
       <div class="field-box"><p>□ 参加する　　□ 参加しない</p><strong>参加する人数</strong><div class="paper-counts">
         {labels.map((label) => <div class="paper-count"><div>{label}</div><span>人</span></div>)}
       </div><p>いない欄は、空けたままでかまいません。</p></div>
+      <PaperAnswerFields fields={answerFields} />
       <div class="field-box" style={standalone ? "min-height:55mm" : "min-height:22mm"}><span class="field-label">手伝える方のお名前と時間帯（書かなくてかまいません）</span>
         {helperSlots ? <p>{helperSlots}</p> : null}
       </div>
@@ -232,7 +238,7 @@ const renderPublishedPaper: import("hono").Handler<AdminEnv> = async (c) => {
   // 返す案内や時間帯の分も見積もる。文字を縮めず、長ければ回答票を別の紙にする。
   const onOneSheet = withAnswer && fitsAboveAnswer(row.body, generalMeeting
     ? note + due + contact + "□出席□委任□欠席。委任する相手のお名前。代表者のお名前。委任を選んだときは、この回答票を委任状として受け付けます。委任する相手を書かなかったときは、空欄のまま受け付けます。"
-    : labels.join("") + helperSlots + due + contact + "参加しないときも、返事をもらえると、準備の数が正しく分かります。返事がないときは、欠席として数えます。□参加する□参加しない。いない欄は、空けたままでかまいません");
+    : labels.join("") + helperSlots + due + contact + paperFieldsText(answerFields) + "参加しないときも、返事をもらえると、準備の数が正しく分かります。返事がないときは、欠席として数えます。□参加する□参加しない。いない欄は、空けたままでかまいません");
   const tables = readPublicationTables(row.tables_snapshot);
   const published = (table: TableKey) => (tables ?? []).filter((entry) => entry.kind === table);
   const footer = (squad = "") => <><span>{ward.name}{squad ? ` ${squad}` : ""}</span><span>{distributed}　紙の番号 {paperCode}</span></>;

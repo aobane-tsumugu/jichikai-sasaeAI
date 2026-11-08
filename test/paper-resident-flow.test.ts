@@ -55,7 +55,8 @@ it("資料も班もない一年目に案内を配り、紙だけで返す相手�
       expect(html).toContain("代表者のお名前");
       for (const label of DEFAULT_ANSWER_LABELS) expect(html).toContain(label);
       expect(html).toContain(FIRST_SLICE.helperTime);
-      expect(html).toContain("班（分からないときは空けてかまいません）");
+      // 班の名前が無い自治会では、Web と同じく紙でも班を聞かない（L-317 で前からの決まりにそろえた）。
+      expect(html).not.toContain("班（分からないときは空けてかまいません）");
       expect(html).toContain("班長か役員に渡してください。");
       expect(html).not.toContain("までに、");
       expect(html).not.toContain("連絡先：");

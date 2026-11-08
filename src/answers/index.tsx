@@ -20,6 +20,9 @@ import { receiveOriginal, getReadings } from "../intake/api";
 import { getJob, getOriginal, markRosterAnswered } from "../intake/store";
 import { SEND_SCRIPT } from "../intake/browser-script";
 import { getSquads } from "../settings/store";
+import { addAnswerField, countFields, dayOptions, fieldSuggestions, fieldValueText, getAnswerFields, optionsFromText, readFieldValues, removeAnswerField, updateAnswerField, type AnswerField, type AnswerFieldKind } from "./fields";
+import { FieldInputs, SuggestionNotice, askedText } from "./field-parts";
+import { getProjectSummary } from "../project/api";
 import { lookupPrintQr } from "../print/qr";
 import { ArticleBody } from "../publish";
 import { addHelpOffer, getHelpOfferBySubmission, helpTimeChoices, listHelpOffers, listHelpOpportunities, type HelpOpportunity } from "./help";
@@ -291,6 +294,11 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
   const closed = !!project.closed_at;
   const back = { href: root, label: `← ${project.title}の出欠の返事へ` };
   const roster = await getRoster(c.env.DB, c.var.ward.wardId);
+  // 返事で聞く欄（L-317）。候補は、まとめの画面と欄の画面でだけ引く。
+  const answerFields = await getAnswerFields(c.env.DB, c.var.ward.wardId, projectId, districts);
+  const suggestions = !closed && (view === "summary" || view === "fields") ? await fieldSuggestions(c.env.DB, c.var.ward.wardId, projectId, answerFields, districts) : [];
+  const fieldCounts = countFields(answerFields.fields, answers);
+  const asked = askedText(answerFields.fields, answerFields.districtAsked);
   const remaining = unanswered.reduce((sum, group) => sum + group.households.length, 0);
   const helperCount = helpers.length + offers.length;
   const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
@@ -317,7 +325,7 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
       {!roster.length ? <p>名簿はまだありません。名簿を入れると、まだ返事のない世帯を見られます。</p> : unanswered.map((group) => <section><h2>{group.district}（{group.households.length}世帯）</h2>{group.households.length ? <ul>{group.households.map((name) => <li>{name}</li>)}</ul> : <p>まだ返事のない世帯はありません。</p>}</section>)}
       <p>名前の書き方が名簿と違うと、返事をしていてもここに出ることがあります。</p>
     </Sheet></PrintDocument>);
-  const titles: Record<string, string> = { send: "回答票を撮って送る", sent: "回答票を受け取りました", unanswered: "まだ返事のない世帯", hand: "電話や紙の返事を手で入れる", list: "返事の一覧", read: "読み取った返事を直して入れる", helpers: "手伝いの一覧" };
+  const titles: Record<string, string> = { send: "回答票を撮って送る", sent: "回答票を受け取りました", unanswered: "まだ返事のない世帯", hand: "電話や紙の返事を手で入れる", list: "返事の一覧", read: "読み取った返事を直して入れる", helpers: "手伝いの一覧", fields: `${project.title}の返事で聞くこと` };
   const title = titles[view] ?? `${project.title}の出欠の返事`;
   const receipt = retry ? undefined : c.req.query("done");
   if (receipt === "hand" || receipt === "deadline" || receipt === "edit" || receipt === "delete") {
@@ -337,11 +345,14 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
     {view === "summary" ? <>
       {/* 数の札とリンクの要約に縮めず、締切と届いた返事を文で書く（管理の決定ログ L-300 のトップと同じ決まり）。 */}
       <p class="lead">{summaryText}</p>
+      {answers.length && answerFields.fields.length ? <section><h2>返事で足した欄</h2>{fieldCounts.map(({ field, lines, empty }) => <p>{field.label}: {lines.join("")}{empty ? `この欄が空の返事が${empty}件あります。` : ""}</p>)}</section> : null}
+      <SuggestionNotice suggestions={suggestions} action={`${root}/fields`} />
       {unread ? <div class="notice warn"><strong>人数が読めなかった返事が{unread}件あります</strong><p>参加しないには数えていません。写真を見て入れてください。</p><a class="quiet" href={`${root}?view=read`}>読み取った出欠の返事を見る</a></div> : null}
       {!answers.length ? <>
         {!closed ? announced ? <><section class="next"><strong>次は</strong><p>回答票が手元にあれば、撮って送れます。</p><a class="button" href={`${root}?view=send`}>回答票を撮って送る</a></section><a class="quiet" href={`${root}?view=hand`}>電話で聞いた返事を入れる</a></>
           : <><section class="next"><p>{project.title}は、まだ住民に案内を知らせていません。出欠の返事は、案内を知らせたあとに、ここに集まります。</p><a class="button" href={adminPath(c.var.ward.slug, `/projects/${projectId}/map`)}>{project.title}のやることを開く</a></section><p>先に電話で返事を聞いたときは、ここから入れられます。<a href={`${root}?view=hand`}>電話で聞いた返事を入れる</a></p></> : null}
         {!roster.length ? <p><a class="quiet" href={adminPath(c.var.ward.slug, "/answers/roster")}>世帯の名簿を入れる</a></p> : null}
+        <p>今、返事で聞いていることは、{asked}です。</p><p class="link-line"><a href={`${root}?view=fields`}>返事で聞くことを見る・足す</a></p>
         {deadlinePassed && remaining ? <p>返事のない{remaining}世帯は欠席として数えています。</p> : null}
         {helperCount ? <p><a href={`${root}?view=helpers`}>手伝いを申し出た{helperCount}人を見る</a></p> : null}
       </> : <>
@@ -353,12 +364,14 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
           <li><a href={`${root}?view=list`}>返事を一覧で見て直す</a></li>
           {roster.length ? <li><a href={`${root}?view=unanswered`}>まだ返事のない世帯を班ごとに見る</a></li> : null}
           <li><a href={`${root}?view=read`}>回答票の読み取りを見る</a></li>
+          <li><a href={`${root}?view=fields`}>返事で聞くことを見る・足す</a></li>
           {helperCount ? <li><a href={`${root}?view=helpers`}>手伝いを申し出た{helperCount}人を見る</a></li> : null}
           <li><a href={adminPath(c.var.ward.slug, "/answers/roster")}>{roster.length ? "世帯の名簿を見る" : "世帯の名簿を入れる"}</a></li>
         </ul>
       </>}
       {!closed ? <details class="fold"><summary>{deadline ? "返事の締切を変える" : "返事の締切を決める"}</summary><div><form method="post" action={`${root}/deadline`}><label for="due">返事の締切</label><input id="due" name="due_on" type="date" value={deadline ?? ""} required /><button class="secondary">{deadline ? "締切を変える" : "締切を決める"}</button></form></div></details> : null}
     </> : null}
+    {view === "fields" ? <FieldsView root={root} draftHref={adminPath(c.var.ward.slug, `/projects/${projectId}/draft/announcement`)} closed={closed} fields={answerFields.fields} districtAsked={answerFields.districtAsked} squads={districts} asked={asked} answers={answers.length} suggestions={suggestions} done={c.req.query("done")} /> : null}
     {view === "send" && !closed ? <>
       <p class="lead">預かった回答票や手元の回答票を撮ってください。一枚の写真に何枚写っていてもかまいません。</p>
       <form method="post" action={`${root}/sheet`} enctype="multipart/form-data"><div class="field"><label class="file-button">カメラで回答票を撮る<input name="part" type="file" accept="image/*,.pdf" capture="environment" required /></label></div><div class="action-links"><button>送る</button></div></form>
@@ -366,19 +379,20 @@ async function answersPage(c: Context<AdminEnv>, retry?: Record<string, unknown>
     </> : null}
     {view === "sent" ? <><p class="lead">読み取れた分から数えに入れます。読み違いは、返事の一覧で直せます。</p><section class="next"><strong>次は</strong><p>返事の数に入ったか見てください。</p><a class="button" href={root}>出欠の返事を見る</a></section><a class="quiet" href={`${root}?view=send`}>続けて撮って送る</a><p><a class="quiet" href={`${root}?view=list`}>返事の一覧で直す</a></p><p class="muted">写真が残るので、紙は名前が読めないようにして捨ててかまいません。班長から預かった紙も同じです。</p></> : null}
     {view === "hand" && !closed ? <><p class="lead">聞いた内容を入れてください。</p>{helpOpen ? <p><a class="button secondary" href={`${root}/help`}>手伝いだけの申し込みを入れる</a></p> : null}<form method="post" action={`${root}/phone`}>
-      {retry ? <><Notice error>{answerProblem(retry)}入れた内容は残っています。</Notice>
+      {retry ? <><Notice error>{asString(retry.field_error) || answerProblem(retry)}入れた内容は残っています。</Notice>
         <section class="next"><strong>次は</strong><p>下の内容を直して、もう一度「この返事を入れる」を押してください。前の画面には、ブラウザの戻るボタンでも戻れます。</p><a class="quiet" href={root}>返事の画面に戻る</a></section>
       </> : null}
       <div class="field"><label for="household">世帯の代表者（ふつうは世帯主）のお名前</label><input id="household" name="household" required maxlength={120} value={asString(retry?.household)} /></div>
       <fieldset><legend>班</legend><DistrictSelect districts={districts} selected={asString(retry?.district)} /></fieldset>
       <AttendanceFields title={project.title} selected={asString(retry?.attend)} /><div class="admin-answer-counts"><CountFields labels={labels} rawValues={retry} /></div>
+      <FieldInputs fields={answerFields.fields} values={retry ? readFieldValues(retry, answerFields.fields).values : {}} prefix="hand" />
       <details class="fold" open={!!retry && (!!retry.helper_name || !!retry.helper_times)}><summary>手伝いの希望があるとき</summary><div><label for="helper">手伝う方のお名前</label><input id="helper" name="helper_name" maxlength={120} value={asString(retry?.helper_name)} /><label for="times">手伝える時間帯</label><input id="times" name="helper_times" maxlength={240} value={asString(retry?.helper_times)} /></div></details>
       <div class="action-bar"><button>この返事を入れる</button></div>
     </form></> : null}
     {view === "unanswered" ? <><p class="lead">名簿の世帯のうち、まだ返事が届いていない世帯です。{deadlinePassed ? "締切を過ぎたので、欠席として数えています。" : "返事がないときは、締切のあとに欠席として数えます。"}</p><div class="action-links"><a class="button" href={`${root}?view=unanswered&print=1`}>この一覧を印刷する</a></div>
       <section class="answer-unanswered-print"><h2 class="print-only">{project.title} まだ返事のない世帯</h2>{!roster.length ? <p>名簿はまだありません。名簿を入れると、まだ返事のない世帯を見られます。</p> : unanswered.map((group) => <section><h2>{group.district}（{group.households.length}世帯）</h2>{group.households.length ? <ul>{group.households.map((name) => <li>{name}</li>)}</ul> : <p>まだ返事のない世帯はありません。</p>}</section>)}</section>
       <p class="muted">印刷して班長に渡すと、会ったときに締切を伝えてもらえます。返事をもらうために回る必要はありません。名前の書き方が名簿と違うと、返事をしていてもここに出ることがあります。</p></> : null}
-    {view === "list" ? <><p class="lead">押すと、直したり消したりできます。</p><ul class="rows two">{answers.map((answer) => <li><a class="row-link" href={`${root}/${encodeURIComponent(answer.answerId)}/edit`}><b>{answer.household}</b><span>{answer.district || "班が分からない"}　{countText(answer, labels)}</span><span>{answer.source === "web" ? "スマホの返事" : answer.source === "phone" ? "電話の返事" : answer.source === "line" ? "LINEの返事" : "紙の回答票から読みました"}</span></a></li>)}</ul>
+    {view === "list" ? <><p class="lead">押すと、直したり消したりできます。</p><ul class="rows two">{answers.map((answer) => <li><a class="row-link" href={`${root}/${encodeURIComponent(answer.answerId)}/edit`}><b>{answer.household}</b><span>{answer.district || "班が分からない"}　{countText(answer, labels)}</span>{answerFields.fields.some((field) => fieldValueText(answer.fieldValues?.[field.fieldId])) ? <span>{answerFields.fields.flatMap((field) => fieldValueText(answer.fieldValues?.[field.fieldId]) ? [`${field.label}: ${fieldValueText(answer.fieldValues?.[field.fieldId])}`] : []).join("　")}</span> : null}<span>{answer.source === "web" ? "スマホの返事" : answer.source === "phone" ? "電話の返事" : answer.source === "line" ? "LINEの返事" : "紙の回答票から読みました"}</span></a></li>)}</ul>
       {!answers.length ? <p>返事はまだありません。</p> : null}<p>班が分からない{answers.filter((answer) => !answer.district).length}世帯</p>
       {sheets.results.map((sheet) => <details class="fold"><summary>{sheet.filename || "回答票の読み取り"}</summary><div><a class="quiet" href={adminPath(c.var.ward.slug, `/intake/originals/${encodeURIComponent(sheet.original_id)}`)}>回答票の写真を読む</a>{renderSheetRows(sheet.body, projectId, sheet.original_id, c.var.ward.slug, closed, answers, labels, project.title, districts)}</div></details>)}</> : null}
     {view === "read" ? <><p class="lead">回答票の写真から読み取りました。世帯の代表者（ふつうは世帯主）のお名前と、読めなかったところを入れて、「返事に入れる」を押してください。入れた返事も直せます。</p>
@@ -422,6 +436,7 @@ async function editAnswerPage(c: Context<AdminEnv>, retry?: Record<string, unkno
   };
   const { labels } = await residentContext(c.env.DB, ward.wardId, projectId);
   const squads = await getSquads(c.env.DB, ward.wardId);
+  const { fields } = await getAnswerFields(c.env.DB, ward.wardId, projectId, squads);
   const district = asString(values.district);
   const editDistricts = district && !squads.includes(district) ? [...squads, district] : squads;
   const back = adminPath(ward.slug, `/answers/${encodeURIComponent(projectId)}`);
@@ -431,10 +446,11 @@ async function editAnswerPage(c: Context<AdminEnv>, retry?: Record<string, unkno
     <h1>{answer.household}の返事を直す</h1>{!project.closed_at ? <p class="lead">直したいところを書き換えて、保存してください。保存する前に戻ると、元のままです。</p> : null}
     {project.closed_at ? <><div class="notice warn"><strong>{project.title}は終わりにしました</strong><p>返事を直すときは、先に終わりを取り消してください。</p></div><div class="action-links"><a class="button" href={adminPath(ward.slug, `/close/${encodeURIComponent(projectId)}`)}>終わりを取り消す画面へ</a></div><p class="muted">終わりを取り消しても、これまでの記録は残ります。</p></> : <>
       <form method="post" action={`${endpoint}/edit`} class="panel">
-        {retry ? <Notice error>{answerProblem(retry)}入れた内容は残っています。</Notice> : null}
+        {retry ? <Notice error>{asString(retry.field_error) || answerProblem(retry)}入れた内容は残っています。</Notice> : null}
         <label for="edit-household">世帯の代表者（ふつうは世帯主）のお名前</label><input id="edit-household" name="household" type="text" value={asString(values.household)} required maxLength={120} />
         <fieldset><legend>班</legend><DistrictSelect districts={editDistricts} selected={district} /></fieldset>
         <AttendanceFields title={project.title} selected={asString(values.attend)} /><div class="admin-answer-counts"><CountFields labels={labels} answer={answer} prefix="edit" rawValues={retry} /></div>
+        <FieldInputs fields={fields} values={retry ? readFieldValues(retry, fields).values : answer.fieldValues ?? {}} prefix="edit" />
         <label for="edit-helper">手伝う方のお名前（書かなくてかまいません）</label><input id="edit-helper" name="helper_name" type="text" value={asString(values.helper_name)} maxLength={240} />
         <label for="edit-times">手伝える時間帯（書かなくてかまいません）</label><input id="edit-times" name="helper_times" type="text" value={asString(values.helper_times)} maxLength={240} />
         <div class="action-bar"><button type="submit">直した返事を保存する</button></div>
@@ -448,7 +464,13 @@ async function editAnswerPage(c: Context<AdminEnv>, retry?: Record<string, unkno
 admin.get("/answers/:projectId/:answerId/edit", (c) => editAnswerPage(c));
 
 admin.post("/answers/:projectId/:answerId/edit", async (c) => {
-  const form = await c.req.parseBody();
+  const form = await c.req.parseBody({ all: true });
+  const before = await getAnswer(c.env.DB, c.var.ward.wardId, c.req.param("projectId"), c.req.param("answerId"));
+  const { fields } = await getAnswerFields(c.env.DB, c.var.ward.wardId, c.req.param("projectId"), await getSquads(c.env.DB, c.var.ward.wardId));
+  const answered = readFieldValues(form, fields);
+  if (answered.error) return editAnswerPage(c, { ...form, field_error: answered.error });
+  // 外した欄の答えは残し、今出している欄だけを書き換える。
+  const fieldValues = { ...Object.fromEntries(Object.entries(before?.fieldValues ?? {}).filter(([key]) => !fields.some((field) => field.fieldId === key))), ...answered.values };
   const household = asString(form.household).trim();
   const district = asString(form.district).trim();
   const counts = parseAnswerCounts(form);
@@ -460,7 +482,7 @@ admin.post("/answers/:projectId/:answerId/edit", async (c) => {
     return editAnswerPage(c, form);
   }
   const saved = await updateAnswer(c.env.DB, c.var.ward.wardId, c.req.param("projectId"), c.req.param("answerId"),
-    { household, district, ...counts!, helperName, helperTimes });
+    { household, district, ...counts!, helperName, helperTimes, fieldValues });
   if (!saved) return adminResult(c, "返事を保存できませんでした。返事の一覧に戻って確認してください。終わったものは、先に終わりを取り消してください。", 409, { href: adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(c.req.param("projectId"))}`), label: "返事の画面に戻る" }, "返事の画面で内容を確かめてください。終わったものの返事を直すときは、先に終わりを取り消してください。");
   return c.redirect(`${adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(c.req.param("projectId"))}`)}?view=list&done=edit`, 303);
 });
@@ -472,15 +494,92 @@ admin.post("/answers/:projectId/:answerId/delete", async (c) => {
 });
 
 admin.post("/answers/:projectId/phone", async (c) => {
-  const form = await c.req.parseBody();
+  const form = await c.req.parseBody({ all: true });
+  const { fields } = await getAnswerFields(c.env.DB, c.var.ward.wardId, c.req.param("projectId"), await getSquads(c.env.DB, c.var.ward.wardId));
+  const answered = readFieldValues(form, fields);
+  if (answered.error) return answersPage(c, { ...form, field_error: answered.error });
   const household = typeof form.household === "string" ? form.household.trim() : "";
   const district = typeof form.district === "string" ? form.district.trim() : "";
   const counts = parseAnswerCounts(form);
   const peopleCount = counts?.peopleCount ?? -1;
   if (!household || !Number.isInteger(peopleCount) || peopleCount < 0 || peopleCount > 1000) return answersPage(c, form);
-  await addAnswer(c.env.DB, c.var.ward.wardId, { projectId: c.req.param("projectId"), household, district, ...counts!, helperName: asString(form.helper_name), helperTimes: asString(form.helper_times), source: "phone", accountId: c.var.account.accountId });
+  await addAnswer(c.env.DB, c.var.ward.wardId, { projectId: c.req.param("projectId"), household, district, ...counts!, helperName: asString(form.helper_name), helperTimes: asString(form.helper_times), source: "phone", accountId: c.var.account.accountId, fieldValues: answered.values });
   return c.redirect(`${adminPath(c.var.ward.slug, `/answers/${encodeURIComponent(c.req.param("projectId"))}`)}?done=hand`, 303);
 });
+
+// 返事で聞く欄を足す（L-317）。候補から押した時は、日と班を一度に足せる。班は班の名前がある自治会だけ。
+admin.post("/answers/:projectId/fields", async (c) => {
+  const { ward, account } = c.var; const projectId = c.req.param("projectId");
+  const form = await c.req.parseBody({ all: true });
+  const kinds = (Array.isArray(form.kind) ? form.kind : [form.kind]).filter((kind): kind is AnswerFieldKind => kind === "days" || kind === "text" || kind === "district");
+  if (!kinds.length) return c.notFound();
+  const [squads, project] = await Promise.all([getSquads(c.env.DB, ward.wardId), getProjectSummary(c.env.DB, ward.wardId, projectId)]);
+  if (!project) return c.notFound();
+  let first = "";
+  for (const kind of kinds) {
+    if (kind === "district" && !squads.length) continue;
+    const id = await addAnswerField(c.env.DB, ward.wardId, projectId, kind, account.accountId,
+      kind === "days" ? { options: dayOptions(project.deadlines.event_day, project.deadlines.event_end) } : {});
+    if (id && !first) first = kind === "district" ? "district" : id;
+  }
+  return c.redirect(`${adminPath(ward.slug, `/answers/${encodeURIComponent(projectId)}`)}?view=fields&done=${first ? "field_added" : "field_failed"}${first ? `#field-${first}` : ""}`, 303);
+});
+
+admin.post("/answers/:projectId/fields/:fieldId/save", async (c) => {
+  const { ward } = c.var; const projectId = c.req.param("projectId"); const fieldId = c.req.param("fieldId");
+  const form = await c.req.parseBody();
+  const saved = await updateAnswerField(c.env.DB, ward.wardId, projectId, fieldId, { label: asString(form.label), options: optionsFromText(asString(form.options)), multiple: form.multiple === "1" });
+  return c.redirect(`${adminPath(ward.slug, `/answers/${encodeURIComponent(projectId)}`)}?view=fields&done=${saved ? "field_saved" : "field_failed"}#field-${encodeURIComponent(fieldId)}`, 303);
+});
+
+admin.post("/answers/:projectId/fields/:fieldId/remove", async (c) => {
+  const { ward, account } = c.var; const projectId = c.req.param("projectId");
+  const removed = await removeAnswerField(c.env.DB, ward.wardId, projectId, c.req.param("fieldId"), account.accountId);
+  return c.redirect(`${adminPath(ward.slug, `/answers/${encodeURIComponent(projectId)}`)}?view=fields&done=${removed ? "field_removed" : "field_failed"}`, 303);
+});
+
+/** 返事で聞くことの画面。今聞いていること、候補、足す、直す、外すを一つの画面に置く。 */
+function FieldsView({ root, draftHref, closed, fields, districtAsked, squads, asked, answers, suggestions, done }: {
+  root: string; draftHref: string; closed: boolean; fields: readonly AnswerField[]; districtAsked: boolean; squads: readonly string[]; asked: string; answers: number;
+  suggestions: Parameters<typeof SuggestionNotice>[0]["suggestions"]; done?: string;
+}) {
+  const doneText: Record<string, string> = {
+    field_added: "欄を足しました。住民のスマホの返事と紙の回答票に出ます。下の欄で、名前と選ぶものを確かめてください。",
+    field_saved: "直しました。住民のスマホの返事と紙の回答票も変わります。",
+    field_removed: "外しました。今までの答えは消えていません。",
+    field_failed: "変えられませんでした。終わりにした準備は、先に終わりを取り消してください。",
+  };
+  return <>
+    <p class="lead">住民のスマホの返事と紙の回答票の両方に、同じ欄が出ます。代表者のお名前、参加するかどうか、人数は、いつも聞きます。</p>
+    {done && doneText[done] ? <Notice error={done === "field_failed"}>{doneText[done]}{done === "field_added" && fields.some((field) => field.kind === "days" && !field.options.length) ? "選ぶ日がまだない欄があります。下の「名前と選ぶ日を直す」から入れてください。" : ""}</Notice> : null}
+    {!closed ? <SuggestionNotice suggestions={suggestions} action={`${root}/fields`} /> : null}
+    <h2>今、返事で聞いていること</h2>
+    <p>{asked}です。</p>
+    {squads.length ? <section class="panel" id="field-district"><b>班</b>
+      <p>{districtAsked ? `班の名前（${squads.join("、")}）から選んでもらいます。紙の回答票は班ごとに刷るので、紙には班の欄は出ません。` : "今は班を聞いていません。"}</p>
+      {!closed ? <form method="post" action={districtAsked ? `${root}/fields/district/remove` : `${root}/fields`}>{districtAsked ? null : <input type="hidden" name="kind" value="district" />}<button class="secondary" type="submit">{districtAsked ? "班を聞くのをやめる" : "班を聞く"}</button></form> : null}
+    </section> : null}
+    {fields.map((field) => <section class="panel" id={`field-${field.fieldId}`}><b>{field.label}</b>
+      <p>{field.kind === "days" ? `日を選ぶ欄です。${field.options.length ? `選ぶ日は、${field.options.join("、")}です。` : "選ぶ日がまだありません。"}${field.multiple ? "いくつでも選べます。" : "一つだけ選べます。"}` : "自由に書く欄です。短い文で答えてもらいます。"}</p>
+      {!closed ? <><details class="fold" open={field.kind === "days" && !field.options.length}><summary>{field.kind === "days" ? "名前と選ぶ日を直す" : "名前を直す"}</summary><div>
+        <form method="post" action={`${root}/fields/${encodeURIComponent(field.fieldId)}/save`}>
+          <label for={`label-${field.fieldId}`}>欄の名前</label><input id={`label-${field.fieldId}`} name="label" value={field.label} maxlength={40} required />
+          {field.kind === "days" ? <><label for={`options-${field.fieldId}`}>選ぶ日（一行に一つ）</label><textarea id={`options-${field.fieldId}`} name="options" rows={4}>{field.options.join("\n")}</textarea>
+            <label><input type="checkbox" name="multiple" value="1" checked={field.multiple} /> いくつでも選べるようにする</label></> : null}
+          <button class="secondary" type="submit">直した内容を保存する</button>
+        </form></div></details>
+        <form method="post" action={`${root}/fields/${encodeURIComponent(field.fieldId)}/remove`}><p class="muted">外しても、今までの答えは消えません。</p><button class="secondary" type="submit">この欄を外す</button></form></> : null}
+    </section>)}
+    {!closed ? <><h2>欄を足す</h2>
+      <form method="post" action={`${root}/fields`}><input type="hidden" name="kind" value="days" /><p>候補の日を並べて、参加できる日を選んでもらいます。押すと、行事の日から候補を入れます。あとで直せます。</p><button class="secondary" type="submit">日を選ぶ欄を足す</button></form>
+      <form method="post" action={`${root}/fields`}><input type="hidden" name="kind" value="text" /><p>短い文で答えてもらいます。たとえば、来られる時間や、気をつけてほしいことです。</p><button class="secondary" type="submit">自由に書く欄を足す</button></form>
+      {answers ? <p class="muted">もう届いている{answers}件の返事は消えません。足した欄は、その返事では空のまま数えます。</p> : null}
+    </> : null}
+    {/* 案内を書いている途中で開くことが多いので、案内の下書きにも戻れるようにする。 */}
+    <p class="link-line"><a href={draftHref}>案内の下書きへ戻る</a></p>
+    <p class="link-line"><a href={root}>出欠の返事へ戻る</a></p>
+  </>;
+}
 
 admin.post("/answers/:projectId/sheet", async (c) => {
   const form = await c.req.formData();
@@ -641,9 +740,9 @@ pub.use("/answer/*", async (c, next) => {
   await next();
 });
 
-function AnswerForm({ wardName, slug, projectId, title, squads, labels, published, selected = "", values = {}, error, choices = [] }: {
+function AnswerForm({ wardName, slug, projectId, title, squads, labels, published, selected = "", values = {}, error, choices = [], fields = [], districtAsked = squads.length > 0 }: {
   wardName: string; slug: string; projectId: string; title: string; squads: string[]; labels: AnswerLabels; published: boolean;
-  selected?: string; values?: Record<string, unknown>; error?: string; choices?: string[];
+  selected?: string; values?: Record<string, unknown>; error?: string; choices?: string[]; fields?: readonly AnswerField[]; districtAsked?: boolean;
 }) {
   const counts = parseAnswerCounts(values);
   const district = typeof values.district === "string" ? values.district : selected;
@@ -656,10 +755,11 @@ function AnswerForm({ wardName, slug, projectId, title, squads, labels, publishe
       <div class="field"><label for="household">代表者のお名前</label><input id="household" name="household" type="text" autocomplete="name" maxlength={120} value={asString(values.household)} required /><p class="help-text">ふつうは世帯主の方のお名前です。ご家族のどなたが答えてもかまいません。例: 山田 太郎</p></div>
       {selected ? <><dl class="facts"><dt>班</dt><dd>{selected}</dd></dl><details class="fold" open={!!error}><summary>班が違うときは選び直す</summary><div><DistrictSelect districts={squads} selected={district} /></div></details></>
         // 班の名前が入っていない自治会では、選べるのが「分からない」一つになるので、班を聞かない。
-        : !squads.length ? <input type="hidden" name="district" value="" />
+        : !districtAsked ? <input type="hidden" name="district" value="" />
         : <fieldset><legend>班</legend><DistrictSelect districts={squads} selected={district} unset={!("district" in values)} /><p class="muted">分からないときは、そのまま送ってかまいません。役員が確かめます。</p></fieldset>}
       <AttendanceFields title={title} selected={asString(values.attend)} />
       <CountFields labels={labels} answer={Object.keys(values).length ? counts ?? undefined : undefined} rawValues={values} />
+      <FieldInputs fields={fields} values={readFieldValues(values, fields).values} prefix="answer" />
       <details class="fold" open={!!error && (!!values.helper_name || !!values.helper_times)}><summary>手伝える方はこちら（書かなくてかまいません）</summary><div>
         <div class="field"><label for="helper">手伝う方のお名前</label><input id="helper" name="helper_name" type="text" maxlength={120} value={asString(values.helper_name)} /></div>
         {choices.length ? <fieldset><legend>手伝える時間帯</legend><div class="choice">{choices.map((time) => <label><input type="radio" name="helper_times" value={time} checked={values.helper_times === time} /> {time}</label>)}</div></fieldset>
@@ -678,20 +778,24 @@ pub.get("/answer/:projectId", async (c) => {
   if (isAnswerClosed(project)) return c.html(<Layout title="返事の受付は終わりました" siteName={c.var.ward.name}><h1>{project.title}のご案内</h1><ReceptionClosed closed={!!project.closed_at} due={project.due_on} /><ResidentContact contact={context.contact} /><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>案内を読む</a></Layout>);
   const selected = squads.includes(c.req.query("s") ?? "") ? c.req.query("s") : "";
   const announcement = context.documents.find((document) => document.kind === "announcement");
-  return c.html(<AnswerForm wardName={c.var.ward.name} slug={c.var.ward.slug} projectId={projectId} title={project.title} squads={squads} labels={context.labels} published={context.documents.length > 0} selected={selected} choices={helpTimeChoices(announcement?.body ?? "").filter((time) => time !== PENDING)} />);
+  const { fields, districtAsked } = await getAnswerFields(c.env.DB, c.var.ward.wardId, projectId, squads);
+  return c.html(<AnswerForm wardName={c.var.ward.name} slug={c.var.ward.slug} projectId={projectId} title={project.title} squads={squads} labels={context.labels} published={context.documents.length > 0} selected={selected} choices={helpTimeChoices(announcement?.body ?? "").filter((time) => time !== PENDING)} fields={fields} districtAsked={districtAsked} />);
 });
 
 pub.post("/answer/:projectId", async (c) => {
   const projectId = c.req.param("projectId");
-  const form = await c.req.parseBody();
+  const form = await c.req.parseBody({ all: true });
   const project = await answerProject(c.env.DB, c.var.ward.wardId, projectId);
   if (!project) return c.notFound();
   const context = await residentContext(c.env.DB, c.var.ward.wardId, projectId);
   const wardId = c.var.ward.wardId;
   const submissionId = asString(form.submission_id);
+  const squads = await getSquads(c.env.DB, c.var.ward.wardId);
+  const { fields, districtAsked } = await getAnswerFields(c.env.DB, c.var.ward.wardId, projectId, squads);
   const received = (answer: AnswerRow | null) => c.html(<Layout title="返事を受け付けました" siteName={c.var.ward.name}>
     <h1>返事を受け付けました</h1><p>ありがとうございました。この画面は閉じてかまいません。</p>
-    {answer ? <dl><dt>代表者</dt><dd>{answer.household}</dd><dt>班</dt><dd>{answer.district || "班が分からない"}</dd><dt>{answer.peopleCount === 0 ? "返事" : "人数"}</dt><dd>{countText(answer, context.labels)}</dd></dl> : null}
+    {answer ? <dl><dt>代表者</dt><dd>{answer.household}</dd>{districtAsked || answer.district ? <><dt>班</dt><dd>{answer.district || "班が分からない"}</dd></> : null}<dt>{answer.peopleCount === 0 ? "返事" : "人数"}</dt><dd>{countText(answer, context.labels)}</dd>
+      {fields.flatMap((field) => fieldValueText(answer.fieldValues?.[field.fieldId]) ? [<><dt>{field.label}</dt><dd>{fieldValueText(answer.fieldValues?.[field.fieldId])}</dd></>] : [])}</dl> : null}
     {answer && answer.peopleCount > 0 ? <section class="next"><strong>次は</strong><EventDetails item={context.item} hasNotice={context.hasNotice} />{!context.hasNotice ? <p>変更は案内で確かめられます。</p> : null}</section> : null}
     <h2>間違えたときは</h2><p>もう一度送らず、下の連絡先にお知らせください。役員が直します。</p><ResidentContact contact={context.contact} />
     <p class="link-line"><a href={`/${c.var.ward.slug}/p/${encodeURIComponent(projectId)}`}>案内へ戻る</a></p>
@@ -708,24 +812,24 @@ pub.post("/answer/:projectId", async (c) => {
   const counts = parseAnswerCounts(form);
   const helperName = asString(form.helper_name).trim();
   const helperTimes = asString(form.helper_times).trim();
-  const squads = await getSquads(c.env.DB, c.var.ward.wardId);
-  const error = !household ? "お名前が入っていません。お名前を入れて、もう一度送ってください。" : household.length > 120 || district.length > 80 || !counts || helperName.length > 120 || helperTimes.length > 240 ? "入力を確認してください。お名前と人数を書き直してください。" : district && squads.length && !squads.includes(district) ? "班を選び直してください。分からないときは「分からない」を選べます。" : "";
-  if (error) return c.html(<AnswerForm wardName={c.var.ward.name} slug={c.var.ward.slug} projectId={projectId} title={project.title} squads={squads} labels={context.labels} published={context.documents.length > 0} selected={squads.includes(c.req.query("s") ?? "") ? c.req.query("s") : ""} values={form} error={error} choices={helpTimeChoices(context.documents.find((document) => document.kind === "announcement")?.body ?? "").filter((time) => time !== PENDING)} />, 400);
+  const answered = readFieldValues(form, fields);
+  const error = answered.error ? answered.error : !household ? "お名前が入っていません。お名前を入れて、もう一度送ってください。" : household.length > 120 || district.length > 80 || !counts || helperName.length > 120 || helperTimes.length > 240 ? "入力を確認してください。お名前と人数を書き直してください。" : district && squads.length && !squads.includes(district) ? "班を選び直してください。分からないときは「分からない」を選べます。" : "";
+  if (error) return c.html(<AnswerForm wardName={c.var.ward.name} slug={c.var.ward.slug} projectId={projectId} title={project.title} squads={squads} labels={context.labels} published={context.documents.length > 0} selected={squads.includes(c.req.query("s") ?? "") ? c.req.query("s") : ""} values={form} error={error} choices={helpTimeChoices(context.documents.find((document) => document.kind === "announcement")?.body ?? "").filter((time) => time !== PENDING)} fields={fields} districtAsked={districtAsked} />, 400);
   if (!submissionId) {
     // 既に開いている旧画面からの答えも受け付ける。
-    const id = await addAnswer(c.env.DB, wardId, { projectId, household, district, ...counts!, helperName, helperTimes, source: "web" });
+    const id = await addAnswer(c.env.DB, wardId, { projectId, household, district, ...counts!, helperName, helperTimes, source: "web", fieldValues: answered.values });
     return received(await getAnswer(c.env.DB, wardId, projectId, id));
   }
   const answerId = newId();
   // 答えと処理済みの番号を同じ書き込みで残す。同時の再送も別の答えにしない。
   await c.env.DB.batch([
     c.env.DB.prepare(`INSERT INTO project_answers
-      (answer_id, ward_id, project_id, household, district, people_count, children_count, adults_count, seniors_count, helper_name, helper_times, source, created_at)
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'web', ?
+      (answer_id, ward_id, project_id, household, district, people_count, children_count, adults_count, seniors_count, helper_name, helper_times, source, created_at, field_values)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'web', ?, ?
       WHERE EXISTS (SELECT 1 FROM projects WHERE ward_id = ? AND project_id = ? AND closed_at IS NULL)
         AND NOT EXISTS (SELECT 1 FROM project_answer_submissions WHERE ward_id = ? AND project_id = ? AND submission_id = ?)`)
       .bind(answerId, wardId, projectId, household, district, counts!.peopleCount, counts!.childrenCount ?? null,
-        counts!.adultsCount ?? null, counts!.seniorsCount ?? null, helperName, helperTimes, nowIso(), wardId, projectId, wardId, projectId, submissionId),
+        counts!.adultsCount ?? null, counts!.seniorsCount ?? null, helperName, helperTimes, nowIso(), JSON.stringify(answered.values), wardId, projectId, wardId, projectId, submissionId),
     c.env.DB.prepare(`INSERT INTO project_answer_submissions (ward_id, project_id, submission_id, answer_id)
       SELECT ward_id, project_id, ?, answer_id FROM project_answers WHERE ward_id = ? AND project_id = ? AND answer_id = ?`)
       .bind(submissionId, wardId, projectId, answerId),
