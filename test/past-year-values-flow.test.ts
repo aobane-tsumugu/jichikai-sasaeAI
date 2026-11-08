@@ -55,9 +55,9 @@ it("去年の当番表とお知らせの日は参考に留め、送る前の画�
   expect((await s.state()).items.find((item) => item.key === "place")?.current).toBeNull();
   await applyChange(env.DB, s.ward.wardId, s.project.projectId, { kind: "item", itemKey: "due", value: "12月20日まで",
     source: { kind: "original", ref: undated, qr: true }, confidence: "high", packVersion: "unknown-qr-test@1" });
-  const unknownDue = (await s.state()).items.find((item) => item.key === "due");
-  expect(unknownDue?.current).toBeNull();
-  expect(unknownDue?.references.find((value) => value.refYear === null)?.content).toBe("12月20日まで");
+  // 今年配った紙（QR で今年の版と分かる物）から読んだ値は、年が書いていなくても今年の中身にする。
+  const qrDue = (await s.state()).items.find((item) => item.key === "due");
+  expect(qrDue?.current?.content).toBe("12月20日まで");
   const state = await s.state();
   expect(await saveAIDraft(env.DB, s.ward.wardId, s.project.projectId, "announcement", "past-year-draft@1", {
     text: "■いつ行いますか\n2025年12月26日から28日\n■返事をお願いします\n2025年12月15日まで",
