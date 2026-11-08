@@ -60,3 +60,49 @@ export async function applyLineFact(db: D1Database, wardId: string, jobId: strin
     .bind(wardId, jobId).first<{ original_id: string }>();
   if (original) await applyFact(db, wardId, topic, [{ original_id: original.original_id, topic, text: text.slice(0, 500) }]);
 }
+
+/** 資料の食い違いを人が選んだときだけ、同じ資料に結び付いた説明と決めたことをそろえる。 */
+export async function reconcileAnsweredFact(db: D1Database, wardId: string, projectId: string, questionId: string,
+  itemKey: string, options: string[], answer: string, accountId: string): Promise<void> {
+  const question = await db.prepare("SELECT detail FROM project_questions WHERE ward_id = ? AND project_id = ? AND question_id = ?")
+    .bind(wardId, projectId, questionId).first<{ detail: string }>();
+  const detail = JSON.parse(question?.detail ?? "{}") as { sources?: { ref?: string }[] };
+  const refs = [...new Set(detail.sources?.flatMap((source) => source.ref ? [source.ref] : []) ?? [])];
+  const project = await db.prepare("SELECT title FROM projects WHERE ward_id = ? AND project_id = ?")
+    .bind(wardId, projectId).first<{ title: string }>();
+  const title = project?.title.replace(/^\d{4}年度?\s*/, "").replace(/[（(].*?[）)]/g, "").trim();
+  const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const patterns = options.map((option) => {
+    const date = itemKey === "date_time" ? option.normalize("NFKC").match(/(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日/) : null;
+    return date ? new RegExp(`(?:${date[1] ?? "\\d{4}"}年)?${Number(date[2])}月${Number(date[3])}日(?:[（(][^）)]*[）)])?`, "g")
+      : new RegExp(escape(option), "g");
+  });
+  const matches = (text: string) => patterns.some((pattern) => { pattern.lastIndex = 0; return pattern.test(text); });
+  const replace = (text: string) => {
+    // 一度の置換にして、選んだ値の中を別の候補として置き換えない。
+    const chosenDate = itemKey === "date_time" ? answer.match(/(?:\d{4}年)?\d{1,2}月\d{1,2}日(?:[（(][^）)]*[）)])?/) : null;
+    return text.replace(new RegExp(patterns.map((pattern) => pattern.source).join("|"), "g"), () => chosenDate?.[0] ?? answer);
+  };
+  const now = nowIso();
+  const statements: D1PreparedStatement[] = [];
+  if (refs.length) {
+    const know = await db.prepare(`SELECT k.item_id, k.body FROM ward_know_items k WHERE k.ward_id = ? AND k.removed_at IS NULL
+      AND EXISTS (SELECT 1 FROM ward_material_links l WHERE l.ward_id = ? AND l.target_kind = 'know_item'
+        AND l.target_id = k.item_id AND l.original_id IN (${refs.map(() => "?").join(",")}))`)
+      .bind(wardId, wardId, ...refs).all<{ item_id: string; body: string }>();
+    for (const row of know.results) {
+      const body = row.body.split("\n").map((line) => title && line.includes(title) && matches(line) ? replace(line) : line).join("\n");
+      if (body !== row.body) statements.push(db.prepare(`UPDATE ward_know_items SET body = ?, reviewed_at = ?, updated_at = ?
+        WHERE ward_id = ? AND item_id = ? AND removed_at IS NULL`).bind(body, now, now, wardId, row.item_id));
+    }
+  }
+  const decisions = await db.prepare(`SELECT row_id, data FROM project_rows WHERE ward_id = ? AND project_id = ?
+    AND table_key = 'decisions' AND scope = 'current' AND source_kind = 'original' AND removed_at IS NULL`)
+    .bind(wardId, projectId).all<{ row_id: string; data: string }>();
+  for (const row of decisions.results) {
+    const data = JSON.parse(row.data) as { what?: string };
+    if (data.what && matches(data.what) && (options.includes(data.what) || !!title && data.what.includes(title))) statements.push(db.prepare(`UPDATE project_rows SET removed_at = ?, updated_at = ?, created_by_account_id = ?
+      WHERE ward_id = ? AND project_id = ? AND row_id = ? AND removed_at IS NULL`).bind(now, now, accountId, wardId, projectId, row.row_id));
+  }
+  if (statements.length) await db.batch(statements);
+}

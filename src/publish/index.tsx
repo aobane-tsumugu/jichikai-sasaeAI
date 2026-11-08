@@ -565,6 +565,7 @@ function PublicWarning({ finding }: { finding: string }) {
     "協賛の額": { title: "協賛の金額と同じ数字があります", text: `「${value}」が本文にあります。だれでも読める案内に出てよければ、このまま知らせられます。` },
     "個人の連絡先": { title: "個人の連絡先と思われる文字があります", text: `「${value}」が本文にあります。だれでも読める案内に出てよければ、このまま知らせられます。` },
     "まだ決まっていないところ": { title: "まだ決めていないところがあります", text: `「${value}」が本文にあります。このまま知らせられます。直すときは下書きに戻ってください。` },
+    "去年の日付のようです": { title: "去年の日付のようです", text: `「${value}」が本文にあります。今年の日でなければ、下書きに戻って直してください。` },
   };
   const message = messages[kind] ?? { title: "本文を読み取れないところがあります", text: "下に出ている内容を読んで、このまま知らせられます。直すときは下書きに戻ってください。" };
   return <div class="notice warn"><strong>{message.title}</strong><p>{message.text}</p></div>;

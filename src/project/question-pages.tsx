@@ -4,9 +4,7 @@ import { adminPath } from "../core/auth";
 import { ErrorNotice, Layout, Notice } from "../core/ui";
 import type { AdminEnv } from "../env";
 import { getProjectState } from "./api";
-import { getEditableDocument } from "./actions";
 import { DOCUMENT_KINDS, ITEM_SCREEN_LABEL, isItemKey, type DocumentKind } from "./model";
-import type { DocumentBody } from "./document-body";
 import type { QuestionView } from "./types";
 import { answerMaterialExemption, EXEMPTION_TARGET, EXEMPTION_YES, EXEMPTION_NO, EXEMPTION_REASON_MAX, readMaterialExemption } from "../rota/material-exemptions";
 
@@ -55,22 +53,22 @@ questionPages.get("/projects/:projectId/questions/:questionId/compare", async (c
   const stored = await c.env.DB.prepare("SELECT detail FROM project_questions WHERE ward_id = ? AND project_id = ? AND question_id = ?")
     .bind(ward.wardId, id, question.questionId).first<{ detail: string | null }>();
   let draftKind: DocumentKind = "announcement";
+  let reference = false;
   try {
-    const detail = JSON.parse(stored?.detail ?? "{}") as { documentKind?: DocumentKind };
+    const detail = JSON.parse(stored?.detail ?? "{}") as { documentKind?: DocumentKind; scope?: string };
+    reference = detail.scope === "reference";
     if (detail.documentKind && DOCUMENT_KINDS.includes(detail.documentKind)) draftKind = detail.documentKind;
   } catch { /* 古い質問は案内へ戻る。 */ }
   const fromDraft = c.req.query("from") === "draft";
   const back = adminPath(ward, fromDraft ? `/projects/${id}/draft/${draftKind}` : `/projects/${id}/questions`);
-  const draft = await getEditableDocument(c.env.DB, ward.wardId, id, draftKind);
-  const body = draft ? JSON.parse(draft.body) as DocumentBody : null;
-  const currentValue = question.target && isItemKey(question.target) ? body?.items.find((item) => item.key === question.target)?.content ?? state.items.find((item) => item.key === question.target)?.current?.content : "";
-  return c.html(<Layout title="二つを見比べる" siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={back}>← {fromDraft ? "下書きへ" : "質問へ"}</a><h1>{questionTitle(question).heading}</h1><p class="lead">使う方を選んでください。選ばないときは、{currentValue ? `今の下書きの${currentValue}` : "今の内容"}のままです。</p>
+  return c.html(<Layout title={(question.options?.length ?? 0) > 2 ? "資料を見比べる" : "二つを見比べる"} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
+    <a class="back" href={back}>← {fromDraft ? "下書きへ" : "質問へ"}</a><h1>{questionTitle(question).heading}</h1><p class="lead">{reference ? "過去の資料の中身に残すものを選んでください。今年の中身は変わりません。" : "今年使う内容を選んでください。答えるまで資料のどれかを今年の中身には入れません。"}</p>
+    <p>{questionTitle(question).body}</p>
     {state.project.closedAt ? <Notice>{state.project.title}は終わりにしました。終わりを取り消すと答えを入れられます。</Notice> : <form method="post" action={adminPath(ward, `/projects/${id}/questions/${question.questionId}`)}>
       {fromDraft && draftKind === "announcement" ? <input type="hidden" name="from" value="draft" /> : null}
       <fieldset><legend>使う内容</legend>{question.options?.length ? question.options.map((option) => <label><input type="radio" name="answer" value={option} required />{questionOptionLabel(option)}</label>) : <><p class="preserve-lines">{question.answer}</p><label for="answer">確かめた内容</label><input id="answer" name="answer" required maxlength={2000} /></>}</fieldset>
       {question.source?.kind === "original" && question.source.ref ? <p><a class="quiet" href={adminPath(ward, `/intake/originals/${encodeURIComponent(question.source.ref)}`)}>元の資料を見る</a></p> : null}
-      <button name="action" value="answer">{question.target && isItemKey(question.target) ? "この内容を下書きに入れる" : "この答えを残す"}</button>
+      <button name="action" value="answer">{reference ? "過去の資料の中身に残す" : question.target && isItemKey(question.target) ? "この内容を下書きに入れる" : "この答えを残す"}</button>
     </form>}
   </Layout>);
 });
@@ -113,7 +111,7 @@ questionPages.get("/projects/:projectId/questions", async (c) => {
       <h2>{questionTitle(question).heading}</h2>
       {questionTitle(question).body ? <p>{questionTitle(question).body}</p> : null}
       {question.source?.locator && question.source.locator !== "写真の確認" ? <p class="muted">{question.source.locator}</p> : null}
-      {question.kind === "conflict" ? <p><a class="button secondary" href={adminPath(ward, `/projects/${id}/questions/${question.questionId}/compare`)}>二つを見比べる</a></p> : null}
+      {question.kind === "conflict" ? <p><a class="button secondary" href={adminPath(ward, `/projects/${id}/questions/${question.questionId}/compare`)}>{(question.options?.length ?? 0) > 2 ? "資料を見比べる" : "二つを見比べる"}</a></p> : null}
       {!state.project.closedAt ? <form method="post" action={adminPath(ward, `/projects/${id}/questions/${question.questionId}${exemption ? "/exemption" : ""}`)}>
         {exemption ? <>
           <p>資料に免除の記述があるようです。{exemption.district}の{exemption.household}さんについて、{exemption.year}年の当番から外すか選べます。選ばないときは今のままです。</p>

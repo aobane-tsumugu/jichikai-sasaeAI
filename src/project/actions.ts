@@ -1,5 +1,6 @@
 import { newId, nowIso } from "../core/ids";
-import { applyChange } from "./apply";
+import { answerOriginalReference, applyChange } from "./apply";
+import { reconcileAnsweredFact } from "../know/apply";
 import { DOCUMENT_KINDS, DOCUMENT_KIND_LABEL, ITEM_LABEL, ITEM_SCREEN_LABEL, TABLES, cleanRowData, isItemKey, isTableKey, rowMatchKey, type DocumentKind, type ProjectKind, type Scope, type ItemKey, type RowData } from "./model";
 import { hashOf, stableStringify } from "./util";
 import { eventDayStatements, getProjectState } from "./state";
@@ -171,6 +172,8 @@ export async function answerQuestion(db: D1Database, wardId: string, projectId: 
     return true;
   }
   if (action === "answer") {
+    const reference = await answerOriginalReference(db, wardId, projectId, questionId, accountId, value);
+    if (reference !== null) return reference;
     const question = await db.prepare("SELECT kind, text, target, detail FROM project_questions WHERE ward_id = ? AND project_id = ? AND question_id = ? AND state IN ('open', 'later')")
       .bind(wardId, projectId, questionId).first<{ kind: string; text: string; target: string | null; detail: string | null }>();
     let applied = false;
@@ -215,6 +218,13 @@ export async function answerQuestion(db: D1Database, wardId: string, projectId: 
           const day = state ? parseEventDay(value, state.project.year) : null;
           const end = state ? parseEventDay(value, state.project.year, "end") : null;
           if (day && end && !(await setEventDay(db, wardId, projectId, day, accountId, end))) return false;
+        }
+        await reconcileAnsweredFact(db, wardId, projectId, questionId, detail.itemKey, options, value, accountId);
+        if (!detail.documentKind) {
+          const decision = await applyChange(db, wardId, projectId, { kind: "row", table: "decisions",
+            data: { what: `${ITEM_SCREEN_LABEL[detail.itemKey]}: ${value}`, decidedOn: nowIso().slice(0, 10) },
+            source, confidence: "high", packVersion: "person-conflict-decision@1", requestId: questionId });
+          if (decision.status === "rejected" || decision.status === "dropped") return false;
         }
         applied = true;
       } else if (detail.table && isTableKey(detail.table) && detail.rowId && detail.field && detail.values?.[index] !== undefined) {
