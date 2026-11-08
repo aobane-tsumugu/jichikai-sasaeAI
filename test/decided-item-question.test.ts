@@ -71,3 +71,9 @@ it("文から項目を見分けるのは、一つの項目だけを聞いてい�
   expect(questionItemKeyFromText("今年の日時と集まる場所を教えてください。")).toBeNull();
   expect(questionItemKeyFromText("当番は誰にしますか。")).toBeNull();
 });
+
+it("問いの形でない仕事の名前（「会場を押さえる（来年向け）」）は、場所の質問と見なさない", async () => {
+  const { questionItemKeyFromText } = await import("../src/project/question-target");
+  expect(questionItemKeyFromText("会場を押さえる（来年向け）")).toBeNull();
+  expect(questionItemKeyFromText("今年の会場はどこですか。")).toBe("place");
+});

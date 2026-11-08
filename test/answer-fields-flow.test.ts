@@ -217,3 +217,16 @@ it("候補の「足さない」を押すと、その準備では候補を出さ�
   expect((await postForm(realApp, `${root}/fields/suggestions/on`, {}, cookie)).headers.get("location")).toContain("done=suggestions_on");
   expect(await (await get(realApp, `${root}?view=fields`, cookie)).text()).toContain("返事で聞く欄の候補があります");
 });
+
+it("住民向けのページの「…を聞きます」は、返事で聞く欄の定義から書く（三回目の通し C-3）", async () => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  await env.DB.prepare("DELETE FROM ward_settings WHERE ward_id = ? AND key = 'squads'").bind(ward.wardId).run();
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "年末の見回り", year: 2027, accountId: account.accountId, eventDay: "2027-12-26" });
+  expect((await postForm(realApp, `/${ward.slug}/admin/answers/${project.projectId}/fields`, { kind: "days" }, cookie)).status).toBe(303);
+  await saveDocument(env.DB, ward.wardId, project.projectId, account.accountId, { kind: "announcement", title: "年末の見回りのご案内", scope: "public", basedOn: 0,
+    body: JSON.stringify({ text: "年末の見回りを行います。", items: [] }) });
+  await publish(ward.slug, ward.wardId, project.projectId, cookie);
+  const page = await (await get(realApp, `/${ward.slug}/p/${project.projectId}`)).text();
+  expect(page).toContain("代表者のお名前、参加するかどうか、人数、参加できる日を聞きます。");
+  expect(page).not.toContain("代表者のお名前、班、人数を聞きます。");
+});

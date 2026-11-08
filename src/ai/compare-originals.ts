@@ -195,3 +195,24 @@ assessmentは「中身から見ると、締切が10月3日の案内の方が新�
     .bind(JSON.stringify(result), wardId, projectId, ...ids).run();
   return pair(result);
 }
+
+/** 見比べる画面のために、保存してある比べの結果だけを読む。比べたことが無ければ null（ここでは AI を呼ばない）。 */
+export async function savedComparison(db: D1Database, wardId: string, projectId: string, ids: readonly string[]): Promise<ComparedPair | null> {
+  if (ids.length !== 2 || ids[0] === ids[1]) return null;
+  const sorted = [...ids].sort();
+  const [rows, saved] = await Promise.all([
+    db.prepare(`SELECT o.original_id, o.job_id, o.document_date, o.document_date_source, o.received_at, o.filename, j.via
+      FROM originals o JOIN jobs j ON j.ward_id = o.ward_id AND j.job_id = o.job_id
+      WHERE o.ward_id = ? AND o.original_id IN (?, ?) AND o.withdrawn_at IS NULL AND j.withdrawn_at IS NULL`)
+      .bind(wardId, sorted[0], sorted[1]).all<ComparedOriginal>(),
+    db.prepare(`SELECT result FROM original_comparisons
+      WHERE ward_id = ? AND project_id = ? AND first_original_id = ? AND second_original_id = ?`)
+      .bind(wardId, projectId, sorted[0], sorted[1]).first<{ result: string | null }>(),
+  ]);
+  const first = rows.results.find((row) => row.original_id === sorted[0]);
+  const second = rows.results.find((row) => row.original_id === sorted[1]);
+  if (!first || !second || !saved) return null;
+  let result = unknownComparison();
+  try { if (saved.result) result = parseComparison(JSON.parse(saved.result) as unknown, sorted); } catch { /* 読めない結果は、分からなかったとして出す */ }
+  return { key: JSON.stringify(sorted), originals: [first, second], result };
+}

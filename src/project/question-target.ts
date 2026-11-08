@@ -37,6 +37,8 @@ const TEXT_SIGNS: [ItemKey, RegExp][] = [
 
 export function questionItemKeyFromText(text: string | null | undefined): ItemKey | null {
   const value = (text ?? "").normalize("NFKC");
+  // 問いの形の文だけを見る。「会場を押さえる（来年向け）」のような仕事の名前は、場所を聞く質問ではない。
+  if (!/[?？]|か[。.]?\s*$|か。|ますか|ですか|教えて|ください/.test(value)) return null;
   // 「いつまでに」は締切なので、日時の手がかりの「いつ」とは別に見る。
   const matched = TEXT_SIGNS.filter(([key, sign]) => sign.test(key === "date_time" ? value.replace(/いつまでに/g, "") : value)).map(([key]) => key);
   return matched.length === 1 ? matched[0]! : null;

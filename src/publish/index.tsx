@@ -357,7 +357,7 @@ async function confirmPublication(c: Context<AdminEnv>) {
   const editHref = adminPath(ward, `/projects/${projectId}/draft/${draft.kind}`);
   c.header("Cache-Control", "no-store");
   return c.html(<AdminPage ward={ward} account={account} title="知らせる内容を見る" back={{ href: editHref, label: "下書きへ" }}>
-    <div class="publish-confirm"><h1>{publicScope ? draft.published_at ? "次の内容で知らせ直します" : "次の内容で住民に知らせます" : draft.published_at ? "次の内容で載せ直します" : "次の内容で実行委員と班長のページに載せます"}</h1><p class="lead">{publicScope ? "まだ知らせていません。" : "まだ載せていません。"}読んで、よければ「{sendLabel}」を押してください。{publicScope ? "LINEで送った知らせは取り消せません。" : ""}</p>
+    <div class="publish-confirm"><h1>{publicScope ? draft.published_at ? "次の内容で知らせ直します" : "次の内容で住民に知らせます" : draft.published_at ? "次の内容で載せ直します" : "次の内容で実行委員と班長のページに載せます"}</h1><p class="lead">{publicScope ? "まだ知らせていません。" : "まだ載せていません。"}読んで、よければ「{sendLabel}」を押してください。{publicScope && lineDelivery === "send" ? "LINEで送った知らせは取り消せません。" : ""}</p>
     {pastDue ? <Notice>本文の締切は過ぎているため、このまま知らせると返事の受付が続きますが、締切は知らせたあとに変えられます。</Notice> : null}
     {documentBodyCheckMessage(c.req.query("check_body")) ? <Notice>{documentBodyCheckMessage(c.req.query("check_body"))}</Notice> : null}
     {/* 札の並びでなく、押すと一度に起きることを文で書く。 */}
