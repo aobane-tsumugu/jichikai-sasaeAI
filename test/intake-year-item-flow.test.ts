@@ -13,7 +13,7 @@ import { get, postForm, realApp } from "./helpers";
 afterEach(() => setClientFactory(null));
 
 async function saveReading(wardId: string, accountId: string, sources: {
-  title: string; yearItem?: string; kind?: ProjectSuggestion["kind"]; documentKind?: Reading["document_kind"]; columns?: string[]; headingRow?: string[];
+  title: string; yearItem?: string; kind?: ProjectSuggestion["kind"]; documentKind?: Reading["document_kind"]; columns?: string[]; headingRow?: string[]; titleRow?: string[];
 }[]) {
   const now = new Date().toISOString();
   // 原本ごとに一回の読み。別々に届いても同じ予定の資料はまとまる。
@@ -32,7 +32,8 @@ async function saveReading(wardId: string, accountId: string, sources: {
         ...(source.yearItem !== undefined ? { year_item: source.yearItem } : {}), ...(source.kind ? { kind: source.kind } : {}) }],
       text_blocks: [{ original_id: originalId, locator: "全文", text: source.title }],
       fields: [], tables: source.headingRow ? [{ name: "表1", original_id: originalId, locator: "表1", columns: [],
-        rows: [{ cells: source.headingRow, locator: "1行目", confidence: "high" }, { cells: ["12月26日（金）", "1班", "佐藤、田中"], locator: "2行目", confidence: "high" }] }] : source.columns ? [{ name: "試験用の表", original_id: originalId, locator: "表", columns: source.columns,
+        rows: [...(source.titleRow ? [{ cells: source.titleRow, locator: "0行目", confidence: "high" as const }] : []),
+          { cells: source.headingRow, locator: "1行目", confidence: "high" }, { cells: ["12月26日（金）", "1班", "佐藤、田中"], locator: "2行目", confidence: "high" }] }] : source.columns ? [{ name: "試験用の表", original_id: originalId, locator: "表", columns: source.columns,
         rows: [{ cells: ["12月20日", "一班", "試験一郎"], locator: "1行目", confidence: "high" }] }] : [], decisions: [], unreadable: [],
     };
     await env.DB.prepare(`INSERT INTO readings (reading_id, ward_id, job_id, source, pack_version, model, body, created_at)
@@ -212,6 +213,17 @@ it("ブラウザで取り出した当番表のように、見出しが表の一�
   await env.DB.prepare("INSERT INTO ward_year_items (ward_id, item_id, title, added) VALUES (?, 'ward-patrol', '年末の見回り', 1)").bind(ward.wardId).run();
   await saveReading(ward.wardId, account.accountId, [
     { title: "年末の見回りの当番表", yearItem: "ward-patrol", documentKind: "other", headingRow: ["日", "班", "担当の世帯", "集合", "回る道"] },
+  ]);
+  const [group] = (await pendingMaterialGroups(env.DB, ward.wardId)).filter((entry) => entry.title);
+  const template = materialGroupTemplate(group!, await listProjects(env.DB, ward.wardId, { includeClosed: true }), await yearItemsForStart(env.DB, ward.wardId));
+  expect(template.taskKeys).toEqual(["announcement", "assign", "day", "report"]);
+});
+
+it("当番表の一行目が題の結合セルで、二行目が見出しの時も「担当を決める」を足す（三回目の通しの練習）", async () => {
+  const { ward, account } = await seedAdmin(env.DB);
+  await env.DB.prepare("INSERT INTO ward_year_items (ward_id, item_id, title, added) VALUES (?, 'ward-patrol', '年末の見回り', 1)").bind(ward.wardId).run();
+  await saveReading(ward.wardId, account.accountId, [
+    { title: "年末の見回りの当番表", yearItem: "ward-patrol", documentKind: "other", titleRow: ["2025年度　年末の見回り　当番表（12月26日〜28日）"], headingRow: ["日", "班", "担当の世帯", "集合", "回る道"] },
   ]);
   const [group] = (await pendingMaterialGroups(env.DB, ward.wardId)).filter((entry) => entry.title);
   const template = materialGroupTemplate(group!, await listProjects(env.DB, ward.wardId, { includeClosed: true }), await yearItemsForStart(env.DB, ward.wardId));

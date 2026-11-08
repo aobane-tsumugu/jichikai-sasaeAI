@@ -22,3 +22,22 @@ export function questionItemKey(target: string | null | undefined): ItemKey | nu
   }
   return null;
 }
+
+/**
+ * 対象が空の「決めてほしい」質問が、どの項目を聞いているかを文から見分ける。一つの項目だけをはっきり聞いている時だけ返す。
+ * AI は質問の対象を書かないことがあり（三回目の通しの練習で、日を決めて知らせても「何月何日の何時から…」が閉じなかった）、
+ * 役員が下書きの欄で決めた項目の質問を閉じるのに使う。二つ以上の項目を聞く文、どれにも当たらない文は null。
+ */
+const TEXT_SIGNS: [ItemKey, RegExp][] = [
+  ["due", /締切|しめきり|いつまでに/],
+  ["rain_plan", /雨/],
+  ["place", /どこで|場所|会場/],
+  ["date_time", /何月何日|何日|日時|日にち|開催日|何時から/],
+];
+
+export function questionItemKeyFromText(text: string | null | undefined): ItemKey | null {
+  const value = (text ?? "").normalize("NFKC");
+  // 「いつまでに」は締切なので、日時の手がかりの「いつ」とは別に見る。
+  const matched = TEXT_SIGNS.filter(([key, sign]) => sign.test(key === "date_time" ? value.replace(/いつまでに/g, "") : value)).map(([key]) => key);
+  return matched.length === 1 ? matched[0]! : null;
+}

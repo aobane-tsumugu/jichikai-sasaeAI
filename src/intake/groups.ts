@@ -150,11 +150,12 @@ export function materialGroupTemplate(group: MaterialGroup, past: Parameters<typ
     body.document_kind === "rota" || body.tables.some((table) => {
       if (table.original_id !== material.original.original_id) return false;
       // 列の名前は資料ごとに違う（「担当の世帯」「回る班」など）ので、言葉を含むかで見る。ブラウザで取り出した Word と Excel の表は
-      // 列の名前の欄が空で、見出しが一行目に入っているので、その時は一行目を見出しとして見る。
-      const heading = table.columns.length ? table.columns : table.rows[0]?.cells ?? [];
-      return heading.some((column) => /日|日付|日時/.test(column))
+      // 列の名前の欄が空で、見出しが表の行に入っている。一行目が題の結合セル（「年末の見回り　当番表」）のこともあるので、
+      // 初めの三行のどれかを見出しとして見る（三回目の通しの練習で、二行目が見出しの当番表を見落とした）。
+      const headings = table.columns.length ? [table.columns] : table.rows.slice(0, 3).map((row) => row.cells);
+      return headings.some((heading) => heading.some((column) => /日|日付|日時/.test(column))
         && heading.some((column) => /班|組/.test(column))
-        && heading.some((column) => /担当|当番|世帯/.test(column));
+        && heading.some((column) => /担当|当番|世帯/.test(column)));
     })
   )));
   return hasRota && template.taskKeys?.join(",") === "announcement,day,report"

@@ -45,9 +45,16 @@ export async function getAnswerFields(db: D1Database, wardId: string, projectId:
   const districtRemoved = Boolean(district?.removed_at);
   // 班の名前が無い自治会では、選べるのが「分からない」一つになるので、班を聞かない（前からの決まり）。
   const districtAsked = squads.length > 0 && !districtRemoved;
-  const fields = rows.filter((row) => !row.removed_at && row.kind !== "district").map((row) => ({
-    fieldId: row.field_id, kind: row.kind, label: row.label, options: parseOptions(row.options), multiple: row.multiple === 1,
-  }));
+  // 日を選ぶ欄の日は、足した時に行事の日が決まっていなければ空になる。後から行事の日が決まった時に、役員が手で入れ直さなくても
+  // 住民が選べるよう、空の間は行事の日から埋めて出す（三回目の通しの練習で、知らせても選ぶ日が空のままだった）。役員が書いた日は変えない。
+  const emptyDays = rows.some((row) => !row.removed_at && row.kind === "days" && parseOptions(row.options).length === 0);
+  const deadlines = emptyDays ? (await db.prepare(`SELECT kind, due_on FROM project_deadlines WHERE ward_id = ? AND project_id = ? AND kind IN ('event_day', 'event_end')`)
+    .bind(wardId, projectId).all<{ kind: string; due_on: string }>()).results : [];
+  const eventDays = dayOptions(deadlines.find((row) => row.kind === "event_day")?.due_on, deadlines.find((row) => row.kind === "event_end")?.due_on);
+  const fields = rows.filter((row) => !row.removed_at && row.kind !== "district").map((row) => {
+    const options = parseOptions(row.options);
+    return { fieldId: row.field_id, kind: row.kind, label: row.label, options: row.kind === "days" && !options.length ? eventDays : options, multiple: row.multiple === 1 };
+  });
   return { fields, districtAsked, districtRemoved };
 }
 

@@ -7,7 +7,7 @@ import { eventDayStatements, getProjectState } from "./state";
 import { isCalendarDay, parseEventDay } from "../core/time";
 import { PENDING, reconcileDocumentBody, type DocumentBody } from "./document-body";
 import { getDraftPack } from "../draft/packs";
-import { questionItemKey } from "./question-target";
+import { questionItemKey, questionItemKeyFromText } from "./question-target";
 
 type MaterialTable = "duties" | "committee";
 const materialPack = (table: MaterialTable) => (table === "duties" ? "duty-roster-edit@1" : "committee-edit@1");
@@ -396,10 +396,11 @@ export async function saveDocument(db: D1Database, wardId: string, projectId: st
 /** answering は、いま答えている質問。答えを下書きに入れる保存から呼ばれた時に、その質問を先に閉じない（答えの記録は答える側で行う）。 */
 async function closeDecidedItemQuestions(db: D1Database, wardId: string, projectId: string, decided: { key: ItemKey; content: string }[], accountId: string, now: string, answering?: string): Promise<void> {
   if (!decided.length) return;
-  const open = await db.prepare("SELECT question_id, target FROM project_questions WHERE ward_id = ? AND project_id = ? AND kind = 'decide' AND state IN ('open', 'later') AND question_id <> ?")
-    .bind(wardId, projectId, answering ?? "").all<{ question_id: string; target: string | null }>();
+  const open = await db.prepare("SELECT question_id, target, text FROM project_questions WHERE ward_id = ? AND project_id = ? AND kind = 'decide' AND state IN ('open', 'later') AND question_id <> ?")
+    .bind(wardId, projectId, answering ?? "").all<{ question_id: string; target: string | null; text: string }>();
   const statements = open.results.flatMap((question) => {
-    const key = questionItemKey(question.target);
+    // 対象が空の質問は、文から一つの項目だけを聞いていると分かる時だけ結び付ける。
+    const key = questionItemKey(question.target) ?? (question.target?.trim() ? null : questionItemKeyFromText(question.text));
     const item = key ? decided.find((entry) => entry.key === key) : undefined;
     return item ? [db.prepare("UPDATE project_questions SET state = 'answered', answer = ?, answered_at = ?, answered_by_account_id = ? WHERE ward_id = ? AND question_id = ? AND state IN ('open', 'later')")
       .bind(item.content.slice(0, 2000), now, accountId, wardId, question.question_id)] : [];
