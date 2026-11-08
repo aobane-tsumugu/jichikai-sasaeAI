@@ -74,10 +74,11 @@ export interface Comparison {
 const WEEKDAY_TEXT = ["日", "月", "火", "水", "木", "金", "土"];
 const DAY_MS = 86_400_000;
 const isoDay = (time: number) => new Date(time).toISOString().slice(0, 10);
+const SLOT_DATE_PATTERN = /(\d{4})-(\d{2})-(\d{2})|(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日(?:（[日月火水木金土]）|\([日月火水木金土]\))?/g;
 /** 当番の枠の文にある日（「12月26日（金）」や「2025-12-26」）を、年を補って読む。月が戻ったら次の年と読む。 */
 function slotDates(slot: string, firstYear: number, firstMonth: number): { text: string; time: number }[] {
   const found: { text: string; time: number }[] = [];
-  for (const match of slot.matchAll(/(\d{4})-(\d{2})-(\d{2})|(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日(?:（[日月火水木金土]）|\([日月火水木金土]\))?/g)) {
+  for (const match of slot.matchAll(SLOT_DATE_PATTERN)) {
     const year = Number(match[1] ?? match[4] ?? 0) || (Number(match[5]) < firstMonth ? firstYear + 1 : firstYear);
     const month = Number(match[2] ?? match[5]), day = Number(match[3] ?? match[6]);
     const time = Date.UTC(year, month - 1, day);
@@ -101,9 +102,9 @@ export function shiftSlots(slots: string[], eventDay: string | undefined, lastYe
     return iso ? isoDay(date.getTime()) : `${date.getUTCMonth() + 1}月${date.getUTCDate()}日（${WEEKDAY_TEXT[date.getUTCDay()]}）`;
   };
   return { slots: slots.map((slot) => {
-    let text = slot;
-    for (const date of slotDates(slot, lastYear, firstMonth)) text = text.replace(date.text, written(date.time, /^\d{4}-/.test(date.text)));
-    return text;
+    // 変換後の文字を次の日付と取り違えず、元の欄だけを一度ずつ置き換える。
+    const replacements = new Map(slotDates(slot, lastYear, firstMonth).map((date) => [date.text, written(date.time, /^\d{4}-/.test(date.text))]));
+    return slot.replace(SLOT_DATE_PATTERN, (text) => replacements.get(text) ?? text);
   }), shifted: true };
 }
 
