@@ -107,6 +107,21 @@ test("変更記録と写真の質問と認証の記録を、写しの表が逆�
   roundTrip(t, data);
 });
 
+test("返事で聞く欄が準備より先にある写しも、欄と入力済みの返事を保って戻せる", (t) => {
+  const db = fixture(t);
+  project(db, "fixture-project", 2026);
+  db.prepare(`INSERT INTO project_answer_fields
+    (ward_id, project_id, field_id, kind, label, created_at, created_by_account_id)
+    VALUES (?, 'fixture-project', 'reply-note', 'text', '連絡事項', '2026-11-08T00:00:00Z', 'z-creator')`).run(wardId);
+  db.prepare(`INSERT INTO project_answers
+    (ward_id, project_id, answer_id, household, district, people_count, source, field_values)
+    VALUES (?, 'fixture-project', 'reply', '田中', '1班', 2, 'web', ?)`)
+    .run(wardId, JSON.stringify({ "reply-note": "受付の机を運びます。" }));
+  const data = snapshot(db);
+  data.tables = { project_answer_fields: data.tables.project_answer_fields, ...data.tables };
+  roundTrip(t, data);
+});
+
 test("作った役員を後任が外した記録も、相互の参照を保って戻せる", (t) => {
   const db = fixture(t);
   db.prepare(`INSERT INTO accounts (account_id, ward_id, name, name_key, login_id, password_salt, password_hash, created_by_account_id)

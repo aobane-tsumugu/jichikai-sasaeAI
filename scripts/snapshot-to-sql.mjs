@@ -39,6 +39,7 @@ const TABLE_PARENTS = {
   city_request_details: ["projects", "accounts"], ward_annual_budgets: ["accounts"],
   project_answers: ["projects", "accounts"], project_help_offers: ["projects"],
   project_answer_submissions: ["projects"],
+  project_answer_fields: ["projects"],
   project_spaces: ["projects", "accounts"], project_space_invites: ["projects", "accounts"],
   rota_schedules: ["projects"],
   project_space_members: ["projects"], line_photo_items: ["line_photo_batches", "jobs"],
