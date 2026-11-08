@@ -153,7 +153,12 @@ export function countFields(fields: readonly AnswerField[], answers: readonly { 
     const answered = answers.filter((answer) => fieldValueText(answer.fieldValues?.[field.fieldId]).trim());
     const empty = answers.length - answered.length;
     if (field.kind === "days") {
-      const lines = field.options.map((option) => {
+      // 候補を直す前に届いた返事も、選ばれた日のまま数える。
+      const options = [...new Set([...field.options, ...answered.flatMap((answer) => {
+        const value = answer.fieldValues?.[field.fieldId];
+        return Array.isArray(value) ? value : value ? [value] : [];
+      })])];
+      const lines = options.map((option) => {
         const chosen = answered.filter((answer) => {
           const value = answer.fieldValues?.[field.fieldId];
           return Array.isArray(value) ? value.includes(option) : value === option;

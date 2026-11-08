@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { expect, it } from "vitest";
 import { listAnswers } from "../src/answers/api";
-import { getAnswerFields } from "../src/answers/fields";
+import { addAnswerField, getAnswerFields } from "../src/answers/fields";
 import { seedAdmin } from "../src/core/testing";
 import { receive } from "../src/intake/receive";
 import { saveDocument, setEventDay } from "../src/project/actions";
@@ -130,6 +130,29 @@ it("年末の見回り: 去年の案内と回答票から日と班の欄を候�
   expect((await postForm(realApp, `${root}/fields/${days.fieldId}/remove`, {}, cookie)).status).toBe(303);
   expect((await listAnswers(env.DB, ward.wardId, project.projectId))[0]!.fieldValues?.[days.fieldId]).toEqual(["12月26日（土）"]);
   expect(await (await get(realApp, publicPath)).text()).not.toContain("参加できる日");
+});
+
+it.each([true, false])("日を選ぶ欄の候補を直しても、届いている返事を日別に数える（いくつでも選べる: %s）", async (multiple) => {
+  const { ward, account, cookie } = await seedAdmin(env.DB);
+  const project = await createProject(env.DB, ward.wardId, { kind: "event", title: "年末の見回り", year: 2026, accountId: account.accountId, eventDay: "2026-12-26" });
+  const before = "12月26日（土）";
+  const kept = "12月27日（日）";
+  const fieldId = (await addAnswerField(env.DB, ward.wardId, project.projectId, "days", account.accountId, { options: [before, kept], multiple }))!;
+  const root = `/${ward.slug}/admin/answers/${project.projectId}`;
+  for (const [household, day, people] of [["田中", before, "2"], ["鈴木", kept, "1"]] as const) {
+    expect((await postForm(realApp, `${root}/phone`, { household, attend: "yes", adults_count: people, [`field_${fieldId}`]: day }, cookie)).status).toBe(303);
+  }
+  const values = (await listAnswers(env.DB, ward.wardId, project.projectId)).map((answer) => answer.fieldValues?.[fieldId]);
+  expect(values).toEqual(multiple ? [[before], [kept]] : [before, kept]);
+
+  expect((await postForm(realApp, `${root}/fields/${fieldId}/save`, { label: "参加できる日", options: kept, multiple: multiple ? "1" : "" }, cookie)).status).toBe(303);
+  const summary = await (await get(realApp, root, cookie)).text();
+  expect(summary).toContain(`参加できる日: ${kept}は1世帯（1人）です。${before}は1世帯（2人）です。`);
+  expect((await listAnswers(env.DB, ward.wardId, project.projectId)).map((answer) => answer.fieldValues?.[fieldId])).toEqual(values);
+  expect((await getAnswerFields(env.DB, ward.wardId, project.projectId, [])).fields[0]?.options).toEqual([kept]);
+  const publicForm = await (await get(realApp, `/${ward.slug}/answer/${project.projectId}`)).text();
+  expect(publicForm).toContain(`name="field_${fieldId}" value="${kept}"`);
+  expect(publicForm).not.toContain(`name="field_${fieldId}" value="${before}"`);
 });
 
 it("班の名前が無い自治会では、班を型として出さず、Webでも紙でも班を聞かない", async () => {
