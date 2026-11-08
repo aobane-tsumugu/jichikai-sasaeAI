@@ -53,7 +53,7 @@ const ERROR_MESSAGE: Record<ReceiveError["code"], (filename: string) => string> 
   too_many: () => "一度に送れるのは30までです。分けて送ってください。",
   too_large: (f) => `${f ? `「${f}」` : "送ったもの"}が大きすぎます。小さくして送ってください。`,
   unsupported: (f) => /\.(doc|xls)$/i.test(f)
-    ? `「${f}」は、古い形式のWordやExcelなので、中身を読めません。WordやExcelで開いて「名前を付けて保存」から新しい形式（.docx、.xlsx）で保存し直すか、印刷した紙を撮って送ってください。`
+    ? `「${f}」は、WordやExcelのファイルとして確認できませんでした。WordやExcelで開いて「名前を付けて保存」から保存し直すか、印刷した紙を撮って送ってください。`
     : `${f ? `「${f}」` : "送ったもの"}は読めない形式です。写真、PDF、Word（.docx）、Excel（.xlsx）、文字のファイルを送ってください。`,
   needs_expansion: (f) =>
     `${f ? `「${f}」` : "WordやExcel"}は、この画面をもう一度開いてから、ブラウザで送ってください（ブラウザが中身を開いて送ります）。`,

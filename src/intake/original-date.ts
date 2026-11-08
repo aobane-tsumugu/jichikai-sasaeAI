@@ -1,5 +1,6 @@
 // 日付は資料の中から取る。送信日時から補わず、役員画面のFile.lastModifiedだけを補いに使う。
 import type { MediaClass } from "./media";
+import { compoundOfficeDate, isCompoundOffice } from "./legacy-office-cfb";
 
 export interface OriginalDate { date: string; source: string }
 
@@ -142,7 +143,7 @@ export function exifOriginalDate(bytes: Uint8Array): OriginalDate | null {
 }
 
 export async function originalDate(media: MediaClass, bytes: Uint8Array, extracted: unknown, lastModified?: unknown): Promise<OriginalDate | null> {
-  const embedded = media === "word" || media === "excel" ? officeDate(extracted)
+  const embedded = media === "word" || media === "excel" ? (isCompoundOffice(bytes) ? compoundOfficeDate(bytes) : officeDate(extracted))
     : media === "pdf" ? await pdfInfoDate(bytes) : media === "image" ? exifOriginalDate(bytes) : null;
   return embedded ?? (media !== "text" ? fileModifiedDate(lastModified) : null);
 }

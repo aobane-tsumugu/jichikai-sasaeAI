@@ -1,9 +1,12 @@
+import Anthropic from "@anthropic-ai/sdk";
 import { env } from "cloudflare:workers";
 import { expect, it } from "vitest";
 import { seedAdmin } from "../src/core/testing";
+import { WardBucket } from "../src/core/storage";
 import { joinOpenProjects, pendingMaterialGroups } from "../src/intake/groups";
+import { setPipelineDeps } from "../src/intake/pipeline";
 import { receive } from "../src/intake/receive";
-import { listOriginals } from "../src/intake/store";
+import { getJob, getReadings, listOriginals } from "../src/intake/store";
 import { createProject } from "../src/project/api";
 import { get, realApp } from "./helpers";
 
@@ -47,15 +50,50 @@ it("前提 1: 一度に送った資料のうち、名前の合う準備中のも
   expect(read).not.toContain('name="kind"');
 });
 
-it("古い形式の Word と Excel は選べ、送ると、何をすればよいかをその場で書く", async () => {
+it.each(["doc", "xls"])("古い形式の%sは選べ、壊れていても原本と読めなかった理由を残す", async (format) => {
   const { ward, cookie } = await seedAdmin(env.DB);
   const root = `/${ward.slug}/admin`;
   const page = await (await get(realApp, `${root}/intake`, cookie)).text();
   expect(page).toContain(".doc,.xls");
   const form = new FormData();
   form.set("project_id", "");
-  form.append("part", new File([new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 1, 2, 3])], "架空の会計.xls", { type: "application/vnd.ms-excel" }));
+  const filename = `架空の資料.${format}`;
+  const mediaType = format === "doc" ? "application/msword" : "application/vnd.ms-excel";
+  const bytes = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 1, 2, 3]);
+  form.append("part", new File([bytes], filename, { type: mediaType }));
   form.append("part_kind", "file");
-  const response = await realApp.fetch(new Request(`http://localhost${root}/intake`, { method: "POST", headers: { cookie, origin: "http://localhost", accept: "application/json" }, body: form }), env);
-  expect(((await response.json()) as { message: string }).message).toContain("「架空の会計.xls」は、古い形式のWordやExcelなので、中身を読めません。");
+  // 題の見立てだけを架空の応答に替え、受付・原本保存・読み取りは実物を通す。
+  const client = new Anthropic({ apiKey: "fixture-not-a-real-key", maxRetries: 0, fetch: async () => Response.json({
+    id: "fixture-suggestions", type: "message", role: "assistant", model: "claude-sonnet-5-5", stop_reason: "end_turn", stop_sequence: null,
+    content: [{ type: "text", text: JSON.stringify({ project_suggestions: [], ward_facts: [], year_entries: [] }) }],
+    usage: { input_tokens: 10, output_tokens: 10 },
+  }) });
+  const pending: Promise<unknown>[] = [];
+  setPipelineDeps({ createClient: () => client });
+  try {
+    const response = await realApp.fetch(new Request(`http://localhost${root}/intake`, { method: "POST", headers: { cookie, origin: "http://localhost", accept: "application/json" }, body: form }), env,
+      { waitUntil: (promise: Promise<unknown>) => { pending.push(promise); }, passThroughOnException: () => undefined, props: {} });
+    expect(response.status).toBe(200);
+    const result = await response.json() as { ok: boolean; message: string; jobId: string };
+    expect(result.ok).toBe(true);
+    expect(result.message).toContain("受け取りました。");
+    expect(result.jobId).toBeTruthy();
+    await Promise.all(pending);
+    expect((await getJob(env.DB, ward.wardId, result.jobId))?.status).toBe("read");
+    const originals = await listOriginals(env.DB, ward.wardId, result.jobId);
+    expect(originals).toHaveLength(1);
+    const original = originals[0];
+    expect(original).toMatchObject({ filename, media_type: mediaType, byte_size: bytes.length });
+    if (!original?.r2_path) throw new Error("壊れた資料の保存先がありません");
+    const stored = await new WardBucket(env.ORIGINALS, ward.wardId).get(original.r2_path);
+    expect(stored && new Uint8Array(await stored.arrayBuffer())).toEqual(bytes);
+    expect(await getReadings(env.DB, ward.wardId, result.jobId)).toMatchObject([
+      { source: "direct", body: { text_blocks: [], tables: [], unreadable: [
+        { original_id: original.original_id, note: expect.stringContaining("元の資料は預かりましたが、本文を読み取れませんでした。") },
+      ] } },
+    ]);
+  } finally {
+    await Promise.all(pending);
+    setPipelineDeps(null);
+  }
 });

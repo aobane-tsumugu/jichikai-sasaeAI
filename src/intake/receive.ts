@@ -10,6 +10,7 @@ import { projectDirectory } from "./project-port";
 import type { OriginalKind, ReadKind, Via } from "./types";
 import { imagesBinding, photoSourceHash, preparePhoto } from "./photo";
 import { originalDate, type OriginalDate } from "./original-date";
+import { extractLegacyOffice } from "./legacy-office";
 
 /** 一回に送れる量。画面の送るで足りる量（六枚前後）より十分大きく、Workers の要求の上限に収まる。 */
 export const MAX_PARTS = 30;
@@ -28,7 +29,7 @@ export interface ReceivePart {
   sourceHash?: string;
   /** 役員の画面が変換前のFileから取った日時。受付時刻では補わない。 */
   lastModified?: number | string;
-  /** Word と Excel をブラウザで展開した結果（JSON をパースした値）。無いと Word と Excel は受けない */
+  /** docxとxlsxをブラウザで展開した結果。docとxlsはWorkerで読み取る。 */
   extracted?: unknown;
 }
 
@@ -87,6 +88,7 @@ interface PreparedPart {
   bytes: Uint8Array;
   extracted?: ReturnType<typeof parseExtracted>;
   text?: string;
+  unreadable?: string;
 }
 
 async function prepare(parts: ReceivePart[], projectId: string | null, env: Pick<Env, "DB" | "ORIGINALS">, via: Via): Promise<PreparedPart[]> {
@@ -132,11 +134,19 @@ async function prepare(parts: ReceivePart[], projectId: string | null, env: Pick
       resizeFailed: photo?.resizeFailed,
     };
     if (classified.mediaClass === "word" || classified.mediaClass === "excel") {
-      const extracted = parseExtracted(part.extracted);
-      if (!extracted || extracted.format !== (classified.mediaClass === "word" ? "docx" : "xlsx")) {
-        throw new ReceiveError("needs_expansion", part.filename);
+      const legacyFormat = classified.mediaType === "application/msword" ? "doc"
+        : classified.mediaType === "application/vnd.ms-excel" ? "xls" : null;
+      if (legacyFormat) {
+        const result = extractLegacyOffice(part.bytes, legacyFormat);
+        item.extracted = result.extracted;
+        item.unreadable = result.unreadable;
+      } else {
+        const extracted = parseExtracted(part.extracted);
+        if (!extracted || extracted.format !== (classified.mediaClass === "word" ? "docx" : "xlsx")) {
+          throw new ReceiveError("needs_expansion", part.filename);
+        }
+        item.extracted = extracted;
       }
-      item.extracted = extracted;
     } else if (classified.mediaClass === "text") {
       item.text = decodeText(part.bytes);
     }
@@ -224,7 +234,7 @@ export async function receive(
   for (const r of rows) {
     if (r.p.mediaClass === "image" || r.p.mediaClass === "pdf") needsModelRead = true;
     else if (r.p.extracted) direct.push({ originalId: r.originalId, filename: r.p.part.filename, extracted: r.p.extracted });
-    else direct.push({ originalId: r.originalId, filename: r.p.part.filename, text: r.p.text });
+    else direct.push({ originalId: r.originalId, filename: r.p.part.filename, text: r.p.text, unreadable: r.p.unreadable });
   }
   const readKind: ReadKind = input.readKind ?? "general";
   const directReading = direct.length > 0 ? buildDirectReading(direct) : null;

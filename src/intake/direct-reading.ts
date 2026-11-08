@@ -1,10 +1,10 @@
-// モデルを通さない読み取り。Word と Excel は役員のブラウザで段落とセルに展開して送られ（L-123）、
+// モデルを通さない読み取り。WordとExcelはブラウザかWorkerで段落とセルに展開し、
 // 文字のファイルと一行の文は文字のまま、同じ形の読み取り（src/ai/schema.ts の Reading）にする。
 import { DOCUMENT_KINDS, type Reading, type ReadRow, type ReadTable, type TextBlock } from "../ai/schema";
 
-/** ブラウザが展開して送る形。 */
+/** ブラウザかWorkerが展開した形。 */
 export interface ExtractedDocument {
-  format: "docx" | "xlsx";
+  format: "docx" | "xlsx" | "doc" | "xls";
   /** Word の本文の段落（表の外）。Excel は空 */
   paragraphs: string[];
   /** Word の表、Excel のシート。rows は行ごとのセルの文字 */
@@ -19,7 +19,7 @@ const MAX_CELLS = 200_000;
 export function parseExtracted(value: unknown): ExtractedDocument | null {
   if (typeof value !== "object" || value === null) return null;
   const v = value as Record<string, unknown>;
-  if (v.format !== "docx" && v.format !== "xlsx") return null;
+  if (v.format !== "docx" && v.format !== "xlsx" && v.format !== "doc" && v.format !== "xls") return null;
   if (!Array.isArray(v.paragraphs) || !Array.isArray(v.tables)) return null;
   if (!v.paragraphs.every((p) => typeof p === "string")) return null;
   let cells = 0;
@@ -46,6 +46,8 @@ export interface DirectPart {
   /** 文字（一行の文、文字のファイル）か、展開した Word と Excel */
   text?: string;
   extracted?: ExtractedDocument;
+  /** 原本を預かったが本文を取り出せなかったときの案内。 */
+  unreadable?: string;
 }
 
 /** 書かれた年だけを読む。複数の年があって一つに決まらなければ年不明に留める。 */
@@ -107,6 +109,7 @@ export function buildDirectReading(parts: DirectPart[]): Reading {
     fields: [],
     tables,
     decisions: [],
-    unreadable: [],
+    unreadable: parts.flatMap((part) => part.unreadable
+      ? [{ original_id: part.originalId, locator: "本文", note: part.unreadable }] : []),
   };
 }

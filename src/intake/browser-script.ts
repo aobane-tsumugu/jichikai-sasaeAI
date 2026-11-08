@@ -286,9 +286,7 @@ export const SEND_SCRIPT = PHOTO_SCRIPT + String.raw`(function (root) {
     });
     var text = form.elements['text'].value;
     if (picked.length === 0 && text.trim() === '') { say('送るものを選ぶか、一行の文を書いてください。', true); return; }
-    // 古い形式（.doc、.xls）は選べるようにし、送る前に、何をすればよいかをその場で書く。
-    var old = picked.filter(function (p) { return /\.(doc|xls)$/i.test(p.file.name); });
-    if (old.length) { say(old.map(function (p) { return '「' + p.file.name + '」'; }).join('、') + 'は、古い形式のWordやExcelなので、中身を読めません。WordやExcelで開いて「名前を付けて保存」から新しい形式（.docx、.xlsx）で保存し直すか、印刷した紙を撮って送ってください。選び直して、もう一度送ってください。', true); return; }
+    // 古い形式（.doc、.xls）は、そのまま送ってWorkerで読み取る。
     button.disabled = true;
     say('送っています…', false);
     try {
