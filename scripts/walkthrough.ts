@@ -311,6 +311,25 @@ async function runFull() {
       if ((await post(draft.action, draft.fields)).status !== 303) throw new Error("手書きの案内を保存できません");
     }
   }
+  // 今年の資料どうしで食い違った項目は、答えるまで今年の中身に入らない（前提 4。解くのは人）。質問は下書きを作る時にも出るので、
+  // 下書きのあとに役員と同じく AI からの質問の画面で選び、案内の「いつ」がまだ（確認中）なら、選んだ日で下書きを直してから知らせる。
+  const questionPage = (await get(admin + "/projects/" + project + "/questions")).html;
+  let chosenDay = "";
+  for (const form of questionPage.matchAll(/<form\b[^>]*action="([^"]*\/questions\/[0-9a-f-]{36})"[^>]*>([\s\S]*?)<\/form>/gi)) {
+    const option = /<button\b[^>]*name="answer"[^>]*value="([^"]*)"/i.exec(form[2] ?? "")?.[1];
+    if (!option) continue;
+    const answer = unescapeHtml(option);
+    const answered = await post(unescapeHtml(form[1] ?? ""), { action: "answer", answer });
+    if (answered.status !== 303) throw new Error("今年の食い違いの質問に答えられません");
+    if (!chosenDay && /\d{1,2}月\d{1,2}日|\d{1,2}\/\d{1,2}/.test(answer)) chosenDay = answer;
+  }
+  if (chosenDay && (!draft.fields.item_date_time?.trim() || draft.fields.item_date_time.includes("確認中"))) {
+    // 答えると準備の中身の版が進むので、今の下書きの欄を読み直してから直す。
+    const fresh = readForm((await get(draftPath)).html, "/save");
+    fresh.fields.item_date_time = chosenDay;
+    if ((await post(fresh.action, fresh.fields)).status !== 303) throw new Error("選んだ日で案内を直せません");
+    Object.assign(draft.fields, fresh.fields);
+  }
   const published = await publish(project, (await get(admin + "/publish/" + project)).html, "public");
   if (published.response.status !== 303) throw new Error("案内を公開できません");
   publicPath = wardPath + "/p/" + project;
