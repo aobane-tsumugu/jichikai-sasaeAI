@@ -231,6 +231,7 @@ export const GENERAL_READING_SCHEMA = {
     summary: str,
     project_suggestions: {
       type: "array",
+      description: "この自治会が準備する行事や依頼の資料だけを入れます。個人の家計簿、買い物のメモなど、自治会の運営と関係のない個人の資料は入れません。繰り返し送られても同じです。文字と表は元の資料の読み取りとして残します。",
       items: {
         type: "object", additionalProperties: false,
         required: ["original_id", "title", "year_item", "date_text", "place"],
@@ -242,6 +243,7 @@ export const GENERAL_READING_SCHEMA = {
     },
     ward_facts: {
       type: "array",
+      description: "自治会の運営に関わる決まりや情報だけを入れます。個人の家計簿や買い物のメモは自治会の会計ではありません。自治会との関係が資料に書かれていなければ入れません。役員が送ったことや再送、金額があることを根拠にしません。元の資料と読み取った文字や表は残します。",
       items: {
         type: "object", additionalProperties: false,
         required: ["original_id", "topic", "text"],
@@ -250,6 +252,7 @@ export const GENERAL_READING_SCHEMA = {
     },
     year_entries: {
       type: "array",
+      description: "自治会の年間の予定や事業計画に並ぶ行事や仕事だけを入れます。個人の家計簿や買い物のメモなど、自治会の運営と関係のない個人の資料は入れません。月や日付があることや再送を根拠にしません。元の資料と読み取った文字や表は残します。",
       items: {
         type: "object", additionalProperties: false,
         required: ["original_id", "title", "month", "date_text"],

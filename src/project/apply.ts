@@ -43,6 +43,7 @@ import { checkSourceShape, normalizeSource, placeSource, markReferenceSource } f
 import type { ApplyOptions, ApplyResult, ChangeInput, ItemChange, MapTaskChange, RowChange } from "./types";
 import { dedupeKeyOf, hashOf, quote, sameText, stableStringify } from "./util";
 import { compareOriginals, comparisonText, pairCaptions } from "../ai/compare-originals";
+import { referenceConflictItems, referenceConflictText, type ReferenceConflictDetail, type ReferenceConflictItem } from "./questions-original-reference";
 
 type Db = D1Database;
 
@@ -348,6 +349,7 @@ function insertValueStatement(
   content: string,
   placement: ReturnType<typeof placeSource>,
   n: Normalized,
+  valueId = newId(),
 ): D1PreparedStatement {
   const [kind, ref, locator, year] = sourceBinds(n.source);
   return ctx.db
@@ -358,7 +360,7 @@ function insertValueStatement(
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
-      newId(),
+      valueId,
       ctx.wardId,
       ctx.projectId,
       itemKey,
@@ -394,12 +396,17 @@ async function planOriginalConflict(ctx: Ctx, n: Normalized, change: ItemChange,
   const captions = pairCaptions(pair);
   const oldCaption = captions[oldIndex]!;
   const newCaption = captions[newIndex]!;
-  const previousQuestion = await ctx.db.prepare(`SELECT question_id FROM project_questions
-    WHERE ward_id = ? AND project_id = ? AND target = ? AND json_extract(detail, '$.comparisonKey') = ? LIMIT 1`)
-    .bind(ctx.wardId, ctx.projectId, change.itemKey, pair.key).first();
-  if (previousQuestion) return { status: "kept", statements: [], questions: [], bump: false, staleKinds: [] };
-
   const reference = placement.scope === "reference";
+  const refYear = placement.scope === "reference" ? placement.refYear : null;
+  const previousQuestion = reference
+    ? await ctx.db.prepare(`SELECT question_id, detail FROM project_questions
+      WHERE ward_id = ? AND project_id = ? AND kind = 'conflict' AND state IN ('open', 'later')
+        AND json_extract(detail, '$.scope') = 'reference' AND json_extract(detail, '$.comparisonKey') = ? LIMIT 1`)
+      .bind(ctx.wardId, ctx.projectId, pair.key).first<{ question_id: string; detail: string }>()
+    : await ctx.db.prepare(`SELECT question_id, detail FROM project_questions
+      WHERE ward_id = ? AND project_id = ? AND target = ? AND json_extract(detail, '$.comparisonKey') = ? LIMIT 1`)
+      .bind(ctx.wardId, ctx.projectId, change.itemKey, pair.key).first<{ question_id: string; detail: string }>();
+  if (!reference && previousQuestion) return { status: "kept", statements: [], questions: [], bump: false, staleKinds: [] };
   const times = pair.originals.map((original) => original.document_date ? Date.parse(original.document_date) : NaN);
   const datedNewer = Number.isFinite(times[0]) && Number.isFinite(times[1]) && times[0] !== times[1]
     ? pair.originals[times[0]! > times[1]! ? 0 : 1]!.original_id : null;
@@ -410,10 +417,11 @@ async function planOriginalConflict(ctx: Ctx, n: Normalized, change: ItemChange,
     ? `${chosenCaption}を取りました（${pair.result.assessment.replace(/[。]+$/g, "")}）。`
     : `${chosenCaption}をひとまず使います。どちらが最後のものか、役員に聞いています。`;
   const statements: D1PreparedStatement[] = [];
+  const currentValueId = takeIncoming ? newId() : before.value_id;
   if (reference) {
     if (takeIncoming) {
       statements.push(supersedeValueStatement(ctx, before.value_id), insertValueStatement(ctx, change.itemKey, change.value.trim(), placement,
-        { ...n, source: { ...n.source, locator: `${n.source.locator ?? "全体"}。${reason}` } }));
+        { ...n, source: { ...n.source, locator: `${n.source.locator ?? "全体"}。${reason}` } }, currentValueId));
     } else {
       const locator = `${before.source_locator?.split("。資料を比べた結果：")[0] ?? "全体"}。資料を比べた結果：${reason}`;
       statements.push(ctx.db.prepare("UPDATE project_item_values SET source_locator = ? WHERE ward_id = ? AND project_id = ? AND value_id = ?")
@@ -421,21 +429,38 @@ async function planOriginalConflict(ctx: Ctx, n: Normalized, change: ItemChange,
     }
   }
   const label = ITEM_SCREEN_LABEL[change.itemKey];
-  const when = reference ? placement.refYear === ctx.project.year - 1 ? "去年の" : placement.refYear === null ? "年の分からない資料の" : `${placement.refYear}年の` : "今年の";
-  const questions: NewQuestion[] = automatic ? [] : [{
+  const sources: Source[] = [{ kind: "original", ref: before.source_ref, locator: before.source_locator ?? "全体", ...(before.source_year ? { year: before.source_year } : {}) }, n.source];
+  const values = [before.content, change.value.trim()];
+  const oldDetail = previousQuestion ? JSON.parse(previousQuestion.detail) as ReferenceConflictDetail : null;
+  const items = oldDetail ? referenceConflictItems(oldDetail) : [];
+  // 資料の並びをそろえる。先に届いた順や項目ごとの値の順には依存しない。
+  const align = (item: ReferenceConflictItem): ReferenceConflictItem => {
+    const indices = pair.originals.map((original) => item.sources.findIndex((source) => source.ref === original.original_id));
+    return { ...item, options: indices.map((index) => item.options[index]!), sources: indices.map((index) => item.sources[index]!) };
+  };
+  const referenceDetail: ReferenceConflictDetail = { scope: "reference", refYear,
+    comparisonKey: pair.key, comparisonText: comparisonText(pair),
+    originals: pair.originals.map((original, index) => ({ originalId: original.original_id, description: captions[index]! })),
+    options: captions,
+    items: [...items.filter((item) => item.itemKey !== change.itemKey).map(align),
+      align({ itemKey: change.itemKey, options: values, sources, currentValueId })] };
+  const questions: NewQuestion[] = automatic || previousQuestion ? [] : [{
     kind: "conflict", target: change.itemKey, suffix: "conflict", source: n.source,
-    text: `${when}「${label}」が、二つの資料で違います。${oldCaption}は「${before.content}」、${newCaption}は「${change.value.trim()}」です。`
-      + comparisonText(pair) + (reference ? "どちらが最後のものですか。答えるまでも下書きは作れます。" : "今年はどちらの中身にしますか。"),
-    detail: { itemKey: change.itemKey, options: [before.content, change.value.trim()], currentValueId: before.value_id,
-      changeId: ctx.changeId, comparisonKey: pair.key, ...(reference ? { scope: "reference", refYear: placement.refYear } : {}),
-      sources: [{ kind: "original", ref: before.source_ref, locator: before.source_locator ?? "全体", ...(before.source_year ? { year: before.source_year } : {}) }, n.source],
+    text: reference ? referenceConflictText(referenceDetail) : `今年の「${label}」が、二つの資料で違います。${oldCaption}は「${before.content}」、${newCaption}は「${change.value.trim()}」です。`
+      + comparisonText(pair) + "今年はどちらの中身にしますか。",
+    detail: reference ? { ...referenceDetail, changeId: ctx.changeId } : { itemKey: change.itemKey, options: values, currentValueId: before.value_id,
+      changeId: ctx.changeId, comparisonKey: pair.key, sources,
       originals: pair.originals.map((original, index) => ({ originalId: original.original_id, description: captions[index]! })),
     },
   }];
+  if (reference && previousQuestion) statements.push(ctx.db.prepare(`UPDATE project_questions SET text = ?, detail = ?
+    WHERE ward_id = ? AND project_id = ? AND question_id = ? AND state IN ('open', 'later')`)
+    .bind(referenceConflictText(referenceDetail), JSON.stringify({ ...referenceDetail, changeId: ctx.changeId }), ctx.wardId, ctx.projectId, previousQuestion.question_id));
   const hasCurrent = reference && Boolean(await ctx.db.prepare(`SELECT value_id FROM project_item_values
     WHERE ward_id = ? AND project_id = ? AND item_key = ? AND scope = 'current' AND superseded_at IS NULL LIMIT 1`)
     .bind(ctx.wardId, ctx.projectId, change.itemKey).first());
   return { status: takeIncoming ? "applied" : automatic ? "kept" : "conflict", statements, questions, bump: takeIncoming,
+    ...(reference && previousQuestion ? { existingQuestionIds: [previousQuestion.question_id] } : {}),
     staleKinds: takeIncoming && !hasCurrent ? await documentsDependingOn(ctx, { item: change.itemKey }) : [] };
 }
 
@@ -446,40 +471,55 @@ export async function answerOriginalReference(db: D1Database, wardId: string, pr
     WHERE ward_id = ? AND project_id = ? AND question_id = ? AND kind = 'conflict' AND state IN ('open', 'later')`)
     .bind(wardId, projectId, questionId).first<{ detail: string | null }>();
   if (!question?.detail) return null;
-  const detail = JSON.parse(question.detail) as { scope?: string; refYear?: number | null; itemKey?: string; options?: string[]; sources?: Source[] };
+  const detail = JSON.parse(question.detail) as ReferenceConflictDetail;
   if (detail.scope !== "reference") return null;
-  if (!detail.itemKey || !isItemKey(detail.itemKey) || !Array.isArray(detail.options) || !Array.isArray(detail.sources)
-    || !(detail.refYear === null || (typeof detail.refYear === "number" && Number.isInteger(detail.refYear)))) return false;
-  const index = detail.options.indexOf(answer);
-  const source = detail.sources[index];
-  if (index < 0 || source?.kind !== "original" || !source.ref) return false;
+  const items = referenceConflictItems(detail);
+  if (!items.length || !(detail.refYear === null || (typeof detail.refYear === "number" && Number.isInteger(detail.refYear)))) return false;
+  const selectedOriginal = detail.items ? detail.originals?.[(detail.options ?? []).indexOf(answer)]?.originalId : undefined;
+  if (detail.items && !selectedOriginal) return false;
+  const selections = items.map((item) => {
+    const index = selectedOriginal ? item.sources.findIndex((source) => source.ref === selectedOriginal) : item.options.indexOf(answer);
+    return { itemKey: item.itemKey, value: item.options[index], source: item.sources[index] };
+  });
+  if (selections.some((selection) => selection.value === undefined || !selection.source?.ref)) return false;
   const project = await db.prepare("SELECT kind, year, closed_at, state_version FROM projects WHERE ward_id = ? AND project_id = ?")
     .bind(wardId, projectId).first<ProjectRow>();
   if (!project || project.closed_at) return false;
   if (!(await db.prepare("SELECT account_id FROM accounts WHERE ward_id = ? AND account_id = ? AND removed_at IS NULL")
     .bind(wardId, accountId).first())) return false;
-  if (!(await db.prepare("SELECT original_id FROM originals WHERE ward_id = ? AND original_id = ? AND withdrawn_at IS NULL")
-    .bind(wardId, source.ref).first())) return false;
+  for (const ref of new Set(selections.map((selection) => selection.source!.ref!))) {
+    if (!(await db.prepare("SELECT original_id FROM originals WHERE ward_id = ? AND original_id = ? AND withdrawn_at IS NULL")
+      .bind(wardId, ref).first())) return false;
+  }
   const changeId = newId();
   const now = nowIso();
-  const chosen = { ...source, locator: `${source.locator ?? "全体"}。二つの資料を比べ、役員が最後のものとして選びました。` };
-  const change: ItemChange = { kind: "item", itemKey: detail.itemKey, value: answer, source: chosen, confidence: "high", packVersion: "reference-answer@1", requestId: questionId };
-  const n: Normalized = { change, source: chosen, target: detail.itemKey };
-  const ctx: Ctx = { db, wardId, projectId, project, changeId, now, source: chosen, confidence: "high", dedupeKey: `reference-answer:${questionId}`, options: { actorAccountId: accountId } };
-  const hasCurrent = await db.prepare(`SELECT value_id FROM project_item_values WHERE ward_id = ? AND project_id = ?
-    AND item_key = ? AND scope = 'current' AND superseded_at IS NULL LIMIT 1`).bind(wardId, projectId, detail.itemKey).first();
-  const staleKinds = hasCurrent ? [] : await documentsDependingOn(ctx, { item: detail.itemKey });
-  const stored: StoredResult = { status: "applied", changeId, staleDocuments: staleKinds, questionIds: [] };
-  const fresh = insertValueStatement(ctx, detail.itemKey, answer, { scope: "reference", refYear: detail.refYear }, n);
+  const statements: D1PreparedStatement[] = [];
+  const staleKinds = new Set<DocumentKind>();
+  for (const [index, selection] of selections.entries()) {
+    const source = selection.source!;
+    const chosen = { ...source, locator: `${source.locator ?? "全体"}。二つの資料を比べ、役員が最後のものとして選びました。` };
+    const change: ItemChange = { kind: "item", itemKey: selection.itemKey, value: selection.value!, source: chosen, confidence: "high", packVersion: "reference-answer@1", requestId: questionId };
+    const n: Normalized = { change, source: chosen, target: selection.itemKey };
+    const ctx: Ctx = { db, wardId, projectId, project, changeId: index === 0 ? changeId : newId(), now, source: chosen, confidence: "high",
+      dedupeKey: `reference-answer:${questionId}:${selection.itemKey}`, options: { actorAccountId: accountId } };
+    const hasCurrent = await db.prepare(`SELECT value_id FROM project_item_values WHERE ward_id = ? AND project_id = ?
+      AND item_key = ? AND scope = 'current' AND superseded_at IS NULL LIMIT 1`).bind(wardId, projectId, selection.itemKey).first();
+    const affected = hasCurrent ? [] : await documentsDependingOn(ctx, { item: selection.itemKey });
+    for (const kind of affected) staleKinds.add(kind);
+    const stored: StoredResult = { status: "applied", changeId: ctx.changeId, staleDocuments: affected, questionIds: [] };
+    statements.push(
+      insertChangeStatement(ctx, n, true, "applied", "役員が最後の資料を選びました。", stored, await hashOf(change), ctx.dedupeKey, true),
+      db.prepare(`UPDATE project_item_values SET superseded_at = ? WHERE ward_id = ? AND project_id = ? AND item_key = ?
+        AND scope = 'reference' AND ref_year IS ? AND superseded_at IS NULL`).bind(now, wardId, projectId, selection.itemKey, detail.refYear),
+      insertValueStatement(ctx, selection.itemKey, selection.value!, { scope: "reference", refYear: detail.refYear }, n),
+      db.prepare(`UPDATE project_item_values SET created_by_account_id = ? WHERE ward_id = ? AND project_id = ? AND change_id = ?`)
+        .bind(accountId, wardId, projectId, ctx.changeId),
+    );
+  }
   await db.batch([
-    insertChangeStatement(ctx, n, true, "applied", "役員が最後の資料を選びました。", stored, await hashOf(change), ctx.dedupeKey, true),
-    db.prepare(`UPDATE project_item_values SET superseded_at = ? WHERE ward_id = ? AND project_id = ? AND item_key = ?
-      AND scope = 'reference' AND ref_year IS ? AND superseded_at IS NULL`).bind(now, wardId, projectId, detail.itemKey, detail.refYear),
-    fresh,
-    db.prepare(`UPDATE project_item_values SET created_by_account_id = ? WHERE ward_id = ? AND project_id = ? AND change_id = ?`)
-      .bind(accountId, wardId, projectId, changeId),
+    ...statements,
     db.prepare("UPDATE projects SET state_version = state_version + 1 WHERE ward_id = ? AND project_id = ?").bind(wardId, projectId),
-    ...staleKinds.map((kind) => db.prepare(`UPDATE documents SET stale_since_version =
+    ...[...staleKinds].map((kind) => db.prepare(`UPDATE documents SET stale_since_version =
       (SELECT state_version FROM projects WHERE ward_id = ? AND project_id = ?)
       WHERE ward_id = ? AND project_id = ? AND kind = ? AND stale_since_version IS NULL`)
       .bind(wardId, projectId, wardId, projectId, kind)),
@@ -536,10 +576,50 @@ async function planItemValue(ctx: Ctx, n: Normalized, change: ItemChange): Promi
   // 資料の組ごとに聞き直さず、同じ年・同じ項目の問いへ違う値を足す。
   if (n.source.kind === "original") {
     const pending = await ctx.db.prepare(`SELECT question_id, text, detail FROM project_questions
-      WHERE ward_id = ? AND project_id = ? AND kind = 'conflict' AND target = ? AND state IN ('open', 'later')
-        AND json_extract(detail, '$.itemKey') = ? AND json_extract(detail, '$.documentKind') IS NULL`)
-      .bind(ctx.wardId, ctx.projectId, change.itemKey, change.itemKey).all<{ question_id: string; text: string; detail: string }>();
+      WHERE ward_id = ? AND project_id = ? AND kind = 'conflict' AND state IN ('open', 'later')
+        AND ((target = ? AND json_extract(detail, '$.itemKey') = ?)
+          OR (json_extract(detail, '$.scope') = 'reference' AND EXISTS
+            (SELECT 1 FROM json_each(detail, '$.items') WHERE json_extract(value, '$.itemKey') = ?)))
+        AND json_extract(detail, '$.documentKind') IS NULL`)
+      .bind(ctx.wardId, ctx.projectId, change.itemKey, change.itemKey, change.itemKey).all<{ question_id: string; text: string; detail: string }>();
     for (const question of pending.results) {
+      const referenceDetail = JSON.parse(question.detail) as ReferenceConflictDetail;
+      if (referenceDetail.scope === "reference" && referenceDetail.items) {
+        if (placement.scope !== "reference" || referenceDetail.refYear !== placement.refYear) continue;
+        const items = referenceConflictItems(referenceDetail);
+        const item = items.find((item) => item.itemKey === change.itemKey);
+        if (!item) continue;
+        const index = item.sources.findIndex((source) => source.ref === n.source.ref);
+        if (index >= 0) {
+          item.options[index] = content;
+          item.sources[index] = n.source;
+        } else if (items.length === 1) {
+          // 一項目を三つ以上の資料で比べていた質問も、一つのまま保つ。
+          if (!item.options.some((option) => sameText(option, content))) {
+            const pair = await compareOriginals(ctx.db, ctx.wardId, ctx.projectId, item.sources[0]!.ref!, n.source.ref!);
+            if (!pair) continue;
+            const pairedCaption = pairCaptions(pair)[pair.originals.findIndex((original) => original.original_id === n.source.ref)]!;
+            const caption = referenceDetail.options?.includes(pairedCaption)
+              ? `${pairedCaption}（${referenceDetail.originals!.length + 1}つ目）` : pairedCaption;
+            item.options.push(content);
+            item.sources.push(n.source);
+            referenceDetail.originals!.push({ originalId: n.source.ref!, description: caption });
+            referenceDetail.options = referenceDetail.originals!.map((original) => original.description);
+          }
+        } else continue;
+        const statements: D1PreparedStatement[] = [];
+        const reread = active.results.find((row) => row.scope === "reference" && row.ref_year === placement.refYear
+          && row.source_ref === n.source.ref && !sameText(row.content, content));
+        if (reread) {
+          item.currentValueId = newId();
+          statements.push(supersedeValueStatement(ctx, reread.value_id), insertValueStatement(ctx, change.itemKey, content, placement, n, item.currentValueId));
+        }
+        statements.push(ctx.db.prepare(`UPDATE project_questions SET text = ?, detail = ?
+          WHERE ward_id = ? AND project_id = ? AND question_id = ? AND state IN ('open', 'later')`)
+          .bind(referenceConflictText(referenceDetail), JSON.stringify(referenceDetail), ctx.wardId, ctx.projectId, question.question_id));
+        return { status: "conflict", statements, questions: [], existingQuestionIds: [question.question_id], bump: !!reread,
+          staleKinds: reread && !active.results.some((row) => row.scope === "current") ? await documentsDependingOn(ctx, { item: change.itemKey }) : [] };
+      }
       const detail = JSON.parse(question.detail) as { scope?: string; refYear?: number | null; options: string[]; sources?: Source[] };
       const scope = detail.scope ?? "current";
       if (scope !== placement.scope || (placement.scope === "reference" && (detail.refYear ?? null) !== placement.refYear)) continue;

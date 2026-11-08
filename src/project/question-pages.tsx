@@ -6,6 +6,7 @@ import type { AdminEnv } from "../env";
 import { getProjectState } from "./api";
 import { DOCUMENT_KINDS, ITEM_SCREEN_LABEL, isItemKey, type DocumentKind } from "./model";
 import type { QuestionView } from "./types";
+import { referenceConflictItems, type ReferenceConflictDetail } from "./questions-original-reference";
 import { answerMaterialExemption, EXEMPTION_TARGET, EXEMPTION_YES, EXEMPTION_NO, EXEMPTION_REASON_MAX, readMaterialExemption } from "../rota/material-exemptions";
 
 /** 保存済みの選択肢の値は保ち、資料の年を聞く言葉だけ揃える。 */
@@ -19,6 +20,9 @@ export function questionOptionLabel(option: string): string {
 function questionTitle(question: QuestionView): { heading: string; body: string } {
   if (question.options?.some((option) => questionOptionLabel(option) === "今年のもの")) return { heading: "この資料は今年のものですか", body: question.text };
   if (question.kind === "unreadable") return { heading: "読めなかったところがあります", body: question.text };
+  if (question.kind === "conflict" && question.text.includes("で、次の項目が違います。")) return {
+    heading: "資料によって違うところがあります", body: question.text,
+  };
   if (question.kind === "conflict" && isItemKey(question.target)) return {
     heading: `「${ITEM_SCREEN_LABEL[question.target]}」が${question.text.includes("下書きの本文と項目") ? "下書きの本文と項目で" : "資料によって"}違います`,
     body: question.text.replace(/^「[^」]*」が食い違っています。/, "").replace("年の書いていない", "年の書かれていない"),
@@ -54,19 +58,25 @@ questionPages.get("/projects/:projectId/questions/:questionId/compare", async (c
     .bind(ward.wardId, id, question.questionId).first<{ detail: string | null }>();
   let draftKind: DocumentKind = "announcement";
   let reference = false;
+  let referenceDetail: ReferenceConflictDetail = {};
   try {
-    const detail = JSON.parse(stored?.detail ?? "{}") as { documentKind?: DocumentKind; scope?: string };
+    const detail = JSON.parse(stored?.detail ?? "{}") as ReferenceConflictDetail & { documentKind?: DocumentKind };
+    referenceDetail = detail;
     reference = detail.scope === "reference";
     if (detail.documentKind && DOCUMENT_KINDS.includes(detail.documentKind)) draftKind = detail.documentKind;
   } catch { /* 古い質問は案内へ戻る。 */ }
   const fromDraft = c.req.query("from") === "draft";
   const back = adminPath(ward, fromDraft ? `/projects/${id}/draft/${draftKind}` : `/projects/${id}/questions`);
   return c.html(<Layout title={(question.options?.length ?? 0) > 2 ? "資料を見比べる" : "二つを見比べる"} siteName={ward.name} noindex adminHomeHref={adminPath(ward, "/")}>
-    <a class="back" href={back}>← {fromDraft ? "下書きへ" : "質問へ"}</a><h1>{questionTitle(question).heading}</h1><p class="lead">{reference ? "過去の資料の中身に残すものを選んでください。今年の中身は変わりません。" : "今年使う内容を選んでください。答えるまで資料のどれかを今年の中身には入れません。"}</p>
+    <a class="back" href={back}>← {fromDraft ? "下書きへ" : "質問へ"}</a><h1>{questionTitle(question).heading}</h1><p class="lead">{!isItemKey(question.target) ? "当てはまるものを選んでください。" : reference ? "過去の資料の中身に残すものを選んでください。今年の中身は変わりません。" : "今年使う内容を選んでください。答えるまで資料のどれかを今年の中身には入れません。"}</p>
     <p>{questionTitle(question).body}</p>
+    {reference ? referenceConflictItems(referenceDetail).map((item) => <section class="panel">
+      <h2>{ITEM_SCREEN_LABEL[item.itemKey]}</h2>
+      <dl>{item.options.map((value, index) => <><dt>{referenceDetail.originals?.find((original) => original.originalId === item.sources[index]?.ref)?.description ?? `${index + 1}つ目の資料`}</dt><dd class="preserve-lines">{value}</dd></>)}</dl>
+    </section>) : null}
     {state.project.closedAt ? <Notice>{state.project.title}は終わりにしました。終わりを取り消すと答えを入れられます。</Notice> : <form method="post" action={adminPath(ward, `/projects/${id}/questions/${question.questionId}`)}>
       {fromDraft && draftKind === "announcement" ? <input type="hidden" name="from" value="draft" /> : null}
-      <fieldset><legend>使う内容</legend>{question.options?.length ? question.options.map((option) => <label><input type="radio" name="answer" value={option} required />{questionOptionLabel(option)}</label>) : <><p class="preserve-lines">{question.answer}</p><label for="answer">確かめた内容</label><input id="answer" name="answer" required maxlength={2000} /></>}</fieldset>
+      <fieldset><legend>{reference && referenceDetail.items ? "最後の資料" : "使う内容"}</legend>{question.options?.length ? question.options.map((option) => <label><input type="radio" name="answer" value={option} required />{questionOptionLabel(option)}</label>) : <><p class="preserve-lines">{question.answer}</p><label for="answer">確かめた内容</label><input id="answer" name="answer" required maxlength={2000} /></>}</fieldset>
       {question.source?.kind === "original" && question.source.ref ? <p><a class="quiet" href={adminPath(ward, `/intake/originals/${encodeURIComponent(question.source.ref)}`)}>元の資料を見る</a></p> : null}
       <button name="action" value="answer">{reference ? "過去の資料の中身に残す" : question.target && isItemKey(question.target) ? "この内容を下書きに入れる" : "この答えを残す"}</button>
     </form>}

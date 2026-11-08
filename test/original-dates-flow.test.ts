@@ -11,6 +11,7 @@ import type { ItemKey } from "../src/project/model";
 import { getWardAiLimits } from "../src/ops/metrics";
 import { eraseSnapshotJob, WARD_TABLE_POLICY } from "../src/archive/snapshot";
 import { answerOriginalReference } from "../src/project/apply";
+import type { ReferenceConflictDetail } from "../src/project/questions-original-reference";
 
 afterEach(() => setClientFactory(null));
 
@@ -173,7 +174,12 @@ it("去年の回答処理は参考だけを直し、今年の中身を保ち、�
   await s.apply(b, "10月3日");
   const question = (await s.state())!.questions[0]!;
   expect(question).toBeDefined();
-  expect(await answerOriginalReference(env.DB, s.ward.wardId, s.project.projectId, question.questionId, account.accountId, "10月5日")).toBe(true);
+  const stored = await env.DB.prepare("SELECT detail FROM project_questions WHERE ward_id = ? AND project_id = ? AND question_id = ?")
+    .bind(s.ward.wardId, s.project.projectId, question.questionId).first<{ detail: string }>();
+  const detail = JSON.parse(stored!.detail) as ReferenceConflictDetail;
+  const index = detail.originals!.findIndex((original) => original.originalId === a);
+  expect(question.options).toEqual(detail.originals!.map((original) => original.description));
+  expect(await answerOriginalReference(env.DB, s.ward.wardId, s.project.projectId, question.questionId, account.accountId, question.options![index]!)).toBe(true);
   const state = await s.state();
   expect(state?.items.find((item) => item.key === "due")?.references[0]?.content).toBe("10月5日");
   expect(state?.items.find((item) => item.key === "due")?.current).toBeNull();
